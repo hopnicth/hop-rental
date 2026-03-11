@@ -16,38 +16,106 @@ const product = getProductBySlug(slug.value);
 const selectedSkuIndex = ref(0);
 const selectedSku = computed(() => product.value?.skus[selectedSkuIndex.value]);
 
-// ── Rental Booking Form toggle ──
+// ── Cart & Booking ──
 const { isRental } = useProducts();
-const { addBooking } = useBooking();
+const { addToCart } = useCart();
+const { confirmBooking, getRemainingAvailability } = useBooking();
+const user = useSupabaseUser();
+const toast = useToast();
 const showBookingForm = ref(false);
+const isSubmittingBooking = ref(false);
+
+const selectedRentalAvailability = computed(() => {
+  if (!selectedSku.value) return 0;
+  return getRemainingAvailability(
+    selectedSku.value.id,
+    selectedSku.value.stock.available,
+  );
+});
 
 function handleBookNow() {
+  if (isSubmittingBooking.value || !selectedSku.value) return;
+
+  if (selectedRentalAvailability.value <= 0) {
+    toast.add({
+      title: t("booking.unavailable"),
+      description: t("booking.unavailableDesc"),
+      icon: "bx:error-circle",
+      color: "warning",
+    });
+    showBookingForm.value = false;
+    return;
+  }
+
   showBookingForm.value = !showBookingForm.value;
 }
 
-function handleBookingSubmit(payload: {
+async function handleBookingSubmit(payload: {
   startDate: string;
   numDays: number;
   returnDate: string;
   totalCost: number;
   deposit: number;
 }) {
-  if (!product.value || !selectedSku.value) return;
+  if (!product.value || !selectedSku.value || isSubmittingBooking.value) return;
 
-  const booking = addBooking({
-    productId: product.value.id,
-    skuId: selectedSku.value.id,
-    productName: product.value.name[lang.value],
-    startDate: payload.startDate,
-    numDays: payload.numDays,
-    returnDate: payload.returnDate,
-    dailyRate: selectedSku.value.rentalPrice.daily,
-    totalCost: payload.totalCost,
-    deposit: payload.deposit,
-  });
+  if (!user.value) {
+    toast.add({
+      title: t("booking.loginRequired"),
+      description: t("booking.loginRequiredDesc"),
+      icon: "bx:lock-alt",
+      color: "warning",
+    });
+    await navigateTo("/user/login");
+    return;
+  }
 
-  console.log("[Booking] created:", booking.bookingId);
-  showBookingForm.value = false;
+  if (selectedRentalAvailability.value <= 0) {
+    showBookingForm.value = false;
+    toast.add({
+      title: t("booking.unavailable"),
+      description: t("booking.unavailableDesc"),
+      icon: "bx:error-circle",
+      color: "warning",
+    });
+    return;
+  }
+
+  const currentProduct = product.value;
+  const currentSku = selectedSku.value;
+
+  isSubmittingBooking.value = true;
+
+  try {
+    const booking = await confirmBooking({
+      productId: currentProduct.id,
+      skuId: currentSku.id,
+      productName: currentProduct.name[lang.value],
+      thumbnail: currentProduct.thumbnail,
+      startDate: payload.startDate,
+      numDays: payload.numDays,
+      returnDate: payload.returnDate,
+      dailyRate: currentSku.rentalPrice.daily,
+      totalCost: payload.totalCost,
+      deposit: payload.deposit,
+    });
+
+    console.log("[Booking] confirmed:", booking.bookingId);
+    showBookingForm.value = false;
+
+    toast.add({
+      title: t("booking.success"),
+      description: t("booking.successDesc", {
+        product: currentProduct.name[lang.value],
+      }),
+      icon: "bx:check-circle",
+      color: "success",
+    });
+
+    await navigateTo("/user/cart");
+  } finally {
+    isSubmittingBooking.value = false;
+  }
 }
 
 // ── Tabs ──
@@ -114,10 +182,19 @@ const recommended = computed(() => {
         <div class="col-span-12 lg:col-span-7">
           <ProductsProductInfo
             :product="product"
+            :rental-available="selectedRentalAvailability"
             v-model:selected-sku-index="selectedSkuIndex"
             @add-to-cart="
               () => {
-                /* TODO: useCart integration */
+                if (product && selectedSku) {
+                  addToCart(
+                    product.id,
+                    selectedSku.id,
+                    product.name[lang],
+                    product.thumbnail,
+                    selectedSku.price.final,
+                  );
+                }
               }
             "
             @book-now="handleBookNow"
@@ -133,6 +210,7 @@ const recommended = computed(() => {
         <ProductsRentalBookingForm
           :product="product"
           :selected-sku="selectedSku"
+          :loading="isSubmittingBooking"
           @submit="handleBookingSubmit"
           @cancel="showBookingForm = false"
         />

@@ -19,7 +19,22 @@ export default defineNuxtConfig({
     "@nuxt/scripts",
     "@nuxt/ui",
     "@nuxtjs/i18n",
+    "@nuxtjs/supabase",
   ],
+
+  supabase: {
+    redirectOptions: {
+      login: "/user/login",
+      callback: "/user/confirm",
+      exclude: ["/", "/product-*", "/product-*/**"],
+      saveRedirectToCookie: true,
+    },
+    cookieOptions: {
+      maxAge: 60 * 60 * 5, // 5 hours — match idle timeout
+      sameSite: "lax",
+      secure: true,
+    },
+  },
 
   i18n: {
     locales: [

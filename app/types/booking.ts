@@ -12,6 +12,8 @@ export interface BookingItem {
   skuId: string;
   /** Display name snapshot at the time of booking */
   productName: string;
+  /** Thumbnail image URL — snapshot for cart display */
+  thumbnail: string;
   /** ISO date string — rental start date (YYYY-MM-DD) */
   startDate: string;
   /** Number of rental days */
@@ -24,6 +26,10 @@ export interface BookingItem {
   totalCost: number;
   /** Deposit amount at the time of booking */
   deposit: number;
+  /** Selected hub/store ID for pickup (null = not yet selected) */
+  hubId: string | null;
+  /** Selected hub/store display name snapshot */
+  hubName: string | null;
   /** Booking status */
   status: BookingStatus;
   /** ISO date string — when booking was created */
@@ -44,4 +50,3 @@ export interface BookingStore {
   /** ISO date string of last update */
   updatedAt: string;
 }
-

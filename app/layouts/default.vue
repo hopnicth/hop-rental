@@ -7,4 +7,5 @@ import HopHeader from "../components/HopHeader.vue";
   <UMain>
     <slot />
   </UMain>
+  <UNotifications />
 </template>

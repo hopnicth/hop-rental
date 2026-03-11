@@ -1,6 +1,16 @@
 import type { BookingItem, BookingStore } from "~/types/booking";
 
-const BOOKING_STORAGE_KEY = "hop-rental-bookings";
+const BOOKING_STORAGE_PREFIX = "hop-rental-bookings";
+const BOOKING_CONFIRM_DELAY_MS = 250;
+
+/**
+ * Build a user-scoped storage key.
+ * Guest users get no bookings (key is empty → nothing stored).
+ */
+function bookingStorageKey(userId: string | null): string {
+  if (!userId) return "";
+  return `${BOOKING_STORAGE_PREFIX}-${userId}`;
+}
 
 /**
  * Generate a simple UUID v4.
@@ -16,16 +26,27 @@ function generateBookingId(): string {
   });
 }
 
+function emptyBookingStore(): BookingStore {
+  return { items: [], updatedAt: new Date().toISOString() };
+}
+
+function waitForBookingConfirmation(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, BOOKING_CONFIRM_DELAY_MS);
+  });
+}
+
 /**
  * Read bookings from localStorage (client-side only).
  */
-function loadBookings(): BookingStore {
-  if (import.meta.server) {
-    return { items: [], updatedAt: new Date().toISOString() };
-  }
+function loadBookings(userId: string | null): BookingStore {
+  if (import.meta.server) return emptyBookingStore();
+
+  const key = bookingStorageKey(userId);
+  if (!key) return emptyBookingStore();
 
   try {
-    const raw = localStorage.getItem(BOOKING_STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) {
       return JSON.parse(raw) as BookingStore;
     }
@@ -33,42 +54,88 @@ function loadBookings(): BookingStore {
     // corrupted data — start fresh
   }
 
-  return { items: [], updatedAt: new Date().toISOString() };
+  return emptyBookingStore();
 }
 
 /**
  * Persist bookings to localStorage (client-side only).
  */
-function saveBookings(store: BookingStore): void {
+function saveBookings(userId: string | null, bs: BookingStore): void {
   if (import.meta.server) return;
 
+  const key = bookingStorageKey(userId);
+  if (!key) return;
+
   try {
-    localStorage.setItem(BOOKING_STORAGE_KEY, JSON.stringify(store));
+    localStorage.setItem(key, JSON.stringify(bs));
   } catch {
     // storage full or unavailable — silently ignore
   }
 }
 
+/**
+ * Remove bookings data from localStorage entirely.
+ */
+function removeBookingStorage(userId: string | null): void {
+  if (import.meta.server) return;
+
+  const key = bookingStorageKey(userId);
+  if (!key) return;
+
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore
+  }
+}
+
 // ── Shared reactive state (singleton across components) ──
-const store = ref<BookingStore>(loadBookings());
+const store = ref<BookingStore>(emptyBookingStore());
+/** Track which userId the bookings are currently loaded for */
+const currentBookingUserId = ref<string | null>(null);
 
 /**
  * Composable for managing rental bookings.
- * State is persisted in localStorage and shared across all components.
+ * State is persisted in localStorage **per user** and shared across all components.
  *
- * TODO: Add server sync when API is ready.
+ * - Storage key: `hop-rental-bookings-{userId}`
+ * - No login → empty bookings
+ * - Logout → `destroyBookings()` removes storage + resets state
  */
 export function useBooking() {
+  const user = useSupabaseUser();
+
   /** All booking items */
   const bookingItems = computed(() => store.value.items);
 
-  /** Total number of bookings (all statuses) */
-  const bookingCount = computed(() => store.value.items.length);
-
-  /** Only active (non-cancelled) bookings */
-  const activeBookings = computed(() =>
-    store.value.items.filter((b) => b.status !== "cancelled"),
+  /** Only confirmed bookings */
+  const confirmedBookings = computed(() =>
+    store.value.items.filter((b) => b.status === "confirmed"),
   );
+
+  /** Total number of confirmed bookings */
+  const bookingCount = computed(() => confirmedBookings.value.length);
+
+  /** Bookings currently shown in cart/checkout */
+  const activeBookings = computed(() => confirmedBookings.value);
+
+  /** Total deposit amount across all active bookings */
+  const bookingTotalDeposit = computed(() =>
+    activeBookings.value.reduce((sum, b) => sum + b.deposit, 0),
+  );
+
+  /** Total rental cost across all active bookings */
+  const bookingTotalRental = computed(() =>
+    activeBookings.value.reduce((sum, b) => sum + b.totalCost, 0),
+  );
+
+  /**
+   * (Re-)load bookings for the given user. Called on mount + when user changes.
+   */
+  function hydrateBookings(userId: string | null): void {
+    currentBookingUserId.value = userId;
+    store.value = loadBookings(userId);
+  }
 
   /**
    * Add a new booking (status = "draft").
@@ -77,25 +144,55 @@ export function useBooking() {
     productId: string;
     skuId: string;
     productName: string;
+    thumbnail: string;
     startDate: string;
     numDays: number;
     returnDate: string;
     dailyRate: number;
     totalCost: number;
     deposit: number;
+    hubId?: string | null;
+    hubName?: string | null;
   }): BookingItem {
     const item: BookingItem = {
       bookingId: generateBookingId(),
       ...params,
+      thumbnail: params.thumbnail,
+      hubId: params.hubId ?? null,
+      hubName: params.hubName ?? null,
       status: "draft",
       createdAt: new Date().toISOString(),
     };
 
     store.value.items.push(item);
     store.value.updatedAt = new Date().toISOString();
-    saveBookings(store.value);
+    saveBookings(currentBookingUserId.value, store.value);
 
     return item;
+  }
+
+  /**
+   * Confirm a booking after client-side persistence completes.
+   * This keeps the product page UX async-ready until bookings move server-side.
+   */
+  async function confirmBooking(params: {
+    productId: string;
+    skuId: string;
+    productName: string;
+    thumbnail: string;
+    startDate: string;
+    numDays: number;
+    returnDate: string;
+    dailyRate: number;
+    totalCost: number;
+    deposit: number;
+    hubId?: string | null;
+    hubName?: string | null;
+  }): Promise<BookingItem> {
+    const booking = addBooking(params);
+    await waitForBookingConfirmation();
+    updateBookingStatus(booking.bookingId, "confirmed");
+    return getBookingById(booking.bookingId) ?? booking;
   }
 
   /**
@@ -116,7 +213,20 @@ export function useBooking() {
     if (item) {
       item.status = status;
       store.value.updatedAt = new Date().toISOString();
-      saveBookings(store.value);
+      saveBookings(currentBookingUserId.value, store.value);
+    }
+  }
+
+  /**
+   * Update the hub/store selection for a booking.
+   */
+  function updateHub(bookingId: string, hubId: string, hubName: string): void {
+    const item = store.value.items.find((b) => b.bookingId === bookingId);
+    if (item) {
+      item.hubId = hubId;
+      item.hubName = hubName;
+      store.value.updatedAt = new Date().toISOString();
+      saveBookings(currentBookingUserId.value, store.value);
     }
   }
 
@@ -128,7 +238,7 @@ export function useBooking() {
       (b) => b.bookingId !== bookingId,
     );
     store.value.updatedAt = new Date().toISOString();
-    saveBookings(store.value);
+    saveBookings(currentBookingUserId.value, store.value);
   }
 
   /**
@@ -137,26 +247,68 @@ export function useBooking() {
   function clearBookings(): void {
     store.value.items = [];
     store.value.updatedAt = new Date().toISOString();
-    saveBookings(store.value);
+    saveBookings(currentBookingUserId.value, store.value);
   }
 
-  // ── Hydrate from localStorage on client mount ──
+  function getConfirmedBookingCountBySku(skuId: string): number {
+    return confirmedBookings.value.filter((b) => b.skuId === skuId).length;
+  }
+
+  function getRemainingAvailability(
+    skuId: string,
+    totalAvailable: number,
+  ): number {
+    return Math.max(totalAvailable - getConfirmedBookingCountBySku(skuId), 0);
+  }
+
+  /**
+   * Clear in-memory booking state for the current session only.
+   * Persisted user data remains available after the next login.
+   */
+  function resetBookingSession(): void {
+    store.value = emptyBookingStore();
+    currentBookingUserId.value = null;
+  }
+
+  /**
+   * Destroy bookings completely — removes localStorage entry + resets reactive state.
+   * Called on logout.
+   */
+  function destroyBookings(): void {
+    removeBookingStorage(currentBookingUserId.value);
+    store.value = emptyBookingStore();
+    currentBookingUserId.value = null;
+  }
+
+  // ── Hydrate on mount + react to user changes (client-only) ──
   if (import.meta.client) {
     onMounted(() => {
-      store.value = loadBookings();
+      hydrateBookings(user.value?.id ?? null);
+    });
+
+    watch(user, (newUser) => {
+      hydrateBookings(newUser?.id ?? null);
     });
   }
 
   return {
     store,
     bookingItems,
+    confirmedBookings,
     bookingCount,
     activeBookings,
+    bookingTotalDeposit,
+    bookingTotalRental,
     addBooking,
+    confirmBooking,
     getBookingById,
+    getConfirmedBookingCountBySku,
+    getRemainingAvailability,
     updateBookingStatus,
+    updateHub,
     removeBooking,
     clearBookings,
+    resetBookingSession,
+    destroyBookings,
   };
 }
-

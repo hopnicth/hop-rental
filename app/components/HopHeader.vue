@@ -27,7 +27,7 @@ const navItems = computed<NavigationMenuItem[]>(() => [
       },
       {
         label: t("nav.measurement"),
-        to: "/",
+        to: "/product",
         description: t("nav.measurementDesc"),
       },
     ],
@@ -44,7 +44,7 @@ const navItems = computed<NavigationMenuItem[]>(() => [
       { label: t("nav.tools"), to: "/rental", description: t("nav.toolsDesc") },
       {
         label: t("nav.measurement"),
-        to: "/",
+        to: "/rental",
         description: t("nav.measurementDesc"),
       },
     ],
@@ -69,7 +69,7 @@ const navItems = computed<NavigationMenuItem[]>(() => [
       <NavMenu :items="navItems" class="hidden lg:flex" />
       <MobileMenu :items="navItems" class="lg:hidden" />
       <LangSelection />
-      <UserDropdown class="hidden lg:flex" />
+      <UserDropdown />
     </template>
   </UHeader>
 </template>

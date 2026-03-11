@@ -2,7 +2,11 @@
 import FeatureBtn from "./FeatureBtn.vue";
 const { t } = useI18n();
 const { cartItemCount, cartId } = useCart();
+const { bookingCount } = useBooking();
 const toast = useToast();
+const quotationBadgeCount = computed(
+  () => cartItemCount.value + bookingCount.value,
+);
 
 /**
  * Show Cart ID to customer so they can share it with the sales team.
@@ -25,15 +29,15 @@ function handleContactSales() {
     <FeatureBtn
       icon="streamline-cyber:shopping-cart-3"
       :label="t('featureBar.cart')"
-      :badge="cartItemCount"
-      to="/cart"
+      :badge="quotationBadgeCount"
+      to="/user/cart"
     />
 
     <!-- 2. Order History -->
     <FeatureBtn
       icon="streamline-cyber:clock-1"
       :label="t('featureBar.orderHistory')"
-      to="/orders"
+      to="/user/orders"
     />
 
     <!-- 3. Contact Sales — shows cart ID in toast -->

@@ -10,6 +10,7 @@ import type { LocaleCode } from "~/types/locale";
 const props = defineProps<{
   product: Product;
   selectedSkuIndex: number;
+  rentalAvailable?: number;
 }>();
 
 const emit = defineEmits<{
@@ -25,6 +26,10 @@ const { getTotalStock, isRental } = useProducts();
 const selectedSku = computed(() => props.product.skus[props.selectedSkuIndex]);
 
 const stock = computed(() => getTotalStock(props.product));
+
+const rentalAvailable = computed(
+  () => props.rentalAvailable ?? selectedSku.value?.stock.available ?? 0,
+);
 
 const rental = computed(() => isRental(props.product));
 </script>
@@ -138,10 +143,10 @@ const rental = computed(() => isRental(props.product));
       </UBadge>
       <UBadge
         v-if="rental"
-        :color="stock.available > 0 ? 'info' : 'neutral'"
+        :color="rentalAvailable > 0 ? 'info' : 'neutral'"
         variant="subtle"
       >
-        {{ t("productDetail.available") }}: {{ stock.available }}
+        {{ t("productDetail.available") }}: {{ rentalAvailable }}
       </UBadge>
     </div>
 
@@ -156,7 +161,7 @@ const rental = computed(() => isRental(props.product));
         @click="emit('addToCart')"
       />
       <UButton
-        v-if="rental && stock.available > 0"
+        v-if="rental && rentalAvailable > 0"
         icon="bx:calendar-check"
         :label="t('productDetail.bookNow')"
         color="secondary"

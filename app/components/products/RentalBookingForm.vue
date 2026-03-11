@@ -14,10 +14,16 @@ import type { Product, ProductSKU } from "~/types/product";
  *  - cancel: user dismissed the form
  */
 
-const props = defineProps<{
-  product: Product;
-  selectedSku: ProductSKU;
-}>();
+const props = withDefaults(
+  defineProps<{
+    product: Product;
+    selectedSku: ProductSKU;
+    loading?: boolean;
+  }>(),
+  {
+    loading: false,
+  },
+);
 
 const emit = defineEmits<{
   submit: [
@@ -80,7 +86,8 @@ function formatDate(d: CalendarDate | undefined): string {
 
 // ── Submit ──
 function handleSubmit() {
-  if (!isValid.value || !startDate.value || !returnDate.value) return;
+  if (props.loading || !isValid.value || !startDate.value || !returnDate.value)
+    return;
   emit("submit", {
     startDate: toISO(startDate.value),
     numDays: numDays.value,
@@ -107,12 +114,16 @@ watch(numDays, (val) => {
           color="neutral"
           variant="ghost"
           size="sm"
+          :disabled="props.loading"
           @click="emit('cancel')"
         />
       </div>
     </template>
 
-    <div class="space-y-4">
+    <div
+      class="space-y-4"
+      :class="{ 'pointer-events-none opacity-60': props.loading }"
+    >
       <!-- Calendar -->
       <div>
         <p class="mb-2 text-sm font-medium">{{ t("booking.startDate") }}</p>
@@ -127,6 +138,7 @@ watch(numDays, (val) => {
           type="number"
           :min="minDays"
           :max="maxDays > 0 ? maxDays : undefined"
+          :disabled="props.loading"
         />
         <p class="mt-1 text-xs text-gray-400">
           {{ t("booking.minDays", { min: minDays }) }}
@@ -137,18 +149,14 @@ watch(numDays, (val) => {
       </div>
 
       <!-- Return date + cost summary -->
-      <div
-        class="rounded-lg bg-gray-50 p-3 dark:bg-gray-900 space-y-2 text-sm"
-      >
+      <div class="rounded-lg bg-gray-50 p-3 dark:bg-gray-900 space-y-2 text-sm">
         <div class="flex justify-between">
           <span class="text-gray-500">{{ t("booking.returnDate") }}</span>
           <span class="font-semibold">{{ formatDate(returnDate) }}</span>
         </div>
         <div class="flex justify-between">
           <span class="text-gray-500">{{ t("productDetail.deposit") }}</span>
-          <span class="font-semibold">
-            ฿{{ deposit.toLocaleString() }}
-          </span>
+          <span class="font-semibold"> ฿{{ deposit.toLocaleString() }} </span>
         </div>
         <div class="flex justify-between border-t pt-2">
           <span class="text-gray-500">{{ t("booking.totalCost") }}</span>
@@ -165,17 +173,20 @@ watch(numDays, (val) => {
           :label="t('booking.cancel')"
           color="neutral"
           variant="outline"
+          :disabled="props.loading"
           @click="emit('cancel')"
         />
         <UButton
-          :label="t('booking.confirm')"
+          :label="
+            props.loading ? t('booking.confirming') : t('booking.confirm')
+          "
           color="primary"
           icon="bx:calendar-check"
-          :disabled="!isValid"
+          :loading="props.loading"
+          :disabled="props.loading || !isValid"
           @click="handleSubmit"
         />
       </div>
     </template>
   </UCard>
 </template>
-

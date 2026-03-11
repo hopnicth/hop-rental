@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { LocaleCode } from "~/types/locale";
 
+const toast = useToast();
+
 const props = defineProps<{
   /** Product ID — used to fetch product data from composable */
   productId: string;
@@ -9,6 +11,7 @@ const props = defineProps<{
 const { locale, t } = useI18n();
 const { getProductById, getDefaultSKU, getTotalStock, isRental } =
   useProducts();
+const { addToCart } = useCart();
 
 const product = getProductById(props.productId);
 
@@ -37,6 +40,28 @@ const productUrl = computed(() =>
 /** Cap a number at 99 for display (e.g. "99+" if over) */
 function capCount(n: number): string {
   return n > 99 ? "99+" : String(n);
+}
+
+function handleAddToCart() {
+  if (!product.value || !sku.value) return;
+
+  // 2. เรียก Logic: ตัวที่เป็น computed (sku, lang) ต้องเติม .value เสมอ
+  addToCart(
+    product.value.id,
+    sku.value.id, // ✅ sku.value
+    product.value.name[lang.value], // ✅ lang.value
+    product.value.thumbnail,
+    sku.value.price.final, // ✅ sku.value
+  );
+
+  // 3. แสดง Notification
+  toast.add({
+    title: t("productPage.addedToCartTitle") || "Success!",
+    description: `${product.value.name[lang.value]} ${t("productPage.addedToCartDesc")}`,
+    icon: "i-heroicons-check-circle",
+    color: "primary",
+    duration: 3000, // ✅ เปลี่ยนจาก duration เป็น timeout ตามมาตรฐาน Nuxt UI
+  });
 }
 </script>
 
@@ -111,28 +136,40 @@ function capCount(n: number): string {
         <!-- Action buttons — after price -->
         <div class="flex items-center justify-end gap-2 pt-1">
           <!-- Add to Cart — only when for sale & in stock -->
-          <UButton
-            v-if="product.isForSale && stock.inStock > 0"
-            icon="bx:cart-add"
-            color="primary"
-            variant="soft"
-            size="sm"
-            square
-            :aria-label="t('productPage.addToCart')"
-            @click.prevent.stop
-          />
+          <UTooltip
+            :text="t('productPage.addToCart')"
+            :popper="{ placement: 'top' }"
+          >
+            <UButton
+              v-if="product.isForSale && stock.inStock > 0 && sku"
+              icon="bx:cart-add"
+              color="primary"
+              variant="soft"
+              size="sm"
+              square
+              class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-primary"
+              :aria-label="t('productPage.addToCart')"
+              @click.prevent.stop="handleAddToCart()"
+            />
+          </UTooltip>
 
           <!-- Book Now — only when for rent & available -->
-          <UButton
-            v-if="isRental(product) && stock.available > 0"
-            icon="bx:calendar-check"
-            color="secondary"
-            variant="soft"
-            size="sm"
-            square
-            :aria-label="t('productPage.bookNow')"
-            @click.prevent.stop
-          />
+          <UTooltip
+            :text="t('productPage.bookNow')"
+            :popper="{ placement: 'top' }"
+          >
+            <UButton
+              :to="productUrl"
+              v-if="isRental(product) && stock.available > 0"
+              icon="bx:calendar-check"
+              color="secondary"
+              variant="soft"
+              size="sm"
+              square
+              class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-secondary"
+              :aria-label="t('productPage.bookNow')"
+            />
+          </UTooltip>
         </div>
       </div>
 
@@ -146,15 +183,7 @@ function capCount(n: number): string {
           size="sm"
           variant="subtle"
         >
-          {{
-            lang === "th"
-              ? "ขาย"
-              : lang === "cn"
-                ? "销售"
-                : lang === "jp"
-                  ? "販売"
-                  : "Sale"
-          }}
+          {{ t("productPage.inStock") }}
           <span v-if="stock.inStock > 0" class="ml-1">
             {{ capCount(stock.inStock) }}
           </span>
@@ -168,15 +197,7 @@ function capCount(n: number): string {
           size="sm"
           variant="subtle"
         >
-          {{
-            lang === "th"
-              ? "เช่า"
-              : lang === "cn"
-                ? "租赁"
-                : lang === "jp"
-                  ? "レンタル"
-                  : "Rent"
-          }}
+          {{ t("productPage.available") }}
           <span v-if="stock.available > 0" class="ml-1">
             {{ capCount(stock.available) }}
           </span>
