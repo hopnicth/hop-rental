@@ -4,9 +4,14 @@ const { t } = useI18n();
 const { cartItemCount, cartId } = useCart();
 const { bookingCount } = useBooking();
 const toast = useToast();
+const router = useRouter();
+const availablePaths = computed(
+  () => new Set(router.getRoutes().map((route) => route.path)),
+);
 const quotationBadgeCount = computed(
   () => cartItemCount.value + bookingCount.value,
 );
+const hasOrdersRoute = computed(() => availablePaths.value.has("/user/orders"));
 
 /**
  * Show Cart ID to customer so they can share it with the sales team.
@@ -35,6 +40,7 @@ function handleContactSales() {
 
     <!-- 2. Order History -->
     <FeatureBtn
+      v-if="hasOrdersRoute"
       icon="streamline-cyber:clock-1"
       :label="t('featureBar.orderHistory')"
       to="/user/orders"

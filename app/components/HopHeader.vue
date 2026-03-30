@@ -8,50 +8,17 @@ import UserDropdown from "./header/UserDropdown.vue";
 import HopSearch from "./header/HopSearch.vue";
 
 const { t } = useI18n();
-
 const navItems = computed<NavigationMenuItem[]>(() => [
   {
     label: t("nav.product"),
     icon: "bxs-package",
     to: "/product-all",
-    children: [
-      {
-        label: t("nav.toolsSet"),
-        to: "/product",
-        description: t("nav.toolsSetDesc"),
-      },
-      {
-        label: t("nav.tools"),
-        to: "/product",
-        description: t("nav.toolsDesc"),
-      },
-      {
-        label: t("nav.measurement"),
-        to: "/product",
-        description: t("nav.measurementDesc"),
-      },
-    ],
   },
   {
     label: t("nav.rental"),
     icon: "bxs-package",
-    children: [
-      {
-        label: t("nav.toolsSet"),
-        to: "/rental",
-        description: t("nav.toolsSetDesc"),
-      },
-      { label: t("nav.tools"), to: "/rental", description: t("nav.toolsDesc") },
-      {
-        label: t("nav.measurement"),
-        to: "/rental",
-        description: t("nav.measurementDesc"),
-      },
-    ],
+    to: "/product-rental",
   },
-  { label: t("nav.about"), icon: "bxs-package", to: "/about" },
-  { label: t("nav.contact"), icon: "bxs-package", to: "/contact" },
-  { label: t("nav.blog"), icon: "bxs-package", to: "/blog" },
 ]);
 </script>
 

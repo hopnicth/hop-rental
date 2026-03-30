@@ -34,6 +34,11 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const { isB2C, isB2BAdmin } = useCompanyContext();
+const router = useRouter();
+
+const availablePaths = computed(
+  () => new Set(router.getRoutes().map((route) => route.path)),
+);
 
 /** Handle item click — redirect or switch section */
 function handleClick(item: SidebarItem) {
@@ -129,7 +134,14 @@ const groups = computed<SidebarGroup[]>(() => {
     }
   }
 
-  return result;
+  return result
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) => !item.to || availablePaths.value.has(item.to),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 });
 </script>
 
