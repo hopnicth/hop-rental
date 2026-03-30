@@ -46,6 +46,7 @@ function loadLastActivity(): number {
 export function useAuthSession() {
   const supabase = useSupabaseClient();
   const user = useSupabaseUser();
+  const { profile } = useUserProfile();
   const { t } = useI18n();
   const toast = useToast();
 
@@ -54,11 +55,21 @@ export function useAuthSession() {
   const displayName = computed(() => {
     if (!user.value) return "";
     const meta = user.value.user_metadata;
-    return meta?.full_name || meta?.name || user.value.email || "";
+
+    return (
+      profile.value?.fullName ||
+      meta?.full_name ||
+      meta?.name ||
+      user.value.email ||
+      ""
+    );
   });
   const avatarUrl = computed(() => {
     if (!user.value) return "";
-    return user.value.user_metadata?.avatar_url || "";
+
+    return (
+      profile.value?.avatarUrl || user.value.user_metadata?.avatar_url || ""
+    );
   });
   const userEmail = computed(() => user.value?.email || "");
 
