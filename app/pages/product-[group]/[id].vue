@@ -16,6 +16,30 @@ const product = getProductBySlug(slug.value);
 const selectedSkuIndex = ref(0);
 const selectedSku = computed(() => product.value?.skus[selectedSkuIndex.value]);
 
+const selectedGalleryImages = computed<string[]>(() => {
+  if (selectedSku.value?.images?.length) {
+    return selectedSku.value.images;
+  }
+
+  if (selectedSku.value?.image) {
+    return [selectedSku.value.image];
+  }
+
+  return product.value?.images ?? [];
+});
+
+const selectedGalleryThumbnail = computed<string>(() => {
+  if (selectedSku.value?.image) {
+    return selectedSku.value.image;
+  }
+
+  if (selectedSku.value?.images?.length) {
+    return selectedSku.value.images[0] ?? "";
+  }
+
+  return product.value?.thumbnail ?? "";
+});
+
 // ── Cart & Booking ──
 const { isRental } = useProducts();
 const { addToCart } = useCart();
@@ -33,6 +57,15 @@ const selectedRentalAvailability = computed(() => {
   );
 });
 
+function isAvailabilityError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return (
+    message.includes("no rental unit") ||
+    message.includes("availability") ||
+    message.includes("out of stock")
+  );
+}
+
 function handleBookNow() {
   if (isSubmittingBooking.value || !selectedSku.value) return;
 
@@ -48,6 +81,39 @@ function handleBookNow() {
   }
 
   showBookingForm.value = !showBookingForm.value;
+}
+
+function handleAddToCart() {
+  if (!product.value || !selectedSku.value) return;
+
+  const added = addToCart(
+    product.value.id,
+    selectedSku.value.id,
+    product.value.name[lang.value],
+    selectedGalleryThumbnail.value,
+    selectedSku.value.price.final,
+    1,
+    selectedSku.value.price.original,
+    selectedSku.value.price.discount,
+  );
+
+  if (!added) {
+    toast.add({
+      title: t("productPage.stockLimitTitle"),
+      description: t("productPage.stockLimitDesc"),
+      icon: "bx:error-circle",
+      color: "warning",
+    });
+    return;
+  }
+
+  toast.add({
+    title: t("productPage.addedToCartTitle"),
+    description: `${product.value.name[lang.value]} ${t("productPage.addedToCartDesc")}`,
+    icon: "i-heroicons-check-circle",
+    color: "primary",
+    duration: 3000,
+  });
 }
 
 async function handleBookingSubmit(payload: {
@@ -87,11 +153,12 @@ async function handleBookingSubmit(payload: {
   isSubmittingBooking.value = true;
 
   try {
-    const booking = await confirmBooking({
+    await confirmBooking({
+      userId: user.value.id,
       productId: currentProduct.id,
       skuId: currentSku.id,
       productName: currentProduct.name[lang.value],
-      thumbnail: currentProduct.thumbnail,
+      thumbnail: selectedGalleryThumbnail.value,
       startDate: payload.startDate,
       numDays: payload.numDays,
       returnDate: payload.returnDate,
@@ -100,7 +167,6 @@ async function handleBookingSubmit(payload: {
       deposit: payload.deposit,
     });
 
-    console.log("[Booking] confirmed:", booking.bookingId);
     showBookingForm.value = false;
 
     toast.add({
@@ -113,6 +179,20 @@ async function handleBookingSubmit(payload: {
     });
 
     await navigateTo("/user/cart");
+  } catch (error) {
+    console.warn("[Booking] confirmBooking failed:", error);
+    const availabilityError = isAvailabilityError(error);
+
+    toast.add({
+      title: availabilityError
+        ? t("booking.unavailable")
+        : t("booking.confirmError"),
+      description: availabilityError
+        ? t("booking.unavailableDesc")
+        : t("booking.confirmErrorDesc"),
+      icon: "bx:error-circle",
+      color: "error",
+    });
   } finally {
     isSubmittingBooking.value = false;
   }
@@ -172,8 +252,8 @@ const recommended = computed(() => {
         <!-- Left: Gallery -->
         <div class="col-span-12 lg:col-span-5">
           <ProductsProductGallery
-            :images="product.images"
-            :thumbnail="product.thumbnail"
+            :images="selectedGalleryImages"
+            :thumbnail="selectedGalleryThumbnail"
             :alt-text="product.name[lang]"
           />
         </div>
@@ -184,19 +264,7 @@ const recommended = computed(() => {
             :product="product"
             :rental-available="selectedRentalAvailability"
             v-model:selected-sku-index="selectedSkuIndex"
-            @add-to-cart="
-              () => {
-                if (product && selectedSku) {
-                  addToCart(
-                    product.id,
-                    selectedSku.id,
-                    product.name[lang],
-                    product.thumbnail,
-                    selectedSku.price.final,
-                  );
-                }
-              }
-            "
+            @add-to-cart="handleAddToCart"
             @book-now="handleBookNow"
           />
         </div>

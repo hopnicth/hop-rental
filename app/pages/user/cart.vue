@@ -7,14 +7,15 @@
  * Section 3: Address Picker — select / add delivery address
  * Section 4: Checkout & Payment — totals + payment methods
  */
+import type { CartItem } from "~/types/cart";
 import type { LocaleCode } from "~/types/locale";
-import type { Address } from "~/types/user";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import { mockStores } from "~/mock/stores";
 
 const { t, locale } = useI18n();
 const lang = computed(() => locale.value as LocaleCode);
 const toast = useToast();
+const { getSaleStockBySku } = useProducts();
 
 // ── Auth guard ──
 const { isLoggedIn } = useAuthSession();
@@ -77,10 +78,6 @@ watchEffect(() => {
   }
 });
 
-const selectedAddress = computed(() =>
-  availableAddresses.value.find((a) => a.id === selectedAddressId.value),
-);
-
 // ── Hub options (for booking item hub selectors) ──
 const activeStores = mockStores.filter((s) => s.isActive);
 const hubOptions = computed(() =>
@@ -123,11 +120,55 @@ const hasItems = computed(
   () => hasConfirmedBookings.value || hasPurchaseItems.value,
 );
 
+function showBookingActionError() {
+  toast.add({
+    title: t("cart.validationFailed"),
+    description: t("cart.validationFailedDesc"),
+    icon: "bx:error",
+    color: "error",
+  });
+}
+
+function getItemStockLimit(item: CartItem): number | null {
+  return getSaleStockBySku(item.productId, item.skuId);
+}
+
+function isAtStockLimit(item: CartItem): boolean {
+  const stockLimit = getItemStockLimit(item);
+  return stockLimit !== null && item.quantity >= stockLimit;
+}
+
+function showCartStockLimitError() {
+  toast.add({
+    title: t("cart.stockLimitTitle"),
+    description: t("cart.stockLimitDesc"),
+    icon: "bx:error-circle",
+    color: "warning",
+  });
+}
+
+function handleIncreaseQuantity(item: CartItem) {
+  const ok = updateQuantity(item.productId, item.skuId, item.quantity + 1);
+  if (!ok) {
+    showCartStockLimitError();
+  }
+}
+
 // ── Hub change handler ──
-function handleHubChange(bookingId: string, hubId: string) {
+async function handleHubChange(bookingId: string, hubId: string) {
   const store = activeStores.find((s) => s.id === hubId);
   if (store) {
-    updateHub(bookingId, hubId, store.name[lang.value]);
+    const ok = await updateHub(bookingId, hubId, store.name[lang.value]);
+    if (!ok) {
+      showBookingActionError();
+    }
+  }
+}
+
+async function handleRemoveBooking(bookingId: string) {
+  const ok = await removeBooking(bookingId);
+  if (!ok) {
+    showBookingActionError();
   }
 }
 
@@ -236,7 +277,7 @@ async function handlePay() {
                     color="error"
                     variant="ghost"
                     :title="t('cart.remove')"
-                    @click="removeBooking(booking.bookingId)"
+                    @click="() => void handleRemoveBooking(booking.bookingId)"
                   />
                 </div>
 
@@ -280,7 +321,10 @@ async function handlePay() {
                     class="w-60"
                     size="sm"
                     @update:model-value="
-                      (val: string) => handleHubChange(booking.bookingId, val)
+                      (val: string | null) =>
+                        val
+                          ? void handleHubChange(booking.bookingId, val)
+                          : null
                     "
                   />
                 </div>
@@ -371,13 +415,8 @@ async function handlePay() {
                   size="xs"
                   color="neutral"
                   variant="outline"
-                  @click="
-                    updateQuantity(
-                      item.productId,
-                      item.skuId,
-                      item.quantity + 1,
-                    )
-                  "
+                  :disabled="isAtStockLimit(item)"
+                  @click="handleIncreaseQuantity(item)"
                 />
               </div>
 

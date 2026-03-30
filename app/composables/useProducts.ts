@@ -3,10 +3,13 @@ import type { Product, ProductPrice, ProductSKU } from "~/types/product";
 
 /**
  * Composable for loading and filtering products.
- * Currently uses mock data — replace with useFetch() when API is ready.
+ * Currently uses mapped mock data — replace with useFetch() when API is ready.
  */
 export function useProducts() {
   // ── TODO: replace with useFetch('/api/products') when API is ready ──
+  // `mockProducts` now includes transitional DB-shaped fixtures mapped into the
+  // existing UI `Product` contract, which keeps the frontend stable during the
+  // migration from legacy mocks to Supabase-backed catalog data.
   const allProducts = ref(mockProducts);
 
   /**
@@ -58,6 +61,13 @@ export function useProducts() {
   }
 
   /**
+   * Find a specific SKU inside a product.
+   */
+  function getSkuById(product: Product, skuId: string): ProductSKU | undefined {
+    return product.skus.find((sku) => sku.id === skuId);
+  }
+
+  /**
    * Get the display price for product listings.
    * Returns the lowest `final` price across all SKUs.
    */
@@ -82,6 +92,21 @@ export function useProducts() {
   }
 
   /**
+   * Get current sale stock for one SKU.
+   * Returns null when the catalog item or SKU cannot be resolved.
+   */
+  function getSaleStockBySku(productId: string, skuId: string): number | null {
+    const product = products.value.find((item) => item.id === productId);
+    if (!product) return null;
+    if (!product.isForSale) return 0;
+
+    const sku = getSkuById(product, skuId);
+    if (!sku) return null;
+
+    return Math.max(0, sku.stock.inStock);
+  }
+
+  /**
    * Check if a product is available for rental.
    */
   function isRental(product: Product): boolean {
@@ -95,8 +120,10 @@ export function useProducts() {
     getProductsByCategory,
     getProductsByBrand,
     getDefaultSKU,
+    getSkuById,
     getDisplayPrice,
     getTotalStock,
+    getSaleStockBySku,
     isRental,
   };
 }

@@ -210,7 +210,9 @@
     "inStock": "在庫あり",
     "available": "レンタル可能",
     "addedToCartTitle": "カートに追加しました",
-    "addedToCartDesc": "カートに追加しました"
+    "addedToCartDesc": "カートに追加しました",
+    "stockLimitTitle": "在庫上限に達しました",
+    "stockLimitDesc": "在庫数を超えて追加することはできません。"
   },
   "productDetail": {
     "home": "ホーム",
@@ -258,6 +260,8 @@
     "loginRequired": "予約を確定する前にログインしてください",
     "loginRequiredDesc": "ログインするとレンタル商品を保存してカートへ進めます。",
     "confirming": "確認中...",
+    "confirmError": "予約を確定できませんでした",
+    "confirmErrorDesc": "現在この予約を保存できません。時間をおいてもう一度お試しください。",
     "success": "予約を確定しました",
     "successDesc": "{product} をカート内のレンタル商品に追加しました。",
     "unavailable": "レンタル可能在庫がありません",
@@ -313,6 +317,8 @@
     "insufficientCredit": "クレジット残高不足",
     "validationFailed": "カートの確認に失敗しました",
     "validationFailedDesc": "お支払い可能な商品が見つかりません。カートを確認して再度お試しください。",
+    "stockLimitTitle": "在庫上限に達しました",
+    "stockLimitDesc": "現在の在庫数を超えて数量を増やすことはできません。",
     "proceedToPayment": "お支払いへ進む",
     "continueShopping": "買い物を続ける",
     "orderSummary": "注文概要",

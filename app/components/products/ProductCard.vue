@@ -12,6 +12,7 @@ const { locale, t } = useI18n();
 const { getProductById, getDefaultSKU, getTotalStock, isRental } =
   useProducts();
 const { addToCart } = useCart();
+const { getRemainingAvailability } = useBooking();
 
 const product = getProductById(props.productId);
 
@@ -30,6 +31,62 @@ const stock = computed(() =>
     : { inStock: 0, available: 0, reserved: 0 },
 );
 
+const rentalProduct = computed(() =>
+  product.value ? isRental(product.value) : false,
+);
+
+const remainingRentalAvailability = computed(() =>
+  product.value
+    ? product.value.skus.reduce(
+        (total, itemSku) =>
+          total + getRemainingAvailability(itemSku.id, itemSku.stock.available),
+        0,
+      )
+    : 0,
+);
+
+const hasMultipleSkus = computed(() => (product.value?.skus.length ?? 0) > 1);
+
+/**
+ * Listing cards should only quick-add when the user does not need to make
+ * any further decision first.
+ */
+const canQuickAddToCart = computed(
+  () =>
+    !!product.value &&
+    !!sku.value &&
+    product.value.isForSale &&
+    !rentalProduct.value &&
+    !hasMultipleSkus.value &&
+    stock.value.inStock > 0,
+);
+
+const canShowSaleAction = computed(
+  () => !!product.value && product.value.isForSale && stock.value.inStock > 0,
+);
+
+const saleActionRequiresDetail = computed(
+  () => canShowSaleAction.value && !canQuickAddToCart.value,
+);
+
+const saleActionTooltipLabel = computed(() =>
+  canQuickAddToCart.value
+    ? t("productCard.addToCart")
+    : t("productCard.chooseOptions"),
+);
+
+const rentalActionTooltipLabel = computed(() =>
+  t("productCard.chooseRentalOptions"),
+);
+
+/**
+ * Multi-SKU and rental-capable products should go through the detail page
+ * before the user takes an action.
+ */
+const requiresDetailAction = computed(
+  () => !!product.value && rentalProduct.value,
+);
+
 /** Product detail URL — opens in new tab */
 const productUrl = computed(() =>
   product.value
@@ -45,16 +102,28 @@ function capCount(n: number): string {
 function handleAddToCart() {
   if (!product.value || !sku.value) return;
 
-  // 2. เรียก Logic: ตัวที่เป็น computed (sku, lang) ต้องเติม .value เสมอ
-  addToCart(
+  const added = addToCart(
     product.value.id,
-    sku.value.id, // ✅ sku.value
-    product.value.name[lang.value], // ✅ lang.value
+    sku.value.id,
+    product.value.name[lang.value],
     product.value.thumbnail,
-    sku.value.price.final, // ✅ sku.value
+    sku.value.price.final,
+    1,
+    sku.value.price.original,
+    sku.value.price.discount,
   );
 
-  // 3. แสดง Notification
+  if (!added) {
+    toast.add({
+      title: t("productPage.stockLimitTitle"),
+      description: t("productPage.stockLimitDesc"),
+      icon: "bx:error-circle",
+      color: "warning",
+      duration: 3000,
+    });
+    return;
+  }
+
   toast.add({
     title: t("productPage.addedToCartTitle") || "Success!",
     description: `${product.value.name[lang.value]} ${t("productPage.addedToCartDesc")}`,
@@ -135,39 +204,51 @@ function handleAddToCart() {
 
         <!-- Action buttons — after price -->
         <div class="flex items-center justify-end gap-2 pt-1">
-          <!-- Add to Cart — only when for sale & in stock -->
+          <!-- Sale action — always show cart icon when sale stock exists -->
           <UTooltip
-            :text="t('productPage.addToCart')"
+            :text="saleActionTooltipLabel"
             :popper="{ placement: 'top' }"
           >
             <UButton
-              v-if="product.isForSale && stock.inStock > 0 && sku"
+              v-if="canQuickAddToCart"
               icon="bx:cart-add"
               color="primary"
               variant="soft"
               size="sm"
               square
               class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-primary"
-              :aria-label="t('productPage.addToCart')"
+              :aria-label="t('productCard.addToCart')"
               @click.prevent.stop="handleAddToCart()"
+            />
+
+            <UButton
+              v-else-if="saleActionRequiresDetail"
+              :to="productUrl"
+              icon="bx:cart-add"
+              color="primary"
+              variant="soft"
+              size="sm"
+              square
+              class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-primary"
+              :aria-label="saleActionTooltipLabel"
             />
           </UTooltip>
 
-          <!-- Book Now — only when for rent & available -->
+          <!-- Rental action — still goes through detail page -->
           <UTooltip
-            :text="t('productPage.bookNow')"
+            :text="rentalActionTooltipLabel"
             :popper="{ placement: 'top' }"
           >
             <UButton
+              v-if="requiresDetailAction"
               :to="productUrl"
-              v-if="isRental(product) && stock.available > 0"
               icon="bx:calendar-check"
               color="secondary"
               variant="soft"
               size="sm"
               square
               class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-secondary"
-              :aria-label="t('productPage.bookNow')"
+              :aria-label="rentalActionTooltipLabel"
             />
           </UTooltip>
         </div>
@@ -193,13 +274,13 @@ function handleAddToCart() {
         <UBadge
           class="mx-1"
           v-if="isRental(product)"
-          :color="stock.available > 0 ? 'info' : 'neutral'"
+          :color="remainingRentalAvailability > 0 ? 'info' : 'neutral'"
           size="sm"
           variant="subtle"
         >
           {{ t("productPage.available") }}
-          <span v-if="stock.available > 0" class="ml-1">
-            {{ capCount(stock.available) }}
+          <span v-if="remainingRentalAvailability > 0" class="ml-1">
+            {{ capCount(remainingRentalAvailability) }}
           </span>
         </UBadge>
       </div>

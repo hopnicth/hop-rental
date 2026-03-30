@@ -21,11 +21,11 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 const lang = computed(() => locale.value as LocaleCode);
-const { getTotalStock, isRental } = useProducts();
+const { isRental } = useProducts();
 
 const selectedSku = computed(() => props.product.skus[props.selectedSkuIndex]);
 
-const stock = computed(() => getTotalStock(props.product));
+const selectedSaleStock = computed(() => selectedSku.value?.stock.inStock ?? 0);
 
 const rentalAvailable = computed(
   () => props.rentalAvailable ?? selectedSku.value?.stock.available ?? 0,
@@ -136,10 +136,10 @@ const rental = computed(() => isRental(props.product));
     <div class="flex gap-3">
       <UBadge
         v-if="product.isForSale"
-        :color="stock.inStock > 0 ? 'success' : 'neutral'"
+        :color="selectedSaleStock > 0 ? 'success' : 'neutral'"
         variant="subtle"
       >
-        {{ t("productDetail.inStock") }}: {{ stock.inStock }}
+        {{ t("productDetail.inStock") }}: {{ selectedSaleStock }}
       </UBadge>
       <UBadge
         v-if="rental"
@@ -153,7 +153,7 @@ const rental = computed(() => isRental(props.product));
     <!-- Action Buttons -->
     <div class="flex gap-3 pt-2">
       <UButton
-        v-if="product.isForSale && stock.inStock > 0"
+        v-if="product.isForSale && selectedSaleStock > 0"
         icon="bx:cart-add"
         :label="t('productDetail.addToCart')"
         color="primary"

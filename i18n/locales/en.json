@@ -210,7 +210,14 @@
     "inStock": "In Stock",
     "available": "Available",
     "addedToCartTitle": "Added to Cart",
-    "addedToCartDesc": "has been added to your cart"
+    "addedToCartDesc": "has been added to your cart",
+    "stockLimitTitle": "Stock limit reached",
+    "stockLimitDesc": "You cannot add more than the available stock."
+  },
+  "productCard": {
+    "addToCart": "Add to Cart",
+    "chooseOptions": "Choose Options",
+    "chooseRentalOptions": "Choose Rental Options"
   },
   "productDetail": {
     "home": "Home",
@@ -258,6 +265,8 @@
     "loginRequired": "Please sign in before confirming this booking",
     "loginRequiredDesc": "Sign in to save your rental item and continue in cart.",
     "confirming": "Confirming...",
+    "confirmError": "Unable to confirm booking",
+    "confirmErrorDesc": "This booking could not be saved right now. Please try again.",
     "success": "Booking confirmed",
     "successDesc": "{product} has been added to your rental items in cart.",
     "unavailable": "No rental units are available",
@@ -313,6 +322,8 @@
     "insufficientCredit": "Insufficient credit",
     "validationFailed": "Cart validation failed",
     "validationFailedDesc": "No payable items were found. Please review your cart and try again.",
+    "stockLimitTitle": "Stock limit reached",
+    "stockLimitDesc": "You cannot increase quantity beyond the available stock.",
     "proceedToPayment": "Proceed to Payment",
     "continueShopping": "Continue Shopping",
     "orderSummary": "Order Summary",

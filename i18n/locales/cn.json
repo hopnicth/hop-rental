@@ -210,7 +210,9 @@
     "inStock": "有库存",
     "available": "可租赁",
     "addedToCartTitle": "已加入购物车",
-    "addedToCartDesc": "已加入您的购物车"
+    "addedToCartDesc": "已加入您的购物车",
+    "stockLimitTitle": "库存不足",
+    "stockLimitDesc": "加入数量不能超过当前可用库存。"
   },
   "productDetail": {
     "home": "首页",
@@ -258,6 +260,8 @@
     "loginRequired": "请先登录后再确认预订",
     "loginRequiredDesc": "登录后即可保存租赁项目并继续前往购物车。",
     "confirming": "确认中...",
+    "confirmError": "无法确认预订",
+    "confirmErrorDesc": "当前无法保存该预订，请稍后再试。",
     "success": "预订已确认",
     "successDesc": "已将 {product} 添加到购物车中的租赁项目。",
     "unavailable": "当前无可租数量",
@@ -313,6 +317,8 @@
     "insufficientCredit": "信用额度不足",
     "validationFailed": "购物车校验失败",
     "validationFailedDesc": "未找到可结算商品，请检查购物车后重试。",
+    "stockLimitTitle": "库存不足",
+    "stockLimitDesc": "商品数量不能增加到超过当前库存。",
     "proceedToPayment": "去付款",
     "continueShopping": "继续购物",
     "orderSummary": "订单摘要",

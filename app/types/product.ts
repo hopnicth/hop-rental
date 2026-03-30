@@ -127,11 +127,13 @@ export interface ProductSKU {
   attributes: VariantAttribute;
   /** Override image for this variant (falls back to product.thumbnail) */
   image?: string;
-  /** Sale pricing for this SKU */
+  /** Variant-specific gallery images (falls back to product.images) */
+  images?: string[];
+  /** Source-of-truth sale pricing for this SKU */
   price: ProductPrice;
-  /** Rental pricing for this SKU */
+  /** Source-of-truth rental pricing for this SKU */
   rentalPrice: RentalPrice;
-  /** Stock levels for this SKU */
+  /** Source-of-truth offer-level stock/availability counters for this SKU */
   stock: SKUStock;
 }
 
@@ -140,10 +142,12 @@ export interface ProductSKU {
 // ─────────────────────────────────────────────
 
 /**
- * Rental business rules — controls rental availability and logistics.
+ * Rental business rules — controls capability and logistics.
+ *
+ * This is not the live reservation ledger for physical asset instances.
  */
 export interface RentalConfig {
-  /** Whether this product is available for rent */
+  /** Whether this product is capable of being rented */
   isRental: boolean;
   /** Minimum rental period (days) */
   minDays: number;
@@ -151,7 +155,7 @@ export interface RentalConfig {
   maxDays: number;
   /** Buffer days between two rental orders (maintenance/cleaning) */
   bufferDays: number;
-  /** Store location IDs where this product is stocked — for delivery time calc */
+  /** Hub IDs allowed to fulfill the rental — capability, not live availability */
   storeLocationIds: string[];
 }
 
@@ -221,11 +225,11 @@ export interface Product {
   doc: ProductDoc;
   /** Supplier IDs — references Supplier.id */
   suppliers: string[];
-  /** Whether this product is available for sale (product-level toggle) */
+  /** Whether this product is sale-capable at the product level */
   isForSale: boolean;
-  /** SKU variants — at least 1 (default SKU for non-variant products) */
+  /** SKU variants — source of truth for price/stock within this product */
   skus: ProductSKU[];
-  /** Rental business rules & configuration */
+  /** Rental capability rules & configuration */
   rentalConfig: RentalConfig;
   /** Marketing & analytics insights */
   insight: ProductInsight;

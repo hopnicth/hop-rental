@@ -210,7 +210,14 @@
     "inStock": "พร้อมขาย",
     "available": "พร้อมเช่า",
     "addedToCartTitle": "เพิ่มสินค้าแล้ว",
-    "addedToCartDesc": "ถูกเพิ่มลงในตะกร้าเรียบร้อยแล้ว"
+    "addedToCartDesc": "ถูกเพิ่มลงในตะกร้าเรียบร้อยแล้ว",
+    "stockLimitTitle": "จำนวนสินค้าไม่พอ",
+    "stockLimitDesc": "ไม่สามารถเพิ่มเกินจำนวนสต็อกที่มีอยู่ได้"
+  },
+  "productCard": {
+    "addToCart": "เพิ่มลงตะกร้า",
+    "chooseOptions": "เลือกตัวเลือกสินค้า",
+    "chooseRentalOptions": "เลือกตัวเลือกการเช่า"
   },
   "productDetail": {
     "home": "หน้าแรก",
@@ -258,6 +265,8 @@
     "loginRequired": "กรุณาเข้าสู่ระบบก่อนยืนยันการจอง",
     "loginRequiredDesc": "เข้าสู่ระบบก่อนเพื่อบันทึกรายการเช่าและไปต่อที่ตะกร้าได้",
     "confirming": "กำลังยืนยัน...",
+    "confirmError": "ไม่สามารถยืนยันการจองได้",
+    "confirmErrorDesc": "ยังไม่สามารถบันทึกการจองได้ในขณะนี้ กรุณาลองใหม่อีกครั้ง",
     "success": "ยืนยันการจองสำเร็จ",
     "successDesc": "เพิ่ม {product} ไปยังรายการเช่าในตะกร้าแล้ว",
     "unavailable": "ไม่มีสินค้าพร้อมเช่าแล้ว",
@@ -313,6 +322,8 @@
     "insufficientCredit": "วงเงินไม่เพียงพอ",
     "validationFailed": "ตรวจสอบตะกร้าไม่สำเร็จ",
     "validationFailedDesc": "ไม่พบสินค้าที่พร้อมชำระเงิน กรุณาตรวจสอบตะกร้าอีกครั้ง",
+    "stockLimitTitle": "จำนวนสินค้าไม่พอ",
+    "stockLimitDesc": "ไม่สามารถเพิ่มจำนวนเกินสต็อกที่มีอยู่ได้",
     "proceedToPayment": "ชำระเงิน",
     "continueShopping": "เลือกซื้อต่อ",
     "orderSummary": "สรุปคำสั่งซื้อ",

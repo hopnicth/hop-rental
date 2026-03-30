@@ -1,4 +1,6 @@
 import type { Product } from "~/types/product";
+import { mapCatalogProductsToProducts } from "~/mappers/catalog";
+import { mockCatalogProducts } from "~/mock/catalog-products";
 
 // ─────────────────────────────────────────────
 // Factory function
@@ -87,7 +89,7 @@ export function createMockProduct(overrides: Partial<Product> = {}): Product {
  *
  * TODO: Replace with useFetch() / API call when Admin dashboard is ready.
  */
-export const mockProducts: Product[] = [
+export const legacyMockProducts: Product[] = [
   createMockProduct({
     id: "prod-001",
     slug: "bosch-electric-drill-gsb-550",
@@ -1261,4 +1263,22 @@ export const mockProducts: Product[] = [
       lastSoldAt: "2026-02-16T11:45:00Z",
     },
   }),
+];
+
+/**
+ * Transitional mapped products sourced from the DB-oriented catalog mock shape.
+ * These fixtures help us move toward the future API/Supabase model without
+ * breaking the current UI contract (`Product`).
+ */
+export const transitionalMockProducts: Product[] =
+  mapCatalogProductsToProducts(mockCatalogProducts);
+
+/**
+ * Current runtime mock source.
+ * Transitional catalog fixtures are prepended so new SKU/rental flows are
+ * visible immediately in dev, while legacy fixtures remain available.
+ */
+export const mockProducts: Product[] = [
+  ...transitionalMockProducts,
+  ...legacyMockProducts,
 ];
