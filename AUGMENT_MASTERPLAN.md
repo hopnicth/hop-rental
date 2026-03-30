@@ -1,7 +1,7 @@
 # Augment Master Plan: Catalog / Cart / Booking / Asset Ledger
 
-Last updated: 2026-03-15
-Checkpoint commit: `fa3e63e` (`chore: checkpoint current booking and cart work`)
+Last updated: 2026-03-30
+Checkpoint commit: `a020b48` (`docs: add master plan and cart booking regression checklist`)
 
 ## Purpose
 
@@ -44,20 +44,23 @@ Guiding principles:
 - `discount` already exists in frontend types, mapper, UI, and mock data
 - `/user/cart` already aggregates confirmed bookings + purchase cart in the UI
 - `cart` is already DB-backed via `carts` + `cart_items`
-- booking snapshot types were hardened for future DB migration
+- booking snapshot types were hardened and now map to DB-backed `rental_bookings`
+- `useBooking()` now hydrates from Supabase and migrates legacy localStorage rows once per user
+- migration `004_catalog_booking_asset_ledger.sql` already added `products`, `product_skus`, `rental_bookings`, asset-ledger tables, and cart discount snapshot columns
+- migration `005_seed_minimal_rental_catalog.sql` already seeds a bridge catalog for DB-backed booking references
 
 ### What is still transitional
 
 - `useProducts()` is still mock-backed
-- `useBooking()` is still localStorage-backed
-- there is no migration yet for `products`, `product_skus`, or `rental_bookings`
-- there is no rental asset ledger schema yet
-- cart DB snapshot currently stores only final `unit_price`, not explicit discount snapshot fields
+- storefront catalog pages still read mapped mock data even though DB schema + seed data now exist
+- rental availability is still enforced from SKU-level counters, not asset allocation rows
+- asset ledger schema exists, but operational allocation/staff tooling is not wired into runtime yet
+- Supabase DB types and automated regression tests have not been added yet
 
 ### Key current mismatch
 
 - UI already presents a unified review/cart page
-- runtime persistence is still split: DB cart + local booking
+- booking persistence is now DB-backed, but catalog browsing is still mock-backed
 - rental availability is still count-based at SKU level, not asset-aware
 
 ## Locked Decisions
@@ -233,24 +236,24 @@ If one SKU supports both sale and rental:
 
 ## Implementation Order
 
-### Phase 1 — Close the current architecture gaps first
+### Phase 1 — Close the current architecture gaps first (completed)
 
-- add missing DB schema for `products`, `product_skus`, `rental_bookings`
-- extend cart snapshot schema to retain discount explanation fields
-- keep current image/localized strategy compatible with current mapper
+- added DB schema for `products`, `product_skus`, and `rental_bookings`
+- extended cart snapshot schema to retain discount explanation fields
+- kept the current image/localized strategy compatible with the current mapper
 
-### Phase 2 — Move runtime onto DB-backed booking
+### Phase 2 — Move runtime onto DB-backed booking (completed for current storefront flow)
 
-- migrate `useBooking()` from localStorage to Supabase
-- keep `/user/cart` aggregator UI, but read bookings from DB
-- preserve current confirmed-only cart/review behavior
+- migrated `useBooking()` from localStorage to Supabase with one-time legacy migration
+- kept `/user/cart` as the unified review page while reading bookings from DB
+- preserved the current confirmed-only cart/review behavior
 
-### Phase 3 — Add full rental asset ledger
+### Phase 3 — Add full rental asset ledger (schema foundation completed)
 
-- add `rental_assets`
-- add `rental_booking_assets`
-- add `rental_asset_events`
-- define operational statuses and allocation rules per hub
+- added `rental_assets`
+- added `rental_booking_assets`
+- added `rental_asset_events`
+- defined the first-pass operational statuses in schema; runtime allocation rules per hub still need implementation
 
 ### Phase 4 — Make operations staff-ready
 
@@ -276,39 +279,50 @@ If one SKU supports both sale and rental:
 - source-of-truth comments in type layer
 - booking/cart snapshot type hardening
 - frontend discount model and display
+- DB schema for catalog + rental bookings + rental asset ledger
+- cart DB discount snapshot expansion
+- DB-backed booking runtime with legacy localStorage migration
+- minimal seeded catalog bridge for current booking flow
 
 ### Not done yet
 
-- DB schema for catalog
-- DB schema for rental bookings
-- DB schema for rental assets / allocations / events
-- DB-backed booking runtime
-- cart DB discount snapshot expansion
+- DB-backed catalog runtime (`useProducts()` still serves mapped mock data)
+- product listing/detail pages reading directly from Supabase catalog tables
+- asset allocation runtime and operational UI on top of the ledger tables
 - staff assignment tables
+- generated Supabase DB types
+- automated regression tests for cart/booking mapping and mixed flow validation
 
 ## Immediate Next Implementation Slice
 
-Build the backend foundation in this order:
+Move the storefront off mock-backed catalog reads in this order:
 
-1. add `products` + `product_skus` migration
-2. add `rental_bookings` migration
-3. extend `cart_items` snapshot columns for discount retention
-4. add `rental_assets` + `rental_booking_assets` + `rental_asset_events`
-5. migrate `useBooking()` to Supabase
+1. migrate `useProducts()` to read Supabase-backed catalog data while preserving the current `Product` UI contract
+2. switch product listing/detail pages to the DB catalog source without regressing i18n/media behavior
+3. define the next availability read model so booking can evolve from SKU counters toward asset-aware allocation
+4. add regression coverage for cart/booking snapshot mapping and mixed cart + booking flows
+5. add staff/operations tables only after storefront catalog/runtime behavior is stable
 
 ## Files Most Relevant Right Now
 
 - `AUGMENT_MASTERPLAN.md`
+- `CART_BOOKING_TEST_CHECKLIST.md`
 - `app/types/product.ts`
 - `app/types/catalog.ts`
 - `app/types/cart.ts`
 - `app/types/booking.ts`
 - `app/types/rental-booking.ts`
+- `app/mappers/catalog.ts`
 - `app/composables/useCart.ts`
 - `app/composables/useBooking.ts`
+- `app/composables/useProducts.ts`
+- `app/mock/catalog-products.ts`
+- `app/mock/products.ts`
 - `app/pages/product-[group]/[id].vue`
 - `app/pages/user/cart.vue`
 - `supabase/migrations/003_cart_schema.sql`
+- `supabase/migrations/004_catalog_booking_asset_ledger.sql`
+- `supabase/migrations/005_seed_minimal_rental_catalog.sql`
 
 ## Continuation Rule for Future Augment Sessions
 
@@ -316,7 +330,7 @@ If the project is still unfinished:
 
 1. Read this file first.
 2. Preserve the locked decisions above unless the user explicitly changes them.
-3. Do not treat localStorage booking as the final architecture.
+3. Do not regress booking persistence back to localStorage-only, and do not treat mock-backed catalog reads as the final architecture.
 4. Keep the unified `/user/cart` UX while separating commercial and operational tables.
 5. Do not collapse rental assets into sale stock counters.
 6. Do not remove pricing snapshot data that explains how money was calculated.
