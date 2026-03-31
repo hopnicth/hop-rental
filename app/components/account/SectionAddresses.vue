@@ -11,10 +11,10 @@ import type { Address } from "~/types/user";
 
 const { t } = useI18n();
 const toast = useToast();
-const user = useSupabaseUser();
 const {
   personalAddresses,
   loading,
+  error,
   fetchAddresses,
   createAddress,
   updateAddress,
@@ -79,12 +79,9 @@ function openEdit(addr: Address) {
 const saving = ref(false);
 
 async function handleSave() {
-  if (!user.value) return;
   saving.value = true;
 
   const fields = {
-    userId: user.value.id,
-    companyId: null,
     title: form.title,
     contactName: form.contactName || null,
     contactPhone: form.contactPhone || null,
@@ -104,9 +101,14 @@ async function handleSave() {
       const ok = await updateAddress(editingId.value, fields);
       if (!ok) throw new Error("update failed");
     } else {
-      const addr = await createAddress(fields);
+      const addr = await createAddress({
+        ...fields,
+        userId: null,
+        companyId: null,
+      });
       if (!addr) throw new Error("create failed");
     }
+
     toast.add({
       title: t("user.saveSuccess"),
       icon: "bx:check-circle",
@@ -116,6 +118,7 @@ async function handleSave() {
   } catch {
     toast.add({
       title: t("user.saveError"),
+      description: error.value ?? undefined,
       icon: "bx:error-circle",
       color: "error",
     });

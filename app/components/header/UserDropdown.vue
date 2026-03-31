@@ -24,6 +24,7 @@ const loggedInItems = computed<DropdownMenuItem[][]>(() => [
     {
       label: t("user.orders"),
       icon: "bx:history",
+      to: "/user/orders",
     },
   ],
   // Group 2 — Account Management

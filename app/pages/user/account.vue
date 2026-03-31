@@ -54,11 +54,7 @@ const currentComponent = computed(() => sectionMap[activeSection.value]);
 
 function handleSelect(id: string) {
   activeSection.value = id;
-  mobileMenuOpen.value = false;
 }
-
-// ── Mobile sidebar toggle ──
-const mobileMenuOpen = ref(false);
 </script>
 
 <template>
@@ -77,17 +73,9 @@ const mobileMenuOpen = ref(false);
         </UCard>
       </aside>
 
-      <!-- ── Mobile Sidebar Toggle ── -->
+      <!-- ── Mobile Sidebar ── -->
       <div class="col-span-12 lg:hidden">
-        <UButton
-          block
-          color="neutral"
-          variant="soft"
-          icon="bx:menu"
-          :label="t('user.accountMenu')"
-          @click="mobileMenuOpen = !mobileMenuOpen"
-        />
-        <UCard v-if="mobileMenuOpen" class="mt-2">
+        <UCard>
           <AccountSidebar
             :active-section="activeSection"
             @select="handleSelect"

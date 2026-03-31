@@ -713,6 +713,22 @@ export function useCart() {
     persistCart();
   }
 
+  async function clearCartPersisted(): Promise<void> {
+    cart.value.items = [];
+    cart.value.updatedAt = new Date().toISOString();
+
+    const effectiveUserId = getEffectiveCartUserId();
+    if (effectiveUserId) {
+      currentUserId.value = effectiveUserId;
+      saveCartLocal(effectiveUserId, cart.value);
+      await upsertCartToDb(effectiveUserId, []);
+      return;
+    }
+
+    saveGuestBuffer([]);
+    clearGuestBuffer();
+  }
+
   // ── Validation (Sync 4 — Checkout) ────────────────────────
 
   /**
@@ -793,6 +809,7 @@ export function useCart() {
     updateQuantity,
     removeFromCart,
     clearCart,
+    clearCartPersisted,
     validateCart,
     resetCartSession,
   };

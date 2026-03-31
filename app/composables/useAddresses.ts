@@ -60,12 +60,24 @@ export function useAddresses() {
   const supabase = useSupabaseClient();
   const user = useSupabaseUser();
 
+  async function resolveUserId(): Promise<string | null> {
+    if (user.value?.id) return user.value.id;
+
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+
+    return authUser?.id ?? null;
+  }
+
   /** Fetch addresses — personal + company (filtered by RLS) */
   async function fetchAddresses(): Promise<void> {
-    if (!user.value) {
+    const userId = await resolveUserId();
+    if (!userId) {
       addresses.value = [];
       return;
     }
+
     loading.value = true;
     error.value = null;
     try {
@@ -93,9 +105,18 @@ export function useAddresses() {
   async function createAddress(
     fields: Omit<Address, "id" | "createdAt" | "updatedAt">,
   ): Promise<Address | null> {
+    error.value = null;
+
+    const userId = await resolveUserId();
+    const normalizedFields = {
+      ...fields,
+      userId:
+        fields.userId ?? (fields.companyId == null ? (userId ?? null) : null),
+    };
+
     const { data, error: dbError } = await supabase
       .from("addresses")
-      .insert(toDbFields(fields))
+      .insert(toDbFields(normalizedFields))
       .select()
       .single();
 
@@ -112,6 +133,8 @@ export function useAddresses() {
     id: string,
     fields: Partial<Omit<Address, "id" | "createdAt" | "updatedAt">>,
   ): Promise<boolean> {
+    error.value = null;
+
     const { error: dbError } = await supabase
       .from("addresses")
       .update(toDbFields(fields))
@@ -127,6 +150,8 @@ export function useAddresses() {
 
   /** Delete an address */
   async function deleteAddress(id: string): Promise<boolean> {
+    error.value = null;
+
     const { error: dbError } = await supabase
       .from("addresses")
       .delete()

@@ -278,8 +278,8 @@
     "pageTitle": "Shopping Cart",
     "bookingSection": "Rental Items",
     "bookingSectionDesc": "Rental equipment for your project",
-    "cartSection": "Consumables",
-    "cartSectionDesc": "Purchase items",
+    "cartSection": "Product Items",
+    "cartSectionDesc": "Items for purchase",
     "addressSection": "Delivery Address",
     "addressSectionDesc": "Select a delivery address",
     "checkoutSection": "Summary & Payment",
@@ -329,5 +329,51 @@
     "orderSummary": "Order Summary",
     "itemCount": "{n} items",
     "bookingCount": "{n} rental items"
+  },
+  "ordersPage": {
+    "description": "Track order, payment, and fulfillment progress for your submitted orders and quotation requests.",
+    "createdQuotation": "Quotation request sent",
+    "createdOrder": "Order submitted",
+    "reference": "Reference: {id}",
+    "emptyTitle": "No orders yet",
+    "emptyDescription": "Once you submit a cart, it will appear here.",
+    "goToCatalog": "Go to catalog",
+    "total": "Total",
+    "badges": {
+      "order": "Order: {status}",
+      "payment": "Payment: {status}",
+      "fulfillment": "Fulfillment: {status}"
+    },
+    "mode": {
+      "quotation": "Quotation request",
+      "payment": "Payment order"
+    },
+    "status": {
+      "order": {
+        "submitted": "Submitted",
+        "confirmed": "Confirmed",
+        "completed": "Completed",
+        "cancelled": "Cancelled"
+      },
+      "payment": {
+        "not_applicable": "Not applicable",
+        "pending_review": "Pending review",
+        "awaiting_payment": "Awaiting payment",
+        "paid": "Paid",
+        "deferred": "Deferred / on account",
+        "cancelled": "Cancelled",
+        "refunded": "Refunded"
+      },
+      "fulfillment": {
+        "not_applicable": "Not applicable",
+        "unfulfilled": "Unfulfilled",
+        "preparing": "Preparing",
+        "ready_for_carrier_pickup": "Ready for carrier pickup",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "returned": "Returned",
+        "cancelled": "Cancelled"
+      }
+    }
   }
 }

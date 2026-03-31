@@ -9,6 +9,7 @@
  */
 import type { CartItem } from "~/types/cart";
 import type { LocaleCode } from "~/types/locale";
+import type { Address } from "~/types/user";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import { mockStores } from "~/mock/stores";
 
@@ -30,8 +31,10 @@ const {
   cartItems,
   cartSubtotal,
   cartItemCount,
+  cartId,
   updateQuantity,
   removeFromCart,
+  clearCartPersisted,
   validateCart,
 } = useCart();
 
@@ -54,6 +57,7 @@ const {
 
 const { isB2B, isB2BUser, isB2BAdmin, currentCompany, creditRemaining } =
   useCompanyContext();
+const { submitOrder } = useOrders();
 
 // Fetch addresses on mount
 if (import.meta.client) {
@@ -98,14 +102,14 @@ type PaymentMethod = "credit_card" | "promptpay" | "company_credit";
 const paymentMethod = ref<PaymentMethod>("credit_card");
 
 // ── B2B Quotation ──
-function requestQuotation() {
-  toast.add({
-    title: t("cart.quotationSent"),
-    description: t("cart.quotationSentDesc"),
-    icon: "bx:file",
-    color: "success",
-  });
-}
+const selectedAddress = computed<Address | null>(
+  () =>
+    availableAddresses.value.find(
+      (addr) => addr.id === selectedAddressId.value,
+    ) ?? null,
+);
+
+const orderGrandTotal = computed(() => cartSubtotal.value);
 
 // ── Grand total ──
 const grandTotal = computed(
@@ -178,37 +182,104 @@ async function handleSetDefault(id: string) {
 }
 
 // ── Proceed to payment (placeholder) ──
-const isValidating = ref(false);
+const isSubmittingOrder = ref(false);
 
-async function handlePay() {
-  // Sync 4 — Validation Sync: re-fetch from DB before checkout
-  isValidating.value = true;
-  try {
-    let hasPayableItems = hasConfirmedBookings.value;
+function showInlineOrderError(title: string, description: string) {
+  toast.add({
+    title,
+    description,
+    icon: "bx:error-circle",
+    color: "error",
+  });
+}
 
-    if (hasPurchaseItems.value) {
-      hasPayableItems = (await validateCart()) || hasPayableItems;
-    }
-
-    if (!hasPayableItems) {
-      toast.add({
-        title: t("cart.validationFailed"),
-        description: t("cart.validationFailedDesc"),
-        icon: "bx:error",
-        color: "error",
-      });
-      return;
-    }
-  } finally {
-    isValidating.value = false;
+async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
+  if (hasConfirmedBookings.value) {
+    showInlineOrderError(
+      "Rental booking submit is not enabled yet",
+      "Please complete Task 4 next or remove rental bookings before submitting this sale order.",
+    );
+    return;
   }
 
-  toast.add({
-    title: "Payment",
-    description: "Payment gateway integration coming soon",
-    icon: "bx:credit-card",
-    color: "info",
-  });
+  if (!hasPurchaseItems.value) {
+    showInlineOrderError(
+      "No sale items to submit",
+      "Add at least one purchase item to the cart before placing an online order.",
+    );
+    return;
+  }
+
+  if (!selectedAddress.value) {
+    showInlineOrderError(
+      "Delivery address required",
+      "Please select a delivery address before submitting the order.",
+    );
+    return;
+  }
+
+  if (
+    checkoutMode === "payment" &&
+    paymentMethod.value === "company_credit" &&
+    (currentCompany.value?.kycStatus !== "verified" ||
+      creditRemaining.value < orderGrandTotal.value)
+  ) {
+    showInlineOrderError(
+      "Company credit is not available",
+      "Please verify company KYC and make sure enough credit remains before submitting.",
+    );
+    return;
+  }
+
+  isSubmittingOrder.value = true;
+  try {
+    const isCartValid = await validateCart();
+    if (!isCartValid) {
+      showInlineOrderError(
+        t("cart.validationFailed"),
+        t("cart.validationFailedDesc"),
+      );
+      return;
+    }
+
+    const order = await submitOrder({
+      checkoutMode,
+      paymentMethod:
+        checkoutMode === "payment" ? paymentMethod.value : undefined,
+      address: selectedAddress.value,
+      items: cartItems.value,
+      cartId: cartId.value || null,
+      companyId: isB2B.value ? (currentCompany.value?.id ?? null) : null,
+    });
+
+    await clearCartPersisted();
+    await navigateTo({
+      path: "/user/orders",
+      query: {
+        created: order.id,
+        mode: order.checkoutMode,
+      },
+    });
+  } catch (submitError) {
+    showInlineOrderError(
+      checkoutMode === "quotation"
+        ? "Quotation request failed"
+        : "Order submit failed",
+      submitError instanceof Error
+        ? submitError.message
+        : "Please try again in a moment.",
+    );
+  } finally {
+    isSubmittingOrder.value = false;
+  }
+}
+
+async function requestQuotation() {
+  await submitCurrentOrder("quotation");
+}
+
+async function handlePay() {
+  await submitCurrentOrder("payment");
 }
 </script>
 
@@ -687,7 +758,7 @@ async function handlePay() {
                   type="radio"
                   value="company_credit"
                   class="accent-primary"
-                  :disabled="creditRemaining < grandTotal"
+                  :disabled="creditRemaining < orderGrandTotal"
                 />
                 <UIcon name="bx:building" class="text-lg" />
                 <div>
@@ -700,7 +771,7 @@ async function handlePay() {
                     }}
                   </p>
                   <p
-                    v-if="creditRemaining < grandTotal"
+                    v-if="creditRemaining < orderGrandTotal"
                     class="text-xs text-error"
                   >
                     {{ t("cart.insufficientCredit") }}
@@ -726,6 +797,15 @@ async function handlePay() {
               <UIcon name="bx:info-circle" class="mr-1 inline text-info" />
               {{ t("cart.b2bUserQuotationOnly") }}
             </div>
+
+            <div
+              v-if="hasConfirmedBookings"
+              class="rounded-lg border border-dashed border-warning p-4 text-sm text-muted"
+            >
+              <UIcon name="bx:calendar-x" class="mr-1 inline text-warning" />
+              Online order submit currently supports sale items only. Rental
+              booking submit will be added in the next task.
+            </div>
           </div>
 
           <!-- Action buttons -->
@@ -747,6 +827,12 @@ async function handlePay() {
                   :color="isB2BUser ? 'primary' : 'info'"
                   :variant="isB2BUser ? 'solid' : 'soft'"
                   :size="isB2BUser ? 'lg' : 'md'"
+                  :loading="isSubmittingOrder"
+                  :disabled="
+                    isSubmittingOrder ||
+                    !hasPurchaseItems ||
+                    hasConfirmedBookings
+                  "
                   @click="requestQuotation"
                 />
               </div>
@@ -756,7 +842,10 @@ async function handlePay() {
                 :label="t('cart.proceedToPayment')"
                 icon="bx:check-circle"
                 size="lg"
-                :loading="isValidating"
+                :loading="isSubmittingOrder"
+                :disabled="
+                  isSubmittingOrder || !hasPurchaseItems || hasConfirmedBookings
+                "
                 @click="handlePay"
               />
             </div>

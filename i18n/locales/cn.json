@@ -324,5 +324,51 @@
     "orderSummary": "订单摘要",
     "itemCount": "{n} 件商品",
     "bookingCount": "{n} 件租赁"
+  },
+  "ordersPage": {
+    "description": "跟踪您已提交订单和报价请求的订单、付款与履约进度。",
+    "createdQuotation": "报价请求已提交",
+    "createdOrder": "订单已提交",
+    "reference": "参考编号：{id}",
+    "emptyTitle": "暂无订单",
+    "emptyDescription": "当您提交购物车后，订单会显示在这里。",
+    "goToCatalog": "前往商品目录",
+    "total": "总计",
+    "badges": {
+      "order": "订单：{status}",
+      "payment": "付款：{status}",
+      "fulfillment": "履约：{status}"
+    },
+    "mode": {
+      "quotation": "报价请求",
+      "payment": "付款订单"
+    },
+    "status": {
+      "order": {
+        "submitted": "已提交",
+        "confirmed": "已确认",
+        "completed": "已完成",
+        "cancelled": "已取消"
+      },
+      "payment": {
+        "not_applicable": "不适用",
+        "pending_review": "待审核",
+        "awaiting_payment": "待付款",
+        "paid": "已付款",
+        "deferred": "挂账 / 延后付款",
+        "cancelled": "已取消",
+        "refunded": "已退款"
+      },
+      "fulfillment": {
+        "not_applicable": "不适用",
+        "unfulfilled": "未履约",
+        "preparing": "备货中",
+        "ready_for_carrier_pickup": "等待承运商揽收",
+        "shipped": "已发货",
+        "delivered": "已送达",
+        "returned": "已退回",
+        "cancelled": "已取消"
+      }
+    }
   }
 }

@@ -324,5 +324,51 @@
     "orderSummary": "注文概要",
     "itemCount": "{n} 点",
     "bookingCount": "{n} 件レンタル"
+  },
+  "ordersPage": {
+    "description": "送信済みの注文と見積依頼について、注文・支払い・配送の進捗を確認できます。",
+    "createdQuotation": "見積依頼を送信しました",
+    "createdOrder": "注文を送信しました",
+    "reference": "参照番号: {id}",
+    "emptyTitle": "まだ注文はありません",
+    "emptyDescription": "カートを送信すると、ここに表示されます。",
+    "goToCatalog": "商品一覧へ",
+    "total": "合計",
+    "badges": {
+      "order": "注文: {status}",
+      "payment": "支払い: {status}",
+      "fulfillment": "配送: {status}"
+    },
+    "mode": {
+      "quotation": "見積依頼",
+      "payment": "支払い注文"
+    },
+    "status": {
+      "order": {
+        "submitted": "送信済み",
+        "confirmed": "確認済み",
+        "completed": "完了",
+        "cancelled": "キャンセル済み"
+      },
+      "payment": {
+        "not_applicable": "対象外",
+        "pending_review": "確認待ち",
+        "awaiting_payment": "支払い待ち",
+        "paid": "支払い済み",
+        "deferred": "後払い / 掛け",
+        "cancelled": "キャンセル済み",
+        "refunded": "返金済み"
+      },
+      "fulfillment": {
+        "not_applicable": "対象外",
+        "unfulfilled": "未出荷",
+        "preparing": "出荷準備中",
+        "ready_for_carrier_pickup": "集荷待ち",
+        "shipped": "発送済み",
+        "delivered": "配達完了",
+        "returned": "返品済み",
+        "cancelled": "キャンセル済み"
+      }
+    }
   }
 }

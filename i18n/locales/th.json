@@ -278,8 +278,8 @@
     "pageTitle": "ตะกร้าสินค้า",
     "bookingSection": "รายการเช่า",
     "bookingSectionDesc": "อุปกรณ์เช่าสำหรับงานของคุณ",
-    "cartSection": "วัสดุสิ้นเปลือง",
-    "cartSectionDesc": "สินค้าซื้อขาด",
+    "cartSection": "รายการสินค้า",
+    "cartSectionDesc": "สินค้าสำหรับสั่งซื้อ",
     "addressSection": "ที่อยู่จัดส่ง",
     "addressSectionDesc": "เลือกที่อยู่สำหรับจัดส่งสินค้า",
     "checkoutSection": "สรุป & ชำระเงิน",
@@ -329,5 +329,51 @@
     "orderSummary": "สรุปคำสั่งซื้อ",
     "itemCount": "{n} รายการ",
     "bookingCount": "{n} รายการเช่า"
+  },
+  "ordersPage": {
+    "description": "ติดตามสถานะคำสั่งซื้อ การชำระเงิน และการจัดส่งของคำสั่งซื้อและคำขอใบเสนอราคาของคุณ",
+    "createdQuotation": "ส่งคำขอใบเสนอราคาแล้ว",
+    "createdOrder": "ส่งคำสั่งซื้อแล้ว",
+    "reference": "เลขอ้างอิง: {id}",
+    "emptyTitle": "ยังไม่มีคำสั่งซื้อ",
+    "emptyDescription": "เมื่อคุณส่งคำสั่งซื้อจากตะกร้า รายการจะแสดงที่นี่",
+    "goToCatalog": "ไปยังรายการสินค้า",
+    "total": "ยอดรวม",
+    "badges": {
+      "order": "ออเดอร์: {status}",
+      "payment": "การชำระเงิน: {status}",
+      "fulfillment": "การจัดส่ง: {status}"
+    },
+    "mode": {
+      "quotation": "คำขอใบเสนอราคา",
+      "payment": "คำสั่งซื้อแบบชำระเงิน"
+    },
+    "status": {
+      "order": {
+        "submitted": "ส่งคำสั่งซื้อแล้ว",
+        "confirmed": "ยืนยันแล้ว",
+        "completed": "เสร็จสมบูรณ์",
+        "cancelled": "ยกเลิกแล้ว"
+      },
+      "payment": {
+        "not_applicable": "ไม่เกี่ยวข้อง",
+        "pending_review": "รอตรวจสอบ",
+        "awaiting_payment": "รอชำระเงิน",
+        "paid": "ชำระแล้ว",
+        "deferred": "วางบิลภายหลัง / ใช้วงเงิน",
+        "cancelled": "ยกเลิกแล้ว",
+        "refunded": "คืนเงินแล้ว"
+      },
+      "fulfillment": {
+        "not_applicable": "ไม่เกี่ยวข้อง",
+        "unfulfilled": "ยังไม่เริ่มจัดส่ง",
+        "preparing": "กำลังเตรียมสินค้า",
+        "ready_for_carrier_pickup": "พร้อมให้ขนส่งรับสินค้า",
+        "shipped": "จัดส่งแล้ว",
+        "delivered": "ส่งมอบแล้ว",
+        "returned": "ส่งคืนแล้ว",
+        "cancelled": "ยกเลิกแล้ว"
+      }
+    }
   }
 }
