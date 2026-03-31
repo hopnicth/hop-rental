@@ -10,6 +10,7 @@
  *  - AccountSidebar (emits "select")
  *  - Section components via <component :is>
  */
+import type { CompanyRole, PlatformRole } from "~/types/user";
 import type { Component } from "vue";
 import AccountSidebar from "~/components/account/AccountSidebar.vue";
 import SectionProfile from "~/components/account/SectionProfile.vue";
@@ -25,6 +26,61 @@ import SectionApprovals from "~/components/account/SectionApprovals.vue";
 
 const { isLoggedIn } = useAuthSession();
 const { t } = useI18n();
+const { profile } = useUserProfile();
+const {
+  activeContext,
+  memberships,
+  currentCompany,
+  loading: companyContextLoading,
+  error: companyContextError,
+  fetchMemberships,
+  syncContextWithMemberships,
+} = useCompanyContext();
+
+function formatPlatformRole(role: PlatformRole | null | undefined): string {
+  if (role === "super_admin") return "Super Admin";
+  if (role === "staff") return "Staff";
+  return "Customer";
+}
+
+function formatCompanyRole(role: CompanyRole | null | undefined): string {
+  if (role === "b2b_admin") return "B2B Admin";
+  if (role === "b2b_user") return "B2B User";
+  return "—";
+}
+
+const fallbackMembership = computed(() => memberships.value[0] ?? null);
+
+const platformRoleLabel = computed(() =>
+  formatPlatformRole(profile.value?.platformRole),
+);
+
+const companyRoleLabel = computed(() => {
+  if (activeContext.value.role)
+    return formatCompanyRole(activeContext.value.role);
+  return formatCompanyRole(fallbackMembership.value?.member.role);
+});
+
+const activeCompanyLabel = computed(
+  () =>
+    currentCompany.value?.name ??
+    activeContext.value.companyName ??
+    fallbackMembership.value?.company.name ??
+    "Personal account",
+);
+
+const contextModeLabel = computed(() => {
+  if (currentCompany.value) return "B2B Company Context";
+  if (fallbackMembership.value) return "B2B Membership Found";
+  return "B2C Personal Context";
+});
+
+async function ensureCompanyContext() {
+  if (import.meta.server || !isLoggedIn.value) return;
+
+  await fetchMemberships();
+  syncContextWithMemberships();
+}
 
 // ── Auth guard — redirect if not logged in ──
 watchEffect(() => {
@@ -32,6 +88,16 @@ watchEffect(() => {
     navigateTo("/user/login");
   }
 });
+
+watch(
+  () => isLoggedIn.value,
+  (loggedIn) => {
+    if (loggedIn) {
+      void ensureCompanyContext();
+    }
+  },
+  { immediate: true },
+);
 
 // ── Section registry ──
 const sectionMap: Record<string, Component> = {
@@ -61,6 +127,53 @@ function handleSelect(id: string) {
   <UContainer class="py-6 sm:py-8">
     <!-- Page heading -->
     <h1 class="mb-6 text-2xl font-bold">{{ t("user.account") }}</h1>
+
+    <UCard class="mb-6">
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-semibold">Account Context</h2>
+            <p class="text-sm text-muted">{{ contextModeLabel }}</p>
+          </div>
+          <UBadge
+            v-if="currentCompany?.kycStatus"
+            :label="`Company KYC: ${currentCompany.kycStatus}`"
+            color="neutral"
+            variant="subtle"
+          />
+        </div>
+      </template>
+
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div class="rounded-lg border p-4">
+          <p class="text-xs font-medium tracking-wide text-muted uppercase">
+            Platform Role
+          </p>
+          <p class="mt-1 font-semibold">{{ platformRoleLabel }}</p>
+        </div>
+
+        <div class="rounded-lg border p-4">
+          <p class="text-xs font-medium tracking-wide text-muted uppercase">
+            Company Role
+          </p>
+          <p class="mt-1 font-semibold">{{ companyRoleLabel }}</p>
+        </div>
+
+        <div class="rounded-lg border p-4">
+          <p class="text-xs font-medium tracking-wide text-muted uppercase">
+            Active Company
+          </p>
+          <p class="mt-1 font-semibold">{{ activeCompanyLabel }}</p>
+        </div>
+      </div>
+
+      <p v-if="companyContextLoading" class="mt-4 text-sm text-muted">
+        Syncing company memberships...
+      </p>
+      <p v-else-if="companyContextError" class="mt-4 text-sm text-error">
+        Company membership sync error: {{ companyContextError }}
+      </p>
+    </UCard>
 
     <div class="grid grid-cols-12 gap-6">
       <!-- ── Desktop Sidebar (3 cols) ── -->

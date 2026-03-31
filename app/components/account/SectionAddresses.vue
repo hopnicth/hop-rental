@@ -11,8 +11,10 @@ import type { Address } from "~/types/user";
 
 const { t } = useI18n();
 const toast = useToast();
+const { isB2C, activeContext, currentCompany } = useCompanyContext();
 const {
   personalAddresses,
+  companyAddresses,
   loading,
   error,
   fetchAddresses,
@@ -23,6 +25,52 @@ const {
 
 // ── Fetch on mount ──
 onMounted(() => fetchAddresses());
+
+watch(
+  () => activeContext.value.companyId,
+  () => {
+    void fetchAddresses();
+  },
+);
+
+const visibleAddresses = computed(() => {
+  if (isB2C.value || !activeContext.value.companyId) {
+    return personalAddresses.value;
+  }
+
+  return companyAddresses.value.filter(
+    (address) => address.companyId === activeContext.value.companyId,
+  );
+});
+
+const cardTitle = computed(() =>
+  isB2C.value ? t("user.addresses") : "Company Addresses",
+);
+
+const addButtonLabel = computed(() =>
+  isB2C.value ? t("user.addAddress") : "Add Company Address",
+);
+
+const formTitle = computed(() => {
+  if (editingId.value) return t("user.editAddress");
+  return isB2C.value ? t("user.addAddress") : "Add Company Address";
+});
+
+const emptyMessage = computed(() => {
+  if (isB2C.value) return t("user.noAddresses");
+  if (currentCompany.value?.name) {
+    return `No addresses found for ${currentCompany.value.name}.`;
+  }
+  return "No company addresses found.";
+});
+
+const scopeMessage = computed(() => {
+  if (isB2C.value) return "Personal delivery addresses";
+  if (currentCompany.value?.name) {
+    return `Managing delivery addresses for ${currentCompany.value.name}`;
+  }
+  return "Managing company delivery addresses";
+});
 
 // ── Form state ──
 const showForm = ref(false);
@@ -104,7 +152,7 @@ async function handleSave() {
       const addr = await createAddress({
         ...fields,
         userId: null,
-        companyId: null,
+        companyId: isB2C.value ? null : activeContext.value.companyId,
       });
       if (!addr) throw new Error("create failed");
     }
@@ -159,9 +207,12 @@ async function handleSetDefault(id: string) {
     <UCard>
       <template #header>
         <div class="flex items-center justify-between">
-          <h2 class="text-lg font-semibold">{{ t("user.addresses") }}</h2>
+          <div>
+            <h2 class="text-lg font-semibold">{{ cardTitle }}</h2>
+            <p class="text-sm text-muted">{{ scopeMessage }}</p>
+          </div>
           <UButton
-            :label="t('user.addAddress')"
+            :label="addButtonLabel"
             icon="bx:plus"
             size="sm"
             @click="openAdd"
@@ -180,17 +231,17 @@ async function handleSetDefault(id: string) {
 
       <!-- Empty -->
       <div
-        v-else-if="!personalAddresses.length && !showForm"
+        v-else-if="!visibleAddresses.length && !showForm"
         class="py-8 text-center"
       >
         <UIcon name="bx:map" class="mx-auto mb-2 text-4xl text-muted" />
-        <p class="text-muted">{{ t("user.noAddresses") }}</p>
+        <p class="text-muted">{{ emptyMessage }}</p>
       </div>
 
       <!-- Address list -->
       <div v-else class="space-y-3">
         <div
-          v-for="addr in personalAddresses"
+          v-for="addr in visibleAddresses"
           :key="addr.id"
           class="flex items-start justify-between gap-3 rounded-lg border p-4"
         >
@@ -249,9 +300,7 @@ async function handleSetDefault(id: string) {
     <!-- Add / Edit Form -->
     <UCard v-if="showForm">
       <template #header>
-        <h3 class="font-semibold">
-          {{ editingId ? t("user.editAddress") : t("user.addAddress") }}
-        </h3>
+        <h3 class="font-semibold">{{ formTitle }}</h3>
       </template>
 
       <div class="grid gap-4 sm:grid-cols-2">

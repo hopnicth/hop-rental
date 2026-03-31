@@ -41,9 +41,22 @@ export function useUserProfile() {
   const supabase = useSupabaseClient();
   const user = useSupabaseUser();
 
+  async function resolveUserId(): Promise<string | null> {
+    if (typeof user.value?.id === "string" && user.value.id.length > 0) {
+      return user.value.id;
+    }
+
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
+
+    return authUser?.id ?? null;
+  }
+
   // ── Fetch profile from DB ──
   async function fetchProfile(): Promise<void> {
-    if (!user.value) {
+    const userId = await resolveUserId();
+    if (!userId) {
       profile.value = null;
       return;
     }
@@ -55,7 +68,7 @@ export function useUserProfile() {
       const { data, error: dbError } = await supabase
         .from("users")
         .select("*")
-        .eq("id", user.value.id)
+        .eq("id", userId)
         .single();
 
       if (dbError) {
@@ -104,9 +117,9 @@ export function useUserProfile() {
   // ── Auto-fetch on auth state change (client-only) ──
   if (import.meta.client) {
     watch(
-      user,
-      (newUser) => {
-        if (newUser) {
+      () => user.value?.id ?? null,
+      (userId) => {
+        if (userId) {
           fetchProfile();
         } else {
           profile.value = null;

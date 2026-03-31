@@ -55,23 +55,73 @@ const {
   updateAddress,
 } = useAddresses();
 
-const { isB2B, isB2BUser, isB2BAdmin, currentCompany, creditRemaining } =
-  useCompanyContext();
+const {
+  activeContext,
+  memberships,
+  isB2B,
+  isB2BUser,
+  isB2BAdmin,
+  currentCompany,
+  creditRemaining,
+  fetchMemberships,
+  syncContextWithMemberships,
+} = useCompanyContext();
 const { submitOrder } = useOrders();
-
-// Fetch addresses on mount
-if (import.meta.client) {
-  onMounted(() => {
-    fetchAddresses();
-  });
-}
 
 // ── Selected address ──
 const selectedAddressId = ref<string | null>(null);
 
-const availableAddresses = computed(() =>
-  isB2B.value ? companyAddresses.value : personalAddresses.value,
-);
+async function refreshCheckoutAddresses() {
+  if (!isLoggedIn.value) {
+    selectedAddressId.value = null;
+    return;
+  }
+
+  await fetchMemberships();
+  syncContextWithMemberships();
+
+  await fetchAddresses();
+}
+
+// Fetch memberships + addresses on mount/login
+if (import.meta.client) {
+  onMounted(() => {
+    void refreshCheckoutAddresses();
+  });
+
+  watch(
+    () => isLoggedIn.value,
+    (loggedIn) => {
+      if (!loggedIn) {
+        selectedAddressId.value = null;
+        return;
+      }
+
+      void refreshCheckoutAddresses();
+    },
+    { immediate: true },
+  );
+
+  watch(
+    () => currentCompany.value?.id ?? null,
+    () => {
+      if (!isLoggedIn.value) return;
+      selectedAddressId.value = null;
+      void fetchAddresses();
+    },
+  );
+}
+
+const availableAddresses = computed(() => {
+  if (!isB2B.value) return personalAddresses.value;
+
+  const currentCompanyId = currentCompany.value?.id;
+  if (!currentCompanyId) return [];
+
+  return companyAddresses.value.filter(
+    (address) => address.companyId === currentCompanyId,
+  );
+});
 
 // Auto-select default address
 watchEffect(() => {
@@ -242,6 +292,10 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
       return;
     }
 
+    const resolvedCompanyId = isB2B.value
+      ? (currentCompany.value?.id ?? selectedAddress.value.companyId ?? null)
+      : null;
+
     const order = await submitOrder({
       checkoutMode,
       paymentMethod:
@@ -249,7 +303,7 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
       address: selectedAddress.value,
       items: cartItems.value,
       cartId: cartId.value || null,
-      companyId: isB2B.value ? (currentCompany.value?.id ?? null) : null,
+      companyId: resolvedCompanyId,
     });
 
     await clearCartPersisted();
