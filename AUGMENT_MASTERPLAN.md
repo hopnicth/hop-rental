@@ -1,31 +1,39 @@
-# Augment Master Plan: Catalog / Cart / Booking / Asset Ledger
+# Augment Master Plan: Catalog / Cart / Booking MVP + Ops Minimum
 
-Last updated: 2026-03-30
-Checkpoint commit: `a020b48` (`docs: add master plan and cart booking regression checklist`)
+Last updated: 2026-03-31
+Checkpoint commit: `75f97d7` (`feat: migrate catalog to Supabase and clean up Nuxt runtime warnings`)
 
 ## Purpose
 
 This file is the continuity anchor for Augment and the team.
-It now covers the aligned target state for:
+It now covers the aligned target state for the minimum market-test release first, then the longer-term operations layer.
+
+Current priority scope:
 
 - catalog (`products`, `product_skus`)
 - purchase cart (`carts`, `cart_items`)
 - rental booking (`rental_bookings`)
-- full rental asset ledger for future staff assignment
+- quotation + document workflows
+- baseline user/account flows
+- minimum backoffice operations needed to actually run the business
 
 ## Primary Goal
 
-Build one simple, scalable system for:
+Build the minimum viable online commerce and rental system that can be used to test the market fast.
 
-- product browsing
-- SKU selection
-- purchase cart
-- rental booking
-- unified review/cart experience
-- asset-aware rental operations
+MVP success means the business can:
+
+- receive online orders
+- receive rental bookings
+- let users browse with simple search, basic filters, and category/group navigation
+- generate quotation documents
+- generate withholding-tax document templates for customers, receive signed uploads back, and review/import them
+- provide complete-enough baseline user functions
+- support minimum backoffice operations for alerts, docs, and delivery/return paperwork
 
 Guiding principles:
 
+- ship the minimum that can sell before building full operations sophistication
 - easy to change
 - easy to extend
 - simple mental model
@@ -33,6 +41,26 @@ Guiding principles:
 - i18n-friendly
 - preserve pricing inputs used for calculation
 - maximize existing libs: `@nuxt/ui`, `@nuxtjs/i18n`, `@nuxtjs/supabase`
+
+## MVP Launch Scope
+
+### Storefront minimum required for market test
+
+1. accept online orders end-to-end
+2. accept rental bookings end-to-end
+3. support simple search + basic filters + category/group browse
+4. generate quotation documents
+5. support withholding-tax document generation -> customer print/sign -> upload back -> staff review/import
+6. provide baseline user/account functionality needed for real customer use
+
+### Backoffice minimum required for market test
+
+- booking report/list view
+- LINE alerts for booking activity
+- asset document storage
+- inspection / maintenance reminder workflow
+- order and booking alerts
+- delivery note / return note workflow
 
 ## Current State Summary
 
@@ -46,35 +74,94 @@ Guiding principles:
 - `cart` is already DB-backed via `carts` + `cart_items`
 - booking snapshot types were hardened and now map to DB-backed `rental_bookings`
 - `useBooking()` now hydrates from Supabase and migrates legacy localStorage rows once per user
+- `useProducts()` now reads Supabase-backed catalog data with fallback safety
+- product listing/detail storefront flow now reads the DB-backed catalog path
+- dev/runtime route noise was cleaned up enough to continue backend work without major warning spam
 - migration `004_catalog_booking_asset_ledger.sql` already added `products`, `product_skus`, `rental_bookings`, asset-ledger tables, and cart discount snapshot columns
 - migration `005_seed_minimal_rental_catalog.sql` already seeds a bridge catalog for DB-backed booking references
 
 ### What is still transitional
 
-- `useProducts()` is still mock-backed
-- storefront catalog pages still read mapped mock data even though DB schema + seed data now exist
+- online order acceptance is not yet closed end-to-end as a business flow
+- rental booking acceptance still needs to be confirmed against the minimum operating flow the business will actually use
+- simple search/filter/category browse still needs to be finalized as a clear MVP feature, not just incidental page behavior
+- quotation document generation is not finished
+- withholding-tax document generation, signed upload return, and review/import flow are not finished
+- baseline user/account functions are not yet complete enough to call done
+- backoffice MVP features (booking reports, LINE alerts, asset docs, maintenance reminders, order/booking alerts, delivery/return docs) are not finished
 - rental availability is still enforced from SKU-level counters, not asset allocation rows
-- asset ledger schema exists, but operational allocation/staff tooling is not wired into runtime yet
+- asset ledger schema exists, but full operational allocation/staff tooling is intentionally deferred behind MVP unless required
 - Supabase DB types and automated regression tests have not been added yet
 
 ### Key current mismatch
 
-- UI already presents a unified review/cart page
-- booking persistence is now DB-backed, but catalog browsing is still mock-backed
-- rental availability is still count-based at SKU level, not asset-aware
+- the technical foundation is moving faster than the sellable/document/business-operating workflows
+- storefront catalog is now DB-backed, but market-test business flows are not yet fully closed
+- rental availability is still count-based at SKU level, which is acceptable for MVP but not the final operating model
+
+## Urgent Fix Plan From Storefront Audit
+
+The current storefront audit shows the MVP gap is not the catalog foundation anymore; it is the missing acceptance and document workflows that turn browsing into real business.
+
+### Highest urgency gaps found in the audit
+
+1. **Orders are still cart-only, not order-ready**
+   - `cart_items` persistence exists, but there is still no finalized order submission flow, success state, or usable order-history/account view.
+2. **Bookings persist, but the operating acceptance flow is still incomplete**
+   - `rental_bookings` persistence exists, but the minimum lifecycle, post-submit confirmation, and staff/customer visibility still need to be locked.
+3. **Search/filter/category browsing is only partially real**
+   - the catalog source is DB-backed, but search/filter/category behavior is still partly placeholder/mock and not yet aligned to the route/group intent.
+4. **Quotation and withholding-tax flows are not operational yet**
+   - quotation request UX is still placeholder-level, and the withholding-tax print/sign/upload-back/review flow is still missing.
+5. **Account is only partially launch-ready**
+   - profile/address basics exist, but order/booking/document visibility and several sections are still placeholder-level.
+
+### Urgent fix sequence
+
+1. **Close minimum online order acceptance**
+   - define the minimum order record/statuses needed for launch
+   - submit from `/user/cart` into a real finalized order flow
+   - show success state and minimum customer-visible status
+   - make the submitted order visible to staff/backoffice
+2. **Close minimum rental booking acceptance**
+   - define the booking statuses required for MVP operation
+   - keep booking submit/review flow simple and staff-usable
+   - add post-submit confirmation and minimum account visibility
+3. **Make browse/search/filter behavior real enough to sell**
+   - wire route group/category behavior to actual product filtering
+   - add simple keyword search
+   - add basic sale/rental filter forms that affect real results
+   - remove mock category-search behavior from the MVP path
+4. **Ship the minimum document workflows required for revenue**
+   - generate quotation documents from current cart/booking context
+   - generate withholding-tax template documents
+   - support customer print -> sign -> upload-back
+   - support minimum staff review/import workflow
+5. **Reduce account to the minimum real customer baseline**
+   - keep auth/profile/address flows working
+   - expose minimum order/booking/document status visibility
+   - defer or hide placeholder sections that are not launch-critical
+
+### Explicit defers after the urgent fix plan
+
+- full asset-aware allocation runtime
+- richer staff-assignment workflow
+- full operational polish beyond MVP acceptance
 
 ## Locked Decisions
 
-1. **Supabase is the long-term source of truth** for catalog, cart, booking, and rental operations.
+1. **Supabase is the long-term source of truth** for catalog, cart, booking, documents, and rental operations.
 2. **Booking stays a separate domain/table**, never forced into `cart_items`.
 3. **`/user/cart` remains the unified review hub** for purchase + rental.
-4. **Multi-SKU products require explicit SKU selection** before purchase/booking.
-5. **Price stays at SKU level**, not product level.
-6. **Cart and booking must preserve display + pricing snapshots** so later catalog changes do not rewrite historical meaning.
-7. **Sale inventory and rental asset inventory are separate concepts** even when the same SKU supports both sale and rental.
-8. **Rental asset ledger is required now**, because future staff assignment depends on it.
-9. **Static UI copy stays in locale JSON; catalog/business content stays in localized DB fields.**
-10. **Current product/SKU image fallback is correct for launch**:
+4. **MVP-first beats full sophistication**: if a simpler workflow lets the team test the market sooner, prefer that first.
+5. **Multi-SKU products require explicit SKU selection** before purchase/booking.
+6. **Price stays at SKU level**, not product level.
+7. **Cart and booking must preserve display + pricing snapshots** so later catalog changes do not rewrite historical meaning.
+8. **Sale inventory and rental asset inventory are separate concepts** even when the same SKU supports both sale and rental.
+9. **Rental asset ledger remains the long-term direction**, but full asset-aware allocation and staff assignment are not blockers for the MVP launch unless the business workflow proves otherwise.
+10. **Quotation and withholding-tax document flows are required launch workflows** for the MVP, not optional polish.
+11. **Static UI copy stays in locale JSON; catalog/business content stays in localized DB fields.**
+12. **Current product/SKU image fallback is correct for launch**:
     - `SKU.images`
     - `SKU.image`
     - `Product.images`
@@ -227,46 +314,55 @@ If one SKU supports both sale and rental:
 ## End-to-End Flow Target
 
 1. User browses product -> selects SKU if needed
-2. Sale action -> add snapshot to `cart_items`
+2. Sale action -> add snapshot to `cart_items` and move toward a real order acceptance flow
 3. Rental action -> create `rental_bookings` row with pricing/display snapshot
 4. `/user/cart` aggregates `cart_items` + confirmed `rental_bookings`
-5. Operations/admin allocate physical units in `rental_booking_assets`
-6. Asset movements and state changes are written to `rental_asset_events`
-7. Staff work can later be assigned through `rental_tasks` + `rental_task_assignees`
+5. User/staff can generate quotation documents when needed
+6. Withholding-tax document template can be generated, printed/signed by the customer, uploaded back, and reviewed/imported by staff
+7. Backoffice receives alerts and can produce delivery/return paperwork
+8. Asset allocation and staff assignment remain the next operations layer after MVP unless urgently needed earlier
 
 ## Implementation Order
 
-### Phase 1 — Close the current architecture gaps first (completed)
+### Phase 1 — Stabilize the MVP technical base (completed enough to move on)
 
 - added DB schema for `products`, `product_skus`, and `rental_bookings`
 - extended cart snapshot schema to retain discount explanation fields
-- kept the current image/localized strategy compatible with the current mapper
-
-### Phase 2 — Move runtime onto DB-backed booking (completed for current storefront flow)
-
 - migrated `useBooking()` from localStorage to Supabase with one-time legacy migration
-- kept `/user/cart` as the unified review page while reading bookings from DB
-- preserved the current confirmed-only cart/review behavior
+- moved `useProducts()` onto the DB-backed catalog path for the current storefront flow
+- cleaned the main runtime route warnings enough to continue feature work efficiently
 
-### Phase 3 — Add full rental asset ledger (schema foundation completed)
+### Phase 2 — Close the market-test storefront MVP (current priority)
 
-- added `rental_assets`
-- added `rental_booking_assets`
-- added `rental_asset_events`
-- defined the first-pass operational statuses in schema; runtime allocation rules per hub still need implementation
+- define and ship a minimum finalized online order submission flow from `/user/cart`
+- define and ship a minimum rental booking acceptance flow with usable post-submit UX
+- complete simple search + basic filters + category/group navigation with real result changes
+- complete baseline auth/profile/address/account visibility needed for real usage
 
-### Phase 4 — Make operations staff-ready
+### Phase 3 — Close the market-test document workflows
 
-- add `rental_tasks`
-- add `rental_task_assignees`
-- connect booking + asset lifecycle to staff work queues
+- generate quotation documents
+- generate withholding-tax document templates
+- support customer print/sign/upload-back flow
+- support staff review/import of uploaded signed documents
+- generate delivery note / return note documents
 
-### Phase 5 — Hardening
+### Phase 4 — Close the market-test backoffice minimum
 
-- generate Supabase DB types
+- booking list/report view
+- LINE alerts for booking activity
+- order and booking alerts
+- asset document storage
+- inspection / maintenance reminders
+
+### Phase 5 — Post-market hardening + full operations
+
+- generate real Supabase DB types
 - add regression tests for cart/booking snapshot mapping
 - add mixed sale+rental smoke validation
-- clean up remaining warnings and consistency issues
+- implement asset-aware allocation runtime on top of the ledger tables
+- add staff assignment tables / queues
+- clean up remaining warnings, consistency issues, and scaling gaps
 
 ## What Is Already Done vs Not Done
 
@@ -282,12 +378,23 @@ If one SKU supports both sale and rental:
 - DB schema for catalog + rental bookings + rental asset ledger
 - cart DB discount snapshot expansion
 - DB-backed booking runtime with legacy localStorage migration
+- DB-backed catalog runtime for the current storefront flow
+- product listing/detail pages reading the Supabase-backed catalog path
 - minimal seeded catalog bridge for current booking flow
+- runtime warning cleanup needed to keep MVP work moving
 
 ### Not done yet
 
-- DB-backed catalog runtime (`useProducts()` still serves mapped mock data)
-- product listing/detail pages reading directly from Supabase catalog tables
+- finalized online order submission flow, success state, and order visibility/history
+- rental booking acceptance lifecycle, confirmation state, and minimum customer/staff visibility
+- keyword search + real filter forms + route-aware category/group browse finalized as MVP behavior
+- quotation document generation
+- withholding-tax document template + signed upload + review/import workflow
+- baseline user/account functions required for launch, especially order/booking/document visibility
+- booking reports / LINE alerts / order-booking alerts
+- asset document storage
+- inspection / maintenance reminder workflow
+- delivery note / return note workflow
 - asset allocation runtime and operational UI on top of the ledger tables
 - staff assignment tables
 - generated Supabase DB types
@@ -295,13 +402,16 @@ If one SKU supports both sale and rental:
 
 ## Immediate Next Implementation Slice
 
-Move the storefront off mock-backed catalog reads in this order:
+Ship the minimum market-test release in this order:
 
-1. migrate `useProducts()` to read Supabase-backed catalog data while preserving the current `Product` UI contract
-2. switch product listing/detail pages to the DB catalog source without regressing i18n/media behavior
-3. define the next availability read model so booking can evolve from SKU counters toward asset-aware allocation
-4. add regression coverage for cart/booking snapshot mapping and mixed cart + booking flows
-5. add staff/operations tables only after storefront catalog/runtime behavior is stable
+1. define the minimum online order acceptance flow and ship finalized order submission from `/user/cart`
+2. define the minimum rental booking acceptance flow and ship post-submit confirmation/account visibility
+3. finish real keyword search + basic filters + category/group navigation
+4. ship quotation document generation
+5. ship withholding-tax document generation + signed upload-back + review/import flow
+6. complete baseline user/account functions required for real customer use
+7. deliver the minimum backoffice layer: booking list/report, LINE alerts, order/booking alerts, asset docs, maintenance reminders, and delivery/return documents
+8. only after MVP is stable, move availability from SKU counters toward asset-aware allocation and add full staff-assignment operations
 
 ## Files Most Relevant Right Now
 
@@ -334,3 +444,4 @@ If the project is still unfinished:
 4. Keep the unified `/user/cart` UX while separating commercial and operational tables.
 5. Do not collapse rental assets into sale stock counters.
 6. Do not remove pricing snapshot data that explains how money was calculated.
+7. When choosing between full ops sophistication and faster market validation, prefer the smaller MVP slice unless the user explicitly says otherwise.
