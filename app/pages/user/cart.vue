@@ -159,6 +159,10 @@ const selectedAddress = computed<Address | null>(
     ) ?? null,
 );
 
+const canManageAvailableAddresses = computed(
+  () => !isB2B.value || isB2BAdmin.value,
+);
+
 const orderGrandTotal = computed(() => cartSubtotal.value);
 
 // ── Grand total ──
@@ -228,6 +232,16 @@ async function handleRemoveBooking(bookingId: string) {
 
 // ── Set default address ──
 async function handleSetDefault(id: string) {
+  if (!canManageAvailableAddresses.value) {
+    toast.add({
+      title: "Company address access is read-only",
+      description: "Only B2B Admin can change the default company address.",
+      icon: "bx:error-circle",
+      color: "error",
+    });
+    return;
+  }
+
   await updateAddress(id, { isDefault: true });
 }
 
@@ -678,7 +692,7 @@ async function handlePay() {
 
               <!-- Set default button -->
               <UButton
-                v-if="!addr.isDefault"
+                v-if="canManageAvailableAddresses && !addr.isDefault"
                 icon="bx:star"
                 size="xs"
                 color="neutral"

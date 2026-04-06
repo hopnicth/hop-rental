@@ -152,15 +152,23 @@ export function useAddresses() {
   async function deleteAddress(id: string): Promise<boolean> {
     error.value = null;
 
-    const { error: dbError } = await supabase
+    const { data, error: dbError } = await supabase
       .from("addresses")
       .delete()
+      .select("id")
       .eq("id", id);
 
     if (dbError) {
       error.value = dbError.message;
       return false;
     }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      error.value =
+        "Address could not be deleted. It may no longer exist or you may not have permission.";
+      return false;
+    }
+
     await fetchAddresses();
     return true;
   }

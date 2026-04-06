@@ -30,6 +30,7 @@ const activeContext = ref<ActiveContext>({ ...DEFAULT_CONTEXT });
 const memberships = ref<CompanyMembership[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
+let isCompanyContextInitialized = false;
 
 // ── LocalStorage helpers ────────────────────────────────────
 
@@ -312,15 +313,17 @@ export function useCompanyContext() {
   }
 
   // ── Auto-fetch + restore context on auth change (client-only) ──
-  if (import.meta.client) {
-    // Restore context from localStorage on first load
+  if (import.meta.client && !isCompanyContextInitialized) {
+    isCompanyContextInitialized = true;
+
+    // Restore context from localStorage only once per app boot.
     activeContext.value = loadContext();
 
     watch(
       () => user.value?.id ?? null,
       (userId) => {
         if (userId) {
-          fetchMemberships().then(() => {
+          void fetchMemberships().then(() => {
             syncContextWithMemberships();
           });
         } else {

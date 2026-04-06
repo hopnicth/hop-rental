@@ -11,7 +11,8 @@ import type { Address } from "~/types/user";
 
 const { t } = useI18n();
 const toast = useToast();
-const { isB2C, activeContext, currentCompany } = useCompanyContext();
+const { isB2C, isB2BAdmin, activeContext, currentCompany } =
+  useCompanyContext();
 const {
   personalAddresses,
   companyAddresses,
@@ -43,6 +44,8 @@ const visibleAddresses = computed(() => {
   );
 });
 
+const canManageAddresses = computed(() => isB2C.value || isB2BAdmin.value);
+
 const cardTitle = computed(() =>
   isB2C.value ? t("user.addresses") : "Company Addresses",
 );
@@ -66,11 +69,24 @@ const emptyMessage = computed(() => {
 
 const scopeMessage = computed(() => {
   if (isB2C.value) return "Personal delivery addresses";
+  if (!canManageAddresses.value) {
+    return "Viewing company delivery addresses — only B2B Admin can manage them";
+  }
   if (currentCompany.value?.name) {
     return `Managing delivery addresses for ${currentCompany.value.name}`;
   }
   return "Managing company delivery addresses";
 });
+
+function showManagePermissionError() {
+  toast.add({
+    title: "Company address access is read-only",
+    description:
+      "Only B2B Admin can add, edit, delete, or set a default company address.",
+    icon: "bx:error-circle",
+    color: "error",
+  });
+}
 
 // ── Form state ──
 const showForm = ref(false);
@@ -105,11 +121,21 @@ function resetForm() {
 }
 
 function openAdd() {
+  if (!canManageAddresses.value) {
+    showManagePermissionError();
+    return;
+  }
+
   resetForm();
   showForm.value = true;
 }
 
 function openEdit(addr: Address) {
+  if (!canManageAddresses.value) {
+    showManagePermissionError();
+    return;
+  }
+
   editingId.value = addr.id;
   form.title = addr.title;
   form.contactName = addr.contactName ?? "";
@@ -127,6 +153,11 @@ function openEdit(addr: Address) {
 const saving = ref(false);
 
 async function handleSave() {
+  if (!canManageAddresses.value) {
+    showManagePermissionError();
+    return;
+  }
+
   saving.value = true;
 
   const fields = {
@@ -177,9 +208,23 @@ async function handleSave() {
 
 // ── Delete confirmation ──
 const deleteTarget = ref<string | null>(null);
+const isDeleteModalOpen = computed({
+  get: () => deleteTarget.value !== null,
+  set: (open: boolean) => {
+    if (!open) {
+      deleteTarget.value = null;
+    }
+  },
+});
 
 async function confirmDelete() {
   if (!deleteTarget.value) return;
+  if (!canManageAddresses.value) {
+    showManagePermissionError();
+    deleteTarget.value = null;
+    return;
+  }
+
   const ok = await deleteAddress(deleteTarget.value);
   if (ok) {
     toast.add({
@@ -190,6 +235,7 @@ async function confirmDelete() {
   } else {
     toast.add({
       title: t("user.saveError"),
+      description: error.value ?? undefined,
       icon: "bx:error-circle",
       color: "error",
     });
@@ -198,6 +244,11 @@ async function confirmDelete() {
 }
 
 async function handleSetDefault(id: string) {
+  if (!canManageAddresses.value) {
+    showManagePermissionError();
+    return;
+  }
+
   await updateAddress(id, { isDefault: true });
 }
 </script>
@@ -212,6 +263,7 @@ async function handleSetDefault(id: string) {
             <p class="text-sm text-muted">{{ scopeMessage }}</p>
           </div>
           <UButton
+            v-if="canManageAddresses"
             :label="addButtonLabel"
             icon="bx:plus"
             size="sm"
@@ -229,9 +281,13 @@ async function handleSetDefault(id: string) {
         />
       </div>
 
+      <p v-if="!loading && error" class="mb-4 text-sm text-error">
+        {{ error }}
+      </p>
+
       <!-- Empty -->
       <div
-        v-else-if="!visibleAddresses.length && !showForm"
+        v-if="!loading && !visibleAddresses.length && !showForm"
         class="py-8 text-center"
       >
         <UIcon name="bx:map" class="mx-auto mb-2 text-4xl text-muted" />
@@ -239,7 +295,7 @@ async function handleSetDefault(id: string) {
       </div>
 
       <!-- Address list -->
-      <div v-else class="space-y-3">
+      <div v-else-if="!loading" class="space-y-3">
         <div
           v-for="addr in visibleAddresses"
           :key="addr.id"
@@ -270,7 +326,7 @@ async function handleSetDefault(id: string) {
           </div>
           <div class="flex shrink-0 gap-1">
             <UButton
-              v-if="!addr.isDefault"
+              v-if="canManageAddresses && !addr.isDefault"
               icon="bx:star"
               size="xs"
               color="neutral"
@@ -279,6 +335,7 @@ async function handleSetDefault(id: string) {
               @click="handleSetDefault(addr.id)"
             />
             <UButton
+              v-if="canManageAddresses"
               icon="bx:edit"
               size="xs"
               color="neutral"
@@ -286,6 +343,7 @@ async function handleSetDefault(id: string) {
               @click="openEdit(addr)"
             />
             <UButton
+              v-if="canManageAddresses"
               icon="bx:trash"
               size="xs"
               color="error"
@@ -365,31 +423,34 @@ async function handleSetDefault(id: string) {
     </UCard>
 
     <!-- Delete confirmation modal -->
-    <UModal v-model:open="deleteTarget">
-      <template #default>
-        <div class="p-6 text-center">
+    <UModal
+      v-model:open="isDeleteModalOpen"
+      :title="t('user.confirmDelete')"
+      :description="t('user.confirmDeleteAddress')"
+    >
+      <template #body>
+        <div class="text-center">
           <UIcon
             name="bx:error-circle"
             class="mx-auto mb-3 text-4xl text-error"
           />
-          <p class="mb-1 font-semibold">{{ t("user.confirmDelete") }}</p>
-          <p class="mb-4 text-sm text-muted">
-            {{ t("user.confirmDeleteAddress") }}
-          </p>
-          <div class="flex justify-center gap-2">
-            <UButton
-              :label="t('user.cancel')"
-              color="neutral"
-              variant="ghost"
-              @click="deleteTarget = null"
-            />
-            <UButton
-              :label="t('user.deleteAddress')"
-              color="error"
-              icon="bx:trash"
-              @click="confirmDelete"
-            />
-          </div>
+        </div>
+      </template>
+
+      <template #footer>
+        <div class="flex w-full justify-center gap-2">
+          <UButton
+            :label="t('user.cancel')"
+            color="neutral"
+            variant="ghost"
+            @click="deleteTarget = null"
+          />
+          <UButton
+            :label="t('user.deleteAddress')"
+            color="error"
+            icon="bx:trash"
+            @click="confirmDelete"
+          />
         </div>
       </template>
     </UModal>
