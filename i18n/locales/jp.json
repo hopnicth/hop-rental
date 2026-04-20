@@ -370,5 +370,26 @@
         "cancelled": "キャンセル済み"
       }
     }
+  },
+  "rentalsPage": {
+    "description": "レンタル予約、受取拠点、現在の予約状況を確認できます。",
+    "emptyTitle": "レンタル予約はまだありません",
+    "emptyDescription": "機材のレンタル予約を確定すると、ここに表示されます。",
+    "confirmedCount": "確定済み予約",
+    "rentalTotal": "レンタル合計",
+    "depositTotal": "保証金合計",
+    "reference": "参照番号: {id}",
+    "createdAt": "作成日時",
+    "rentalPeriod": "レンタル期間",
+    "pickupHub": "受取拠点",
+    "noHub": "受取拠点が未選択です",
+    "badges": {
+      "status": "ステータス: {status}"
+    },
+    "status": {
+      "draft": "下書き",
+      "confirmed": "確定済み",
+      "cancelled": "キャンセル済み"
+    }
   }
 }

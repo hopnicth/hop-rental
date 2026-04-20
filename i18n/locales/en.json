@@ -375,5 +375,26 @@
         "cancelled": "Cancelled"
       }
     }
+  },
+  "rentalsPage": {
+    "description": "Review your rental bookings, pickup hub, and current booking status.",
+    "emptyTitle": "No rental bookings yet",
+    "emptyDescription": "Confirmed rental bookings will appear here once you reserve equipment.",
+    "confirmedCount": "Confirmed bookings",
+    "rentalTotal": "Rental total",
+    "depositTotal": "Deposit total",
+    "reference": "Reference: {id}",
+    "createdAt": "Created",
+    "rentalPeriod": "Rental period",
+    "pickupHub": "Pickup hub",
+    "noHub": "Pickup hub not selected",
+    "badges": {
+      "status": "Status: {status}"
+    },
+    "status": {
+      "draft": "Draft",
+      "confirmed": "Confirmed",
+      "cancelled": "Cancelled"
+    }
   }
 }

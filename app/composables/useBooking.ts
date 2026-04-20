@@ -172,6 +172,7 @@ function removeBookingStorage(userId: string | null): void {
 
 // ── Shared reactive state (singleton across components) ──
 const store = ref<BookingStore>(emptyBookingStore());
+const bookingHydrating = ref(false);
 /** Track which userId the bookings are currently loaded for */
 const currentBookingUserId = ref<string | null>(null);
 /** Prevent duplicate hydration when the same user is already loaded */
@@ -367,36 +368,43 @@ export function useBooking() {
   async function hydrateBookings(userId: string | null): Promise<void> {
     if (lastHydratedBookingUserId.value === userId) return;
 
+    bookingHydrating.value = true;
     currentBookingUserId.value = userId;
 
-    if (!userId) {
-      store.value = emptyBookingStore();
+    try {
+      if (!userId) {
+        store.value = emptyBookingStore();
+        lastHydratedBookingUserId.value = userId;
+        return;
+      }
+
+      const authenticatedUserId = await awaitAuthenticatedBookingUserId(userId);
+      if (currentBookingUserId.value !== userId) return;
+
+      if (authenticatedUserId !== userId) {
+        lastHydratedBookingUserId.value = undefined;
+        scheduleBookingHydrationRetry(userId);
+        return;
+      }
+
+      await migrateLegacyBookingsToDb(userId);
+
+      const dbStore = await fetchBookingsFromDb(userId);
+      if (currentBookingUserId.value !== userId) return;
+
+      if (!dbStore) {
+        lastHydratedBookingUserId.value = undefined;
+        scheduleBookingHydrationRetry(userId);
+        return;
+      }
+
+      store.value = dbStore;
       lastHydratedBookingUserId.value = userId;
-      return;
+    } finally {
+      if (currentBookingUserId.value === userId) {
+        bookingHydrating.value = false;
+      }
     }
-
-    const authenticatedUserId = await awaitAuthenticatedBookingUserId(userId);
-    if (currentBookingUserId.value !== userId) return;
-
-    if (authenticatedUserId !== userId) {
-      lastHydratedBookingUserId.value = undefined;
-      scheduleBookingHydrationRetry(userId);
-      return;
-    }
-
-    await migrateLegacyBookingsToDb(userId);
-
-    const dbStore = await fetchBookingsFromDb(userId);
-    if (currentBookingUserId.value !== userId) return;
-
-    if (!dbStore) {
-      lastHydratedBookingUserId.value = undefined;
-      scheduleBookingHydrationRetry(userId);
-      return;
-    }
-
-    store.value = dbStore;
-    lastHydratedBookingUserId.value = userId;
   }
 
   async function createBooking(
@@ -669,6 +677,7 @@ export function useBooking() {
     clearBookingHydrationRetry();
 
     store.value = emptyBookingStore();
+    bookingHydrating.value = false;
     currentBookingUserId.value = null;
     lastHydratedBookingUserId.value = undefined;
   }
@@ -699,6 +708,7 @@ export function useBooking() {
 
   return {
     store,
+    loading: computed(() => bookingHydrating.value),
     bookingItems,
     confirmedBookings,
     bookingCount,

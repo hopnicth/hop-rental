@@ -92,10 +92,12 @@ const loggedInItems = computed<DropdownMenuItem[][]>(() => {
       {
         label: t("user.activeRentals"),
         icon: "bx:box",
+        to: "/user/rentals",
       },
       {
         label: t("user.orders"),
         icon: "bx:history",
+        to: "/user/orders",
       },
     ],
     [

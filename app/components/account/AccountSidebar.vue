@@ -70,6 +70,12 @@ const groups = computed<SidebarGroup[]>(() => {
   personalItems.push(
     { id: "addresses", label: t("user.addresses"), icon: "bx:map" },
     {
+      id: "active-rentals",
+      label: t("user.activeRentals"),
+      icon: "bx:box",
+      to: "/user/rentals",
+    },
+    {
       id: "orders",
       label: t("user.orders"),
       icon: "bx:history",

@@ -370,5 +370,26 @@
         "cancelled": "已取消"
       }
     }
+  },
+  "rentalsPage": {
+    "description": "查看您的租赁预约、提货网点和当前预约状态。",
+    "emptyTitle": "暂无租赁预约",
+    "emptyDescription": "当您确认租赁设备后，预约会显示在这里。",
+    "confirmedCount": "已确认预约",
+    "rentalTotal": "租金总额",
+    "depositTotal": "押金总额",
+    "reference": "参考编号：{id}",
+    "createdAt": "创建时间",
+    "rentalPeriod": "租赁期间",
+    "pickupHub": "提货网点",
+    "noHub": "尚未选择提货网点",
+    "badges": {
+      "status": "状态：{status}"
+    },
+    "status": {
+      "draft": "草稿",
+      "confirmed": "已确认",
+      "cancelled": "已取消"
+    }
   }
 }
