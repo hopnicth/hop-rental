@@ -1,9 +1,34 @@
 <script setup lang="ts">
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
-import SearchAndFilter from "~/components/products/SearchAndFilter.vue";
+import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
+import SearchFilters from "~/components/search/SearchFilters.vue";
+import type { CatalogType } from "~/composables/useProductSearch";
 
 const { t } = useI18n();
-const { products, getDisplayPrice } = useProducts();
+const { products, getDisplayPrice, getTotalStock } = useProducts();
+
+// ── Filter state (bound to SearchFilters) ──
+const selectedCategory = ref<string>("all");
+const selectedType = ref<CatalogType | "all">("all");
+const selectedBrands = ref<string[]>([]);
+const minPrice = ref<number | null>(null);
+const maxPrice = ref<number | null>(null);
+const inStockOnly = ref(false);
+
+function scrollToTop() {
+  if (import.meta.client) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+}
+
+function resetFilters() {
+  selectedCategory.value = "all";
+  selectedType.value = "all";
+  selectedBrands.value = [];
+  minPrice.value = null;
+  maxPrice.value = null;
+  inStockOnly.value = false;
+}
 
 // ── Sort ──
 type SortDir = "high" | "low";
@@ -24,9 +49,39 @@ const itemsOptions = [9, 15, 21] as const;
 const itemsPerPage = ref<(typeof itemsOptions)[number]>(9);
 const currentPage = ref(1);
 
-// ── Sorted products ──
+// ── Filtered + sorted products (client-side) ──
+const filtered = computed(() => {
+  // Treat maxPrice === 0 as "no upper bound"
+  const effectiveMax =
+    maxPrice.value !== null && maxPrice.value > 0 ? maxPrice.value : null;
+
+  return products.value.filter((p) => {
+    if (
+      selectedCategory.value !== "all" &&
+      !p.categories.includes(selectedCategory.value)
+    ) {
+      return false;
+    }
+    if (selectedType.value === "sale" && !p.isForSale) return false;
+    if (selectedType.value === "rental" && !p.rentalConfig.isRental) {
+      return false;
+    }
+    if (selectedBrands.value.length > 0) {
+      if (!p.brand || !selectedBrands.value.includes(p.brand)) return false;
+    }
+    const price = getDisplayPrice(p).final;
+    if (minPrice.value !== null && price < minPrice.value) return false;
+    if (effectiveMax !== null && price > effectiveMax) return false;
+    if (inStockOnly.value) {
+      const stock = getTotalStock(p);
+      if (stock.available <= 0 && stock.inStock <= 0) return false;
+    }
+    return true;
+  });
+});
+
 const sorted = computed(() => {
-  const list = [...products.value];
+  const list = [...filtered.value];
   return sortDir.value === "high"
     ? list.sort((a, b) => getDisplayPrice(b).final - getDisplayPrice(a).final)
     : list.sort((a, b) => getDisplayPrice(a).final - getDisplayPrice(b).final);
@@ -40,10 +95,37 @@ const paginatedProducts = computed(() => {
   return sorted.value.slice(start, start + itemsPerPage.value);
 });
 
-// Reset to page 1 when items-per-page changes
+const hasActiveFilters = computed(() => {
+  return (
+    selectedCategory.value !== "all" ||
+    selectedType.value !== "all" ||
+    selectedBrands.value.length > 0 ||
+    (minPrice.value ?? 0) > 0 ||
+    (maxPrice.value ?? 0) > 0 ||
+    inStockOnly.value
+  );
+});
+
 watch(itemsPerPage, () => {
   currentPage.value = 1;
 });
+
+// Reset pagination + scroll to top when filters change
+watch(
+  [
+    selectedCategory,
+    selectedType,
+    selectedBrands,
+    minPrice,
+    maxPrice,
+    inStockOnly,
+  ],
+  () => {
+    currentPage.value = 1;
+    scrollToTop();
+  },
+  { deep: true },
+);
 
 // ── Recommended (static mockup) ──
 const recommended = computed(() => products.value.slice(0, 3));
@@ -53,8 +135,16 @@ const recommended = computed(() => products.value.slice(0, 3));
   <UContainer class="py-6">
     <div class="grid grid-cols-12 gap-4 lg:gap-6">
       <!-- ── Left: Search & Filter (4 cols on lg+) ── -->
-      <div class="col-span-12 lg:col-span-4">
-        <SearchAndFilter />
+      <div class="hidden lg:block lg:col-span-4">
+        <SearchFilters
+          v-model:category="selectedCategory"
+          v-model:type="selectedType"
+          v-model:brands="selectedBrands"
+          v-model:min-price="minPrice"
+          v-model:max-price="maxPrice"
+          v-model:in-stock="inStockOnly"
+          @reset="resetFilters"
+        />
       </div>
 
       <!-- ── Right: Content (8 cols on lg+) ── -->
@@ -131,5 +221,22 @@ const recommended = computed(() => products.value.slice(0, 3));
         </div>
       </div>
     </div>
+
+    <MobileFloatingPanel
+      :title="t('search.filters')"
+      icon="bx:filter-alt"
+      :button-label="t('search.filters')"
+      :active="hasActiveFilters"
+    >
+      <SearchFilters
+        v-model:category="selectedCategory"
+        v-model:type="selectedType"
+        v-model:brands="selectedBrands"
+        v-model:min-price="minPrice"
+        v-model:max-price="maxPrice"
+        v-model:in-stock="inStockOnly"
+        @reset="resetFilters"
+      />
+    </MobileFloatingPanel>
   </UContainer>
 </template>

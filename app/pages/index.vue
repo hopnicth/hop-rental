@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import HopBanner from "~/components/banner/HopBanner.vue";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
+import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
 import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
+
+const { t } = useI18n();
+const isCategoryPanelOpen = ref(false);
 </script>
 
 <template>
@@ -24,5 +28,14 @@ import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
         </div>
       </div>
     </div>
+
+    <MobileFloatingPanel
+      v-model:open="isCategoryPanelOpen"
+      :title="t('categories.title')"
+      icon="bx:category"
+      :button-label="t('categories.title')"
+    >
+      <CategoriesCard @selected="isCategoryPanelOpen = false" />
+    </MobileFloatingPanel>
   </UContainer>
 </template>

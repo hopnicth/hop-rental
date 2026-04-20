@@ -1,8 +1,16 @@
+<script setup lang="ts">
+import SearchBar from "~/components/search/SearchBar.vue";
+
+withDefaults(
+  defineProps<{
+    autofocus?: boolean;
+  }>(),
+  {
+    autofocus: false,
+  },
+);
+</script>
+
 <template>
-  <UInput
-    icon="bx:search"
-    size="md"
-    variant="outline"
-    placeholder="Search..."
-  />
+  <SearchBar :autofocus="autofocus" />
 </template>

@@ -1,20 +1,17 @@
 <script setup lang="ts">
-import type { SelectMenuItem } from "@nuxt/ui";
-import type { CategorySearchPayload } from "~/types/category";
+import type { SelectItem } from "@nuxt/ui";
 
 const { t } = useI18n();
-const { mainCategories, getSubCategories, isSearching, searchByCategories } =
-  useCategories();
+const { mainCategories, getSubCategories } = useCategories();
+const emit = defineEmits<{ selected: [subId: string] }>();
 
-const toast = useToast();
-
-// Track selected sub-category per main category
+// Track selected sub-category per main category (single active selection at a time)
 const selectedValues = ref<Record<string, string | undefined>>({});
 
 /**
- * Build SelectMenuItem[] for a given main category key.
+ * Build SelectItem[] for a given main category key.
  */
-function getDropdownItems(mainKey: string): SelectMenuItem[] {
+function getDropdownItems(mainKey: string): SelectItem[] {
   const subs = getSubCategories(mainKey);
   return subs.value.map((sub) => ({
     label: t(sub.labelKey),
@@ -23,55 +20,33 @@ function getDropdownItems(mainKey: string): SelectMenuItem[] {
 }
 
 /**
- * Collect selected values, send to API, and prepare for redirect.
+ * Picking a sub-category clears sibling selections and jumps straight to
+ * `/search?q=<localized sub label>`. The search page handles the rest.
  */
-async function handleSearch() {
-  // Build payload from selectedValues — keep only entries that have a value
-  const selections = Object.entries(selectedValues.value)
-    .filter(([, subId]) => subId !== undefined && subId !== "")
-    .map(([mainKey, subId]) => ({
-      mainCategoryKey: mainKey,
-      subCategoryId: subId!,
-    }));
+async function onSelect(mainKey: string, subId: unknown) {
+  const id = typeof subId === "string" && subId.length > 0 ? subId : null;
+  if (!id) return;
 
-  // Guard: at least 1 selection required
-  if (selections.length === 0) {
-    toast.add({
-      title: t("categories.noSelection"),
-      color: "warning",
-      icon: "bx:info-circle",
-    });
-    return;
-  }
+  selectedValues.value = { [mainKey]: id };
 
-  const payload: CategorySearchPayload = { selections };
+  const sub = getSubCategories(mainKey).value.find((s) => s.id === id);
+  if (!sub) return;
 
-  const results = await searchByCategories(payload);
+  emit("selected", id);
 
-  console.log("[CategoriesCard] search results:", results);
-
-  // ── TODO: redirect to results page when ready ──
-  // await navigateTo({ path: '/search-results', query: { ... } });
+  await navigateTo({
+    path: "/search",
+    query: { q: t(sub.labelKey) },
+  });
 }
 </script>
 
 <template>
   <UCard>
     <template #header>
-      <div class="flex items-center justify-between">
-        <!-- Left: icon + title -->
-        <div class="flex items-center gap-2">
-          <UIcon name="bx:category" class="size-5" />
-          <span class="text-lg font-semibold">{{ t("categories.title") }}</span>
-        </div>
-
-        <!-- Right: Search button -->
-        <UButton
-          :label="t('categories.searchButton')"
-          icon="bx:search"
-          :loading="isSearching"
-          @click="handleSearch"
-        />
+      <div class="flex items-center gap-2">
+        <UIcon name="bx:category" class="size-5" />
+        <span class="text-lg font-semibold">{{ t("categories.title") }}</span>
       </div>
     </template>
 
@@ -83,14 +58,14 @@ async function handleSearch() {
           <span class="text-sm font-medium">{{ t(main.labelKey) }}</span>
         </div>
 
-        <!-- Sub-category dropdown (max-height ~5 lines, scrollable) -->
-        <USelectMenu
-          v-model="selectedValues[main.key]"
+        <!-- Sub-category dropdown — no internal search, immediate query on pick -->
+        <USelect
+          :model-value="selectedValues[main.key]"
           :items="getDropdownItems(main.key)"
           value-key="value"
           :placeholder="t('categories.selectPlaceholder')"
           class="w-full"
-          :ui="{ viewport: 'max-h-40 overflow-y-auto' }"
+          @update:model-value="(v: unknown) => onSelect(main.key, v)"
         />
       </div>
     </div>

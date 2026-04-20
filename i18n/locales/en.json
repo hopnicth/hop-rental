@@ -1,4 +1,26 @@
 {
+  "search": {
+    "placeholder": "Search products...",
+    "title": "Search Results",
+    "filters": "Filters",
+    "reset": "Reset",
+    "type": "Product Type",
+    "typeAll": "All",
+    "typeSale": "For Sale",
+    "typeRental": "For Rent",
+    "priceRange": "Price Range",
+    "min": "0",
+    "max": "No limit",
+    "category": "Category",
+    "categoryAll": "All categories",
+    "brand": "Brand",
+    "inStockOnly": "In stock only",
+    "searching": "Searching...",
+    "resultCount": "{n} result(s) found",
+    "noResults": "No products match your search",
+    "seeAllResults": "See all results for \"{q}\"",
+    "rentalBadge": "Rental"
+  },
   "nav": {
     "product": "Product",
     "rental": "Rental",

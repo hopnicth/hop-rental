@@ -1,4 +1,26 @@
 {
+  "search": {
+    "placeholder": "ค้นหาสินค้า...",
+    "title": "ผลการค้นหา",
+    "filters": "ตัวกรอง",
+    "reset": "ล้างตัวกรอง",
+    "type": "ประเภทสินค้า",
+    "typeAll": "ทั้งหมด",
+    "typeSale": "ขาย",
+    "typeRental": "เช่า",
+    "priceRange": "ช่วงราคา",
+    "min": "0",
+    "max": "ไม่จำกัด",
+    "category": "หมวดหมู่",
+    "categoryAll": "ทุกหมวดหมู่",
+    "brand": "แบรนด์",
+    "inStockOnly": "เฉพาะสินค้ามีสต็อก",
+    "searching": "กำลังค้นหา...",
+    "resultCount": "พบ {n} รายการ",
+    "noResults": "ไม่พบสินค้าที่ตรงกับการค้นหา",
+    "seeAllResults": "ดูผลการค้นหาทั้งหมดของ \"{q}\"",
+    "rentalBadge": "เช่าได้"
+  },
   "nav": {
     "product": "สินค้า",
     "rental": "เช่า",

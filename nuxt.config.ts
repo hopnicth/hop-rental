@@ -5,8 +5,16 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      htmlAttrs: {
+        "data-color-mode-forced": "light",
+      },
       link: [{ rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
     },
+  },
+
+  colorMode: {
+    preference: "light",
+    fallback: "light",
   },
 
   css: ["~/assets/css/main.css"],
@@ -26,7 +34,7 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: "/user/login",
       callback: "/user/confirm",
-      exclude: ["/", "/product-*", "/product-*/**"],
+      exclude: ["/", "/product-*", "/product-*/**", "/search"],
       saveRedirectToCookie: true,
     },
     cookieOptions: {

@@ -1,4 +1,26 @@
 {
+  "search": {
+    "placeholder": "製品を検索...",
+    "title": "検索結果",
+    "filters": "絞り込み",
+    "reset": "リセット",
+    "type": "製品タイプ",
+    "typeAll": "すべて",
+    "typeSale": "販売",
+    "typeRental": "レンタル",
+    "priceRange": "価格帯",
+    "min": "0",
+    "max": "制限なし",
+    "category": "カテゴリ",
+    "categoryAll": "すべてのカテゴリ",
+    "brand": "ブランド",
+    "inStockOnly": "在庫ありのみ",
+    "searching": "検索中...",
+    "resultCount": "{n} 件見つかりました",
+    "noResults": "該当する製品がありません",
+    "seeAllResults": "「{q}」のすべての結果を表示",
+    "rentalBadge": "レンタル可"
+  },
   "nav": {
     "product": "製品",
     "rental": "レンタル",

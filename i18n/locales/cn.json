@@ -1,4 +1,26 @@
 {
+  "search": {
+    "placeholder": "搜索产品...",
+    "title": "搜索结果",
+    "filters": "筛选",
+    "reset": "重置",
+    "type": "产品类型",
+    "typeAll": "全部",
+    "typeSale": "销售",
+    "typeRental": "租赁",
+    "priceRange": "价格范围",
+    "min": "0",
+    "max": "不限",
+    "category": "类别",
+    "categoryAll": "所有类别",
+    "brand": "品牌",
+    "inStockOnly": "仅有库存",
+    "searching": "搜索中...",
+    "resultCount": "共 {n} 条结果",
+    "noResults": "没有找到匹配的产品",
+    "seeAllResults": "查看 \"{q}\" 的全部结果",
+    "rentalBadge": "可租赁"
+  },
   "nav": {
     "product": "产品",
     "rental": "租赁",
