@@ -1,7 +1,7 @@
 # Augment Master Plan: Catalog / Cart / Booking MVP + Ops Minimum
 
-Last updated: 2026-03-31
-Checkpoint commit: `75f97d7` (`feat: migrate catalog to Supabase and clean up Nuxt runtime warnings`)
+Last updated: 2026-04-21
+Checkpoint commit: `34bcf5e` (`feat: improve storefront search and mobile filters`)
 
 ## Purpose
 
@@ -76,18 +76,25 @@ Guiding principles:
 - `useBooking()` now hydrates from Supabase and migrates legacy localStorage rows once per user
 - `useProducts()` now reads Supabase-backed catalog data with fallback safety
 - product listing/detail storefront flow now reads the DB-backed catalog path
+- storefront search/filter UI now has real client-side sorting, filtering, pagination, and mobile filter access
+- minimum sale order submission now writes `orders` + `order_items` from `/user/cart`
+- `/user/orders` now shows a created-order success state and basic customer-visible order history/status badges
+- `/user/rentals` now gives customers a basic booking visibility/history page with totals, hub display, and status badges
+- auth/profile/address/company-context flows now support the current checkout path well enough to continue MVP closure
 - dev/runtime route noise was cleaned up enough to continue backend work without major warning spam
 - migration `004_catalog_booking_asset_ledger.sql` already added `products`, `product_skus`, `rental_bookings`, asset-ledger tables, and cart discount snapshot columns
 - migration `005_seed_minimal_rental_catalog.sql` already seeds a bridge catalog for DB-backed booking references
+- migration `007_orders_schema.sql` already added the minimum order tables for sale checkout and quotation-mode persistence
+- migration `009_split_order_status_dimensions.sql` already split order, payment, and fulfillment statuses for clearer customer/staff visibility
 
 ### What is still transitional
 
-- online order acceptance is not yet closed end-to-end as a business flow
-- rental booking acceptance still needs to be confirmed against the minimum operating flow the business will actually use
-- simple search/filter/category browse still needs to be finalized as a clear MVP feature, not just incidental page behavior
-- quotation document generation is not finished
+- online order acceptance now exists for sale items, but payment completion, customer instructions, and staff/backoffice handling are still not fully closed
+- rental booking persistence and account visibility exist, but the minimum rental submit/confirmation flow from the unified cart is still blocked and not yet operational end-to-end
+- simple search/filter/category browse is much more real now, but route-aware group behavior and keyword search still need to be finalized as a clear MVP feature
+- quotation request can now persist as `checkout_mode = quotation`, but actual quotation document generation is not finished
 - withholding-tax document generation, signed upload return, and review/import flow are not finished
-- baseline user/account functions are not yet complete enough to call done
+- baseline user/account functions are partially real now, but several account/document/business workflow sections are still not complete enough to call done
 - backoffice MVP features (booking reports, LINE alerts, asset docs, maintenance reminders, order/booking alerts, delivery/return docs) are not finished
 - rental availability is still enforced from SKU-level counters, not asset allocation rows
 - asset ledger schema exists, but full operational allocation/staff tooling is intentionally deferred behind MVP unless required
@@ -96,7 +103,7 @@ Guiding principles:
 ### Key current mismatch
 
 - the technical foundation is moving faster than the sellable/document/business-operating workflows
-- storefront catalog is now DB-backed, but market-test business flows are not yet fully closed
+- sale-order flow has moved ahead of the written plan, but rental acceptance and document/ops workflows are still the main MVP gap
 - rental availability is still count-based at SKU level, which is acceptable for MVP but not the final operating model
 
 ## Urgent Fix Plan From Storefront Audit
@@ -105,35 +112,34 @@ The current storefront audit shows the MVP gap is not the catalog foundation any
 
 ### Highest urgency gaps found in the audit
 
-1. **Orders are still cart-only, not order-ready**
-   - `cart_items` persistence exists, but there is still no finalized order submission flow, success state, or usable order-history/account view.
-2. **Bookings persist, but the operating acceptance flow is still incomplete**
-   - `rental_bookings` persistence exists, but the minimum lifecycle, post-submit confirmation, and staff/customer visibility still need to be locked.
+1. **Sale orders are now minimally submit-ready, but not operationally closed**
+   - `orders` + `order_items` persistence exists, and customers can reach a basic order-history page, but payment follow-through and staff/backoffice handling still need to be locked.
+2. **Bookings persist and are visible, but the operating acceptance flow is still incomplete**
+   - `rental_bookings` persistence exists, and customers can see bookings in `/user/rentals`, but the minimum lifecycle, post-submit confirmation, and submit path from `/user/cart` still need to be locked.
 3. **Search/filter/category browsing is only partially real**
-   - the catalog source is DB-backed, but search/filter/category behavior is still partly placeholder/mock and not yet aligned to the route/group intent.
+   - the catalog source is DB-backed, and client-side filters now work, but route/group behavior and keyword search are not yet aligned to the intended MVP browse model.
 4. **Quotation and withholding-tax flows are not operational yet**
-   - quotation request UX is still placeholder-level, and the withholding-tax print/sign/upload-back/review flow is still missing.
+   - quotation requests can now persist in order mode, but quotation document generation and the withholding-tax print/sign/upload-back/review flow are still missing.
 5. **Account is only partially launch-ready**
-   - profile/address basics exist, but order/booking/document visibility and several sections are still placeholder-level.
+   - profile/address basics exist, and order/booking visibility now exists at a minimum level, but document visibility and several sections are still placeholder-level.
 
 ### Urgent fix sequence
 
-1. **Close minimum online order acceptance**
-   - define the minimum order record/statuses needed for launch
-   - submit from `/user/cart` into a real finalized order flow
-   - show success state and minimum customer-visible status
-   - make the submitted order visible to staff/backoffice
-2. **Close minimum rental booking acceptance**
+1. **Close minimum rental booking acceptance**
    - define the booking statuses required for MVP operation
+   - connect the current confirmed booking/cart UX to a real submit/confirmation path the business will actually operate
    - keep booking submit/review flow simple and staff-usable
-   - add post-submit confirmation and minimum account visibility
+   - add post-submit confirmation, reference visibility, and minimum customer/staff visibility
+2. **Harden minimum online order acceptance**
+   - keep the existing `/user/cart` -> `orders` submit path as the launch baseline
+   - lock minimum payment instructions / pending states / customer messaging
+   - make the submitted order visible to staff/backoffice in a usable minimum way
 3. **Make browse/search/filter behavior real enough to sell**
    - wire route group/category behavior to actual product filtering
    - add simple keyword search
    - add basic sale/rental filter forms that affect real results
-   - remove mock category-search behavior from the MVP path
 4. **Ship the minimum document workflows required for revenue**
-   - generate quotation documents from current cart/booking context
+   - generate quotation documents from current order/cart/booking context
    - generate withholding-tax template documents
    - support customer print -> sign -> upload-back
    - support minimum staff review/import workflow
@@ -141,6 +147,22 @@ The current storefront audit shows the MVP gap is not the catalog foundation any
    - keep auth/profile/address flows working
    - expose minimum order/booking/document status visibility
    - defer or hide placeholder sections that are not launch-critical
+
+### Rental clarification for the next implementation slice
+
+What rental already has:
+
+- `confirmBooking()` can write confirmed booking rows to `rental_bookings`
+- `/user/cart` already shows confirmed bookings together with the sale cart
+- `/user/rentals` already gives customers a basic booking list/history view
+
+What rental still needs before MVP can be called done:
+
+- one clear customer submit/confirmation path that the business will really operate
+- a visible post-submit success/reference state for rentals, not only persistence in the table
+- a minimum staff-facing queue/report or alert path for new bookings
+- alignment between booking status, quotation/document needs, and the actual review flow
+- a locked answer on whether MVP booking acceptance happens directly, via staff review, or via quotation-first handling
 
 ### Explicit defers after the urgent fix plan
 
@@ -314,13 +336,14 @@ If one SKU supports both sale and rental:
 ## End-to-End Flow Target
 
 1. User browses product -> selects SKU if needed
-2. Sale action -> add snapshot to `cart_items` and move toward a real order acceptance flow
-3. Rental action -> create `rental_bookings` row with pricing/display snapshot
+2. Sale action -> add snapshot to `cart_items`, then submit from `/user/cart` into `orders` + `order_items`
+3. Rental action -> create/confirm `rental_bookings` rows with pricing/display snapshot, then move through the minimum MVP acceptance path
 4. `/user/cart` aggregates `cart_items` + confirmed `rental_bookings`
-5. User/staff can generate quotation documents when needed
-6. Withholding-tax document template can be generated, printed/signed by the customer, uploaded back, and reviewed/imported by staff
-7. Backoffice receives alerts and can produce delivery/return paperwork
-8. Asset allocation and staff assignment remain the next operations layer after MVP unless urgently needed earlier
+5. `/user/orders` and `/user/rentals` provide the minimum customer-visible history/reference baseline
+6. User/staff can generate quotation documents when needed
+7. Withholding-tax document template can be generated, printed/signed by the customer, uploaded back, and reviewed/imported by staff
+8. Backoffice receives alerts and can produce delivery/return paperwork
+9. Asset allocation and staff assignment remain the next operations layer after MVP unless urgently needed earlier
 
 ## Implementation Order
 
@@ -332,9 +355,9 @@ If one SKU supports both sale and rental:
 - moved `useProducts()` onto the DB-backed catalog path for the current storefront flow
 - cleaned the main runtime route warnings enough to continue feature work efficiently
 
-### Phase 2 — Close the market-test storefront MVP (current priority)
+### Phase 2 — Close the remaining market-test storefront MVP gaps (current priority)
 
-- define and ship a minimum finalized online order submission flow from `/user/cart`
+- keep and harden the current sale order submission + order-history baseline from `/user/cart`
 - define and ship a minimum rental booking acceptance flow with usable post-submit UX
 - complete simple search + basic filters + category/group navigation with real result changes
 - complete baseline auth/profile/address/account visibility needed for real usage
@@ -379,18 +402,24 @@ If one SKU supports both sale and rental:
 - cart DB discount snapshot expansion
 - DB-backed booking runtime with legacy localStorage migration
 - DB-backed catalog runtime for the current storefront flow
+- minimum sale order schema + submit runtime (`orders`, `order_items`)
+- order status split into lifecycle / payment / fulfillment dimensions
+- basic order success state + order history page
+- basic rental history/visibility page
+- current checkout-supporting auth/profile/address/company-context path
+- real client-side search/filter UI, sorting, pagination, and mobile filter access
 - product listing/detail pages reading the Supabase-backed catalog path
 - minimal seeded catalog bridge for current booking flow
 - runtime warning cleanup needed to keep MVP work moving
 
 ### Not done yet
 
-- finalized online order submission flow, success state, and order visibility/history
-- rental booking acceptance lifecycle, confirmation state, and minimum customer/staff visibility
-- keyword search + real filter forms + route-aware category/group browse finalized as MVP behavior
-- quotation document generation
+- full online order acceptance flow after submit, especially payment completion, staff handling, and operational follow-through
+- rental booking acceptance lifecycle from unified cart submit through confirmation/reference/staff visibility
+- keyword search + route-aware category/group browse finalized as MVP behavior
+- quotation document generation from persisted order/booking context
 - withholding-tax document template + signed upload + review/import workflow
-- baseline user/account functions required for launch, especially order/booking/document visibility
+- baseline user/account functions required for launch, especially document visibility and removal of placeholder-only sections
 - booking reports / LINE alerts / order-booking alerts
 - asset document storage
 - inspection / maintenance reminder workflow
@@ -404,9 +433,9 @@ If one SKU supports both sale and rental:
 
 Ship the minimum market-test release in this order:
 
-1. define the minimum online order acceptance flow and ship finalized order submission from `/user/cart`
-2. define the minimum rental booking acceptance flow and ship post-submit confirmation/account visibility
-3. finish real keyword search + basic filters + category/group navigation
+1. define and ship the minimum rental booking acceptance flow from the current `/user/cart` + `/user/rentals` baseline
+2. harden sale order acceptance after submit: payment messaging, minimum staff visibility, and customer follow-through
+3. finish real keyword search + basic filters + route-aware category/group navigation
 4. ship quotation document generation
 5. ship withholding-tax document generation + signed upload-back + review/import flow
 6. complete baseline user/account functions required for real customer use
@@ -425,14 +454,20 @@ Ship the minimum market-test release in this order:
 - `app/mappers/catalog.ts`
 - `app/composables/useCart.ts`
 - `app/composables/useBooking.ts`
+- `app/composables/useOrders.ts`
 - `app/composables/useProducts.ts`
 - `app/mock/catalog-products.ts`
 - `app/mock/products.ts`
 - `app/pages/product-[group]/[id].vue`
+- `app/pages/product-[group]/index.vue`
 - `app/pages/user/cart.vue`
+- `app/pages/user/orders.vue`
+- `app/pages/user/rentals.vue`
 - `supabase/migrations/003_cart_schema.sql`
 - `supabase/migrations/004_catalog_booking_asset_ledger.sql`
 - `supabase/migrations/005_seed_minimal_rental_catalog.sql`
+- `supabase/migrations/007_orders_schema.sql`
+- `supabase/migrations/009_split_order_status_dimensions.sql`
 
 ## Continuation Rule for Future Augment Sessions
 
@@ -444,4 +479,5 @@ If the project is still unfinished:
 4. Keep the unified `/user/cart` UX while separating commercial and operational tables.
 5. Do not collapse rental assets into sale stock counters.
 6. Do not remove pricing snapshot data that explains how money was calculated.
-7. When choosing between full ops sophistication and faster market validation, prefer the smaller MVP slice unless the user explicitly says otherwise.
+7. Do not regress the current minimum sale order submission/history path while working on rental acceptance next.
+8. When choosing between full ops sophistication and faster market validation, prefer the smaller MVP slice unless the user explicitly says otherwise.
