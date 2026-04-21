@@ -21,6 +21,10 @@ const access = computed(() =>
   rentalAccesses.value.find((item) => item.slug === slug.value),
 );
 
+const loginRedirectPath = computed(
+  () => route.fullPath || `/rental-access/${slug.value}`,
+);
+
 const primaryMatchedProduct = computed(() => {
   const productId = access.value?.matchedProductIds[0];
   if (!productId) return null;
@@ -112,7 +116,10 @@ async function handleBookingSubmit(payload: {
       icon: "bx:lock-alt",
       color: "warning",
     });
-    await navigateTo("/user/login");
+    await navigateTo({
+      path: "/user/login",
+      query: { redirect: loginRedirectPath.value },
+    });
     return;
   }
 

@@ -3,6 +3,7 @@ import type { AuthError } from "@supabase/supabase-js";
 
 definePageMeta({ layout: "default" });
 
+const route = useRoute();
 const supabase = useSupabaseClient();
 const user = useSupabaseUser();
 const { t } = useI18n();
@@ -12,10 +13,17 @@ const toast = useToast();
 const mode = ref<"in" | "up">("in");
 const loading = ref(false);
 
+const redirectTarget = computed(() => {
+  const redirect = route.query.redirect;
+  return typeof redirect === "string" && redirect.startsWith("/")
+    ? redirect
+    : "/";
+});
+
 // Redirect to home if already logged in
 watchEffect(() => {
   if (user.value) {
-    navigateTo("/");
+    navigateTo(redirectTarget.value);
   }
 });
 
@@ -114,7 +122,9 @@ async function signUpWithEmail(email: string, password: string) {
 async function signInWithGoogle() {
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: `${window.location.origin}/user/confirm` },
+    options: {
+      redirectTo: `${window.location.origin}/user/confirm?redirect=${encodeURIComponent(redirectTarget.value)}`,
+    },
   });
   if (error) showError(error);
 }

@@ -8,6 +8,7 @@
  * Section 4: Checkout & Payment — totals + payment methods
  */
 import type { CartItem } from "~/types/cart";
+import type { BookingItem } from "~/types/booking";
 import type { LocaleCode } from "~/types/locale";
 import type { Address } from "~/types/user";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
@@ -177,6 +178,20 @@ const hasPurchaseItems = computed(() => cartItems.value.length > 0);
 const hasItems = computed(
   () => hasConfirmedBookings.value || hasPurchaseItems.value,
 );
+
+function getBookingTitle(booking: BookingItem): string {
+  return booking.rentalAccessName || booking.productName;
+}
+
+function getBookingThumbnail(booking: BookingItem): string {
+  return booking.rentalAccessThumbnail || booking.thumbnail;
+}
+
+function getBookingAccessPath(booking: BookingItem): string | null {
+  return booking.rentalAccessSlug
+    ? `/rental-access/${booking.rentalAccessSlug}`
+    : null;
+}
 
 function showBookingActionError() {
   toast.add({
@@ -400,8 +415,8 @@ async function handlePay() {
             >
               <!-- Thumbnail -->
               <NuxtImg
-                :src="booking.thumbnail"
-                :alt="booking.productName"
+                :src="getBookingThumbnail(booking)"
+                :alt="getBookingTitle(booking)"
                 class="h-24 w-24 shrink-0 rounded-lg object-cover"
                 loading="lazy"
               />
@@ -409,7 +424,29 @@ async function handlePay() {
               <!-- Info -->
               <div class="min-w-0 flex-1 space-y-2">
                 <div class="flex items-start justify-between gap-2">
-                  <h3 class="font-semibold">{{ booking.productName }}</h3>
+                  <div class="min-w-0 space-y-1">
+                    <h3 class="font-semibold">
+                      {{ getBookingTitle(booking) }}
+                    </h3>
+                    <div class="flex flex-wrap gap-2">
+                      <UBadge
+                        v-if="booking.rentalAccessCode"
+                        color="secondary"
+                        variant="soft"
+                        size="sm"
+                      >
+                        {{ booking.rentalAccessCode }}
+                      </UBadge>
+                      <UBadge
+                        v-if="booking.rentalAccessName"
+                        color="info"
+                        variant="subtle"
+                        size="sm"
+                      >
+                        {{ t("cart.rentalAccessLabel") }}
+                      </UBadge>
+                    </div>
+                  </div>
                   <UButton
                     icon="bx:trash"
                     size="xs"
@@ -419,6 +456,14 @@ async function handlePay() {
                     @click="() => void handleRemoveBooking(booking.bookingId)"
                   />
                 </div>
+
+                <p
+                  v-if="booking.rentalAccessName && booking.matchedProductName"
+                  class="text-sm text-muted"
+                >
+                  {{ t("cart.matchedProductLabel") }}:
+                  {{ booking.matchedProductName }}
+                </p>
 
                 <!-- Rental period -->
                 <p class="text-sm text-muted">
@@ -440,6 +485,17 @@ async function handlePay() {
                       booking.totalCost.toLocaleString()
                     }}
                   </span>
+                </div>
+
+                <div v-if="getBookingAccessPath(booking)" class="pt-1">
+                  <UButton
+                    :to="getBookingAccessPath(booking) || undefined"
+                    color="secondary"
+                    variant="soft"
+                    size="sm"
+                    icon="bx:info-circle"
+                    :label="t('rentalAccess.viewDetails')"
+                  />
                 </div>
 
                 <!-- Deposit badge (blue) -->
@@ -871,8 +927,7 @@ async function handlePay() {
               class="rounded-lg border border-dashed border-warning p-4 text-sm text-muted"
             >
               <UIcon name="bx:calendar-x" class="mr-1 inline text-warning" />
-              Online order submit currently supports sale items only. Rental
-              booking submit will be added in the next task.
+              {{ t("cart.bookingCheckoutPending") }}
             </div>
           </div>
 

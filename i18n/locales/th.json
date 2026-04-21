@@ -368,7 +368,10 @@
     "continueShopping": "เลือกซื้อต่อ",
     "orderSummary": "สรุปคำสั่งซื้อ",
     "itemCount": "{n} รายการ",
-    "bookingCount": "{n} รายการเช่า"
+    "bookingCount": "{n} รายการเช่า",
+    "rentalAccessLabel": "Rental Access",
+    "matchedProductLabel": "จับคู่กับสินค้า",
+    "bookingCheckoutPending": "รายการ Rental Access ถูกบันทึกไว้ในตะกร้าแล้ว แต่ตอนนี้การชำระเงินออนไลน์ยังรองรับเฉพาะสินค้าซื้อเท่านั้น"
   },
   "ordersPage": {
     "description": "ติดตามสถานะคำสั่งซื้อ การชำระเงิน และการจัดส่งของคำสั่งซื้อและคำขอใบเสนอราคาของคุณ",

@@ -368,7 +368,10 @@
     "continueShopping": "Continue Shopping",
     "orderSummary": "Order Summary",
     "itemCount": "{n} items",
-    "bookingCount": "{n} rental items"
+    "bookingCount": "{n} rental items",
+    "rentalAccessLabel": "Rental Access",
+    "matchedProductLabel": "Matched with",
+    "bookingCheckoutPending": "Rental Access items are saved in cart, but online checkout still supports sale items only for now."
   },
   "ordersPage": {
     "description": "Track order, payment, and fulfillment progress for your submitted orders and quotation requests.",
