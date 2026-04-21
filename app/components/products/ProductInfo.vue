@@ -7,11 +7,20 @@ import type { LocaleCode } from "~/types/locale";
  * price, rental pricing, stock badges, action buttons, and insight stats.
  */
 
-const props = defineProps<{
-  product: Product;
-  selectedSkuIndex: number;
-  rentalAvailable?: number;
-}>();
+const props = withDefaults(
+  defineProps<{
+    product: Product;
+    selectedSkuIndex: number;
+    rentalAvailable?: number;
+    matchedRentalAccessCount?: number;
+    showRentalAction?: boolean;
+  }>(),
+  {
+    rentalAvailable: undefined,
+    matchedRentalAccessCount: 0,
+    showRentalAction: true,
+  },
+);
 
 const emit = defineEmits<{
   "update:selectedSkuIndex": [value: number];
@@ -29,6 +38,16 @@ const selectedSaleStock = computed(() => selectedSku.value?.stock.inStock ?? 0);
 
 const rentalAvailable = computed(
   () => props.rentalAvailable ?? selectedSku.value?.stock.available ?? 0,
+);
+
+const hasMatchedRentalAccesses = computed(
+  () => (props.matchedRentalAccessCount ?? 0) > 0,
+);
+
+const rentalBadgeCount = computed(() =>
+  hasMatchedRentalAccesses.value
+    ? (props.matchedRentalAccessCount ?? 0)
+    : rentalAvailable.value,
 );
 
 const rental = computed(() => isRental(props.product));
@@ -142,11 +161,17 @@ const rental = computed(() => isRental(props.product));
         {{ t("productDetail.inStock") }}: {{ selectedSaleStock }}
       </UBadge>
       <UBadge
-        v-if="rental"
-        :color="rentalAvailable > 0 ? 'info' : 'neutral'"
+        v-if="hasMatchedRentalAccesses || rental"
+        :color="
+          hasMatchedRentalAccesses
+            ? 'secondary'
+            : rentalAvailable > 0
+              ? 'info'
+              : 'neutral'
+        "
         variant="subtle"
       >
-        {{ t("productDetail.available") }}: {{ rentalAvailable }}
+        {{ t("productDetail.available") }}: {{ rentalBadgeCount }}
       </UBadge>
     </div>
 
@@ -161,7 +186,7 @@ const rental = computed(() => isRental(props.product));
         @click="emit('addToCart')"
       />
       <UButton
-        v-if="rental && rentalAvailable > 0"
+        v-if="rental && props.showRentalAction && rentalAvailable > 0"
         icon="bx:calendar-check"
         :label="t('productDetail.bookNow')"
         color="secondary"

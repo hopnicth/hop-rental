@@ -121,47 +121,62 @@ Future Augment sessions should treat this as the approved baseline unless the us
 
 ### Core new tables
 
-- [ ] S1. `rental_accesses`
+- [x] S1. `rental_accesses`
   - Public rental item shown on `/product-rental` and under product detail.
   - Should include localized name/description, slug, thumbnail, image list, pricing, rental rules, and active/hidden flags.
+  - 2026-04-21: implemented in `supabase/migrations/013_rental_access_schema.sql`.
 
-- [ ] S2. `rental_access_matches`
+- [x] S2. `rental_access_matches`
   - Admin-managed relation from `rental_access` -> `products`.
   - Minimum columns: `rental_access_id`, `product_id`, `match_type`, `sort_order`, `note`, timestamps.
+  - 2026-04-21: implemented in `supabase/migrations/013_rental_access_schema.sql`.
 
-- [ ] S3. `rental_bookings.rental_access_id`
+- [x] S3. `rental_bookings.rental_access_id`
   - Add nullable-first, then make required once the new flow is live.
   - Keep product snapshot fields for history readability during transition.
+  - 2026-04-21: implemented with access snapshot + matched product attribution in `013_rental_access_schema.sql`.
 
 ### Backoffice-ready rental support
 
-- [ ] S4. `rental_access_documents`
+- [x] S4. `rental_access_documents`
   - Document storage metadata per rental access.
   - Must support `visibility = customer | internal`.
   - Must support customer-loadable docs after rental, plus internal repair/fine docs.
+  - 2026-04-21: implemented with `public | customer_after_booking | internal` visibility modes.
 
-- [ ] S5. `rental_access_service_events`
+- [x] S5. `rental_access_service_events`
   - Service date list + service detail history.
   - Fields should support event date, detail, actor/vendor, cost, note, attachments.
+  - 2026-04-21: implemented in `013_rental_access_schema.sql`.
 
-- [ ] S6. Service cycle fields on `rental_accesses`
+- [x] S6. Service cycle fields on `rental_accesses`
   - Minimum: cycle value/unit or days, last service date, next due date.
+  - 2026-04-21: implemented on `public.rental_accesses`.
 
-- [ ] S7. Storage location on `rental_accesses`
+- [x] S7. Storage location on `rental_accesses`
   - Minimum MVP can be a simple text/code field.
   - Expand later if warehouse/location modeling becomes more complex.
+  - 2026-04-21: implemented as `storage_location_code` + `storage_location_note`.
 
-- [ ] S8. `rental_access_checklist_templates`
+- [x] S8. `rental_access_checklist_templates`
   - Admin creates reusable checklist templates for receive/return/inspection work.
+  - 2026-04-21: implemented in `013_rental_access_schema.sql`.
 
-- [ ] S9. `rental_access_checklist_template_items`
+- [x] S9. `rental_access_checklist_template_items`
   - Checklist rows/items under each template.
+  - 2026-04-21: implemented in `013_rental_access_schema.sql`.
 
-- [ ] S10. `rental_booking_checklists`
+- [x] S10. `rental_booking_checklists`
   - Checklist instance attached to a booking or operational handoff.
+  - 2026-04-21: implemented in `013_rental_access_schema.sql`.
 
-- [ ] S11. `rental_booking_checklist_items`
+- [x] S11. `rental_booking_checklist_items`
   - Staff tick/remark status per checklist item during receive/return flow.
+  - 2026-04-21: implemented in `013_rental_access_schema.sql`.
+
+- [x] S12. `rental_booking_documents`
+  - Booking-specific documents for repair, fine, handover, and damage evidence workflows.
+  - 2026-04-21: implemented in `013_rental_access_schema.sql`.
 
 ## UI / flow direction
 
@@ -190,7 +205,8 @@ Future Augment sessions should treat this as the approved baseline unless the us
 
 ## Migration sequence
 
-- [ ] M1. Add schema first without breaking current product booking flow.
+- [x] M1. Add schema first without breaking current product booking flow.
+  - 2026-04-21: `013_rental_access_schema.sql` added new rental-access tables and nullable-first booking fields.
 - [ ] M2. Add typed models/composables/mappers for `rental_access`.
 - [ ] M3. Convert `/product-rental` listing to rental access catalog.
 - [ ] M4. Add inline rental list under product detail.
@@ -208,6 +224,7 @@ Future Augment sessions should treat this as the approved baseline unless the us
 - `app/composables/useProducts.ts`
 - `app/mappers/catalog.ts`
 - `supabase/migrations/004_catalog_booking_asset_ledger.sql`
+- `supabase/migrations/013_rental_access_schema.sql`
 
 ## Immediate next implementation slice
 
@@ -217,7 +234,15 @@ Future Augment sessions should treat this as the approved baseline unless the us
   - 2026-04-21: access snapshot + matched product attribution approved.
 - [ ] I3. Decide whether MVP booking entry opens as inline panel, modal, or drawer from the rental access card.
   - Booking should start from the rental access card directly; final container choice can still be decided during UI implementation.
-- [ ] I4. Add the first migration for schema v1.
+- [x] I4. Add the first migration for schema v1.
+  - 2026-04-21: `supabase/migrations/013_rental_access_schema.sql` created.
+
+## Latest implementation notes
+
+- 2026-04-21: added `supabase/migrations/013_rental_access_schema.sql`.
+- Validation note:
+  - IDE diagnostics for `013_rental_access_schema.sql` returned no issues.
+  - `supabase db lint` could not run to completion because the local Postgres instance was not running (`127.0.0.1:54322 connection refused`).
 
 ## Continuation rule for future Augment sessions
 

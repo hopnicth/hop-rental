@@ -35,6 +35,12 @@ function normalizeMoney(value: unknown): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
+function normalizeRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 function normalizeBookingStatus(value: unknown): BookingItem["status"] {
   if (value === "draft" || value === "confirmed" || value === "cancelled") {
     return value;
@@ -49,6 +55,14 @@ function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
     bookingId: raw.bookingId ?? generateBookingId(),
     productId: raw.productId ?? "",
     skuId: raw.skuId ?? "",
+    rentalAccessId: raw.rentalAccessId,
+    rentalAccessCode: raw.rentalAccessCode,
+    rentalAccessSlug: raw.rentalAccessSlug,
+    rentalAccessName: raw.rentalAccessName,
+    rentalAccessThumbnail: raw.rentalAccessThumbnail,
+    rentalAccessSnapshot: normalizeRecord(raw.rentalAccessSnapshot),
+    matchedProductId: raw.matchedProductId,
+    matchedProductName: raw.matchedProductName,
     productName: raw.productName ?? "",
     thumbnail: raw.thumbnail ?? "",
     startDate: raw.startDate ?? "",
@@ -90,8 +104,20 @@ function mapRowToBooking(row: Record<string, unknown>): BookingItem {
     bookingId: row.id as string,
     productId: row.product_id as string,
     skuId: row.sku_id as string,
-    productName: row.product_name as string,
-    thumbnail: (row.thumbnail as string) ?? "",
+    rentalAccessId: (row.rental_access_id as string) ?? undefined,
+    rentalAccessCode: (row.rental_access_code as string) ?? undefined,
+    rentalAccessSlug: (row.rental_access_slug as string) ?? undefined,
+    rentalAccessName: (row.rental_access_name as string) ?? undefined,
+    rentalAccessThumbnail: (row.rental_access_thumbnail as string) ?? undefined,
+    rentalAccessSnapshot: normalizeRecord(row.rental_access_snapshot),
+    matchedProductId: (row.matched_product_id as string) ?? undefined,
+    matchedProductName: (row.matched_product_name as string) ?? undefined,
+    productName:
+      (row.rental_access_name as string) ?? (row.product_name as string),
+    thumbnail:
+      (row.rental_access_thumbnail as string) ??
+      (row.thumbnail as string) ??
+      "",
     startDate: row.start_date as string,
     numDays: Number(row.rental_days),
     returnDate: row.end_date as string,
@@ -113,10 +139,18 @@ function mapBookingToInsert(
     user_id: userId,
     product_id: booking.productId,
     sku_id: booking.skuId,
+    rental_access_id: booking.rentalAccessId ?? null,
     hub_id: booking.hubId,
     product_name: booking.productName,
     thumbnail: booking.thumbnail,
     hub_name: booking.hubName,
+    rental_access_code: booking.rentalAccessCode ?? null,
+    rental_access_slug: booking.rentalAccessSlug ?? null,
+    rental_access_name: booking.rentalAccessName ?? null,
+    rental_access_thumbnail: booking.rentalAccessThumbnail ?? null,
+    rental_access_snapshot: booking.rentalAccessSnapshot ?? {},
+    matched_product_id: booking.matchedProductId ?? booking.productId,
+    matched_product_name: booking.matchedProductName ?? booking.productName,
     start_date: booking.startDate,
     end_date: booking.returnDate,
     rental_days: booking.numDays,
@@ -412,6 +446,14 @@ export function useBooking() {
       userId?: string;
       productId: string;
       skuId: string;
+      rentalAccessId?: string;
+      rentalAccessCode?: string;
+      rentalAccessSlug?: string;
+      rentalAccessName?: string;
+      rentalAccessThumbnail?: string;
+      rentalAccessSnapshot?: Record<string, unknown>;
+      matchedProductId?: string;
+      matchedProductName?: string;
       productName: string;
       thumbnail: string;
       startDate: string;
@@ -493,6 +535,14 @@ export function useBooking() {
     userId?: string;
     productId: string;
     skuId: string;
+    rentalAccessId?: string;
+    rentalAccessCode?: string;
+    rentalAccessSlug?: string;
+    rentalAccessName?: string;
+    rentalAccessThumbnail?: string;
+    rentalAccessSnapshot?: Record<string, unknown>;
+    matchedProductId?: string;
+    matchedProductName?: string;
     productName: string;
     thumbnail: string;
     startDate: string;
@@ -514,6 +564,14 @@ export function useBooking() {
     userId?: string;
     productId: string;
     skuId: string;
+    rentalAccessId?: string;
+    rentalAccessCode?: string;
+    rentalAccessSlug?: string;
+    rentalAccessName?: string;
+    rentalAccessThumbnail?: string;
+    rentalAccessSnapshot?: Record<string, unknown>;
+    matchedProductId?: string;
+    matchedProductName?: string;
     productName: string;
     thumbnail: string;
     startDate: string;

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRentalAccesses } from "~/composables/useRentalAccesses";
 import type { LocaleCode } from "~/types/locale";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 
@@ -9,6 +10,8 @@ const lang = computed(() => locale.value as LocaleCode);
 // ── Fetch product by slug from route param ──
 const slug = computed(() => route.params.id as string);
 const { getProductBySlug, products } = useProducts();
+const { getRentalAccessesByProductId, getRentalAccessShowPath } =
+  useRentalAccesses();
 
 const product = getProductBySlug(slug.value);
 
@@ -48,6 +51,15 @@ const user = useSupabaseUser();
 const toast = useToast();
 const showBookingForm = ref(false);
 const isSubmittingBooking = ref(false);
+
+const rentalAccessOptions = computed(() => {
+  if (!product.value) return [];
+  return getRentalAccessesByProductId(product.value.id).value;
+});
+
+const matchedRentalAccessCount = computed(
+  () => rentalAccessOptions.value.length,
+);
 
 const selectedRentalAvailability = computed(() => {
   if (!selectedSku.value) return 0;
@@ -149,7 +161,6 @@ async function handleBookingSubmit(payload: {
 
   const currentProduct = product.value;
   const currentSku = selectedSku.value;
-
   isSubmittingBooking.value = true;
 
   try {
@@ -157,6 +168,8 @@ async function handleBookingSubmit(payload: {
       userId: user.value.id,
       productId: currentProduct.id,
       skuId: currentSku.id,
+      matchedProductId: currentProduct.id,
+      matchedProductName: currentProduct.name[lang.value],
       productName: currentProduct.name[lang.value],
       thumbnail: selectedGalleryThumbnail.value,
       startDate: payload.startDate,
@@ -226,6 +239,16 @@ const recommended = computed(() => {
     .filter((p) => p.id !== product.value!.id && p.categories.includes(cat))
     .slice(0, 4);
 });
+
+watch(
+  rentalAccessOptions,
+  (accesses) => {
+    if (accesses.length > 0) {
+      showBookingForm.value = false;
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -263,6 +286,8 @@ const recommended = computed(() => {
           <ProductsProductInfo
             :product="product"
             :rental-available="selectedRentalAvailability"
+            :matched-rental-access-count="matchedRentalAccessCount"
+            :show-rental-action="rentalAccessOptions.length === 0"
             v-model:selected-sku-index="selectedSkuIndex"
             @add-to-cart="handleAddToCart"
             @book-now="handleBookNow"
@@ -270,9 +295,34 @@ const recommended = computed(() => {
         </div>
       </div>
 
+      <div v-if="rentalAccessOptions.length" class="mt-8 space-y-4">
+        <div>
+          <h3 class="text-lg font-semibold">
+            {{ t("productDetail.rentalOptions") }}
+          </h3>
+          <p class="text-sm text-gray-500">
+            {{ t("productDetail.rentalOptionsDesc") }}
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <LazyProductsRentalAccessCard
+            v-for="access in rentalAccessOptions"
+            :key="access.id"
+            :access="access"
+            :browse-to="getRentalAccessShowPath(access)"
+          />
+        </div>
+      </div>
+
       <!-- ── Rental Booking Form (below gallery + info) ── -->
       <div
-        v-if="showBookingForm && selectedSku && isRental(product)"
+        v-if="
+          showBookingForm &&
+          selectedSku &&
+          rentalAccessOptions.length === 0 &&
+          isRental(product)
+        "
         class="mt-6"
       >
         <ProductsRentalBookingForm

@@ -48,6 +48,22 @@ export interface BookingItem
   productId: string;
   /** SKU ID of the selected variant */
   skuId: string;
+  /** Rental access ID when the booking is rooted at the rental access layer */
+  rentalAccessId?: string;
+  /** Rental access business code snapshot */
+  rentalAccessCode?: string;
+  /** Rental access slug snapshot */
+  rentalAccessSlug?: string;
+  /** Rental access name snapshot */
+  rentalAccessName?: string;
+  /** Rental access thumbnail snapshot */
+  rentalAccessThumbnail?: string;
+  /** Flexible rental access snapshot blob */
+  rentalAccessSnapshot?: Record<string, unknown>;
+  /** Product attribution snapshot kept during the transition */
+  matchedProductId?: string;
+  /** Product attribution display snapshot */
+  matchedProductName?: string;
   /** Selected hub/store ID for pickup (null = not yet selected) */
   hubId: string | null;
   /** Booking status */
