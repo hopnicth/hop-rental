@@ -42,6 +42,32 @@ function localized(
   };
 }
 
+function isMissingRentalAccessSchemaError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error
+        ? String(error.message)
+        : "";
+  const details =
+    typeof error === "object" && error !== null && "details" in error
+      ? String(error.details)
+      : "";
+  const hint =
+    typeof error === "object" && error !== null && "hint" in error
+      ? String(error.hint)
+      : "";
+  const combined = `${message} ${details} ${hint}`.toLowerCase();
+
+  return (
+    combined.includes("rental_accesses") &&
+    (combined.includes("schema cache") ||
+      combined.includes("relationship") ||
+      combined.includes("does not exist") ||
+      combined.includes("404"))
+  );
+}
+
 function mapProductToFallbackRentalAccess(product: Product): RentalAccess {
   const sku = product.skus[0];
   return {
@@ -203,6 +229,12 @@ export function useRentalAccesses() {
         hasRemoteRentalAccesses.value = true;
       }
     } catch (fetchErr) {
+      if (isMissingRentalAccessSchemaError(fetchErr)) {
+        error.value = null;
+        hasRemoteRentalAccesses.value = false;
+        return;
+      }
+
       error.value =
         fetchErr instanceof Error
           ? fetchErr.message

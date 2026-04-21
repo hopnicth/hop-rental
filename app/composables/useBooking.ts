@@ -48,6 +48,19 @@ function normalizeBookingStatus(value: unknown): BookingItem["status"] {
   return "draft";
 }
 
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
+function normalizeRentalAccessId(value: unknown): string | undefined {
+  return isUuid(value) ? value : undefined;
+}
+
 function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
   const createdAt = raw.createdAt ?? new Date().toISOString();
 
@@ -55,7 +68,7 @@ function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
     bookingId: raw.bookingId ?? generateBookingId(),
     productId: raw.productId ?? "",
     skuId: raw.skuId ?? "",
-    rentalAccessId: raw.rentalAccessId,
+    rentalAccessId: normalizeRentalAccessId(raw.rentalAccessId),
     rentalAccessCode: raw.rentalAccessCode,
     rentalAccessSlug: raw.rentalAccessSlug,
     rentalAccessName: raw.rentalAccessName,
@@ -95,39 +108,86 @@ function formatSupabaseError(error: {
   return parts.join(" — ") || "Unknown Supabase error";
 }
 
+function isMissingColumnError(
+  error: { code?: string; message?: string } | null | undefined,
+  column: string,
+): boolean {
+  return (
+    error?.code === "PGRST204" &&
+    typeof error.message === "string" &&
+    error.message.includes(`'${column}'`)
+  );
+}
+
 function waitForMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function mapRowToBooking(row: Record<string, unknown>): BookingItem {
+function mapRowToBooking(
+  row: Record<string, unknown>,
+  fallback?: Partial<BookingItem>,
+): BookingItem {
+  const numDays = Number(row.rental_days);
+  const dailyRate = Number(row.daily_rate);
+  const totalCost = Number(row.rental_total);
+  const deposit = Number(row.deposit_amount);
+
   return normalizeBookingItem({
-    bookingId: row.id as string,
-    productId: row.product_id as string,
-    skuId: row.sku_id as string,
-    rentalAccessId: (row.rental_access_id as string) ?? undefined,
-    rentalAccessCode: (row.rental_access_code as string) ?? undefined,
-    rentalAccessSlug: (row.rental_access_slug as string) ?? undefined,
-    rentalAccessName: (row.rental_access_name as string) ?? undefined,
-    rentalAccessThumbnail: (row.rental_access_thumbnail as string) ?? undefined,
-    rentalAccessSnapshot: normalizeRecord(row.rental_access_snapshot),
-    matchedProductId: (row.matched_product_id as string) ?? undefined,
-    matchedProductName: (row.matched_product_name as string) ?? undefined,
+    bookingId: (row.id as string) ?? fallback?.bookingId,
+    productId: (row.product_id as string) ?? fallback?.productId,
+    skuId: (row.sku_id as string) ?? fallback?.skuId,
+    rentalAccessId:
+      (row.rental_access_id as string) ?? fallback?.rentalAccessId ?? undefined,
+    rentalAccessCode:
+      (row.rental_access_code as string) ??
+      fallback?.rentalAccessCode ??
+      undefined,
+    rentalAccessSlug:
+      (row.rental_access_slug as string) ??
+      fallback?.rentalAccessSlug ??
+      undefined,
+    rentalAccessName:
+      (row.rental_access_name as string) ??
+      fallback?.rentalAccessName ??
+      undefined,
+    rentalAccessThumbnail:
+      (row.rental_access_thumbnail as string) ??
+      fallback?.rentalAccessThumbnail ??
+      undefined,
+    rentalAccessSnapshot:
+      normalizeRecord(row.rental_access_snapshot) ??
+      fallback?.rentalAccessSnapshot ??
+      undefined,
+    matchedProductId:
+      (row.matched_product_id as string) ??
+      fallback?.matchedProductId ??
+      undefined,
+    matchedProductName:
+      (row.matched_product_name as string) ??
+      fallback?.matchedProductName ??
+      undefined,
     productName:
-      (row.rental_access_name as string) ?? (row.product_name as string),
+      (row.rental_access_name as string) ??
+      (row.product_name as string) ??
+      fallback?.productName,
     thumbnail:
       (row.rental_access_thumbnail as string) ??
       (row.thumbnail as string) ??
+      fallback?.thumbnail ??
       "",
-    startDate: row.start_date as string,
-    numDays: Number(row.rental_days),
-    returnDate: row.end_date as string,
-    dailyRate: Number(row.daily_rate),
-    totalCost: Number(row.rental_total),
-    deposit: Number(row.deposit_amount),
-    hubId: (row.hub_id as string) ?? null,
-    hubName: (row.hub_name as string) ?? null,
-    status: row.status as BookingItem["status"],
-    createdAt: (row.created_at as string) ?? new Date().toISOString(),
+    startDate: (row.start_date as string) ?? fallback?.startDate,
+    numDays: Number.isFinite(numDays) ? numDays : fallback?.numDays,
+    returnDate: (row.end_date as string) ?? fallback?.returnDate,
+    dailyRate: Number.isFinite(dailyRate) ? dailyRate : fallback?.dailyRate,
+    totalCost: Number.isFinite(totalCost) ? totalCost : fallback?.totalCost,
+    deposit: Number.isFinite(deposit) ? deposit : fallback?.deposit,
+    hubId: (row.hub_id as string) ?? fallback?.hubId ?? null,
+    hubName: (row.hub_name as string) ?? fallback?.hubName ?? null,
+    status: (row.status as BookingItem["status"]) ?? fallback?.status,
+    createdAt:
+      (row.created_at as string) ??
+      fallback?.createdAt ??
+      new Date().toISOString(),
   });
 }
 
@@ -135,11 +195,13 @@ function mapBookingToInsert(
   userId: string,
   booking: BookingItem,
 ): RentalBookingInsert {
+  const rentalAccessId = normalizeRentalAccessId(booking.rentalAccessId);
+
   return {
     user_id: userId,
     product_id: booking.productId,
     sku_id: booking.skuId,
-    rental_access_id: booking.rentalAccessId ?? null,
+    rental_access_id: rentalAccessId ?? null,
     hub_id: booking.hubId,
     product_name: booking.productName,
     thumbnail: booking.thumbnail,
@@ -151,6 +213,48 @@ function mapBookingToInsert(
     rental_access_snapshot: booking.rentalAccessSnapshot ?? {},
     matched_product_id: booking.matchedProductId ?? booking.productId,
     matched_product_name: booking.matchedProductName ?? booking.productName,
+    start_date: booking.startDate,
+    end_date: booking.returnDate,
+    rental_days: booking.numDays,
+    pricing_model: "daily",
+    currency_code: "THB",
+    daily_rate: booking.dailyRate,
+    rental_total: booking.totalCost,
+    deposit_amount: booking.deposit,
+    status: booking.status,
+  };
+}
+
+function mapBookingToLegacyInsert(
+  userId: string,
+  booking: BookingItem,
+): Pick<
+  RentalBookingInsert,
+  | "user_id"
+  | "product_id"
+  | "sku_id"
+  | "hub_id"
+  | "product_name"
+  | "thumbnail"
+  | "hub_name"
+  | "start_date"
+  | "end_date"
+  | "rental_days"
+  | "pricing_model"
+  | "currency_code"
+  | "daily_rate"
+  | "rental_total"
+  | "deposit_amount"
+  | "status"
+> {
+  return {
+    user_id: userId,
+    product_id: booking.productId,
+    sku_id: booking.skuId,
+    hub_id: booking.hubId,
+    product_name: booking.productName,
+    thumbnail: booking.thumbnail,
+    hub_name: booking.hubName,
     start_date: booking.startDate,
     end_date: booking.returnDate,
     rental_days: booking.numDays,
@@ -224,6 +328,175 @@ export function useBooking() {
   const user = useSupabaseUser();
   const supabase = useSupabaseClient();
   let hydrateRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  const supportsExtendedBookingSchema = useState<boolean | null>(
+    "booking:supports-extended-schema",
+    () => null,
+  );
+
+  async function insertBookingWithSchemaFallback(
+    booking: BookingItem,
+    userId: string,
+  ): Promise<Record<string, unknown>> {
+    const fullPayload = {
+      id: booking.bookingId,
+      ...mapBookingToInsert(userId, booking),
+    };
+    const legacyPayload = {
+      id: booking.bookingId,
+      ...mapBookingToLegacyInsert(userId, booking),
+    };
+
+    if (supportsExtendedBookingSchema.value === false) {
+      const { data, error } = await supabase
+        .from("rental_bookings")
+        .insert(legacyPayload)
+        .select("*")
+        .single();
+
+      if (error) {
+        console.warn("[useBooking] legacy createBooking insert error:", {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          payload: legacyPayload,
+        });
+        throw new Error(formatSupabaseError(error));
+      }
+
+      return data as Record<string, unknown>;
+    }
+
+    const { data, error } = await supabase
+      .from("rental_bookings")
+      .insert(fullPayload)
+      .select("*")
+      .single();
+
+    if (!error) {
+      supportsExtendedBookingSchema.value = true;
+      return data as Record<string, unknown>;
+    }
+
+    const missingExtendedColumn = [
+      "matched_product_id",
+      "matched_product_name",
+      "rental_access_id",
+      "rental_access_code",
+      "rental_access_slug",
+      "rental_access_name",
+      "rental_access_thumbnail",
+      "rental_access_snapshot",
+    ].some((column) => isMissingColumnError(error, column));
+
+    if (!missingExtendedColumn) {
+      console.warn("[useBooking] createBooking insert error:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        payload: fullPayload,
+      });
+      throw new Error(formatSupabaseError(error));
+    }
+
+    supportsExtendedBookingSchema.value = false;
+
+    const { data: legacyData, error: legacyError } = await supabase
+      .from("rental_bookings")
+      .insert(legacyPayload)
+      .select("*")
+      .single();
+
+    if (legacyError) {
+      console.warn("[useBooking] legacy createBooking insert error:", {
+        code: legacyError.code,
+        message: legacyError.message,
+        details: legacyError.details,
+        hint: legacyError.hint,
+        payload: legacyPayload,
+      });
+      throw new Error(formatSupabaseError(legacyError));
+    }
+
+    return legacyData as Record<string, unknown>;
+  }
+
+  async function upsertBookingsWithSchemaFallback(
+    items: BookingItem[],
+    userId: string,
+  ): Promise<boolean> {
+    const fullRows = items.map((item) => ({
+      id: item.bookingId,
+      ...mapBookingToInsert(userId, item),
+      created_at: item.createdAt,
+      updated_at: item.createdAt,
+    }));
+    const legacyRows = items.map((item) => ({
+      id: item.bookingId,
+      ...mapBookingToLegacyInsert(userId, item),
+      created_at: item.createdAt,
+      updated_at: item.createdAt,
+    }));
+
+    if (supportsExtendedBookingSchema.value === false) {
+      const { error } = await supabase
+        .from("rental_bookings")
+        .upsert(legacyRows, { onConflict: "id" });
+      if (error) {
+        console.warn(
+          "[useBooking] legacy migrateLegacyBookingsToDb error:",
+          error.message,
+        );
+        return false;
+      }
+      return true;
+    }
+
+    const { error } = await supabase
+      .from("rental_bookings")
+      .upsert(fullRows, { onConflict: "id" });
+
+    if (!error) {
+      supportsExtendedBookingSchema.value = true;
+      return true;
+    }
+
+    const missingExtendedColumn = [
+      "matched_product_id",
+      "matched_product_name",
+      "rental_access_id",
+      "rental_access_code",
+      "rental_access_slug",
+      "rental_access_name",
+      "rental_access_thumbnail",
+      "rental_access_snapshot",
+    ].some((column) => isMissingColumnError(error, column));
+
+    if (!missingExtendedColumn) {
+      console.warn(
+        "[useBooking] migrateLegacyBookingsToDb error:",
+        error.message,
+      );
+      return false;
+    }
+
+    supportsExtendedBookingSchema.value = false;
+
+    const { error: legacyError } = await supabase
+      .from("rental_bookings")
+      .upsert(legacyRows, { onConflict: "id" });
+
+    if (legacyError) {
+      console.warn(
+        "[useBooking] legacy migrateLegacyBookingsToDb error:",
+        legacyError.message,
+      );
+      return false;
+    }
+
+    return true;
+  }
 
   function clearBookingHydrationRetry(): void {
     if (!hydrateRetryTimer) return;
@@ -301,24 +574,44 @@ export function useBooking() {
   /** All booking items */
   const bookingItems = computed(() => store.value.items);
 
+  /** Draft bookings staged in cart before final submission */
+  const draftBookings = computed(() =>
+    store.value.items.filter((b) => b.status === "draft"),
+  );
+
   /** Only confirmed bookings */
   const confirmedBookings = computed(() =>
     store.value.items.filter((b) => b.status === "confirmed"),
   );
 
+  /** Bookings that should still block availability */
+  const blockingBookings = computed(() =>
+    store.value.items.filter((b) => b.status !== "cancelled"),
+  );
+
   /** Total number of confirmed bookings */
   const bookingCount = computed(() => confirmedBookings.value.length);
 
-  /** Bookings currently shown in cart/checkout */
-  const activeBookings = computed(() => confirmedBookings.value);
+  /** Draft bookings currently shown in cart/checkout */
+  const activeBookings = computed(() => draftBookings.value);
 
-  /** Total deposit amount across all active bookings */
+  /** Total deposit amount across all confirmed bookings */
   const bookingTotalDeposit = computed(() =>
+    confirmedBookings.value.reduce((sum, b) => sum + b.deposit, 0),
+  );
+
+  /** Total rental cost across all confirmed bookings */
+  const bookingTotalRental = computed(() =>
+    confirmedBookings.value.reduce((sum, b) => sum + b.totalCost, 0),
+  );
+
+  /** Total deposit amount across all draft cart bookings */
+  const activeBookingTotalDeposit = computed(() =>
     activeBookings.value.reduce((sum, b) => sum + b.deposit, 0),
   );
 
-  /** Total rental cost across all active bookings */
-  const bookingTotalRental = computed(() =>
+  /** Total rental cost across all draft cart bookings */
+  const activeBookingTotalRental = computed(() =>
     activeBookings.value.reduce((sum, b) => sum + b.totalCost, 0),
   );
 
@@ -369,23 +662,13 @@ export function useBooking() {
     const legacyStore = loadBookings(userId);
     if (legacyStore.items.length === 0) return;
 
-    const rows = legacyStore.items.map((item) => ({
-      id: item.bookingId,
-      ...mapBookingToInsert(userId, item),
-      created_at: item.createdAt,
-      updated_at: item.createdAt,
-    }));
-
     try {
-      const { error } = await supabase
-        .from("rental_bookings")
-        .upsert(rows, { onConflict: "id" });
+      const ok = await upsertBookingsWithSchemaFallback(
+        legacyStore.items,
+        userId,
+      );
 
-      if (error) {
-        console.warn(
-          "[useBooking] migrateLegacyBookingsToDb error:",
-          error.message,
-        );
+      if (!ok) {
         return;
       }
 
@@ -501,29 +784,8 @@ export function useBooking() {
       createdAt: new Date().toISOString(),
     });
 
-    const insertPayload = {
-      id: item.bookingId,
-      ...mapBookingToInsert(userId, item),
-    };
-
-    const { data, error } = await supabase
-      .from("rental_bookings")
-      .insert(insertPayload)
-      .select("*")
-      .single();
-
-    if (error) {
-      console.warn("[useBooking] createBooking insert error:", {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-        payload: insertPayload,
-      });
-      throw new Error(formatSupabaseError(error));
-    }
-
-    const booking = mapRowToBooking(data as Record<string, unknown>);
+    const data = await insertBookingWithSchemaFallback(item, userId);
+    const booking = mapRowToBooking(data, item);
     replaceStoreBooking(booking);
     return booking;
   }
@@ -617,7 +879,12 @@ export function useBooking() {
           return false;
         }
 
-        replaceStoreBooking(mapRowToBooking(data as Record<string, unknown>));
+        replaceStoreBooking(
+          mapRowToBooking(
+            data as Record<string, unknown>,
+            getBookingById(bookingId),
+          ),
+        );
         return true;
       } catch {
         console.warn("[useBooking] updateBookingStatus failed");
@@ -648,7 +915,12 @@ export function useBooking() {
           return false;
         }
 
-        replaceStoreBooking(mapRowToBooking(data as Record<string, unknown>));
+        replaceStoreBooking(
+          mapRowToBooking(
+            data as Record<string, unknown>,
+            getBookingById(bookingId),
+          ),
+        );
         return true;
       } catch {
         console.warn("[useBooking] updateHub failed");
@@ -717,7 +989,7 @@ export function useBooking() {
   }
 
   function getConfirmedBookingCountBySku(skuId: string): number {
-    return confirmedBookings.value.filter((b) => b.skuId === skuId).length;
+    return blockingBookings.value.filter((b) => b.skuId === skuId).length;
   }
 
   function getRemainingAvailability(
@@ -768,11 +1040,15 @@ export function useBooking() {
     store,
     loading: computed(() => bookingHydrating.value),
     bookingItems,
+    draftBookings,
     confirmedBookings,
+    blockingBookings,
     bookingCount,
     activeBookings,
     bookingTotalDeposit,
     bookingTotalRental,
+    activeBookingTotalDeposit,
+    activeBookingTotalRental,
     addBooking,
     confirmBooking,
     getBookingById,

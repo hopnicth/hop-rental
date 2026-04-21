@@ -46,11 +46,12 @@ const selectedGalleryThumbnail = computed<string>(() => {
 // ── Cart & Booking ──
 const { isRental } = useProducts();
 const { addToCart } = useCart();
-const { confirmBooking, getRemainingAvailability } = useBooking();
+const { addBooking, getRemainingAvailability } = useBooking();
 const user = useSupabaseUser();
 const toast = useToast();
 const showBookingForm = ref(false);
 const isSubmittingBooking = ref(false);
+const loginRedirectPath = computed(() => route.fullPath || "/");
 
 const rentalAccessOptions = computed(() => {
   if (!product.value) return [];
@@ -144,7 +145,10 @@ async function handleBookingSubmit(payload: {
       icon: "bx:lock-alt",
       color: "warning",
     });
-    await navigateTo("/user/login");
+    await navigateTo({
+      path: "/user/login",
+      query: { redirect: loginRedirectPath.value },
+    });
     return;
   }
 
@@ -164,7 +168,7 @@ async function handleBookingSubmit(payload: {
   isSubmittingBooking.value = true;
 
   try {
-    await confirmBooking({
+    await addBooking({
       userId: user.value.id,
       productId: currentProduct.id,
       skuId: currentSku.id,
@@ -193,7 +197,7 @@ async function handleBookingSubmit(payload: {
 
     await navigateTo("/user/cart");
   } catch (error) {
-    console.warn("[Booking] confirmBooking failed:", error);
+    console.warn("[Booking] addBooking failed:", error);
     const availabilityError = isAvailabilityError(error);
 
     toast.add({

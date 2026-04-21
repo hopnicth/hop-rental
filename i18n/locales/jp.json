@@ -297,22 +297,22 @@
     "bookedLegend": "予約済み / 選択不可",
     "blockedRangeHint": "選択した期間に利用不可の日付が含まれています。",
     "selectStartDate": "開始日を選択してください",
-    "loginRequired": "予約を確定する前にログインしてください",
+    "loginRequired": "このレンタルを保存する前にログインしてください",
     "loginRequiredDesc": "ログインするとレンタル商品を保存してカートへ進めます。",
-    "confirming": "確認中...",
-    "confirmError": "予約を確定できませんでした",
-    "confirmErrorDesc": "現在この予約を保存できません。時間をおいてもう一度お試しください。",
-    "success": "予約を確定しました",
-    "successDesc": "{product} をカート内のレンタル商品に追加しました。",
+    "confirming": "保存中...",
+    "confirmError": "レンタル項目を保存できませんでした",
+    "confirmErrorDesc": "現在このレンタル項目を保存できません。時間をおいてもう一度お試しください。",
+    "success": "レンタル項目をカートに保存しました",
+    "successDesc": "{product} をレンタルカートに追加しました。カートで受取拠点を選択して送信してください。",
     "unavailable": "レンタル可能在庫がありません",
     "unavailableDesc": "在庫状況が更新されました。現在のオプションを確認してから再度お試しください。",
-    "confirm": "予約確定",
+    "confirm": "レンタルカートに追加",
     "cancel": "キャンセル"
   },
   "cart": {
     "pageTitle": "ショッピングカート",
     "bookingSection": "レンタル品",
-    "bookingSectionDesc": "プロジェクト用レンタル機器",
+    "bookingSectionDesc": "レンタル品を確認し、受取拠点を選んで送信します。",
     "cartSection": "消耗品",
     "cartSectionDesc": "購入商品",
     "addressSection": "配送先住所",
@@ -366,7 +366,15 @@
     "bookingCount": "{n} 件レンタル",
     "rentalAccessLabel": "レンタルアクセス",
     "matchedProductLabel": "対応商品",
-    "bookingCheckoutPending": "Rental Access アイテムはカートに保存されますが、現在オンライン決済は購入商品のみ対応しています。"
+    "bookingCheckoutPending": "Rental Access アイテムはカートに保存されますが、現在オンライン決済は購入商品のみ対応しています。",
+    "submitRental": "レンタル予約を送信",
+    "submittingRental": "レンタル予約を送信中...",
+    "bookingHubRequiredTitle": "受取拠点を選択してください",
+    "bookingHubRequiredDesc": "送信前にすべてのレンタル品で受取拠点を選択してください。",
+    "rentalSubmitError": "レンタル予約を送信できませんでした",
+    "rentalSubmitErrorDesc": "一部のレンタル品を送信できませんでした。カートを確認して再度お試しください。",
+    "bookingHubRequiredNotice": "送信前に受取拠点が必要なレンタル品があと {n} 件あります。",
+    "bookingSubmitReady": "レンタル品は送信可能です。確定するとレンタル一覧へ移動します。"
   },
   "ordersPage": {
     "description": "送信済みの注文と見積依頼について、注文・支払い・配送の進捗を確認できます。",
@@ -415,9 +423,9 @@
     }
   },
   "rentalsPage": {
-    "description": "レンタル予約、受取拠点、現在の予約状況を確認できます。",
+    "description": "送信済みのレンタル予約、受取拠点、現在のステータスを確認できます。",
     "emptyTitle": "レンタル予約はまだありません",
-    "emptyDescription": "機材のレンタル予約を確定すると、ここに表示されます。",
+    "emptyDescription": "カートからレンタル予約を確定すると、ここに表示されます。",
     "confirmedCount": "確定済み予約",
     "rentalTotal": "レンタル合計",
     "depositTotal": "保証金合計",
@@ -426,6 +434,8 @@
     "rentalPeriod": "レンタル期間",
     "pickupHub": "受取拠点",
     "noHub": "受取拠点が未選択です",
+    "submittedTitle": "レンタル予約を送信しました",
+    "submittedDesc": "{count} 件のレンタル品をレンタル一覧へ移動しました。",
     "badges": {
       "status": "ステータス: {status}"
     },

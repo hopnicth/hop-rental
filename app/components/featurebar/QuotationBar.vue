@@ -2,14 +2,14 @@
 import FeatureBtn from "./FeatureBtn.vue";
 const { t } = useI18n();
 const { cartItemCount, cartId } = useCart();
-const { bookingCount } = useBooking();
+const { activeBookings } = useBooking();
 const toast = useToast();
 const router = useRouter();
 const availablePaths = computed(
   () => new Set(router.getRoutes().map((route) => route.path)),
 );
 const quotationBadgeCount = computed(
-  () => cartItemCount.value + bookingCount.value,
+  () => cartItemCount.value + activeBookings.value.length,
 );
 const hasOrdersRoute = computed(() => availablePaths.value.has("/user/orders"));
 

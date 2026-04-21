@@ -302,22 +302,22 @@
     "bookedLegend": "Booked / unavailable",
     "blockedRangeHint": "The selected range includes unavailable dates.",
     "selectStartDate": "Please select a start date",
-    "loginRequired": "Please sign in before confirming this booking",
+    "loginRequired": "Please sign in before saving this rental",
     "loginRequiredDesc": "Sign in to save your rental item and continue in cart.",
-    "confirming": "Confirming...",
-    "confirmError": "Unable to confirm booking",
-    "confirmErrorDesc": "This booking could not be saved right now. Please try again.",
-    "success": "Booking confirmed",
-    "successDesc": "{product} has been added to your rental items in cart.",
+    "confirming": "Saving...",
+    "confirmError": "Unable to save rental item",
+    "confirmErrorDesc": "This rental item could not be saved right now. Please try again.",
+    "success": "Rental saved to cart",
+    "successDesc": "{product} has been added to your rental cart. Choose a pickup hub and submit from cart.",
     "unavailable": "No rental units are available",
     "unavailableDesc": "Availability was just updated. Please review the current option and try again.",
-    "confirm": "Confirm Booking",
+    "confirm": "Add to Cart",
     "cancel": "Cancel"
   },
   "cart": {
     "pageTitle": "Shopping Cart",
     "bookingSection": "Rental Items",
-    "bookingSectionDesc": "Rental equipment for your project",
+    "bookingSectionDesc": "Review rental items, choose a pickup hub, then submit.",
     "cartSection": "Product Items",
     "cartSectionDesc": "Items for purchase",
     "addressSection": "Delivery Address",
@@ -371,7 +371,15 @@
     "bookingCount": "{n} rental items",
     "rentalAccessLabel": "Rental Access",
     "matchedProductLabel": "Matched with",
-    "bookingCheckoutPending": "Rental Access items are saved in cart, but online checkout still supports sale items only for now."
+    "bookingCheckoutPending": "Rental Access items are saved in cart, but online checkout still supports sale items only for now.",
+    "submitRental": "Submit Rental Booking",
+    "submittingRental": "Submitting Rental...",
+    "bookingHubRequiredTitle": "Pickup hub required",
+    "bookingHubRequiredDesc": "Choose a pickup hub for every rental item before submitting.",
+    "rentalSubmitError": "Unable to submit rental booking",
+    "rentalSubmitErrorDesc": "Some rental items could not be submitted. Please review the cart and try again.",
+    "bookingHubRequiredNotice": "{n} rental item(s) still need a pickup hub before submission.",
+    "bookingSubmitReady": "Your rental items are ready to submit. We will move them to your rentals list after confirmation."
   },
   "ordersPage": {
     "description": "Track order, payment, and fulfillment progress for your submitted orders and quotation requests.",
@@ -420,9 +428,9 @@
     }
   },
   "rentalsPage": {
-    "description": "Review your rental bookings, pickup hub, and current booking status.",
+    "description": "Review submitted rental bookings, pickup hub, and current booking status.",
     "emptyTitle": "No rental bookings yet",
-    "emptyDescription": "Confirmed rental bookings will appear here once you reserve equipment.",
+    "emptyDescription": "Submitted rental bookings will appear here once you confirm them from cart.",
     "confirmedCount": "Confirmed bookings",
     "rentalTotal": "Rental total",
     "depositTotal": "Deposit total",
@@ -431,6 +439,8 @@
     "rentalPeriod": "Rental period",
     "pickupHub": "Pickup hub",
     "noHub": "Pickup hub not selected",
+    "submittedTitle": "Rental booking submitted",
+    "submittedDesc": "{count} rental item(s) have been moved to your rentals list.",
     "badges": {
       "status": "Status: {status}"
     },

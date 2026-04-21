@@ -297,22 +297,22 @@
     "bookedLegend": "已预订 / 不可选",
     "blockedRangeHint": "所选范围包含不可用日期。",
     "selectStartDate": "请选择开始日期",
-    "loginRequired": "请先登录后再确认预订",
+    "loginRequired": "请先登录后再保存此租赁项目",
     "loginRequiredDesc": "登录后即可保存租赁项目并继续前往购物车。",
-    "confirming": "确认中...",
-    "confirmError": "无法确认预订",
-    "confirmErrorDesc": "当前无法保存该预订，请稍后再试。",
-    "success": "预订已确认",
-    "successDesc": "已将 {product} 添加到购物车中的租赁项目。",
+    "confirming": "保存中...",
+    "confirmError": "无法保存租赁项目",
+    "confirmErrorDesc": "当前无法保存该租赁项目，请稍后再试。",
+    "success": "租赁项目已加入购物车",
+    "successDesc": "已将 {product} 加入您的租赁购物车。请在购物车中选择提货网点并提交。",
     "unavailable": "当前无可租数量",
     "unavailableDesc": "库存刚刚更新，请重新确认当前选项后再试。",
-    "confirm": "确认预订",
+    "confirm": "加入租赁购物车",
     "cancel": "取消"
   },
   "cart": {
     "pageTitle": "购物车",
     "bookingSection": "租赁项目",
-    "bookingSectionDesc": "您的项目租赁设备",
+    "bookingSectionDesc": "查看租赁项目、选择提货网点并提交。",
     "cartSection": "消耗品",
     "cartSectionDesc": "购买商品",
     "addressSection": "配送地址",
@@ -366,7 +366,15 @@
     "bookingCount": "{n} 件租赁",
     "rentalAccessLabel": "租赁入口",
     "matchedProductLabel": "匹配商品",
-    "bookingCheckoutPending": "Rental Access 项目已保存到购物车，但当前在线结算仍仅支持购买商品。"
+    "bookingCheckoutPending": "Rental Access 项目已保存到购物车，但当前在线结算仍仅支持购买商品。",
+    "submitRental": "提交租赁预约",
+    "submittingRental": "正在提交租赁预约...",
+    "bookingHubRequiredTitle": "需要选择提货网点",
+    "bookingHubRequiredDesc": "提交前请为每个租赁项目选择提货网点。",
+    "rentalSubmitError": "无法提交租赁预约",
+    "rentalSubmitErrorDesc": "部分租赁项目提交失败，请检查购物车后重试。",
+    "bookingHubRequiredNotice": "还有 {n} 个租赁项目未选择提货网点，暂时无法提交。",
+    "bookingSubmitReady": "您的租赁项目已可提交。确认后将移动到租赁列表。"
   },
   "ordersPage": {
     "description": "跟踪您已提交订单和报价请求的订单、付款与履约进度。",
@@ -415,9 +423,9 @@
     }
   },
   "rentalsPage": {
-    "description": "查看您的租赁预约、提货网点和当前预约状态。",
+    "description": "查看已提交的租赁预约、提货网点和当前状态。",
     "emptyTitle": "暂无租赁预约",
-    "emptyDescription": "当您确认租赁设备后，预约会显示在这里。",
+    "emptyDescription": "当您在购物车中确认租赁预约后，项目会显示在这里。",
     "confirmedCount": "已确认预约",
     "rentalTotal": "租金总额",
     "depositTotal": "押金总额",
@@ -426,6 +434,8 @@
     "rentalPeriod": "租赁期间",
     "pickupHub": "提货网点",
     "noHub": "尚未选择提货网点",
+    "submittedTitle": "租赁预约已提交",
+    "submittedDesc": "已将 {count} 个租赁项目移至您的租赁列表。",
     "badges": {
       "status": "状态：{status}"
     },

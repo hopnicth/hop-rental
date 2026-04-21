@@ -49,7 +49,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { confirmedBookings } = useBooking();
+const { blockingBookings } = useBooking();
 
 // ── Config shortcuts ──
 const minDays = computed(
@@ -83,7 +83,7 @@ const relevantBookings = computed(() => {
 
   if (!skuId) return [];
 
-  return confirmedBookings.value.filter((booking) => {
+  return blockingBookings.value.filter((booking) => {
     if (rentalAccessId) {
       return (
         booking.rentalAccessId === rentalAccessId ||

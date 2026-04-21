@@ -180,22 +180,26 @@ Future Augment sessions should treat this as the approved baseline unless the us
 
 ## UI / flow direction
 
-- [ ] U1. Replace the meaning of `/product-rental`
+- [x] U1. Replace the meaning of `/product-rental`
   - Keep route shell.
   - Switch listing data source to `rental_accesses`.
   - Replace `ProductCard` usage with `RentalAccessCard`.
+  - 2026-04-21: listing now renders rental access cards from `useRentalAccesses()`.
 
-- [ ] U2. Product detail: add `Rental Access List` frame under the product
+- [x] U2. Product detail: add `Rental Access List` frame under the product
   - Load related access rows from `rental_access_matches`.
   - Show cards inline without requiring a separate detail page first.
+  - 2026-04-21: product detail now shows related rental access cards under the main product content.
 
-- [ ] U3. Product detail: remove direct booking ownership
+- [/] U3. Product detail: remove direct booking ownership
   - Existing product-level `Book Now` should stop being the primary booking trigger.
   - Product page becomes discovery + handoff to rental access.
+  - 2026-04-21: when matched rental accesses exist, product detail now hands off to the access list; the legacy inline booking form remains only as a fallback when no access match exists.
 
-- [ ] U4. Rental access booking CTA
+- [x] U4. Rental access booking CTA
   - Clicking a rental access card should open the booking flow for that access.
   - MVP can use inline card expansion, modal, drawer, or dedicated detail later.
+  - 2026-04-21: cards navigate to the dedicated `/rental-access/[slug]` detail page where booking starts.
 
 - [ ] U5. Customer docs in rental UI
   - If the user has a relevant rental/booking state, customer-facing docs should be loadable from rental access flow/history.
@@ -207,10 +211,14 @@ Future Augment sessions should treat this as the approved baseline unless the us
 
 - [x] M1. Add schema first without breaking current product booking flow.
   - 2026-04-21: `013_rental_access_schema.sql` added new rental-access tables and nullable-first booking fields.
-- [ ] M2. Add typed models/composables/mappers for `rental_access`.
-- [ ] M3. Convert `/product-rental` listing to rental access catalog.
-- [ ] M4. Add inline rental list under product detail.
-- [ ] M5. Move booking submit path to use `rental_access_id`.
+- [x] M2. Add typed models/composables/mappers for `rental_access`.
+  - 2026-04-21: `useRentalAccesses`, rental-access types, and card/detail rendering are now wired into the storefront.
+- [x] M3. Convert `/product-rental` listing to rental access catalog.
+  - 2026-04-21: `/product-rental` now browses rental access entries instead of raw product cards.
+- [x] M4. Add inline rental list under product detail.
+  - 2026-04-21: related rental access cards now appear on product detail when matches exist.
+- [/] M5. Move booking submit path to use `rental_access_id`.
+  - 2026-04-21: rental-access booking submits now send access snapshot fields and use `rental_access_id` when it is a valid UUID; legacy-schema fallback keeps older DBs working.
 - [ ] M6. Retire product-owned booking UI after new flow is verified.
 
 ## Current known code areas to change
@@ -232,14 +240,19 @@ Future Augment sessions should treat this as the approved baseline unless the us
   - 2026-04-21: approved to implement.
 - [x] I2. Decide exact booking snapshot fields that must be copied from rental access into `rental_bookings`.
   - 2026-04-21: access snapshot + matched product attribution approved.
-- [ ] I3. Decide whether MVP booking entry opens as inline panel, modal, or drawer from the rental access card.
-  - Booking should start from the rental access card directly; final container choice can still be decided during UI implementation.
+- [x] I3. Decide whether MVP booking entry opens as inline panel, modal, or drawer from the rental access card.
+  - 2026-04-21: MVP uses a dedicated rental-access detail page as the booking entry surface.
 - [x] I4. Add the first migration for schema v1.
   - 2026-04-21: `supabase/migrations/013_rental_access_schema.sql` created.
 
 ## Latest implementation notes
 
 - 2026-04-21: added `supabase/migrations/013_rental_access_schema.sql`.
+- 2026-04-21: booking lifecycle now stages rental items as `draft` in cart, then changes them to `confirmed` from `/user/cart` after hub selection.
+- 2026-04-21: `useBooking` now retries with a legacy payload when newer `rental_bookings` columns are missing from the Supabase schema cache.
+- 2026-04-21: rental booking insert sanitizes `rental_access_id` and only sends it when it is a valid UUID.
+- 2026-04-21: cart badge now counts purchase quantities together with rental draft bookings.
+- 2026-04-21: product cards now open in the same tab; local route check for `/product-measuring_tools/bosch-laser-level-gll-3-80` returned HTTP 200 while the dev server was running.
 - Validation note:
   - IDE diagnostics for `013_rental_access_schema.sql` returned no issues.
   - `supabase db lint` could not run to completion because the local Postgres instance was not running (`127.0.0.1:54322 connection refused`).

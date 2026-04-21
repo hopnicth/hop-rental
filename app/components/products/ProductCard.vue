@@ -153,12 +153,7 @@ function handleAddToCart() {
 </script>
 
 <template>
-  <NuxtLink
-    v-if="product"
-    :to="productUrl"
-    target="_blank"
-    class="block h-full"
-  >
+  <NuxtLink v-if="product" :to="productUrl" class="block h-full">
     <CatalogCardShell
       :title="product.name[lang]"
       :image-src="product.thumbnail"

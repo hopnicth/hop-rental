@@ -15,7 +15,7 @@ const isSubmittingBooking = ref(false);
 
 const { rentalAccesses } = useRentalAccesses();
 const { products, getDefaultSKU } = useProducts();
-const { confirmBooking } = useBooking();
+const { addBooking } = useBooking();
 
 const access = computed(() =>
   rentalAccesses.value.find((item) => item.slug === slug.value),
@@ -126,7 +126,7 @@ async function handleBookingSubmit(payload: {
   isSubmittingBooking.value = true;
 
   try {
-    await confirmBooking({
+    await addBooking({
       userId: user.value.id,
       productId: primaryMatchedProduct.value.id,
       skuId: bookingSku.value.id,
@@ -159,7 +159,7 @@ async function handleBookingSubmit(payload: {
 
     await navigateTo("/user/cart");
   } catch (error) {
-    console.warn("[RentalAccess] confirmBooking failed:", error);
+    console.warn("[RentalAccess] addBooking failed:", error);
     toast.add({
       title: t("booking.confirmError"),
       description: t("booking.confirmErrorDesc"),

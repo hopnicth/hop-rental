@@ -41,8 +41,9 @@ const {
 
 const {
   activeBookings,
-  bookingTotalDeposit,
-  bookingTotalRental,
+  activeBookingTotalDeposit,
+  activeBookingTotalRental,
+  updateBookingStatus,
   updateHub,
   removeBooking,
 } = useBooking();
@@ -169,14 +170,19 @@ const orderGrandTotal = computed(() => cartSubtotal.value);
 // ── Grand total ──
 const grandTotal = computed(
   () =>
-    bookingTotalDeposit.value + bookingTotalRental.value + cartSubtotal.value,
+    activeBookingTotalDeposit.value +
+    activeBookingTotalRental.value +
+    cartSubtotal.value,
 );
 
-const hasConfirmedBookings = computed(() => activeBookings.value.length > 0);
+const hasRentalBookings = computed(() => activeBookings.value.length > 0);
 const hasPurchaseItems = computed(() => cartItems.value.length > 0);
+const bookingsMissingHub = computed(() =>
+  activeBookings.value.filter((booking) => !booking.hubId),
+);
 
 const hasItems = computed(
-  () => hasConfirmedBookings.value || hasPurchaseItems.value,
+  () => hasRentalBookings.value || hasPurchaseItems.value,
 );
 
 function getBookingTitle(booking: BookingItem): string {
@@ -262,6 +268,7 @@ async function handleSetDefault(id: string) {
 
 // ── Proceed to payment (placeholder) ──
 const isSubmittingOrder = ref(false);
+const isSubmittingRental = ref(false);
 
 function showInlineOrderError(title: string, description: string) {
   toast.add({
@@ -273,14 +280,6 @@ function showInlineOrderError(title: string, description: string) {
 }
 
 async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
-  if (hasConfirmedBookings.value) {
-    showInlineOrderError(
-      "Rental booking submit is not enabled yet",
-      "Please complete Task 4 next or remove rental bookings before submitting this sale order.",
-    );
-    return;
-  }
-
   if (!hasPurchaseItems.value) {
     showInlineOrderError(
       "No sale items to submit",
@@ -359,6 +358,50 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
 
 async function requestQuotation() {
   await submitCurrentOrder("quotation");
+}
+
+async function handleSubmitRentals() {
+  const bookingsToSubmit = [...activeBookings.value];
+
+  if (bookingsToSubmit.length === 0) {
+    return;
+  }
+
+  if (bookingsToSubmit.some((booking) => !booking.hubId)) {
+    showInlineOrderError(
+      t("cart.bookingHubRequiredTitle"),
+      t("cart.bookingHubRequiredDesc"),
+    );
+    return;
+  }
+
+  isSubmittingRental.value = true;
+
+  try {
+    const results = await Promise.all(
+      bookingsToSubmit.map((booking) =>
+        updateBookingStatus(booking.bookingId, "confirmed"),
+      ),
+    );
+
+    if (results.some((ok) => !ok)) {
+      showInlineOrderError(
+        t("cart.rentalSubmitError"),
+        t("cart.rentalSubmitErrorDesc"),
+      );
+      return;
+    }
+
+    await navigateTo({
+      path: "/user/rentals",
+      query: {
+        submitted: "1",
+        count: String(bookingsToSubmit.length),
+      },
+    });
+  } finally {
+    isSubmittingRental.value = false;
+  }
 }
 
 async function handlePay() {
@@ -534,11 +577,15 @@ async function handlePay() {
             >
               <span>
                 {{ t("cart.rentalTotal") }}:
-                <strong>฿{{ bookingTotalRental.toLocaleString() }}</strong>
+                <strong
+                  >฿{{ activeBookingTotalRental.toLocaleString() }}</strong
+                >
               </span>
               <span class="text-info">
                 {{ t("cart.depositTotal") }}:
-                <strong>฿{{ bookingTotalDeposit.toLocaleString() }}</strong>
+                <strong
+                  >฿{{ activeBookingTotalDeposit.toLocaleString() }}</strong
+                >
               </span>
             </div>
           </template>
@@ -647,7 +694,7 @@ async function handlePay() {
       </section>
 
       <!-- ─── Section 3: Address Picker ─── -->
-      <section>
+      <section v-if="hasPurchaseItems">
         <UCard>
           <template #header>
             <div class="flex items-center justify-between">
@@ -789,7 +836,7 @@ async function handlePay() {
                   {{ t("cart.rentalTotal") }}
                   ({{ t("cart.bookingCount", { n: activeBookings.length }) }})
                 </span>
-                <span>฿{{ bookingTotalRental.toLocaleString() }}</span>
+                <span>฿{{ activeBookingTotalRental.toLocaleString() }}</span>
               </div>
 
               <!-- Deposit total -->
@@ -799,7 +846,7 @@ async function handlePay() {
               >
                 <span class="text-info">{{ t("cart.depositTotal") }}</span>
                 <span class="text-info">
-                  ฿{{ bookingTotalDeposit.toLocaleString() }}
+                  ฿{{ activeBookingTotalDeposit.toLocaleString() }}
                 </span>
               </div>
 
@@ -826,7 +873,7 @@ async function handlePay() {
             <UDivider />
 
             <!-- Payment method (hidden for B2B User — they can only request Quotation) -->
-            <div v-if="!isB2BUser" class="space-y-3">
+            <div v-if="hasPurchaseItems && !isB2BUser" class="space-y-3">
               <h3 class="font-semibold">{{ t("cart.paymentMethod") }}</h3>
 
               <!-- Credit Card -->
@@ -915,7 +962,7 @@ async function handlePay() {
 
             <!-- B2B User notice — can only request quotation -->
             <div
-              v-if="isB2BUser"
+              v-if="hasPurchaseItems && isB2BUser"
               class="rounded-lg border border-dashed border-info p-4 text-sm text-muted"
             >
               <UIcon name="bx:info-circle" class="mr-1 inline text-info" />
@@ -923,11 +970,17 @@ async function handlePay() {
             </div>
 
             <div
-              v-if="hasConfirmedBookings"
+              v-if="hasRentalBookings"
               class="rounded-lg border border-dashed border-warning p-4 text-sm text-muted"
             >
-              <UIcon name="bx:calendar-x" class="mr-1 inline text-warning" />
-              {{ t("cart.bookingCheckoutPending") }}
+              <UIcon name="bx:store" class="mr-1 inline text-warning" />
+              {{
+                bookingsMissingHub.length > 0
+                  ? t("cart.bookingHubRequiredNotice", {
+                      n: bookingsMissingHub.length,
+                    })
+                  : t("cart.bookingSubmitReady")
+              }}
             </div>
           </div>
 
@@ -944,33 +997,45 @@ async function handlePay() {
                 />
                 <!-- B2B Quotation button (B2B User = primary action, B2B Admin = secondary) -->
                 <UButton
-                  v-if="isB2B"
+                  v-if="isB2B && hasPurchaseItems"
                   :label="t('cart.requestQuotation')"
                   icon="bx:file"
                   :color="isB2BUser ? 'primary' : 'info'"
                   :variant="isB2BUser ? 'solid' : 'soft'"
                   :size="isB2BUser ? 'lg' : 'md'"
                   :loading="isSubmittingOrder"
-                  :disabled="
-                    isSubmittingOrder ||
-                    !hasPurchaseItems ||
-                    hasConfirmedBookings
-                  "
+                  :disabled="isSubmittingOrder || !hasPurchaseItems"
                   @click="requestQuotation"
                 />
               </div>
-              <!-- Proceed to Payment — NOT for B2B User -->
-              <UButton
-                v-if="!isB2BUser"
-                :label="t('cart.proceedToPayment')"
-                icon="bx:check-circle"
-                size="lg"
-                :loading="isSubmittingOrder"
-                :disabled="
-                  isSubmittingOrder || !hasPurchaseItems || hasConfirmedBookings
-                "
-                @click="handlePay"
-              />
+              <div class="flex flex-col gap-3 sm:flex-row">
+                <UButton
+                  v-if="hasRentalBookings"
+                  :label="
+                    isSubmittingRental
+                      ? t('cart.submittingRental')
+                      : t('cart.submitRental')
+                  "
+                  icon="bx:calendar-check"
+                  size="lg"
+                  color="primary"
+                  :loading="isSubmittingRental"
+                  :disabled="
+                    isSubmittingRental || bookingsMissingHub.length > 0
+                  "
+                  @click="handleSubmitRentals"
+                />
+                <!-- Proceed to Payment — NOT for B2B User -->
+                <UButton
+                  v-if="hasPurchaseItems && !isB2BUser"
+                  :label="t('cart.proceedToPayment')"
+                  icon="bx:check-circle"
+                  size="lg"
+                  :loading="isSubmittingOrder"
+                  :disabled="isSubmittingOrder || !hasPurchaseItems"
+                  @click="handlePay"
+                />
+              </div>
             </div>
           </template>
         </UCard>

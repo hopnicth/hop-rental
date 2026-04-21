@@ -70,7 +70,7 @@ Guiding principles:
 - Product gallery already switches by selected SKU album
 - `ProductCard` rules were simplified and validated
 - `discount` already exists in frontend types, mapper, UI, and mock data
-- `/user/cart` already aggregates confirmed bookings + purchase cart in the UI
+- `/user/cart` now acts as the unified review hub for purchase cart items + rental draft bookings
 - `cart` is already DB-backed via `carts` + `cart_items`
 - booking snapshot types were hardened and now map to DB-backed `rental_bookings`
 - `useBooking()` now hydrates from Supabase and migrates legacy localStorage rows once per user
@@ -79,7 +79,9 @@ Guiding principles:
 - storefront search/filter UI now has real client-side sorting, filtering, pagination, and mobile filter access
 - minimum sale order submission now writes `orders` + `order_items` from `/user/cart`
 - `/user/orders` now shows a created-order success state and basic customer-visible order history/status badges
-- `/user/rentals` now gives customers a basic booking visibility/history page with totals, hub display, and status badges
+- `/user/rentals` now gives customers a booking history page with totals, hub display, status badges, and a submitted-success state after rental checkout
+- the storefront rental flow now stages bookings as `draft`, requires hub selection in cart, and confirms them from `/user/cart`
+- `useBooking()` now includes schema-fallback handling for pre-`013` environments where newer `rental_bookings` columns are still missing
 - auth/profile/address/company-context flows now support the current checkout path well enough to continue MVP closure
 - dev/runtime route noise was cleaned up enough to continue backend work without major warning spam
 - migration `004_catalog_booking_asset_ledger.sql` already added `products`, `product_skus`, `rental_bookings`, asset-ledger tables, and cart discount snapshot columns
@@ -90,7 +92,7 @@ Guiding principles:
 ### What is still transitional
 
 - online order acceptance now exists for sale items, but payment completion, customer instructions, and staff/backoffice handling are still not fully closed
-- rental booking persistence and account visibility exist, but the minimum rental submit/confirmation flow from the unified cart is still blocked and not yet operational end-to-end
+- rental booking submit/confirmation now works through the unified cart, but manual smoke coverage, staff/backoffice handling, and document follow-through are still not fully closed
 - simple search/filter/category browse is much more real now, but route-aware group behavior and keyword search still need to be finalized as a clear MVP feature
 - quotation request can now persist as `checkout_mode = quotation`, but actual quotation document generation is not finished
 - withholding-tax document generation, signed upload return, and review/import flow are not finished
@@ -103,7 +105,7 @@ Guiding principles:
 ### Key current mismatch
 
 - the technical foundation is moving faster than the sellable/document/business-operating workflows
-- sale-order flow has moved ahead of the written plan, but rental acceptance and document/ops workflows are still the main MVP gap
+- sale-order and baseline rental-acceptance flows now exist, but document workflows and staff/ops handling are still the main MVP gap
 - rental availability is still count-based at SKU level, which is acceptable for MVP but not the final operating model
 
 ## Urgent Fix Plan From Storefront Audit
@@ -115,7 +117,7 @@ The current storefront audit shows the MVP gap is not the catalog foundation any
 1. **Sale orders are now minimally submit-ready, but not operationally closed**
    - `orders` + `order_items` persistence exists, and customers can reach a basic order-history page, but payment follow-through and staff/backoffice handling still need to be locked.
 2. **Bookings persist and are visible, but the operating acceptance flow is still incomplete**
-   - `rental_bookings` persistence exists, and customers can see bookings in `/user/rentals`, but the minimum lifecycle, post-submit confirmation, and submit path from `/user/cart` still need to be locked.
+   - `rental_bookings` persistence exists, and the minimum `draft -> confirmed` submit path now works from `/user/cart`, but staff-facing handling, alerts, and document workflows still need to be locked.
 3. **Search/filter/category browsing is only partially real**
    - the catalog source is DB-backed, and client-side filters now work, but route/group behavior and keyword search are not yet aligned to the intended MVP browse model.
 4. **Quotation and withholding-tax flows are not operational yet**
@@ -152,14 +154,15 @@ The current storefront audit shows the MVP gap is not the catalog foundation any
 
 What rental already has:
 
-- `confirmBooking()` can write confirmed booking rows to `rental_bookings`
-- `/user/cart` already shows confirmed bookings together with the sale cart
-- `/user/rentals` already gives customers a basic booking list/history view
+- `addBooking()` now writes rental bookings as `draft` rows to `rental_bookings`
+- `/user/cart` shows rental draft bookings together with the sale cart and requires hub selection before submit
+- `/user/cart` can now change rental bookings from `draft -> confirmed`
+- `/user/rentals` now gives customers a booking list/history view plus a submitted-success state
+- the booking write path includes schema fallback so older DBs without the newer rental-access columns still remain usable
 
 What rental still needs before MVP can be called done:
 
-- one clear customer submit/confirmation path that the business will really operate
-- a visible post-submit success/reference state for rentals, not only persistence in the table
+- full manual smoke/regression coverage of the new rental flow
 - a minimum staff-facing queue/report or alert path for new bookings
 - alignment between booking status, quotation/document needs, and the actual review flow
 - a locked answer on whether MVP booking acceptance happens directly, via staff review, or via quotation-first handling

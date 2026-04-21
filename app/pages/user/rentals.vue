@@ -5,9 +5,15 @@ import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 type BadgeColor = "neutral" | "info" | "warning" | "success" | "error";
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const { isLoggedIn } = useAuthSession();
-const { bookingItems, bookingCount, bookingTotalDeposit, bookingTotalRental, loading } =
-  useBooking();
+const {
+  bookingItems,
+  bookingCount,
+  bookingTotalDeposit,
+  bookingTotalRental,
+  loading,
+} = useBooking();
 
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
@@ -17,10 +23,18 @@ watchEffect(() => {
 
 const sortedBookings = computed(() =>
   [...bookingItems.value].sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
   ),
 );
+
+const submittedBookingCount = computed(() => {
+  const raw = route.query.count;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+});
+
+const showSubmittedBanner = computed(() => route.query.submitted === "1");
 
 function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("th-TH", {
@@ -50,6 +64,10 @@ function statusColor(status: BookingStatus): BadgeColor {
 function rentalPeriodLabel(booking: BookingItem): string {
   return `${booking.startDate} → ${booking.returnDate} • ${t("cart.days", { n: booking.numDays })}`;
 }
+
+function bookingTitle(booking: BookingItem): string {
+  return booking.rentalAccessName || booking.productName;
+}
 </script>
 
 <template>
@@ -61,49 +79,120 @@ function rentalPeriodLabel(booking: BookingItem): string {
         <h1 class="text-2xl font-bold">{{ t("user.activeRentals") }}</h1>
         <p class="text-sm text-muted">{{ t("rentalsPage.description") }}</p>
       </div>
-      <UButton :label="t('cart.browseProducts')" to="/product-all" icon="bx:search" variant="outline" />
+      <UButton
+        :label="t('cart.browseProducts')"
+        to="/product-all"
+        icon="bx:search"
+        variant="outline"
+      />
+    </div>
+
+    <div
+      v-if="showSubmittedBanner"
+      class="mb-6 rounded-xl border border-success/40 bg-success/5 p-4 text-sm"
+    >
+      <div class="flex items-start gap-3">
+        <UIcon name="bx:check-circle" class="mt-0.5 text-lg text-success" />
+        <div>
+          <p class="font-semibold text-success">
+            {{ t("rentalsPage.submittedTitle") }}
+          </p>
+          <p class="mt-1 text-muted">
+            {{
+              t("rentalsPage.submittedDesc", { count: submittedBookingCount })
+            }}
+          </p>
+        </div>
+      </div>
     </div>
 
     <div class="mb-6 grid gap-4 md:grid-cols-3">
-      <UCard><p class="text-sm text-muted">{{ t("rentalsPage.confirmedCount") }}</p><p class="mt-1 text-2xl font-bold">{{ bookingCount }}</p></UCard>
-      <UCard><p class="text-sm text-muted">{{ t("rentalsPage.rentalTotal") }}</p><p class="mt-1 text-2xl font-bold text-primary">{{ formatCurrency(bookingTotalRental) }}</p></UCard>
-      <UCard><p class="text-sm text-muted">{{ t("rentalsPage.depositTotal") }}</p><p class="mt-1 text-2xl font-bold">{{ formatCurrency(bookingTotalDeposit) }}</p></UCard>
+      <UCard
+        ><p class="text-sm text-muted">{{ t("rentalsPage.confirmedCount") }}</p>
+        <p class="mt-1 text-2xl font-bold">{{ bookingCount }}</p></UCard
+      >
+      <UCard
+        ><p class="text-sm text-muted">{{ t("rentalsPage.rentalTotal") }}</p>
+        <p class="mt-1 text-2xl font-bold text-primary">
+          {{ formatCurrency(bookingTotalRental) }}
+        </p></UCard
+      >
+      <UCard
+        ><p class="text-sm text-muted">{{ t("rentalsPage.depositTotal") }}</p>
+        <p class="mt-1 text-2xl font-bold">
+          {{ formatCurrency(bookingTotalDeposit) }}
+        </p></UCard
+      >
     </div>
 
     <div v-if="loading && sortedBookings.length === 0" class="space-y-4">
-      <div v-for="i in 3" :key="i" class="h-28 animate-pulse rounded-xl bg-elevated" />
+      <div
+        v-for="i in 3"
+        :key="i"
+        class="h-28 animate-pulse rounded-xl bg-elevated"
+      />
     </div>
 
     <UCard v-else-if="sortedBookings.length === 0">
       <div class="py-12 text-center">
         <UIcon name="bx:box" class="mx-auto mb-3 text-4xl text-muted" />
         <p class="text-lg font-semibold">{{ t("rentalsPage.emptyTitle") }}</p>
-        <p class="mt-2 text-sm text-muted">{{ t("rentalsPage.emptyDescription") }}</p>
+        <p class="mt-2 text-sm text-muted">
+          {{ t("rentalsPage.emptyDescription") }}
+        </p>
       </div>
     </UCard>
 
     <div v-else class="space-y-4">
       <UCard v-for="booking in sortedBookings" :key="booking.bookingId">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div
+          class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+        >
           <div class="space-y-2">
             <div>
-              <p class="font-semibold">{{ booking.productName }}</p>
-              <p class="text-xs text-muted">{{ t("rentalsPage.reference", { id: booking.bookingId }) }}</p>
+              <p class="font-semibold">{{ bookingTitle(booking) }}</p>
+              <p class="text-xs text-muted">
+                {{ t("rentalsPage.reference", { id: booking.bookingId }) }}
+              </p>
             </div>
             <div class="flex flex-wrap gap-2">
-              <UBadge :color="statusColor(booking.status)" variant="subtle">{{ t("rentalsPage.badges.status", { status: statusLabel(booking.status) }) }}</UBadge>
+              <UBadge :color="statusColor(booking.status)" variant="subtle">{{
+                t("rentalsPage.badges.status", {
+                  status: statusLabel(booking.status),
+                })
+              }}</UBadge>
             </div>
             <div class="space-y-1 text-sm text-muted">
-              <p><span class="font-medium text-default">{{ t("rentalsPage.createdAt") }}:</span> {{ formatDate(booking.createdAt) }}</p>
-              <p><span class="font-medium text-default">{{ t("rentalsPage.rentalPeriod") }}:</span> {{ rentalPeriodLabel(booking) }}</p>
-              <p><span class="font-medium text-default">{{ t("rentalsPage.pickupHub") }}:</span> {{ booking.hubName || t("rentalsPage.noHub") }}</p>
+              <p>
+                <span class="font-medium text-default"
+                  >{{ t("rentalsPage.createdAt") }}:</span
+                >
+                {{ formatDate(booking.createdAt) }}
+              </p>
+              <p>
+                <span class="font-medium text-default"
+                  >{{ t("rentalsPage.rentalPeriod") }}:</span
+                >
+                {{ rentalPeriodLabel(booking) }}
+              </p>
+              <p>
+                <span class="font-medium text-default"
+                  >{{ t("rentalsPage.pickupHub") }}:</span
+                >
+                {{ booking.hubName || t("rentalsPage.noHub") }}
+              </p>
             </div>
           </div>
 
           <div class="text-left sm:text-right">
             <p class="text-sm text-muted">{{ t("rentalsPage.rentalTotal") }}</p>
-            <p class="text-lg font-bold text-primary">{{ formatCurrency(booking.totalCost) }}</p>
-            <p class="mt-1 text-xs text-muted">{{ t("cart.depositLabel") }}: {{ formatCurrency(booking.deposit) }}</p>
+            <p class="text-lg font-bold text-primary">
+              {{ formatCurrency(booking.totalCost) }}
+            </p>
+            <p class="mt-1 text-xs text-muted">
+              {{ t("cart.depositLabel") }}:
+              {{ formatCurrency(booking.deposit) }}
+            </p>
           </div>
         </div>
       </UCard>
