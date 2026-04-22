@@ -1,7 +1,7 @@
 # Database Admin Manual
 
 Last updated: 2026-04-22
-Audience: admin/data-entry/staff + developers who need a practical setup guide
+Audience: internal staff/data-entry + developers who need a practical setup guide
 
 ## Purpose
 
@@ -13,6 +13,43 @@ Focus areas:
 - what fields are required vs recommended
 - what must be configured before a product/rental item can go live
 - what tables are system-managed and should usually **not** be created manually
+
+## Role naming note for this manual
+
+In this document:
+
+- **internal admin / internal staff** means HOPNIC `staff` or `super_admin`
+- **organization admin** means customer-side `b2b_admin`
+- **organization member** means customer-side `b2b_user`
+
+Important boundary:
+
+- `b2b_admin` is for customer-organization approvals/management
+- `staff` and `super_admin` are for HOPNIC internal backoffice work
+
+See `ROLE_MATRIX.md` for the canonical role matrix.
+
+## Admin API environment requirement
+
+Internal admin routes under `/admin` and `/api/admin/*` use privileged server-side
+Supabase access for HOPNIC backoffice operations.
+
+Required local/server env:
+
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `SUPABASE_SECRET_KEY` recommended
+- or `SUPABASE_SERVICE_KEY` as a deprecated fallback
+
+Important notes:
+
+- `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_KEY` must stay server-only and must
+  never be exposed to the browser.
+- Without the server-only key, admin pages now fall back to read-only mode where
+  possible and show setup warnings instead of failing with a raw 500.
+- Create/edit actions for products, SKUs, rental accesses, and matches still
+  require the server-only key.
+- After changing `.env`, restart the Nuxt dev server.
 
 ## Quick setup order
 
@@ -53,13 +90,13 @@ This is a **technical compatibility rule**, not a business rule about which item
 
 | Table                                  | Who usually creates it                        | Purpose                            | Admin should edit directly? |
 | -------------------------------------- | --------------------------------------------- | ---------------------------------- | --------------------------- |
-| `public.products`                      | admin/import                                  | sale catalog root                  | Yes                         |
-| `public.product_skus`                  | admin/import                                  | price/stock/rental pricing per SKU | Yes                         |
-| `public.rental_accesses`               | admin                                         | public rental offering             | Yes                         |
-| `public.rental_access_matches`         | admin                                         | links rental access to product     | Yes                         |
+| `public.products`                      | internal staff/import                         | sale catalog root                  | Yes                         |
+| `public.product_skus`                  | internal staff/import                         | price/stock/rental pricing per SKU | Yes                         |
+| `public.rental_accesses`               | internal staff                                | public rental offering             | Yes                         |
+| `public.rental_access_matches`         | internal staff                                | links rental access to product     | Yes                         |
 | `public.rental_bookings`               | system                                        | customer booking transactions      | Usually no                  |
 | `public.orders` / `public.order_items` | system                                        | sale checkout submissions          | Usually no                  |
-| `public.addresses`                     | customer/user/company admin                   | delivery addresses                 | No catalog setup            |
+| `public.addresses`                     | customer/user/organization admin              | delivery addresses                 | No catalog setup            |
 | store/hub master                       | currently code-backed in `app/mock/stores.ts` | pickup/return locations            | Not DB-backed yet           |
 
 ## 1. Product setup — `public.products`
@@ -269,7 +306,7 @@ Important notes:
 
 ### `public.addresses`
 
-Created by customers or company admins.
+Created by customers or organization admins.
 
 Important notes:
 
@@ -296,4 +333,5 @@ Important notes:
 
 - The storefront still supports a fallback mode when `rental_accesses` or newer booking columns are missing from the DB schema.
 - That fallback keeps the app usable, but the preferred production path is to apply migration `013_rental_access_schema.sql`.
+- Internal admin pages `/admin/rental-accesses` and `/admin/matches` also depend on migration `013_rental_access_schema.sql`; if those pages show missing-table errors, check the remote migration state first.
 - Hub/store master data is still code-backed, so operational changes to hubs currently require a code/config update, not only a DB change.

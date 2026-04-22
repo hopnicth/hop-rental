@@ -22,6 +22,24 @@ bun install
 
 ## Development Server
 
+### Environment setup
+
+Copy `.env.example` to `.env` and fill in your Supabase values.
+
+- `SUPABASE_URL` = project URL
+- `SUPABASE_KEY` = public anon key
+- `SUPABASE_SECRET_KEY` = server-only secret key for privileged admin APIs
+
+Important notes:
+
+- `/api/admin/*` and `/admin/*` write actions require `SUPABASE_SECRET_KEY`
+  (recommended) or `SUPABASE_SERVICE_KEY` (deprecated fallback).
+- If the server-only key is missing, admin pages fall back to read-only mode and
+  show setup warnings instead of raw 500 errors.
+- Rental admin pages also expect DB migration `013_rental_access_schema.sql` to
+  be applied so `rental_accesses` and `rental_access_matches` exist.
+- After changing `.env`, restart `npm run dev`.
+
 Start the development server on `http://localhost:3000`:
 
 ```bash
@@ -76,4 +94,3 @@ Check out the [deployment documentation](https://nuxt.com/docs/getting-started/d
 
 icon usage
 Boxicon: https://icones.js.org/collection/bx
-

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 /**
- * B2B Staff Management — placeholder section.
+ * Organization member management — placeholder section.
  *
  * Lists company members from useCompanyContext().memberships.
  * Full invite/remove functionality will be added later.
  */
+import { formatCompanyRole } from "~/utils/role-display";
+
 const { t } = useI18n();
 const { currentCompany, memberships } = useCompanyContext();
 
@@ -52,13 +54,13 @@ const companyMembers = computed(() => {
             <div>
               <p class="text-sm font-medium">{{ m.member.userId }}</p>
               <p class="text-xs text-muted">
-                {{ t("user.role") }}: {{ m.member.role }}
+                {{ t("user.role") }}: {{ formatCompanyRole(m.member.role) }}
               </p>
             </div>
           </div>
           <div class="text-right">
             <UBadge
-              :label="m.member.role"
+              :label="formatCompanyRole(m.member.role)"
               :color="m.member.role === 'b2b_admin' ? 'primary' : 'neutral'"
               variant="subtle"
               size="xs"
@@ -85,4 +87,3 @@ const companyMembers = computed(() => {
     </UCard>
   </div>
 </template>
-

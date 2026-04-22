@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Approvals — placeholder section (B2B Admin only).
+ * Approvals — placeholder section (organization admin only).
  * Coming soon UI for pending approvals workflow.
  */
 const { t } = useI18n();
@@ -28,4 +28,3 @@ const { t } = useI18n();
     </UCard>
   </div>
 </template>
-

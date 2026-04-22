@@ -13,6 +13,8 @@ import type { UserProfile } from "~/types/user";
 const profile = ref<UserProfile | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+let isUserProfileInitialized = false;
+let profileRequest: Promise<void> | null = null;
 
 /**
  * Map Supabase snake_case row to camelCase UserProfile.
@@ -54,36 +56,67 @@ export function useUserProfile() {
   }
 
   // ── Fetch profile from DB ──
-  async function fetchProfile(): Promise<void> {
-    const userId = await resolveUserId();
-    if (!userId) {
-      profile.value = null;
-      return;
+  async function fetchProfile(force = false): Promise<void> {
+    if (!force && profileRequest) {
+      return profileRequest;
     }
 
-    loading.value = true;
-    error.value = null;
-
-    try {
-      const { data, error: dbError } = await supabase
-        .from("users")
-        .select("*")
-        .eq("id", userId)
-        .single();
-
-      if (dbError) {
-        error.value = dbError.message;
+    profileRequest = (async () => {
+      const userId = await resolveUserId();
+      if (!userId) {
         profile.value = null;
+        error.value = null;
         return;
       }
 
-      profile.value = data ? mapRow(data as Record<string, unknown>) : null;
-    } catch (e) {
-      error.value = e instanceof Error ? e.message : "Unknown error";
-      profile.value = null;
+      loading.value = true;
+      error.value = null;
+
+      try {
+        const { data, error: dbError } = await supabase
+          .from("users")
+          .select("*")
+          .eq("id", userId)
+          .single();
+
+        if (dbError) {
+          error.value = dbError.message;
+          profile.value = null;
+          return;
+        }
+
+        profile.value = data ? mapRow(data as Record<string, unknown>) : null;
+      } catch (e) {
+        error.value = e instanceof Error ? e.message : "Unknown error";
+        profile.value = null;
+      } finally {
+        loading.value = false;
+      }
+    })();
+
+    try {
+      await profileRequest;
     } finally {
-      loading.value = false;
+      profileRequest = null;
     }
+  }
+
+  async function ensureProfileLoaded(
+    expectedUserId?: string | null,
+  ): Promise<void> {
+    if (
+      expectedUserId &&
+      profile.value?.id === expectedUserId &&
+      profile.value.platformRole
+    ) {
+      return;
+    }
+
+    if (!expectedUserId && profile.value?.platformRole) {
+      return;
+    }
+
+    await fetchProfile();
   }
 
   // ── Update profile (partial) ──
@@ -115,14 +148,17 @@ export function useUserProfile() {
   }
 
   // ── Auto-fetch on auth state change (client-only) ──
-  if (import.meta.client) {
+  if (import.meta.client && !isUserProfileInitialized) {
+    isUserProfileInitialized = true;
+
     watch(
       () => user.value?.id ?? null,
-      (userId) => {
+      (userId, previousUserId) => {
         if (userId) {
-          fetchProfile();
-        } else {
+          void fetchProfile(true);
+        } else if (previousUserId) {
           profile.value = null;
+          error.value = null;
         }
       },
       { immediate: true },
@@ -138,6 +174,8 @@ export function useUserProfile() {
     error: computed(() => error.value),
     /** Re-fetch profile from database */
     fetchProfile,
+    /** Ensure the current auth user's profile is available before guarded UI checks */
+    ensureProfileLoaded,
     /** Update profile fields (fullName, phone, avatarUrl) */
     updateProfile,
   };

@@ -1,10 +1,13 @@
 /**
- * Composable for managing active context (B2C ↔ B2B switching).
+ * Composable for managing active context (personal ↔ organization switching).
  *
  * - Fetches company memberships for the current user
  * - Provides company switcher data
  * - Persists active context in localStorage
- * - Role-checking helpers (isB2BAdmin, isB2BUser, isB2C)
+ * - Role-checking helpers for organization roles (isB2BAdmin, isB2BUser, isB2C)
+ *
+ * Internal HOPNIC backoffice roles (`staff`, `super_admin`) live in
+ * `users.platform_role` and are not controlled by this composable.
  *
  * SSR-safe — DB queries and localStorage only run on client.
  */
@@ -243,7 +246,7 @@ export function useCompanyContext() {
 
   // ── Switch context ──
 
-  /** Switch to B2C (personal) mode */
+  /** Switch to personal customer mode */
   function switchToPersonal(): void {
     activeContext.value = { ...DEFAULT_CONTEXT };
     saveContext(activeContext.value);
@@ -336,7 +339,7 @@ export function useCompanyContext() {
   }
 
   return {
-    /** Current active context (B2C or B2B) */
+    /** Current active context (personal or organization) */
     activeContext: computed(() => activeContext.value),
     /** All company memberships for the current user */
     memberships: computed(() => memberships.value),
@@ -344,13 +347,13 @@ export function useCompanyContext() {
     currentCompany,
     /** Remaining credit for active company */
     creditRemaining,
-    /** Whether currently in B2C (personal) mode */
+    /** Whether currently in personal customer mode */
     isB2C,
-    /** Whether currently in B2B (company) mode */
+    /** Whether currently acting in an organization/company context */
     isB2B,
-    /** Whether current role is b2b_admin */
+    /** Whether current organization role is b2b_admin */
     isB2BAdmin,
-    /** Whether current role is b2b_user */
+    /** Whether current organization role is b2b_user */
     isB2BUser,
     /** Loading state */
     loading: computed(() => loading.value),
@@ -367,8 +370,9 @@ export function useCompanyContext() {
     /** Check if user has role in any company */
     hasRoleInAnyCompany,
     /**
-     * DEV ONLY — Override context with mock data.
+     * DEV ONLY — Override personal/organization context with mock data.
      * Prefers real memberships when available, otherwise injects mock data.
+     * This does not elevate `platform_role` to `staff` or `super_admin`.
      * @param role — "b2c" | "b2b_user" | "b2b_admin"
      */
     __devOverrideContext: async (role: "b2c" | "b2b_user" | "b2b_admin") => {

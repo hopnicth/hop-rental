@@ -7,7 +7,10 @@
 
 // ─── Enum-like Union Types (match DB enums) ─────────────────
 
-/** Platform-level role — stored in `users.platform_role` */
+/**
+ * Platform-level role — stored in `users.platform_role`.
+ * `staff` and `super_admin` are internal HOPNIC roles.
+ */
 export type PlatformRole = "customer" | "staff" | "super_admin";
 
 /** Membership tier — stored in `users.membership_level` */
@@ -19,7 +22,7 @@ export type KycStatus = "pending" | "verified" | "rejected";
 /** Billing cycle — stored in `companies.billing_cycle` */
 export type BillingCycle = "cash" | "EOM" | "15th" | "25th" | "upon_delivery";
 
-/** Role within a company — stored in `company_members.role` */
+/** Role within a customer organization — stored in `company_members.role` */
 export type CompanyRole = "b2b_admin" | "b2b_user";
 
 // ─── Table Interfaces ───────────────────────────────────────
@@ -28,7 +31,7 @@ export type CompanyRole = "b2b_admin" | "b2b_user";
  * User profile — 1:1 with `auth.users`.
  *
  * Auto-created on signup via DB trigger.
- * Everyone starts as B2C (`platform_role = 'customer'`).
+ * Everyone starts as a personal customer account (`platform_role = 'customer'`).
  */
 export interface UserProfile {
   /** UUID — same as auth.users.id */
@@ -130,7 +133,7 @@ export interface BillingAddress {
  * Junction: user ↔ company with role.
  *
  * A user can belong to multiple companies.
- * Each membership has a role (b2b_admin or b2b_user).
+ * Each membership has a customer-organization role (b2b_admin or b2b_user).
  */
 export interface CompanyMember {
   /** UUID */
@@ -152,17 +155,17 @@ export interface CompanyMember {
 /**
  * Represents the user's current operating context.
  *
- * - `null` companyId → B2C mode (personal account)
- * - non-null companyId → B2B mode (acting on behalf of company)
+ * - `null` companyId → personal customer mode
+ * - non-null companyId → organization/company context
  *
  * Persisted in localStorage so it survives page refresh.
  */
 export interface ActiveContext {
-  /** Company ID — null means B2C (personal) mode */
+  /** Company ID — null means personal customer mode */
   companyId: string | null;
-  /** Role in the active company — null when B2C */
+  /** Role in the active company — null in personal mode */
   role: CompanyRole | null;
-  /** Company name for display — null when B2C */
+  /** Company name for display — null in personal mode */
   companyName: string | null;
 }
 

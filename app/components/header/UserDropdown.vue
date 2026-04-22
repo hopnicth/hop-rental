@@ -1,24 +1,12 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from "@nuxt/ui";
-import type { CompanyRole, PlatformRole } from "~/types/user";
+import { formatCompanyRole, formatPlatformRole } from "~/utils/role-display";
 
 const { t } = useI18n();
 const { isLoggedIn, displayName, avatarUrl, userEmail, logout } =
   useAuthSession();
 const { profile } = useUserProfile();
 const { activeContext, currentCompany, memberships } = useCompanyContext();
-
-function formatPlatformRole(role: PlatformRole | null | undefined): string {
-  if (role === "super_admin") return "Super Admin";
-  if (role === "staff") return "Staff";
-  return "Customer";
-}
-
-function formatCompanyRole(role: CompanyRole | null | undefined): string {
-  if (role === "b2b_admin") return "B2B Admin";
-  if (role === "b2b_user") return "B2B User";
-  return "—";
-}
 
 const currentRoleLabel = computed(() => {
   if (activeContext.value.role) {
@@ -67,12 +55,12 @@ const loggedInItems = computed<DropdownMenuItem[][]>(() => {
       disabled: true,
     },
     {
-      label: `Platform: ${formatPlatformRole(profile.value?.platformRole)}`,
+      label: `HOPNIC Role: ${formatPlatformRole(profile.value?.platformRole)}`,
       icon: "bx:id-card",
       disabled: true,
     },
     {
-      label: `Company Role: ${companyRoleLabel.value}`,
+      label: `Organization Role: ${companyRoleLabel.value}`,
       icon: currentRoleIcon.value,
       disabled: true,
     },

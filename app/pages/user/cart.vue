@@ -256,7 +256,8 @@ async function handleSetDefault(id: string) {
   if (!canManageAvailableAddresses.value) {
     toast.add({
       title: "Company address access is read-only",
-      description: "Only B2B Admin can change the default company address.",
+      description:
+        "Only Organization Admin can change the default company address.",
       icon: "bx:error-circle",
       color: "error",
     });
@@ -872,7 +873,7 @@ async function handlePay() {
 
             <UDivider />
 
-            <!-- Payment method (hidden for B2B User — they can only request Quotation) -->
+            <!-- Payment method (hidden for organization members — quotation only) -->
             <div v-if="hasPurchaseItems && !isB2BUser" class="space-y-3">
               <h3 class="font-semibold">{{ t("cart.paymentMethod") }}</h3>
 
@@ -914,7 +915,7 @@ async function handlePay() {
                 <span class="text-sm">{{ t("cart.promptPay") }}</span>
               </label>
 
-              <!-- Company Credit (B2B Admin only with KYC verified) -->
+              <!-- Company Credit (organization admin only with KYC verified) -->
               <label
                 v-if="isB2BAdmin && currentCompany?.kycStatus === 'verified'"
                 class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
@@ -950,7 +951,7 @@ async function handlePay() {
                 </div>
               </label>
 
-              <!-- KYC required notice for B2B Admin without KYC -->
+              <!-- KYC required notice for organization admin without KYC -->
               <div
                 v-if="isB2BAdmin && currentCompany?.kycStatus !== 'verified'"
                 class="rounded-lg border border-dashed p-3 text-sm text-muted"
@@ -960,7 +961,7 @@ async function handlePay() {
               </div>
             </div>
 
-            <!-- B2B User notice — can only request quotation -->
+            <!-- Organization member notice — quotation only -->
             <div
               v-if="hasPurchaseItems && isB2BUser"
               class="rounded-lg border border-dashed border-info p-4 text-sm text-muted"
@@ -995,7 +996,7 @@ async function handlePay() {
                   color="neutral"
                   variant="outline"
                 />
-                <!-- B2B Quotation button (B2B User = primary action, B2B Admin = secondary) -->
+                <!-- Organization quotation button (member = primary, admin = secondary) -->
                 <UButton
                   v-if="isB2B && hasPurchaseItems"
                   :label="t('cart.requestQuotation')"
@@ -1025,7 +1026,7 @@ async function handlePay() {
                   "
                   @click="handleSubmitRentals"
                 />
-                <!-- Proceed to Payment — NOT for B2B User -->
+                <!-- Proceed to Payment — not for organization members -->
                 <UButton
                   v-if="hasPurchaseItems && !isB2BUser"
                   :label="t('cart.proceedToPayment')"

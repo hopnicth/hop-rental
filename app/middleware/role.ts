@@ -2,29 +2,70 @@
  * Route middleware for role-based access control.
  *
  * Usage in page:
- *   definePageMeta({ middleware: ['role'], roles: ['b2b_admin'] })
+ *   definePageMeta({ middleware: ["role"], roles: ["b2b_admin"] }) // organization admin
+ *   definePageMeta({ middleware: ["role"], platformRoles: ["staff"] }) // HOPNIC internal staff
  *
- * Supported role values: 'b2c', 'b2b_admin', 'b2b_user'
- * If `roles` is not set or empty, the page is accessible to all logged-in users.
+ * Supported company-context role values: 'b2c', 'b2b_admin', 'b2b_user'
+ * Supported platform role values: 'customer', 'staff', 'super_admin'
  */
-export default defineNuxtRouteMiddleware((to) => {
-  const allowedRoles = to.meta.roles as string[] | undefined;
+export default defineNuxtRouteMiddleware(async (to) => {
+  const allowedRoles = (to.meta.roles as string[] | undefined) ?? [];
+  const allowedPlatformRoles =
+    (to.meta.platformRoles as string[] | undefined) ?? [];
 
   // No role restriction on this page — allow everyone
-  if (!allowedRoles || allowedRoles.length === 0) return;
+  if (allowedRoles.length === 0 && allowedPlatformRoles.length === 0) return;
 
-  // Determine current user role from company context
-  const { isB2BAdmin, isB2BUser } = useCompanyContext();
+  const user = useSupabaseUser();
+  const supabase = useSupabaseClient();
+  let resolvedAuthUser = user.value;
 
-  let currentRole: string;
-  if (isB2BAdmin.value) currentRole = "b2b_admin";
-  else if (isB2BUser.value) currentRole = "b2b_user";
-  else currentRole = "b2c";
+  if (!resolvedAuthUser) {
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser();
 
-  // If current role is allowed — pass through
-  if (allowedRoles.includes(currentRole)) return;
+    resolvedAuthUser = authUser;
+  }
 
-  // Forbidden — redirect to profile with toast
+  if (!resolvedAuthUser) {
+    const redirect = encodeURIComponent(to.fullPath || "/");
+    return navigateTo(`/user/login?redirect=${redirect}`);
+  }
+
+  if (allowedPlatformRoles.length > 0) {
+    const { profile, ensureProfileLoaded } = useUserProfile();
+
+    await ensureProfileLoaded(resolvedAuthUser.id);
+
+    const currentPlatformRole = profile.value?.platformRole ?? null;
+    if (
+      !currentPlatformRole ||
+      !allowedPlatformRoles.includes(currentPlatformRole)
+    ) {
+      showForbiddenToast();
+      return navigateTo("/user/account");
+    }
+  }
+
+  if (allowedRoles.length > 0) {
+    const { activeContext, fetchMemberships, syncContextWithMemberships } =
+      useCompanyContext();
+
+    await fetchMemberships();
+    syncContextWithMemberships();
+
+    const currentRole = activeContext.value.role ?? "b2c";
+    if (!allowedRoles.includes(currentRole)) {
+      showForbiddenToast();
+      return navigateTo("/user/account");
+    }
+  }
+});
+
+function showForbiddenToast() {
+  if (import.meta.server) return;
+
   const toast = useToast();
   const { t } = useI18n();
 
@@ -33,14 +74,12 @@ export default defineNuxtRouteMiddleware((to) => {
     icon: "bx:lock",
     color: "error",
   });
-
-  return navigateTo("/user/account/profile");
-});
+}
 
 // ── Augment Nuxt route meta to include `roles` ──
 declare module "#app" {
   interface PageMeta {
     roles?: string[];
+    platformRoles?: string[];
   }
 }
-

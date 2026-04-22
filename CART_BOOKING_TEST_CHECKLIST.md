@@ -91,3 +91,11 @@ Current expected behavior in this branch:
 
 - [ ] Remove all purchase items and all bookings.
 - [ ] Verify `/user/cart` shows the empty-state UI without broken totals or errors.
+
+### 14. Admin rental smoke check
+
+- [ ] Confirm local `.env` includes `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_KEY`) before testing admin writes.
+- [ ] Confirm the target DB has migration `013_rental_access_schema.sql` applied before testing rental admin pages.
+- [ ] Open `/admin/products` and verify the first click navigates immediately without briefly showing `Customer` in the admin badge.
+- [ ] Open `/admin/rental-accesses` and verify the page loads without missing-table errors.
+- [ ] Open `/admin/matches` and verify the page loads without missing-table errors.

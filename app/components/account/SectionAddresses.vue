@@ -70,7 +70,7 @@ const emptyMessage = computed(() => {
 const scopeMessage = computed(() => {
   if (isB2C.value) return "Personal delivery addresses";
   if (!canManageAddresses.value) {
-    return "Viewing company delivery addresses — only B2B Admin can manage them";
+    return "Viewing company delivery addresses — only Organization Admin can manage them";
   }
   if (currentCompany.value?.name) {
     return `Managing delivery addresses for ${currentCompany.value.name}`;
@@ -82,7 +82,7 @@ function showManagePermissionError() {
   toast.add({
     title: "Company address access is read-only",
     description:
-      "Only B2B Admin can add, edit, delete, or set a default company address.",
+      "Only Organization Admin can add, edit, delete, or set a default company address.",
     icon: "bx:error-circle",
     color: "error",
   });

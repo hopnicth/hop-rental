@@ -8,6 +8,7 @@ Audience: developers, QA, future Augment sessions
 This index maps the main storefront flows to their composables, tables, and important compatibility notes.
 
 This app is currently **Supabase-first**, so the practical API surface is mostly:
+
 - Nuxt composables calling Supabase directly
 - Supabase tables protected by RLS
 - page routes that trigger these read/write flows
@@ -17,35 +18,42 @@ This app is currently **Supabase-first**, so the practical API surface is mostly
 - Public catalog reads are allowed through RLS on visible rows.
 - Customer-owned writes require authentication and pass through `auth.uid()` policies.
 - Some flows include compatibility fallback for older DB schemas.
+- Role model is split into two layers:
+  - `public.users.platform_role` = `customer`, `staff`, `super_admin`
+  - `public.company_members.role` = `b2b_user`, `b2b_admin`
+- Internal backoffice routes (`/admin`, `/api/admin/*`) are gated by `platform_role`, not `company_members.role`.
+- Admin GET endpoints can fall back to read-only mode when `SUPABASE_SECRET_KEY` / `SUPABASE_SERVICE_KEY` is missing; admin writes still require the server-only key.
+- Company purchasing/approval behavior uses organization roles (`b2b_user`, `b2b_admin`).
+- See `ROLE_MATRIX.md` for the canonical naming and responsibility split.
 
 ## 1. Read flows
 
-| Feature | Entry pages | Main file(s) | Reads from | Notes |
-| --- | --- | --- | --- | --- |
-| Product catalog browse | `/`, `/product-{group}` | `app/composables/useProducts.ts` | `products` (+ nested `product_skus`) | Falls back to mapped mock catalog if remote data is unusable. Product route uses `category_keys[0]` + `slug`. |
-| Product detail | `/product-{group}/{slug}` | `app/pages/product-[group]/[id].vue`, `useProducts.ts` | `products`, `product_skus` | Also loads related rental access cards through `useRentalAccesses()`. |
-| Rental access listing | `/product-rental` | `app/composables/useRentalAccesses.ts`, `app/pages/product-[group]/index.vue` | `rental_accesses`, `rental_access_matches` | If rental-access schema is missing, app falls back to product-derived rental access rows. |
-| Rental access detail | `/rental-access/{slug}` | `app/pages/rental-access/[slug].vue`, `useRentalAccesses.ts` | `rental_accesses`, `rental_access_matches`, product catalog | Primary booking entry for rental access flow. |
-| Cart hydration | `/user/cart`, feature bar | `app/composables/useCart.ts` | `carts`, `cart_items` | Guest state can exist locally. Logged-in state hydrates from Supabase. |
-| Booking hydration | `/user/cart`, `/user/rentals`, feature bar | `app/composables/useBooking.ts` | `rental_bookings` | Store exposes `draftBookings`, `confirmedBookings`, `activeBookings`, and availability helpers. |
-| Orders history | `/user/orders` | `app/composables/useOrders.ts` | `orders` | Reads authenticated user's orders ordered by `created_at desc`. |
-| Address book | `/user/cart`, account flows | `app/composables/useAddresses.ts` | `addresses` | Reads personal + company addresses filtered by RLS. |
+| Feature                | Entry pages                                | Main file(s)                                                                  | Reads from                                                  | Notes                                                                                                         |
+| ---------------------- | ------------------------------------------ | ----------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Product catalog browse | `/`, `/product-{group}`                    | `app/composables/useProducts.ts`                                              | `products` (+ nested `product_skus`)                        | Falls back to mapped mock catalog if remote data is unusable. Product route uses `category_keys[0]` + `slug`. |
+| Product detail         | `/product-{group}/{slug}`                  | `app/pages/product-[group]/[id].vue`, `useProducts.ts`                        | `products`, `product_skus`                                  | Also loads related rental access cards through `useRentalAccesses()`.                                         |
+| Rental access listing  | `/product-rental`                          | `app/composables/useRentalAccesses.ts`, `app/pages/product-[group]/index.vue` | `rental_accesses`, `rental_access_matches`                  | If rental-access schema is missing, app falls back to product-derived rental access rows.                     |
+| Rental access detail   | `/rental-access/{slug}`                    | `app/pages/rental-access/[slug].vue`, `useRentalAccesses.ts`                  | `rental_accesses`, `rental_access_matches`, product catalog | Primary booking entry for rental access flow.                                                                 |
+| Cart hydration         | `/user/cart`, feature bar                  | `app/composables/useCart.ts`                                                  | `carts`, `cart_items`                                       | Guest state can exist locally. Logged-in state hydrates from Supabase.                                        |
+| Booking hydration      | `/user/cart`, `/user/rentals`, feature bar | `app/composables/useBooking.ts`                                               | `rental_bookings`                                           | Store exposes `draftBookings`, `confirmedBookings`, `activeBookings`, and availability helpers.               |
+| Orders history         | `/user/orders`                             | `app/composables/useOrders.ts`                                                | `orders`                                                    | Reads authenticated user's orders ordered by `created_at desc`.                                               |
+| Address book           | `/user/cart`, account flows                | `app/composables/useAddresses.ts`                                             | `addresses`                                                 | Reads personal + company addresses filtered by RLS.                                                           |
 
 ## 2. Write flows
 
-| Action | Trigger page/UI | Main function(s) | Writes to | Auth required | Important notes |
-| --- | --- | --- | --- | --- | --- |
-| Add sale item to cart | product detail, product card actions | `useCart().addToCart()` | local cart state, then `carts` + `cart_items` for logged-in users | No for guest buffer, yes for DB persistence | Cart count uses quantity sum, not row count. |
-| Update cart quantity | `/user/cart` | `useCart().updateQuantity()` | local cart state, then `cart_items` sync | Same as cart | Quantity `<= 0` removes the row. |
-| Remove cart item | `/user/cart` | `useCart().removeFromCart()` | local cart state, then `cart_items` sync | Same as cart | Used by unified cart review flow. |
-| Create rental booking draft | `/rental-access/{slug}` and fallback product booking form | `useBooking().addBooking()` | `rental_bookings` | Yes | Writes `status = draft`; redirects user to `/user/cart`. |
-| Confirm rental booking(s) | `/user/cart` | `useBooking().updateBookingStatus(bookingId, 'confirmed')` | `rental_bookings` | Yes | Submit is blocked until each active booking has a `hub_id`. |
-| Update rental booking hub | `/user/cart` | `useBooking().updateHub()` | `rental_bookings` | Yes | Stores both `hub_id` and `hub_name`. |
-| Remove rental booking | `/user/cart` | `useBooking().removeBooking()` | `rental_bookings` or local state | Yes for DB rows | Draft bookings are removed from the cart section. |
-| Submit sale order | `/user/cart` | `useOrders().submitOrder()` | `orders`, `order_items` | Yes | Uses address snapshot + cart item snapshots. Supports `payment` and `quotation` modes. |
-| Create address | cart/account flows | `useAddresses().createAddress()` | `addresses` | Yes | Address belongs to either a user or a company. |
-| Update address | cart/account flows | `useAddresses().updateAddress()` | `addresses` | Yes | Default address behavior is normalized at DB level. |
-| Delete address | cart/account flows | `useAddresses().deleteAddress()` | `addresses` | Yes | Protected by owner/company RLS. |
+| Action                      | Trigger page/UI                                           | Main function(s)                                           | Writes to                                                         | Auth required                               | Important notes                                                                        |
+| --------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Add sale item to cart       | product detail, product card actions                      | `useCart().addToCart()`                                    | local cart state, then `carts` + `cart_items` for logged-in users | No for guest buffer, yes for DB persistence | Cart count uses quantity sum, not row count.                                           |
+| Update cart quantity        | `/user/cart`                                              | `useCart().updateQuantity()`                               | local cart state, then `cart_items` sync                          | Same as cart                                | Quantity `<= 0` removes the row.                                                       |
+| Remove cart item            | `/user/cart`                                              | `useCart().removeFromCart()`                               | local cart state, then `cart_items` sync                          | Same as cart                                | Used by unified cart review flow.                                                      |
+| Create rental booking draft | `/rental-access/{slug}` and fallback product booking form | `useBooking().addBooking()`                                | `rental_bookings`                                                 | Yes                                         | Writes `status = draft`; redirects user to `/user/cart`.                               |
+| Confirm rental booking(s)   | `/user/cart`                                              | `useBooking().updateBookingStatus(bookingId, 'confirmed')` | `rental_bookings`                                                 | Yes                                         | Submit is blocked until each active booking has a `hub_id`.                            |
+| Update rental booking hub   | `/user/cart`                                              | `useBooking().updateHub()`                                 | `rental_bookings`                                                 | Yes                                         | Stores both `hub_id` and `hub_name`.                                                   |
+| Remove rental booking       | `/user/cart`                                              | `useBooking().removeBooking()`                             | `rental_bookings` or local state                                  | Yes for DB rows                             | Draft bookings are removed from the cart section.                                      |
+| Submit sale order           | `/user/cart`                                              | `useOrders().submitOrder()`                                | `orders`, `order_items`                                           | Yes                                         | Uses address snapshot + cart item snapshots. Supports `payment` and `quotation` modes. |
+| Create address              | cart/account flows                                        | `useAddresses().createAddress()`                           | `addresses`                                                       | Yes                                         | Address belongs to either a user or a company.                                         |
+| Update address              | cart/account flows                                        | `useAddresses().updateAddress()`                           | `addresses`                                                       | Yes                                         | Default address behavior is normalized at DB level.                                    |
+| Delete address              | cart/account flows                                        | `useAddresses().deleteAddress()`                           | `addresses`                                                       | Yes                                         | Protected by owner/company RLS.                                                        |
 
 ## 3. Booking-specific compatibility behavior
 
@@ -75,6 +83,7 @@ Important behavior in the current branch:
 - then retries using a legacy payload
 
 Additional safeguard:
+
 - `rental_access_id` is only written when it is a valid UUID
 
 ## 4. Rental-access compatibility behavior
@@ -82,41 +91,49 @@ Additional safeguard:
 ### `useRentalAccesses.ts`
 
 Primary path:
+
 - read `rental_accesses`
 - include nested `rental_access_matches`
 - map them to storefront `RentalAccess` models
 
 Fallback path:
+
 - if the rental-access schema/relationship is missing or returns known 404-style errors
 - derive fallback rental access rows from rentable products instead of crashing the storefront
 
 Result:
+
 - newer DBs get the real rental-access catalog
 - older DBs stay usable, but with reduced commercial separation
 
 ## 5. Table ownership summary
 
-| Table | Main ownership | Used by |
-| --- | --- | --- |
-| `products` | admin/catalog | sale browse, product detail, rental attribution |
-| `product_skus` | admin/catalog | pricing, stock, rental pricing |
-| `rental_accesses` | admin/rental catalog | `/product-rental`, rental access detail |
-| `rental_access_matches` | admin | related rental access placement on product detail |
-| `carts` / `cart_items` | customer + system | sale cart persistence |
-| `rental_bookings` | customer + system | rental cart, rental history, availability |
-| `orders` / `order_items` | customer + system | sale checkout submit + order history |
-| `addresses` | customer/company admin | checkout address selection |
+| Table                    | Main ownership                | Used by                                           |
+| ------------------------ | ----------------------------- | ------------------------------------------------- |
+| `products`               | internal staff/catalog        | sale browse, product detail, rental attribution   |
+| `product_skus`           | internal staff/catalog        | pricing, stock, rental pricing                    |
+| `rental_accesses`        | internal staff/rental catalog | `/product-rental`, rental access detail           |
+| `rental_access_matches`  | internal staff                | related rental access placement on product detail |
+| `carts` / `cart_items`   | customer + system             | sale cart persistence                             |
+| `rental_bookings`        | customer + system             | rental cart, rental history, availability         |
+| `orders` / `order_items` | customer + system             | sale checkout submit + order history              |
+| `addresses`              | customer/organization admin   | checkout address selection                        |
 
 ## 6. Route index
 
-| Route | Purpose | Main source |
-| --- | --- | --- |
-| `/product-{group}` | category/group browse | `useProducts()`, `useRentalAccesses()` |
-| `/product-{group}/{slug}` | product detail + matched rental access list | `useProducts()`, `useRentalAccesses()` |
-| `/rental-access/{slug}` | rental access detail + booking entry | `useRentalAccesses()`, `useBooking()` |
-| `/user/cart` | unified sale + rental review/submit | `useCart()`, `useBooking()`, `useOrders()`, `useAddresses()` |
-| `/user/rentals` | confirmed rental history | `useBooking()` |
-| `/user/orders` | sale order history | `useOrders()` |
+| Route                     | Purpose                                     | Main source                                                                  |
+| ------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
+| `/product-{group}`        | category/group browse                       | `useProducts()`, `useRentalAccesses()`                                       |
+| `/product-{group}/{slug}` | product detail + matched rental access list | `useProducts()`, `useRentalAccesses()`                                       |
+| `/rental-access/{slug}`   | rental access detail + booking entry        | `useRentalAccesses()`, `useBooking()`                                        |
+| `/user/cart`              | unified sale + rental review/submit         | `useCart()`, `useBooking()`, `useOrders()`, `useAddresses()`                 |
+| `/user/rentals`           | confirmed rental history                    | `useBooking()`                                                               |
+| `/user/orders`            | sale order history                          | `useOrders()`                                                                |
+| `/admin`                  | internal backoffice landing page            | `app/middleware/role.ts`, `app/layouts/admin.vue`                            |
+| `/admin/products`         | internal product list/create                | `server/api/admin/products/*`                                                |
+| `/admin/products/{id}`    | internal product edit + nested SKU manager  | `server/api/admin/products/*`, `server/api/admin/products/:productId/skus/*` |
+| `/admin/rental-accesses`  | internal rental package list/create         | `server/api/admin/rental-accesses/*`                                         |
+| `/admin/matches`          | internal rental access ↔ product matching   | `server/api/admin/matches/*`                                                 |
 
 ## 7. Quick debug checklist
 
@@ -128,4 +145,5 @@ When a flow looks broken, check these in order:
 4. Is the rental access `active` and not hidden?
 5. Does the rental access have a valid match row to the product?
 6. Is the booking blocked because no hub was selected?
-7. Is the DB missing migration `013_rental_access_schema.sql`, causing fallback behavior?
+7. Is the admin server missing `SUPABASE_SECRET_KEY`, causing read-only fallback or blocked writes?
+8. Is the DB missing migration `013_rental_access_schema.sql`, causing fallback behavior or missing-table errors?

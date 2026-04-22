@@ -10,7 +10,6 @@
  *  - AccountSidebar (emits "select")
  *  - Section components via <component :is>
  */
-import type { CompanyRole, PlatformRole } from "~/types/user";
 import type { Component } from "vue";
 import AccountSidebar from "~/components/account/AccountSidebar.vue";
 import SectionProfile from "~/components/account/SectionProfile.vue";
@@ -23,6 +22,11 @@ import SectionCompanyKyc from "~/components/account/SectionCompanyKyc.vue";
 import SectionStaff from "~/components/account/SectionStaff.vue";
 import SectionQuotations from "~/components/account/SectionQuotations.vue";
 import SectionApprovals from "~/components/account/SectionApprovals.vue";
+import {
+  formatCompanyRole,
+  formatContextMode,
+  formatPlatformRole,
+} from "~/utils/role-display";
 
 const { isLoggedIn } = useAuthSession();
 const { t } = useI18n();
@@ -36,18 +40,6 @@ const {
   fetchMemberships,
   syncContextWithMemberships,
 } = useCompanyContext();
-
-function formatPlatformRole(role: PlatformRole | null | undefined): string {
-  if (role === "super_admin") return "Super Admin";
-  if (role === "staff") return "Staff";
-  return "Customer";
-}
-
-function formatCompanyRole(role: CompanyRole | null | undefined): string {
-  if (role === "b2b_admin") return "B2B Admin";
-  if (role === "b2b_user") return "B2B User";
-  return "—";
-}
 
 const fallbackMembership = computed(() => memberships.value[0] ?? null);
 
@@ -66,14 +58,15 @@ const activeCompanyLabel = computed(
     currentCompany.value?.name ??
     activeContext.value.companyName ??
     fallbackMembership.value?.company.name ??
-    "Personal account",
+    "Personal customer account",
 );
 
-const contextModeLabel = computed(() => {
-  if (currentCompany.value) return "B2B Company Context";
-  if (fallbackMembership.value) return "B2B Membership Found";
-  return "B2C Personal Context";
-});
+const contextModeLabel = computed(() =>
+  formatContextMode(
+    Boolean(currentCompany.value),
+    Boolean(fallbackMembership.value),
+  ),
+);
 
 async function ensureCompanyContext() {
   if (import.meta.server || !isLoggedIn.value) return;
@@ -108,7 +101,7 @@ const sectionMap: Record<string, Component> = {
   company: markRaw(SectionCompany),
   credit: markRaw(SectionCredit),
   "company-kyc": markRaw(SectionCompanyKyc),
-  staff: markRaw(SectionStaff),
+  team: markRaw(SectionStaff),
   quotations: markRaw(SectionQuotations),
   approvals: markRaw(SectionApprovals),
 };
@@ -147,14 +140,14 @@ function handleSelect(id: string) {
       <div class="grid gap-4 sm:grid-cols-3">
         <div class="rounded-lg border p-4">
           <p class="text-xs font-medium tracking-wide text-muted uppercase">
-            Platform Role
+            HOPNIC Role
           </p>
           <p class="mt-1 font-semibold">{{ platformRoleLabel }}</p>
         </div>
 
         <div class="rounded-lg border p-4">
           <p class="text-xs font-medium tracking-wide text-muted uppercase">
-            Company Role
+            Organization Role
           </p>
           <p class="mt-1 font-semibold">{{ companyRoleLabel }}</p>
         </div>
@@ -168,10 +161,10 @@ function handleSelect(id: string) {
       </div>
 
       <p v-if="companyContextLoading" class="mt-4 text-sm text-muted">
-        Syncing company memberships...
+        Syncing organization memberships...
       </p>
       <p v-else-if="companyContextError" class="mt-4 text-sm text-error">
-        Company membership sync error: {{ companyContextError }}
+        Organization membership sync error: {{ companyContextError }}
       </p>
     </UCard>
 

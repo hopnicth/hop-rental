@@ -90,7 +90,7 @@ const groups = computed<SidebarGroup[]>(() => {
 
   result.push({ items: personalItems });
 
-  // ── Group 2: Company Hub (B2B Admin + User) ──
+  // ── Group 2: Company Hub (organization admin + member) ──
   if (!isB2C.value) {
     const companyItems: SidebarItem[] = [
       {
@@ -113,13 +113,13 @@ const groups = computed<SidebarGroup[]>(() => {
           label: t("user.companyKyc"),
           icon: "bx:folder-open",
         },
-        { id: "staff", label: t("user.manageStaff"), icon: "bx:group" },
+        { id: "team", label: t("user.manageStaff"), icon: "bx:group" },
       );
     }
 
     result.push({ header: t("user.companyHub"), items: companyItems });
 
-    // ── Group 3: Transactions (B2B Admin only) ──
+    // ── Group 3: Transactions (organization admin only) ──
     if (isB2BAdmin.value) {
       result.push({
         header: t("user.transactions"),
