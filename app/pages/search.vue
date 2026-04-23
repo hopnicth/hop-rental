@@ -17,9 +17,21 @@ const router = useRouter();
 const { t } = useI18n();
 const { search } = useProductSearch();
 
+function readQueryValue(value: unknown): string {
+  return Array.isArray(value)
+    ? typeof value[0] === "string"
+      ? value[0]
+      : ""
+    : typeof value === "string"
+      ? value
+      : "";
+}
+
 // ── Query state ──
-const q = ref(String(route.query.q ?? ""));
-const selectedCategory = ref<string>("all");
+const q = ref(readQueryValue(route.query.q));
+const selectedCategory = ref<string>(
+  readQueryValue(route.query.category) || "all",
+);
 const selectedType = ref<CatalogType | "all">("all");
 const selectedBrands = ref<string[]>([]);
 const minPrice = ref<number | null>(null);
@@ -105,14 +117,41 @@ watch(
   { deep: true, immediate: true },
 );
 
+watch(
+  () => route.query.q,
+  (value) => {
+    const nextValue = readQueryValue(value);
+    if (nextValue !== q.value) {
+      q.value = nextValue;
+    }
+  },
+);
+
+watch(
+  () => route.query.category,
+  (value) => {
+    const nextValue = readQueryValue(value) || "all";
+    if (nextValue !== selectedCategory.value) {
+      selectedCategory.value = nextValue;
+    }
+  },
+);
+
 // Keep the URL in sync with the query string (so the result page is shareable)
-watch(q, (value) => {
+watch([q, selectedCategory], ([queryValue, categoryValue]) => {
   const next = { ...route.query };
-  if (value.trim()) {
-    next.q = value.trim();
+  if (queryValue.trim()) {
+    next.q = queryValue.trim();
   } else {
     delete next.q;
   }
+
+  if (categoryValue !== "all") {
+    next.category = categoryValue;
+  } else {
+    delete next.category;
+  }
+
   router.replace({ query: next });
 });
 

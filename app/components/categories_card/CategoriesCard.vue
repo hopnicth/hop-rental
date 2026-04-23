@@ -1,27 +1,15 @@
 <script setup lang="ts">
-import type { SelectItem } from "@nuxt/ui";
-
 const { t } = useI18n();
 const { mainCategories, getSubCategories } = useCategories();
 const emit = defineEmits<{ selected: [subId: string] }>();
+const router = useRouter();
 
 // Track selected sub-category per main category (single active selection at a time)
 const selectedValues = ref<Record<string, string | undefined>>({});
 
 /**
- * Build SelectItem[] for a given main category key.
- */
-function getDropdownItems(mainKey: string): SelectItem[] {
-  const subs = getSubCategories(mainKey);
-  return subs.value.map((sub) => ({
-    label: t(sub.labelKey),
-    value: sub.id,
-  }));
-}
-
-/**
  * Picking a sub-category clears sibling selections and jumps straight to
- * `/search?q=<localized sub label>`. The search page handles the rest.
+ * `/search` with synced query/category params.
  */
 async function onSelect(mainKey: string, subId: unknown) {
   const id = typeof subId === "string" && subId.length > 0 ? subId : null;
@@ -34,10 +22,12 @@ async function onSelect(mainKey: string, subId: unknown) {
 
   emit("selected", id);
 
-  await navigateTo({
-    path: "/search",
-    query: { q: t(sub.labelKey) },
+  const params = new URLSearchParams({
+    q: t(sub.labelKey),
+    category: id,
   });
+
+  await router.push(`/search?${params.toString()}`);
 }
 </script>
 
@@ -58,15 +48,24 @@ async function onSelect(mainKey: string, subId: unknown) {
           <span class="text-sm font-medium">{{ t(main.labelKey) }}</span>
         </div>
 
-        <!-- Sub-category dropdown — no internal search, immediate query on pick -->
-        <USelect
-          :model-value="selectedValues[main.key]"
-          :items="getDropdownItems(main.key)"
-          value-key="value"
-          :placeholder="t('categories.selectPlaceholder')"
-          class="w-full"
-          @update:model-value="(v: unknown) => onSelect(main.key, v)"
-        />
+        <select
+          :value="selectedValues[main.key] ?? ''"
+          class="w-full rounded-xl border border-default bg-white px-3 py-2 text-sm text-default outline-none transition focus:border-primary"
+          @change="
+            onSelect(main.key, ($event.target as HTMLSelectElement).value)
+          "
+        >
+          <option value="" disabled>
+            {{ t("categories.selectPlaceholder") }}
+          </option>
+          <option
+            v-for="sub in getSubCategories(main.key).value"
+            :key="sub.id"
+            :value="sub.id"
+          >
+            {{ t(sub.labelKey) }}
+          </option>
+        </select>
       </div>
     </div>
   </UCard>

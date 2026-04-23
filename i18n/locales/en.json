@@ -173,6 +173,25 @@
     "viewDetails": "View details",
     "perDay": "day"
   },
+  "chatWidget": {
+    "fabLabel": "Chat with us",
+    "panelTitle": "HOPNIC Chat",
+    "panelSubtitle": "Mockup UI for quick customer support",
+    "welcome": "Hi! This is a mock chat widget. You can use the quick actions below to preview the UI flow.",
+    "inputPlaceholder": "Type a message for UI preview...",
+    "mockReply": "Thanks! This is a mock response only. Real chat logic can be connected later.",
+    "disclaimer": "Mockup only — no real message is being sent yet.",
+    "actions": {
+      "products": "Ask about products",
+      "rental": "Ask about rentals",
+      "quote": "Request a quotation"
+    },
+    "replies": {
+      "products": "A product-support flow could start here with links to featured products, stock checks, or product detail pages.",
+      "rental": "A rental-support flow could start here with quick links to rental sets, rental conditions, and pickup branches.",
+      "quote": "A quotation-support flow could start here with a short form, contact handoff, or recommended sales contact actions."
+    }
+  },
   "categories": {
     "title": "Product Categories",
     "selectPlaceholder": "Select sub-category...",

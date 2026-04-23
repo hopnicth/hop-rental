@@ -151,27 +151,26 @@
     "signUpError": "注册失败"
   },
   "home": {
-    "title": "首页",
-    "heroBadge": "主视觉横幅",
-    "promotionsTitle": "促销与精选内容",
-    "promotionsDescription": "由超级管理员管理的促销卡片与快捷链接，展示在首页横向区块中。",
-    "emptyPromotions": "首页目前还没有可展示的促销内容。",
-    "rentalTitle": "精选租赁方案",
-    "rentalDescription": "在首页重点展示的租赁方案卡片，方便用户快速进入相关页面。",
-    "viewAllRentals": "查看全部租赁方案",
-    "emptyRentals": "当前暂无精选租赁方案。",
-    "productsTitle": "推荐商品",
-    "productsDescription": "精选销售商品，以统一高度的横向卡片形式展示在首页。",
-    "viewAllProducts": "查看全部商品",
-    "emptyProducts": "当前暂无推荐商品。",
-    "servicesTitle": "我们的服务",
-    "servicesDescription": "展示工程设计、生产咨询与工厂执行支持等服务卡片。",
-    "emptyServices": "首页目前还没有可展示的服务卡片。",
-    "promotionBadge": "促销",
-    "serviceBadge": "服务",
-    "learnMore": "了解更多",
-    "viewDetails": "查看详情",
-    "perDay": "天"
+    "title": "首页"
+  },
+  "chatWidget": {
+    "fabLabel": "联系我们",
+    "panelTitle": "HOPNIC Chat",
+    "panelSubtitle": "客户支持聊天窗口 UI 模拟",
+    "welcome": "您好！这是一个聊天组件的 mockup。您可以点击下面的快捷操作来预览界面流程。",
+    "inputPlaceholder": "输入消息以预览 UI...",
+    "mockReply": "谢谢！这只是模拟回复，后续可以再接入真实聊天系统。",
+    "disclaimer": "仅为 mockup 演示 — 目前不会发送真实消息",
+    "actions": {
+      "products": "咨询商品",
+      "rental": "咨询租赁",
+      "quote": "申请报价"
+    },
+    "replies": {
+      "products": "这里未来可以接入商品推荐、库存检查或商品详情页跳转等支持流程。",
+      "rental": "这里未来可以接入租赁套餐推荐、租赁条件说明以及提货网点等支持流程。",
+      "quote": "这里未来可以接入简短询价表单、转交销售人员或推荐下一步操作。"
+    }
   },
   "categories": {
     "title": "产品分类",

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HopHeader from "../components/HopHeader.vue";
+import MockChatFab from "~/components/chat/MockChatFab.vue";
 </script>
 
 <template>
@@ -7,4 +8,7 @@ import HopHeader from "../components/HopHeader.vue";
   <UMain>
     <slot />
   </UMain>
+  <ClientOnly>
+    <MockChatFab />
+  </ClientOnly>
 </template>
