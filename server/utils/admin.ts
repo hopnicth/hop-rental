@@ -1,48 +1,12 @@
 import { createError, type H3Event } from "h3";
 import {
-  serverSupabaseClient,
   serverSupabaseServiceRole,
   serverSupabaseUser,
 } from "#supabase/server";
 
 const ALLOWED_PLATFORM_ROLES = ["staff", "super_admin"] as const;
 
-export const ADMIN_SERVICE_KEY_MISSING_CODE = "ADMIN_SERVICE_KEY_MISSING";
-export const ADMIN_SERVICE_KEY_MISSING_TITLE =
-  "Admin API is running in read-only fallback mode";
-export const ADMIN_SERVICE_KEY_MISSING_MESSAGE =
-  "Set SUPABASE_SECRET_KEY (recommended) or SUPABASE_SERVICE_KEY in the server environment to enable privileged admin reads and writes.";
-
-export type AdminApiWarning = {
-  code: string;
-  title: string;
-  message: string;
-};
-
-function createAdminServiceKeyWarning(): AdminApiWarning {
-  return {
-    code: ADMIN_SERVICE_KEY_MISSING_CODE,
-    title: ADMIN_SERVICE_KEY_MISSING_TITLE,
-    message: ADMIN_SERVICE_KEY_MISSING_MESSAGE,
-  };
-}
-
-export function hasAdminServiceKey(): boolean {
-  return [
-    process.env.SUPABASE_SECRET_KEY,
-    process.env.SUPABASE_SERVICE_KEY,
-  ].some((value) => typeof value === "string" && value.trim().length > 0);
-}
-
-function throwAdminServiceKeyMissing(): never {
-  throw createError({
-    statusCode: 503,
-    statusMessage: ADMIN_SERVICE_KEY_MISSING_TITLE,
-    data: createAdminServiceKeyWarning(),
-  });
-}
-
-async function requirePlatformAdminProfile(event: H3Event) {
+export async function requirePlatformAdmin(event: H3Event) {
   const authUser = await serverSupabaseUser(event);
   const userId = typeof authUser?.sub === "string" ? authUser.sub : null;
 
@@ -53,8 +17,8 @@ async function requirePlatformAdminProfile(event: H3Event) {
     });
   }
 
-  const userClient = await serverSupabaseClient(event);
-  const { data: profile, error } = await userClient
+  const adminClient = serverSupabaseServiceRole(event);
+  const { data: profile, error } = await adminClient
     .from("users")
     .select("id, platform_role")
     .eq("id", userId)
@@ -77,42 +41,28 @@ async function requirePlatformAdminProfile(event: H3Event) {
   return {
     userId,
     platformRole: profile.platform_role,
-    userClient,
+    adminClient,
   };
 }
 
-export async function requirePlatformAdmin(event: H3Event) {
-  const { userId, platformRole } = await requirePlatformAdminProfile(event);
+export async function requireSuperAdmin(event: H3Event) {
+  const admin = await requirePlatformAdmin(event);
 
-  if (!hasAdminServiceKey()) {
-    throwAdminServiceKeyMissing();
+  if (admin.platformRole !== "super_admin") {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Super admin access required",
+    });
   }
 
-  return {
-    userId,
-    platformRole,
-    adminClient: serverSupabaseServiceRole(event),
-  };
+  return admin;
 }
 
 export async function requirePlatformAdminReadAccess(event: H3Event) {
-  const { userId, platformRole, userClient } =
-    await requirePlatformAdminProfile(event);
-
-  if (!hasAdminServiceKey()) {
-    return {
-      userId,
-      platformRole,
-      adminClient: userClient,
-      adminMode: "read_only" as const,
-      adminWarning: createAdminServiceKeyWarning(),
-    };
-  }
+  const admin = await requirePlatformAdmin(event);
 
   return {
-    userId,
-    platformRole,
-    adminClient: serverSupabaseServiceRole(event),
+    ...admin,
     adminMode: "full" as const,
     adminWarning: null,
   };

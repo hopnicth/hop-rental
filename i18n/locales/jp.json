@@ -151,7 +151,27 @@
     "signUpError": "登録に失敗しました"
   },
   "home": {
-    "title": "ホーム"
+    "title": "ホーム",
+    "heroBadge": "メインバナー",
+    "promotionsTitle": "プロモーションと注目コンテンツ",
+    "promotionsDescription": "スーパー管理者が更新できるプロモーションカードと導線リンクをホームに表示します。",
+    "emptyPromotions": "ホームに表示するプロモーションはまだありません。",
+    "rentalTitle": "おすすめレンタルセット",
+    "rentalDescription": "ホームで優先表示するレンタルアクセスカードを厳選して掲載します。",
+    "viewAllRentals": "すべてのレンタルを見る",
+    "emptyRentals": "現在表示できるおすすめレンタルはありません。",
+    "productsTitle": "おすすめ商品",
+    "productsDescription": "ホーム上の横スクロールレールに表示する厳選商品です。",
+    "viewAllProducts": "すべての商品を見る",
+    "emptyProducts": "現在表示できるおすすめ商品はありません。",
+    "servicesTitle": "サービス紹介",
+    "servicesDescription": "設計支援、生産コンサルティング、工場対応サービスを紹介するカードです。",
+    "emptyServices": "ホームに表示するサービスカードはまだありません。",
+    "promotionBadge": "プロモーション",
+    "serviceBadge": "サービス",
+    "learnMore": "詳しく見る",
+    "viewDetails": "詳細を見る",
+    "perDay": "日"
   },
   "categories": {
     "title": "製品カテゴリ",

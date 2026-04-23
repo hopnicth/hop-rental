@@ -151,7 +151,27 @@
     "signUpError": "Sign up failed"
   },
   "home": {
-    "title": "Home"
+    "title": "Home",
+    "heroBadge": "Hero banner",
+    "promotionsTitle": "Promotions & highlights",
+    "promotionsDescription": "Super-admin managed promo cards and quick links displayed on the homepage.",
+    "emptyPromotions": "No promotions are available for the homepage yet.",
+    "rentalTitle": "Featured rental access",
+    "rentalDescription": "Curated rental-access cards highlighted on the homepage for faster discovery.",
+    "viewAllRentals": "View all rentals",
+    "emptyRentals": "No featured rental access is available right now.",
+    "productsTitle": "Recommended products",
+    "productsDescription": "Curated sale products displayed in a consistent horizontal rail on the homepage.",
+    "viewAllProducts": "View all products",
+    "emptyProducts": "No recommended products are available right now.",
+    "servicesTitle": "Our services",
+    "servicesDescription": "Service highlight cards for engineering, manufacturing, and factory support work.",
+    "emptyServices": "No service cards are available for the homepage yet.",
+    "promotionBadge": "Promotion",
+    "serviceBadge": "Service",
+    "learnMore": "Learn more",
+    "viewDetails": "View details",
+    "perDay": "day"
   },
   "categories": {
     "title": "Product Categories",

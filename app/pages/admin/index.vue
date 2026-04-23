@@ -18,8 +18,15 @@ const sections = [
   },
   {
     title: "Matches",
-    description: "Link rental access packages to products for booking compatibility.",
+    description:
+      "Link rental access packages to products for booking compatibility.",
     to: "/admin/matches",
+  },
+  {
+    title: "Home Content",
+    description:
+      "Manage homepage banners, link cards, and curated featured rails.",
+    to: "/admin/home-content",
   },
 ];
 </script>
@@ -31,7 +38,8 @@ const sections = [
         <div>
           <h2 class="text-lg font-semibold">Admin entry point</h2>
           <p class="text-sm text-[var(--ui-text-muted)]">
-            Phase 1 is scaffolded. Next step is wiring real CRUD forms and storage upload.
+            Phase 1 is scaffolded. Next step is wiring real CRUD forms and
+            storage upload.
           </p>
         </div>
       </template>

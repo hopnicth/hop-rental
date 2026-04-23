@@ -1,6 +1,6 @@
 # Admin MVP Action Plan
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 Owner: Augment continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -26,6 +26,7 @@ rental access packages, matches, and catalog images.
 - [x] D5. Admin image flow should upload files to Supabase Storage, then save URLs/paths in DB fields.
 - [x] D6. Rental package/set editing should treat `rental_accesses` as the commercial root and `rental_access_matches` as membership.
 - [x] D7. UI/docs must distinguish HOPNIC internal roles from customer-organization roles.
+- [x] D8. Homepage content curation lives in the same Nuxt admin area, but `/admin/home-content` and `/api/admin/home-content/*` must stay `super_admin` only.
 
 ## Phase 0 — foundation
 
@@ -55,6 +56,10 @@ rental access packages, matches, and catalog images.
 - [/] P1.6 Rental access match editor (`rental_access` ↔ `product`).
   - 2026-04-22: `/admin/matches` now lists matches and supports minimal create flow.
   - 2026-04-22: remote DB migration `013_rental_access_schema.sql` was applied so `rental_access_matches` is available for admin validation.
+- [x] P1.7 Homepage content admin page + API.
+  - 2026-04-23: added `/admin/home-content` for hero banners, promotion/service link cards, and curated featured product/rental rails.
+  - 2026-04-23: added `/api/admin/home-content` GET/POST/PATCH endpoints backed by `home_banners`, `home_link_cards`, `home_featured_products`, and `home_featured_rental_accesses`.
+  - 2026-04-23: applied `014_homepage_content.sql` to the linked remote DB and verified seeded `home_banners` rows exist.
 
 ## Phase 2 — media/admin usability
 
@@ -62,6 +67,7 @@ rental access packages, matches, and catalog images.
 - [ ] P2.2 Save `thumbnail_url` and `image_urls` correctly from the admin UI.
 - [ ] P2.3 Add basic validation/error messaging for required fields.
 - [ ] P2.4 Add quick links back to storefront-facing pages for spot checks.
+- [ ] P2.5 Add image upload/storage flow for homepage banners and link cards instead of URL-only fields.
 
 ## Phase 3 — security + server flow
 
@@ -80,7 +86,8 @@ rental access packages, matches, and catalog images.
 - [/] R3. Implement `rental_access` admin first because package/set management is the current bottleneck.
 - [x] R4. Implement product + SKU editor second.
 - [/] R5. Implement match editor third.
-- [ ] R6. Add image upload flow after the first forms are working.
+- [x] R6. Implement homepage content curation for banners, link cards, and featured rails.
+- [ ] R7. Add image upload flow after the first forms are working.
 
 ## Notes for future sessions
 
@@ -88,3 +95,5 @@ rental access packages, matches, and catalog images.
 - Current repo already exposes `platformRole` through `useUserProfile()`.
 - Prefer extending the existing middleware pattern instead of inventing a second access model if a clean extension is possible.
 - Keep the first admin screens simple and form-first; do not block on charts, KPIs, or dashboard widgets.
+- `useHomeContent()` now prefers curated homepage rows, but featured product/rental rails intentionally fall back to deterministic-random live catalog items when curated rows are empty.
+- Promotions/services still have a compatibility fallback via mock home cards if the homepage schema is unavailable.

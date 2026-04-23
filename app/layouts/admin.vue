@@ -3,30 +3,15 @@ import HopHeader from "~/components/HopHeader.vue";
 import { formatPlatformRole } from "~/utils/role-display";
 
 const route = useRoute();
-const { profile, loading, ensureProfileLoaded } = useUserProfile();
+const { profile } = useUserProfile();
 
 const navItems = [
   { label: "Overview", to: "/admin" },
   { label: "Products", to: "/admin/products" },
   { label: "Rental Accesses", to: "/admin/rental-accesses" },
   { label: "Matches", to: "/admin/matches" },
+  { label: "Home Content", to: "/admin/home-content" },
 ];
-
-const roleLabel = computed(() => {
-  if (profile.value?.platformRole) {
-    return formatPlatformRole(profile.value.platformRole);
-  }
-
-  if (loading.value) {
-    return "Loading role...";
-  }
-
-  return "Admin session";
-});
-
-if (import.meta.client) {
-  void ensureProfileLoaded();
-}
 </script>
 
 <template>
@@ -49,13 +34,13 @@ if (import.meta.client) {
               Catalog & rental backoffice
             </h1>
             <p class="text-sm text-[var(--ui-text-muted)]">
-              Lightweight internal area for products, rental packages, and
-              matching.
+              Lightweight internal area for products, rental packages, homepage
+              content, and matching.
             </p>
           </div>
 
           <UBadge color="warning" variant="soft" size="lg">
-            {{ roleLabel }}
+            {{ formatPlatformRole(profile?.platformRole) }}
           </UBadge>
         </div>
 

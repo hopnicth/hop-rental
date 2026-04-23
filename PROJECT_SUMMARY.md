@@ -1,7 +1,7 @@
 # 🏗 HOP-RENTAL — Project Summary & Recap
 
 > สรุปเนื้อหาสำคัญและแนวทางทำงานร่วมกัน
-> อัปเดตล่าสุด: 2026-02-18
+> อัปเดตล่าสุด: 2026-04-23
 
 ---
 
@@ -15,6 +15,14 @@
 - **i18n**: @nuxtjs/i18n v10.2 — 4 ภาษา (th, en, cn, jp)
 - **Icons**: Boxicons (bx: prefix) — https://icones.js.org/collection/bx
 - **TypeScript**: strict typing ทุกไฟล์
+
+### Recent branch updates (2026-04-23)
+
+- หน้า Home ถูก refactor เป็นโครงหลาย section: Hero Banner, Feature Bar, Partner/logo strip, Promotion, Rental, Products, Services
+- Home content ใช้ table ฝั่ง Supabase แล้วผ่าน `home_banners`, `home_link_cards`, `home_featured_products`, `home_featured_rental_accesses`
+- Featured products / rentals บนหน้า Home จะ fallback ไปใช้รายการจริงจาก catalog แบบ deterministic-random เมื่อยังไม่มี curated rows
+- มี internal admin MVP ภายใน app เดียวกันแล้ว รวมถึง `/admin/home-content` สำหรับจัดการ homepage content โดยจำกัดสิทธิ์ที่ `super_admin`
+- มี service mock pages สำหรับ 3 บริการหลัก และมี migration `014_homepage_content.sql` รองรับ Home CMS
 
 ---
 
@@ -35,6 +43,7 @@
 | **State Management**       | ไม่ใช้ Vuex/Pinia — ใช้ composable + ref() + localStorage              |
 | **SKU Pattern**            | Product ไม่มี variant → 1 SKU (default); มี variant → หลาย SKU         |
 | **Route Pattern**          | `/product-{categories[0]}/{slug}` dynamic route                        |
+| **Admin Pattern**          | Internal backoffice MVP อยู่ใน Nuxt app เดียวกันภายใต้ `/admin`        |
 
 ### 2.2 ไฟล์โครงสร้างหลัก
 
@@ -71,7 +80,9 @@ hop-rental/
 │   │   ├── useBanners.ts
 │   │   ├── usePartners.ts
 │   │   ├── useCart.ts          # Cart + localStorage (⚠️ needs upgrade)
-│   │   └── useBooking.ts       # Booking + localStorage (⚠️ needs upgrade)
+│   │   ├── useBooking.ts       # Booking + localStorage (⚠️ needs upgrade)
+│   │   ├── useRentalAccesses.ts# rental access catalog + product mapping
+│   │   └── useHomeContent.ts   # home CMS content + featured fallback logic
 │   ├── components/
 │   │   ├── HopHeader.vue       # Main header with nav
 │   │   ├── header/             # HopLogo, HopSearch, LangSelection, NavMenu, MobileMenu, UserDropdown
@@ -80,11 +91,14 @@ hop-rental/
 │   │   ├── categories_card/CategoriesCard.vue
 │   │   ├── partners/HopPartnerSlide.vue
 │   │   ├── IconSlide/IconSlide.vue
+│   │   ├── home/               # HomeSectionShell, HomeHorizontalRail, HomeLinkCard
 │   │   └── products/           # ProductCard, ProductGallery, ProductInfo, ProductSpecTable,
 │   │                           # ProductDocLinks, RentalBookingForm, SearchAndFilter,
 │   │                           # ProductFilterForm, RentalFilterForm, ProductSet
 │   └── pages/
-│       ├── index.vue           # Homepage: Banner + FeatureBar + Partners
+│       ├── index.vue           # Homepage: Hero + FeatureBar + Partners + Promotions + Rental + Products + Services
+│       ├── admin/              # Internal admin MVP, including home-content curation
+│       ├── services/           # Mock service detail pages used by homepage service cards
 │       └── product-[group]/
 │           ├── index.vue       # Product list: search/filter sidebar + grid + pagination
 │           └── [id].vue        # Product detail: gallery + info + spec + docs + booking
@@ -162,6 +176,9 @@ hop-rental/
 
 ### Task 3: Cart/Checkout + Data Foundation (IN PROGRESS — Design Phase)
 
+> Historical note: some items below predate the current integrated `/admin` MVP.
+> The current branch already runs admin/backoffice inside this same Nuxt app.
+
 #### Gap Analysis ที่พบ:
 
 | ข้อมูลที่ขาด      | ปัญหา                                                                   |
@@ -201,7 +218,7 @@ hop-rental/
 - **Auth**: Supabase Auth (Email/Password + Google OAuth)
 - **Frontend Auth UI**: UAuthForm (Nuxt UI component)
 - **Nuxt Integration**: @nuxtjs/supabase module
-- **Admin Dashboard**: แยก project (ไม่อยู่ใน Nuxt app เดียวกัน)
+- **Admin / Backoffice**: MVP อยู่ใน Nuxt app เดียวกันภายใต้ `/admin`; ค่อยพิจารณาแยกภายหลังถ้าขอบเขตโตขึ้น
 
 #### Database Architecture (Shared):
 

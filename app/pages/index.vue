@@ -1,31 +1,120 @@
 <script setup lang="ts">
 import HopBanner from "~/components/banner/HopBanner.vue";
+import HomeHorizontalRail from "~/components/home/HomeHorizontalRail.vue";
+import HomeLinkCard from "~/components/home/HomeLinkCard.vue";
+import HomeSectionShell from "~/components/home/HomeSectionShell.vue";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
-import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
 import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
+import ProductCard from "~/components/products/ProductCard.vue";
+import RentalAccessCard from "~/components/products/RentalAccessCard.vue";
+import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
 
 const { t } = useI18n();
 const isCategoryPanelOpen = ref(false);
+const { getRentalAccessShowPath } = useRentalAccesses();
+const {
+  promotionCards,
+  featuredRentalAccesses,
+  featuredProducts,
+  serviceCards,
+} = useHomeContent();
 </script>
 
 <template>
   <UContainer class="py-4 sm:py-6">
-    <div class="grid grid-cols-12 gap-4 lg:gap-6">
+    <div class="grid grid-cols-12 items-start gap-4 lg:gap-6">
       <div class="hidden lg:block lg:col-span-3">
         <CategoriesCard />
       </div>
 
-      <div class="col-span-12 lg:col-span-9 flex-row justify-center">
-        <div class="mb-10">
-          <HopBanner />
-        </div>
-        <div class="pa-3">
+      <div class="col-span-12 space-y-7 lg:col-span-9 sm:space-y-8">
+        <HopBanner />
+
+        <div class="space-y-4 sm:space-y-5">
           <HopFeatureBar />
+          <div
+            class="rounded-3xl border border-default bg-white/70 px-4 py-4 sm:px-5"
+          >
+            <HopPartnerSlide />
+          </div>
         </div>
-        <div class="mt-10 pa-5">
-          <HopPartnerSlide />
-        </div>
+
+        <HomeSectionShell
+          :title="t('home.promotionsTitle')"
+          :description="t('home.promotionsDescription')"
+        >
+          <HomeHorizontalRail
+            :items="promotionCards"
+            :empty-label="t('home.emptyPromotions')"
+          >
+            <template #item="{ item }">
+              <HomeLinkCard :card="item" />
+            </template>
+          </HomeHorizontalRail>
+        </HomeSectionShell>
+
+        <HomeSectionShell
+          :title="t('home.rentalTitle')"
+          :description="t('home.rentalDescription')"
+        >
+          <template #action>
+            <UButton
+              to="/product-rental"
+              variant="soft"
+              color="secondary"
+              size="sm"
+            >
+              {{ t("home.viewAllRentals") }}
+            </UButton>
+          </template>
+
+          <HomeHorizontalRail
+            :items="featuredRentalAccesses"
+            :empty-label="t('home.emptyRentals')"
+          >
+            <template #item="{ item }">
+              <RentalAccessCard
+                :access="item"
+                :browse-to="getRentalAccessShowPath(item)"
+              />
+            </template>
+          </HomeHorizontalRail>
+        </HomeSectionShell>
+
+        <HomeSectionShell
+          :title="t('home.productsTitle')"
+          :description="t('home.productsDescription')"
+        >
+          <template #action>
+            <UButton to="/product-all" variant="soft" color="primary" size="sm">
+              {{ t("home.viewAllProducts") }}
+            </UButton>
+          </template>
+
+          <HomeHorizontalRail
+            :items="featuredProducts"
+            :empty-label="t('home.emptyProducts')"
+          >
+            <template #item="{ item }">
+              <ProductCard :product-id="item.id" />
+            </template>
+          </HomeHorizontalRail>
+        </HomeSectionShell>
+
+        <HomeSectionShell
+          :title="t('home.servicesTitle')"
+          :description="t('home.servicesDescription')"
+        >
+          <HomeHorizontalRail
+            :items="serviceCards"
+            :empty-label="t('home.emptyServices')"
+          >
+            <template #item="{ item }">
+              <HomeLinkCard :card="item" />
+            </template>
+          </HomeHorizontalRail>
+        </HomeSectionShell>
       </div>
     </div>
 

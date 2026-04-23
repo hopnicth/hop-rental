@@ -1,6 +1,6 @@
 # Database Admin Manual
 
-Last updated: 2026-04-22
+Last updated: 2026-04-23
 Audience: internal staff/data-entry + developers who need a practical setup guide
 
 ## Purpose
@@ -21,6 +21,7 @@ In this document:
 - **internal admin / internal staff** means HOPNIC `staff` or `super_admin`
 - **organization admin** means customer-side `b2b_admin`
 - **organization member** means customer-side `b2b_user`
+- homepage content curation under `/admin/home-content` currently means HOPNIC `super_admin` only
 
 Important boundary:
 
@@ -94,6 +95,10 @@ This is a **technical compatibility rule**, not a business rule about which item
 | `public.product_skus`                  | internal staff/import                         | price/stock/rental pricing per SKU | Yes                         |
 | `public.rental_accesses`               | internal staff                                | public rental offering             | Yes                         |
 | `public.rental_access_matches`         | internal staff                                | links rental access to product     | Yes                         |
+| `public.home_banners`                  | super admin                                   | homepage hero banner slides        | Yes                         |
+| `public.home_link_cards`               | super admin                                   | homepage promotion/service rails   | Yes                         |
+| `public.home_featured_products`        | super admin                                   | curated homepage product rail      | Yes                         |
+| `public.home_featured_rental_accesses` | super admin                                   | curated homepage rental rail       | Yes                         |
 | `public.rental_bookings`               | system                                        | customer booking transactions      | Usually no                  |
 | `public.orders` / `public.order_items` | system                                        | sale checkout submissions          | Usually no                  |
 | `public.addresses`                     | customer/user/organization admin              | delivery addresses                 | No catalog setup            |
@@ -277,7 +282,44 @@ For set/package usage, treat this table as the membership list of products relat
 - There is currently no required business meaning that one matched product must be marked as the primary product.
 - However, the current booking flow still expects at least one matched product path to remain usable.
 
-## 6. System-managed tables — usually do not seed manually
+## 6. Homepage content setup — `public.home_*`
+
+### Purpose
+
+The homepage now has CMS-like content driven by four tables created in
+`supabase/migrations/014_homepage_content.sql`.
+
+Current admin surface:
+
+- `/admin/home-content`
+- `/api/admin/home-content/*`
+
+Current access rule:
+
+- `super_admin` only
+
+### Tables in scope
+
+- `public.home_banners`
+  - Hero banner slides for the main home carousel.
+  - Own localized title/subtitle/CTA, image URLs, link target, sort order, and active flag.
+- `public.home_link_cards`
+  - Horizontal cards for the `promotion` and `service` home sections.
+  - `section_key` must be either `promotion` or `service`.
+- `public.home_featured_products`
+  - Curated product IDs for the homepage featured-products rail.
+- `public.home_featured_rental_accesses`
+  - Curated rental-access IDs for the homepage featured-rental rail.
+
+### Important notes
+
+- Banner and link-card image fields are currently URL-based; storage upload can be added later.
+- Internal links should point to valid public routes such as `/product-all`, `/product-rental`, `/services/{slug}`, `/product-{group}/{slug}`, or `/rental-access/{slug}`.
+- The storefront prefers curated featured products/rental accesses when active rows exist.
+- If curated featured rows are empty, the storefront intentionally falls back to deterministic-random live catalog items so the home rails never look blank.
+- Promotion/service cards still have a mock fallback if the homepage schema is unavailable in a target environment.
+
+## 7. System-managed tables — usually do not seed manually
 
 ### `public.rental_bookings`
 
@@ -313,7 +355,7 @@ Important notes:
 - An address must belong to either `user_id` or `company_id`.
 - `is_default` is auto-normalized so only one default address remains per owner.
 
-## 7. Publish checklist for a new rentable item
+## 8. Publish checklist for a new rentable item
 
 - [ ] Product row exists and is public (`is_hidden = false`)
 - [ ] Product has at least 1 SKU row
@@ -329,9 +371,11 @@ Important notes:
 - [ ] Product detail shows related rental access card(s)
 - [ ] `/rental-access/{slug}` opens correctly
 
-## 8. Current branch caveats
+## 9. Current branch caveats
 
 - The storefront still supports a fallback mode when `rental_accesses` or newer booking columns are missing from the DB schema.
 - That fallback keeps the app usable, but the preferred production path is to apply migration `013_rental_access_schema.sql`.
 - Internal admin pages `/admin/rental-accesses` and `/admin/matches` also depend on migration `013_rental_access_schema.sql`; if those pages show missing-table errors, check the remote migration state first.
+- Homepage content depends on migration `014_homepage_content.sql`; if `/admin/home-content` or homepage content reads fail, check those tables and policies first.
+- Empty curated `home_featured_products` / `home_featured_rental_accesses` is currently a valid state; the storefront will fall back to deterministic-random live catalog items instead of rendering an empty rail.
 - Hub/store master data is still code-backed, so operational changes to hubs currently require a code/config update, not only a DB change.

@@ -151,7 +151,27 @@
     "signUpError": "注册失败"
   },
   "home": {
-    "title": "首页"
+    "title": "首页",
+    "heroBadge": "主视觉横幅",
+    "promotionsTitle": "促销与精选内容",
+    "promotionsDescription": "由超级管理员管理的促销卡片与快捷链接，展示在首页横向区块中。",
+    "emptyPromotions": "首页目前还没有可展示的促销内容。",
+    "rentalTitle": "精选租赁方案",
+    "rentalDescription": "在首页重点展示的租赁方案卡片，方便用户快速进入相关页面。",
+    "viewAllRentals": "查看全部租赁方案",
+    "emptyRentals": "当前暂无精选租赁方案。",
+    "productsTitle": "推荐商品",
+    "productsDescription": "精选销售商品，以统一高度的横向卡片形式展示在首页。",
+    "viewAllProducts": "查看全部商品",
+    "emptyProducts": "当前暂无推荐商品。",
+    "servicesTitle": "我们的服务",
+    "servicesDescription": "展示工程设计、生产咨询与工厂执行支持等服务卡片。",
+    "emptyServices": "首页目前还没有可展示的服务卡片。",
+    "promotionBadge": "促销",
+    "serviceBadge": "服务",
+    "learnMore": "了解更多",
+    "viewDetails": "查看详情",
+    "perDay": "天"
   },
   "categories": {
     "title": "产品分类",
