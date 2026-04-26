@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useRentalAccesses } from "~/composables/useRentalAccesses";
+import { useAssets } from "~/composables/useAssets";
 import type { LocaleCode } from "~/types/locale";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 
@@ -10,8 +10,8 @@ const lang = computed(() => locale.value as LocaleCode);
 // ── Fetch product by slug from route param ──
 const slug = computed(() => route.params.id as string);
 const { getProductBySlug, products } = useProducts();
-const { getRentalAccessesByProductId, getRentalAccessShowPath } =
-  useRentalAccesses();
+const { getAssetsByProductId, getAssetShowPath } =
+  useAssets();
 
 const product = getProductBySlug(slug.value);
 
@@ -44,57 +44,17 @@ const selectedGalleryThumbnail = computed<string>(() => {
 });
 
 // ── Cart & Booking ──
-const { isRental } = useProducts();
 const { addToCart } = useCart();
-const { addBooking, getRemainingAvailability } = useBooking();
-const user = useSupabaseUser();
 const toast = useToast();
-const showBookingForm = ref(false);
-const isSubmittingBooking = ref(false);
-const loginRedirectPath = computed(() => route.fullPath || "/");
 
-const rentalAccessOptions = computed(() => {
+const assetOptions = computed(() => {
   if (!product.value) return [];
-  return getRentalAccessesByProductId(product.value.id).value;
+  return getAssetsByProductId(product.value.id).value;
 });
 
-const matchedRentalAccessCount = computed(
-  () => rentalAccessOptions.value.length,
+const matchedAssetCount = computed(
+  () => assetOptions.value.length,
 );
-
-const selectedRentalAvailability = computed(() => {
-  if (!selectedSku.value) return 0;
-  return getRemainingAvailability(
-    selectedSku.value.id,
-    selectedSku.value.stock.available,
-  );
-});
-
-function isAvailabilityError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message.toLowerCase() : "";
-  return (
-    message.includes("no rental unit") ||
-    message.includes("availability") ||
-    message.includes("out of stock")
-  );
-}
-
-function handleBookNow() {
-  if (isSubmittingBooking.value || !selectedSku.value) return;
-
-  if (selectedRentalAvailability.value <= 0) {
-    toast.add({
-      title: t("booking.unavailable"),
-      description: t("booking.unavailableDesc"),
-      icon: "bx:error-circle",
-      color: "warning",
-    });
-    showBookingForm.value = false;
-    return;
-  }
-
-  showBookingForm.value = !showBookingForm.value;
-}
 
 function handleAddToCart() {
   if (!product.value || !selectedSku.value) return;
@@ -129,92 +89,6 @@ function handleAddToCart() {
   });
 }
 
-async function handleBookingSubmit(payload: {
-  startDate: string;
-  numDays: number;
-  returnDate: string;
-  totalCost: number;
-  deposit: number;
-}) {
-  if (!product.value || !selectedSku.value || isSubmittingBooking.value) return;
-
-  if (!user.value) {
-    toast.add({
-      title: t("booking.loginRequired"),
-      description: t("booking.loginRequiredDesc"),
-      icon: "bx:lock-alt",
-      color: "warning",
-    });
-    await navigateTo({
-      path: "/user/login",
-      query: { redirect: loginRedirectPath.value },
-    });
-    return;
-  }
-
-  if (selectedRentalAvailability.value <= 0) {
-    showBookingForm.value = false;
-    toast.add({
-      title: t("booking.unavailable"),
-      description: t("booking.unavailableDesc"),
-      icon: "bx:error-circle",
-      color: "warning",
-    });
-    return;
-  }
-
-  const currentProduct = product.value;
-  const currentSku = selectedSku.value;
-  isSubmittingBooking.value = true;
-
-  try {
-    await addBooking({
-      userId: user.value.id,
-      productId: currentProduct.id,
-      skuId: currentSku.id,
-      matchedProductId: currentProduct.id,
-      matchedProductName: currentProduct.name[lang.value],
-      productName: currentProduct.name[lang.value],
-      thumbnail: selectedGalleryThumbnail.value,
-      startDate: payload.startDate,
-      numDays: payload.numDays,
-      returnDate: payload.returnDate,
-      dailyRate: currentSku.rentalPrice.daily,
-      totalCost: payload.totalCost,
-      deposit: payload.deposit,
-    });
-
-    showBookingForm.value = false;
-
-    toast.add({
-      title: t("booking.success"),
-      description: t("booking.successDesc", {
-        product: currentProduct.name[lang.value],
-      }),
-      icon: "bx:check-circle",
-      color: "success",
-    });
-
-    await navigateTo("/user/cart");
-  } catch (error) {
-    console.warn("[Booking] addBooking failed:", error);
-    const availabilityError = isAvailabilityError(error);
-
-    toast.add({
-      title: availabilityError
-        ? t("booking.unavailable")
-        : t("booking.confirmError"),
-      description: availabilityError
-        ? t("booking.unavailableDesc")
-        : t("booking.confirmErrorDesc"),
-      icon: "bx:error-circle",
-      color: "error",
-    });
-  } finally {
-    isSubmittingBooking.value = false;
-  }
-}
-
 // ── Tabs ──
 const tabs = computed(() => [
   { label: t("productDetail.description"), value: "description" },
@@ -243,16 +117,6 @@ const recommended = computed(() => {
     .filter((p) => p.id !== product.value!.id && p.categories.includes(cat))
     .slice(0, 4);
 });
-
-watch(
-  rentalAccessOptions,
-  (accesses) => {
-    if (accesses.length > 0) {
-      showBookingForm.value = false;
-    }
-  },
-  { immediate: true },
-);
 </script>
 
 <template>
@@ -289,17 +153,14 @@ watch(
         <div class="col-span-12 lg:col-span-7">
           <ProductsProductInfo
             :product="product"
-            :rental-available="selectedRentalAvailability"
-            :matched-rental-access-count="matchedRentalAccessCount"
-            :show-rental-action="rentalAccessOptions.length === 0"
+            :matched-asset-count="matchedAssetCount"
             v-model:selected-sku-index="selectedSkuIndex"
             @add-to-cart="handleAddToCart"
-            @book-now="handleBookNow"
           />
         </div>
       </div>
 
-      <div v-if="rentalAccessOptions.length" class="mt-8 space-y-4">
+      <div v-if="assetOptions.length" class="mt-8 space-y-4">
         <div>
           <h3 class="text-lg font-semibold">
             {{ t("productDetail.rentalOptions") }}
@@ -310,32 +171,13 @@ watch(
         </div>
 
         <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <LazyProductsRentalAccessCard
-            v-for="access in rentalAccessOptions"
+          <LazyProductsAssetCard
+            v-for="access in assetOptions"
             :key="access.id"
             :access="access"
-            :browse-to="getRentalAccessShowPath(access)"
+            :browse-to="getAssetShowPath(access)"
           />
         </div>
-      </div>
-
-      <!-- ── Rental Booking Form (below gallery + info) ── -->
-      <div
-        v-if="
-          showBookingForm &&
-          selectedSku &&
-          rentalAccessOptions.length === 0 &&
-          isRental(product)
-        "
-        class="mt-6"
-      >
-        <ProductsRentalBookingForm
-          :product="product"
-          :selected-sku="selectedSku"
-          :loading="isSubmittingBooking"
-          @submit="handleBookingSubmit"
-          @cancel="showBookingForm = false"
-        />
       </div>
 
       <!-- ── Bottom Section: Tabs ── -->
@@ -360,7 +202,10 @@ watch(
 
         <!-- Doc Tab -->
         <div v-else-if="activeTab === 'doc'" class="space-y-3 py-6">
-          <ProductsProductDocLinks :doc="product.doc" />
+          <ProductsProductDocLinks
+            :documents="product.documents"
+            :media-links="product.mediaLinks"
+          />
         </div>
       </div>
 

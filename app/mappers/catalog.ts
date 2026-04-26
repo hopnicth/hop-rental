@@ -1,16 +1,16 @@
 import type {
-  CatalogDocumentRecord,
   CatalogLocalizedFields,
+  CatalogMediaGalleryItemRecord,
+  CatalogProductMetricsRecord,
   CatalogProductRecord,
   CatalogProductSKURecord,
 } from "~/types/catalog";
 import type {
   Product,
-  ProductDoc,
-  ProductDocFile,
+  ProductDocumentLink,
+  ProductMediaLink,
   ProductPrice,
   ProductSKU,
-  RentalPrice,
   SKUStock,
 } from "~/types/product";
 import type { LocalizedString } from "~/types/locale";
@@ -30,23 +30,60 @@ function toLocalizedString(value: CatalogLocalizedFields): LocalizedString {
   };
 }
 
-function toProductDocFile(
-  doc?: CatalogDocumentRecord,
-): ProductDocFile | undefined {
-  if (!doc) return undefined;
-
-  return {
-    url: doc.url,
-    name: toLocalizedString(doc.name),
-  };
+function mediaVariantUrl(
+  item: CatalogMediaGalleryItemRecord,
+  key: "large" | "card" | "thumbnail",
+) {
+  return item.variants?.[key]?.url;
 }
 
-function toProductDocs(record: CatalogProductRecord): ProductDoc {
-  return {
-    manual: toProductDocFile(record.documents?.manual),
-    catalog: toProductDocFile(record.documents?.catalog),
-    datasheet: toProductDocFile(record.documents?.datasheet),
-  };
+function mediaGalleryImageUrls(
+  items?: CatalogMediaGalleryItemRecord[],
+): string[] {
+  return (items ?? [])
+    .filter((item) => item.status === "ready")
+    .map(
+      (item) =>
+        mediaVariantUrl(item, "large") ||
+        mediaVariantUrl(item, "card") ||
+        mediaVariantUrl(item, "thumbnail") ||
+        "",
+    )
+    .filter(Boolean);
+}
+
+function mediaGalleryPrimaryUrl(items?: CatalogMediaGalleryItemRecord[]) {
+  return (items ?? [])
+    .filter((item) => item.status === "ready")
+    .map(
+      (item) =>
+        mediaVariantUrl(item, "card") ||
+        mediaVariantUrl(item, "thumbnail") ||
+        mediaVariantUrl(item, "large") ||
+        "",
+    )
+    .find(Boolean);
+}
+
+function toProductDocumentLinks(
+  record: CatalogProductRecord,
+): ProductDocumentLink[] {
+  return (record.documents ?? []).map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    title: item.title,
+    url: item.url,
+  }));
+}
+
+function toProductMediaLinks(record: CatalogProductRecord): ProductMediaLink[] {
+  return (record.media_links ?? []).map((item) => ({
+    id: item.id,
+    kind: item.kind,
+    title: item.title,
+    url: item.url,
+    thumbnailUrl: item.thumbnailUrl,
+  }));
 }
 
 function toProductPrice(record: CatalogProductSKURecord): ProductPrice {
@@ -66,35 +103,29 @@ function toProductPrice(record: CatalogProductSKURecord): ProductPrice {
   };
 }
 
-function toRentalPrice(record: CatalogProductSKURecord): RentalPrice {
+function toSkuStock(record: CatalogProductSKURecord): SKUStock {
   return {
-    deposit: record.rental_deposit ?? 0,
-    daily: record.rental_daily ?? 0,
-    weekly: record.rental_weekly ?? 0,
-    monthly: record.rental_monthly ?? 0,
+    inStock: record.stock,
+    available: record.stock,
+    reserved: 0,
   };
 }
 
-function toSkuStock(
-  record: CatalogProductSKURecord,
-  productType: CatalogProductRecord["type"],
-): SKUStock {
-  const available =
-    productType === "sale"
-      ? 0
-      : (record.rental_stock ?? (record.rental_daily ? record.stock : 0));
+function toProductMetrics(
+  value?: CatalogProductRecord["metrics"],
+): CatalogProductMetricsRecord {
+  if (Array.isArray(value)) {
+    return value[0] ?? {};
+  }
 
-  return {
-    inStock: productType === "rental" ? 0 : record.stock,
-    available,
-    reserved: record.reserved_stock ?? 0,
-  };
+  return value ?? {};
 }
 
 export function mapCatalogSkuToProductSku(
   record: CatalogProductSKURecord,
-  productType: CatalogProductRecord["type"],
 ): ProductSKU {
+  const images = mediaGalleryImageUrls(record.media_gallery);
+
   return {
     id: record.id,
     label: toLocalizedString({
@@ -104,11 +135,11 @@ export function mapCatalogSkuToProductSku(
       jp: record.label_jp,
     }),
     attributes: record.attributes ?? {},
-    image: record.image_url,
-    images: record.image_urls,
+    image: mediaGalleryPrimaryUrl(record.media_gallery),
+    images,
+    useProductImages: record.use_product_images ?? true,
     price: toProductPrice(record),
-    rentalPrice: toRentalPrice(record),
-    stock: toSkuStock(record, productType),
+    stock: toSkuStock(record),
   };
 }
 
@@ -117,7 +148,8 @@ export function mapCatalogProductToProduct(
 ): Product {
   const now = new Date().toISOString();
   const isForSale = record.type !== "rental";
-  const isRental = record.type !== "sale";
+  const images = mediaGalleryImageUrls(record.media_gallery);
+  const metrics = toProductMetrics(record.metrics);
 
   return {
     id: record.id,
@@ -130,8 +162,9 @@ export function mapCatalogProductToProduct(
       jp: record.name_jp,
     }),
     brand: record.brand ?? "Generic",
-    thumbnail: record.thumbnail_url ?? PRODUCT_PLACEHOLDER_IMAGE,
-    images: record.image_urls ?? [],
+    thumbnail:
+      mediaGalleryPrimaryUrl(record.media_gallery) ?? PRODUCT_PLACEHOLDER_IMAGE,
+    images,
     description: toLocalizedString({
       th: record.description_th,
       en: record.description_en,
@@ -139,29 +172,23 @@ export function mapCatalogProductToProduct(
       jp: record.description_jp,
     }),
     spec: record.spec ?? {},
-    doc: toProductDocs(record),
+    documents: toProductDocumentLinks(record),
+    mediaLinks: toProductMediaLinks(record),
     suppliers: record.supplier_ids ?? [],
     isForSale,
-    skus: record.skus.map((sku) => mapCatalogSkuToProductSku(sku, record.type)),
-    rentalConfig: {
-      isRental,
-      minDays: record.rental_min_days ?? 1,
-      maxDays: record.rental_max_days ?? 0,
-      bufferDays: record.rental_buffer_days ?? 0,
-      storeLocationIds: record.store_location_ids ?? [],
-    },
+    skus: record.skus.map((sku) => mapCatalogSkuToProductSku(sku)),
     insight: {
-      viewCount: record.view_count ?? 0,
-      addToCartCount: record.add_to_cart_count ?? 0,
-      orderCount: record.order_count ?? 0,
-      rentalCount: record.rental_count ?? 0,
-      wishlistCount: record.wishlist_count ?? 0,
-      avgRating: record.avg_rating ?? 0,
-      reviewCount: record.review_count ?? 0,
-      returnRate: record.return_rate ?? 0,
-      trendingScore: record.trending_score ?? 0,
-      lastSoldAt: record.last_sold_at,
-      lastRentedAt: record.last_rented_at,
+      viewCount: metrics.view_count ?? 0,
+      addToCartCount: metrics.add_to_cart_count ?? 0,
+      orderCount: metrics.order_count ?? 0,
+      rentalCount: metrics.rental_count ?? 0,
+      wishlistCount: metrics.wishlist_count ?? 0,
+      avgRating: metrics.avg_rating ?? 0,
+      reviewCount: metrics.review_count ?? 0,
+      returnRate: metrics.return_rate ?? 0,
+      trendingScore: metrics.trending_score ?? 0,
+      lastSoldAt: metrics.last_sold_at,
+      lastRentedAt: metrics.last_rented_at,
     },
     createdAt: record.created_at ?? now,
     updatedAt: record.updated_at ?? now,

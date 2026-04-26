@@ -14,8 +14,8 @@ export const ADMIN_HOME_LINK_CARD_SELECT =
 export const ADMIN_HOME_FEATURED_PRODUCT_SELECT =
   "id, product_id, sort_order, is_active, created_at, updated_at, product:products(id, slug, name_th, is_hidden)";
 
-export const ADMIN_HOME_FEATURED_RENTAL_ACCESS_SELECT =
-  "id, rental_access_id, sort_order, is_active, created_at, updated_at, rental_access:rental_accesses(id, code, slug, name_th, status, is_hidden)";
+export const ADMIN_HOME_FEATURED_ASSET_SELECT =
+  "id, asset_id, sort_order, is_active, created_at, updated_at, asset:assets(id, code, slug, name_th, status, is_hidden)";
 
 function fail422(message: string): never {
   throw createError({
@@ -86,9 +86,9 @@ export function buildFeaturedProductPayload(body: Record<string, unknown>) {
   };
 }
 
-export function buildFeaturedRentalAccessPayload(body: Record<string, unknown>) {
+export function buildFeaturedAssetPayload(body: Record<string, unknown>) {
   return {
-    rental_access_id: asNonEmptyString(body.rentalAccessId, "rentalAccessId"),
+    asset_id: asNonEmptyString(body.assetId, "assetId"),
     sort_order: Math.max(0, asNumber(body.sortOrder, 0)),
     is_active: body.isActive !== false,
   };

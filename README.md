@@ -36,8 +36,8 @@ Important notes:
   (recommended) or `SUPABASE_SERVICE_KEY` (deprecated fallback).
 - If the server-only key is missing, admin pages fall back to read-only mode and
   show setup warnings instead of raw 500 errors.
-- Rental admin pages also expect DB migration `013_rental_access_schema.sql` to
-  be applied so `rental_accesses` and `rental_access_matches` exist.
+- Asset admin pages also expect DB migration `013_asset_schema.sql` to
+  be applied so `assets` and `asset_matches` exist.
 - After changing `.env`, restart `npm run dev`.
 
 Start the development server on `http://localhost:3000`:

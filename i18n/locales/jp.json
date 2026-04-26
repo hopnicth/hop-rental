@@ -304,14 +304,14 @@
     "datasheet": "データシート",
     "recommended": "おすすめ商品",
     "rentalOptions": "レンタルオプション",
-    "rentalOptionsDesc": "関連する rental access を下から選び、詳細ページで空き状況を確認してそのページから予約してください。",
+    "rentalOptionsDesc": "関連する asset を下から選び、詳細ページで空き状況を確認してそのページから予約してください。",
     "notFound": "商品が見つかりません",
     "rating": "評価",
     "reviews": "レビュー",
     "sold": "販売済み",
     "rented": "レンタル済み"
   },
-  "rentalAccess": {
+  "asset": {
     "backToRentals": "レンタルアクセス一覧へ戻る",
     "notFound": "レンタルアクセスが見つかりません",
     "notFoundDesc": "指定したレンタルアクセスは削除または非表示になっている可能性があります。",
@@ -403,9 +403,9 @@
     "orderSummary": "注文概要",
     "itemCount": "{n} 点",
     "bookingCount": "{n} 件レンタル",
-    "rentalAccessLabel": "レンタルアクセス",
+    "assetLabel": "レンタルアクセス",
     "matchedProductLabel": "対応商品",
-    "bookingCheckoutPending": "Rental Access アイテムはカートに保存されますが、現在オンライン決済は購入商品のみ対応しています。",
+    "bookingCheckoutPending": "Asset アイテムはカートに保存されますが、現在オンライン決済は購入商品のみ対応しています。",
     "submitRental": "レンタル予約を送信",
     "submittingRental": "レンタル予約を送信中...",
     "bookingHubRequiredTitle": "受取拠点を選択してください",

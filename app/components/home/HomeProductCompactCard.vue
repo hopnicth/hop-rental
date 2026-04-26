@@ -25,7 +25,7 @@ const displayPrice = computed(
 <template>
   <NuxtLink :to="productUrl" class="block h-full">
     <UCard
-      class="h-[22rem] overflow-hidden transition-shadow duration-200 hover:shadow-lg"
+      class="h-88 overflow-hidden transition-shadow duration-200 hover:shadow-lg"
       :ui="{ body: 'p-0 sm:p-0' }"
     >
       <div class="flex h-full flex-col">
@@ -67,6 +67,8 @@ const displayPrice = computed(
           </div>
         </div>
       </div>
-    </UCard>
+    </UCard>้
+    
   </NuxtLink>
 </template>
+

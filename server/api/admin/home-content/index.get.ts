@@ -3,60 +3,67 @@ import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_HOME_BANNER_SELECT,
   ADMIN_HOME_FEATURED_PRODUCT_SELECT,
-  ADMIN_HOME_FEATURED_RENTAL_ACCESS_SELECT,
+  ADMIN_HOME_FEATURED_ASSET_SELECT,
   ADMIN_HOME_LINK_CARD_SELECT,
 } from "~~/server/utils/admin-home";
 
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requireSuperAdmin(event);
 
-  const [bannersResult, linkCardsResult, featuredProductsResult, featuredRentalsResult, productsResult, rentalAccessesResult] =
-    await Promise.all([
-      adminClient
-        .from("home_banners")
-        .select(ADMIN_HOME_BANNER_SELECT)
-        .order("sort_order", { ascending: true })
-        .order("updated_at", { ascending: false }),
-      adminClient
-        .from("home_link_cards")
-        .select(ADMIN_HOME_LINK_CARD_SELECT)
-        .order("section_key", { ascending: true })
-        .order("sort_order", { ascending: true })
-        .order("updated_at", { ascending: false }),
-      adminClient
-        .from("home_featured_products")
-        .select(ADMIN_HOME_FEATURED_PRODUCT_SELECT)
-        .order("sort_order", { ascending: true })
-        .order("updated_at", { ascending: false }),
-      adminClient
-        .from("home_featured_rental_accesses")
-        .select(ADMIN_HOME_FEATURED_RENTAL_ACCESS_SELECT)
-        .order("sort_order", { ascending: true })
-        .order("updated_at", { ascending: false }),
-      adminClient
-        .from("products")
-        .select("id, slug, name_th, is_hidden")
-        .order("updated_at", { ascending: false }),
-      adminClient
-        .from("rental_accesses")
-        .select("id, code, slug, name_th, status, is_hidden")
-        .order("sort_order", { ascending: true })
-        .order("updated_at", { ascending: false }),
-    ]);
+  const [
+    bannersResult,
+    linkCardsResult,
+    featuredProductsResult,
+    featuredAssetsResult,
+    productsResult,
+    assetsResult,
+  ] = await Promise.all([
+    adminClient
+      .from("home_banners")
+      .select(ADMIN_HOME_BANNER_SELECT)
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: false }),
+    adminClient
+      .from("home_link_cards")
+      .select(ADMIN_HOME_LINK_CARD_SELECT)
+      .order("section_key", { ascending: true })
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: false }),
+    adminClient
+      .from("home_featured_products")
+      .select(ADMIN_HOME_FEATURED_PRODUCT_SELECT)
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: false }),
+    adminClient
+      .from("home_featured_assets")
+      .select(ADMIN_HOME_FEATURED_ASSET_SELECT)
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: false }),
+    adminClient
+      .from("products")
+      .select("id, slug, name_th, is_hidden")
+      .order("updated_at", { ascending: false }),
+    adminClient
+      .from("assets")
+      .select("id, code, slug, name_th, status, is_hidden")
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: false }),
+  ]);
 
   const errors = [
     bannersResult.error,
     linkCardsResult.error,
     featuredProductsResult.error,
-    featuredRentalsResult.error,
+    featuredAssetsResult.error,
     productsResult.error,
-    rentalAccessesResult.error,
+    assetsResult.error,
   ].filter(Boolean);
 
   if (errors.length > 0) {
     throw createError({
       statusCode: 500,
-      statusMessage: errors[0]?.message ?? "Failed to load home content admin data",
+      statusMessage:
+        errors[0]?.message ?? "Failed to load home content admin data",
     });
   }
 
@@ -110,14 +117,14 @@ export default defineEventHandler(async (event) => {
       productHidden: row.product?.is_hidden === true,
       updatedAt: row.updated_at,
     })),
-    featuredRentalAccesses: (featuredRentalsResult.data ?? []).map((row) => ({
+    featuredAssets: (featuredAssetsResult.data ?? []).map((row) => ({
       id: row.id,
-      rentalAccessId: row.rental_access_id,
+      assetId: row.asset_id,
       sortOrder: Number(row.sort_order ?? 0),
       isActive: row.is_active !== false,
-      rentalAccessLabel: `${row.rental_access?.code ?? "—"} · ${row.rental_access?.name_th ?? row.rental_access_id}`,
-      rentalAccessHidden: row.rental_access?.is_hidden === true,
-      rentalAccessStatus: row.rental_access?.status ?? "draft",
+      assetLabel: `${row.asset?.code ?? "—"} · ${row.asset?.name_th ?? row.asset_id}`,
+      assetHidden: row.asset?.is_hidden === true,
+      assetStatus: row.asset?.status ?? "draft",
       updatedAt: row.updated_at,
     })),
     productOptions: (productsResult.data ?? []).map((row) => ({
@@ -125,7 +132,7 @@ export default defineEventHandler(async (event) => {
       label: `${row.name_th} · ${row.slug}`,
       isHidden: row.is_hidden === true,
     })),
-    rentalAccessOptions: (rentalAccessesResult.data ?? []).map((row) => ({
+    assetOptions: (assetsResult.data ?? []).map((row) => ({
       value: row.id,
       label: `${row.code} · ${row.name_th}`,
       status: row.status,

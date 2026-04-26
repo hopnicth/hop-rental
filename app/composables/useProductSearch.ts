@@ -76,6 +76,56 @@ function toType(value: unknown): CatalogType {
   return value === "rental" || value === "hybrid" ? value : "sale";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function toString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function mediaVariantUrl(
+  item: Record<string, unknown>,
+  key: "large" | "card" | "thumbnail",
+) {
+  const variants = isRecord(item.variants) ? item.variants : null;
+  const variant = variants && isRecord(variants[key]) ? variants[key] : null;
+  return toString(variant?.url);
+}
+
+function mediaGalleryPrimaryUrl(value: unknown): string | null {
+  if (!Array.isArray(value)) return null;
+
+  for (const entry of value) {
+    if (!isRecord(entry) || entry.status !== "ready") continue;
+    const url =
+      mediaVariantUrl(entry, "card") ||
+      mediaVariantUrl(entry, "thumbnail") ||
+      mediaVariantUrl(entry, "large");
+    if (url) return url;
+  }
+
+  return null;
+}
+
+function mediaGalleryImageUrls(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter(
+      (entry): entry is Record<string, unknown> =>
+        isRecord(entry) && entry.status === "ready",
+    )
+    .map(
+      (entry) =>
+        mediaVariantUrl(entry, "large") ||
+        mediaVariantUrl(entry, "card") ||
+        mediaVariantUrl(entry, "thumbnail") ||
+        "",
+    )
+    .filter(Boolean);
+}
+
 function mapSearchRow(row: Record<string, unknown>): ProductSearchResult {
   return {
     id: String(row.id),
@@ -97,10 +147,8 @@ function mapSearchRow(row: Record<string, unknown>): ProductSearchResult {
       ? (row.category_keys as string[])
       : [],
     brand: (row.brand as string | null) ?? null,
-    thumbnailUrl: (row.thumbnail_url as string | null) ?? null,
-    imageUrls: Array.isArray(row.image_urls)
-      ? (row.image_urls as string[])
-      : [],
+    thumbnailUrl: mediaGalleryPrimaryUrl(row.media_gallery),
+    imageUrls: mediaGalleryImageUrls(row.media_gallery),
     spec: (row.spec as Record<string, unknown>) ?? {},
     minPrice: toNum(row.min_price),
     maxPrice: toNum(row.max_price),
@@ -123,7 +171,7 @@ function mapSuggestionRow(
       row.name_cn as string | null,
       row.name_jp as string | null,
     ),
-    thumbnailUrl: (row.thumbnail_url as string | null) ?? null,
+    thumbnailUrl: mediaGalleryPrimaryUrl(row.media_gallery),
     type: toType(row.type),
     categoryKeys: Array.isArray(row.category_keys)
       ? (row.category_keys as string[])
@@ -139,7 +187,7 @@ export function useProductSearch() {
     items: ProductSearchResult[];
     totalCount: number;
   }> {
-    const { data, error } = await supabase.rpc("search_products", {
+    const { data, error } = await (supabase as any).rpc("search_products", {
       q: params.q ?? "",
       p_categories:
         params.categories && params.categories.length > 0
@@ -174,10 +222,13 @@ export function useProductSearch() {
     const trimmed = prefix.trim();
     if (trimmed.length === 0) return [];
 
-    const { data, error } = await supabase.rpc("autocomplete_products", {
-      prefix: trimmed,
-      p_limit: limit,
-    });
+    const { data, error } = await (supabase as any).rpc(
+      "autocomplete_products",
+      {
+        prefix: trimmed,
+        p_limit: limit,
+      },
+    );
 
     if (error) {
       console.warn(

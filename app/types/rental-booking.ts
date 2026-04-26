@@ -9,10 +9,10 @@ export interface RentalBookingDisplaySnapshot {
   product_name: string;
   thumbnail: string;
   hub_name: string | null;
-  rental_access_code?: string | null;
-  rental_access_slug?: string | null;
-  rental_access_name?: string | null;
-  rental_access_thumbnail?: string | null;
+  asset_code?: string | null;
+  asset_slug?: string | null;
+  asset_name?: string | null;
+  asset_thumbnail?: string | null;
   matched_product_name?: string | null;
 }
 
@@ -49,8 +49,8 @@ export interface RentalBooking
   user_id: string;
   product_id: string;
   sku_id: string;
-  rental_access_id?: string | null;
-  rental_access_snapshot?: Record<string, unknown>;
+  asset_id?: string | null;
+  asset_snapshot?: Record<string, unknown>;
   matched_product_id?: string | null;
   hub_id: string | null;
   status: RentalBookingStatus;

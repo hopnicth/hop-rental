@@ -1,7 +1,7 @@
 # 🏗 HOP-RENTAL — Project Summary & Recap
 
 > สรุปเนื้อหาสำคัญและแนวทางทำงานร่วมกัน
-> อัปเดตล่าสุด: 2026-04-23
+> อัปเดตล่าสุด: 2026-04-26
 
 ---
 
@@ -19,7 +19,7 @@
 ### Recent branch updates (2026-04-23)
 
 - หน้า Home ถูก refactor เป็นโครงหลาย section: Hero Banner, Feature Bar, Partner/logo strip, Promotion, Rental, Products, Services
-- Home content ใช้ table ฝั่ง Supabase แล้วผ่าน `home_banners`, `home_link_cards`, `home_featured_products`, `home_featured_rental_accesses`
+- Home content ใช้ table ฝั่ง Supabase แล้วผ่าน `home_banners`, `home_link_cards`, `home_featured_products`, `home_featured_assets`
 - Featured products / rentals บนหน้า Home จะ fallback ไปใช้รายการจริงจาก catalog แบบ deterministic-random เมื่อยังไม่มี curated rows
 - มี internal admin MVP ภายใน app เดียวกันแล้ว รวมถึง `/admin/home-content` สำหรับจัดการ homepage content โดยจำกัดสิทธิ์ที่ `super_admin`
 - มี service mock pages สำหรับ 3 บริการหลัก และมี migration `014_homepage_content.sql` รองรับ Home CMS
@@ -81,7 +81,7 @@ hop-rental/
 │   │   ├── usePartners.ts
 │   │   ├── useCart.ts          # Cart + localStorage (⚠️ needs upgrade)
 │   │   ├── useBooking.ts       # Booking + localStorage (⚠️ needs upgrade)
-│   │   ├── useRentalAccesses.ts# rental access catalog + product mapping
+│   │   ├── useAssets.ts# asset catalog + product mapping
 │   │   └── useHomeContent.ts   # home CMS content + featured fallback logic
 │   ├── components/
 │   │   ├── HopHeader.vue       # Main header with nav
@@ -169,6 +169,58 @@ hop-rental/
 - ✅ 2.7: `useBooking.ts` + booking types + localStorage persist + integration
 
 **ทุก Task ผ่าน 0 TypeScript errors**
+
+### Session 2026-04-24: Main Categories Admin (validated)
+
+- ✅ Added DB-backed `main_categories` as the source of truth for product primary category
+- ✅ Added `super_admin` page at `/admin/main-categories`
+- ✅ Manual test passed for `create`
+- ✅ Manual test passed for `update`
+- ✅ Manual test passed for `delete`
+- ✅ Product create flow now depends on this managed list for `mainCategoryKey`
+- ✅ Launch note: this will be used for the first launch baseline; change carefully because it affects catalog admin workflow and future search/filter behavior
+
+### Session 2026-04-25 → 2026-04-26: Catalog refactor + Multi-Inventory + Admin product detail rebuild
+
+#### Catalog data layer
+
+- ✅ Migration `016_catalog_media_and_documents.sql` — normalized `media_gallery` + `media_links` + `documents` JSONB on products and SKUs
+- ✅ Migration `017_catalog_terms_dictionary.sql` — registry for tag/category keys
+- ✅ Migration `019_clean_catalog_refactor.sql` — clean rebuild of catalog mappers around new media model
+- ✅ `server/utils/admin-catalog.ts` consolidated `ADMIN_PRODUCT_LIST_SELECT`, `ADMIN_PRODUCT_DETAIL_SELECT`, `ADMIN_SKU_SELECT`, `ADMIN_SKU_INVENTORY_SELECT`
+
+#### Branches + multi-inventory hierarchy
+
+- ✅ Migration `018_sku_branch_inventory.sql` — moved stock from SKU counters to `sku_branch_inventory`
+- ✅ Migration `020_branch_business_fields_and_inventory_log.sql` — branch business metadata + `inventory_change_log` audit trail
+- ✅ Migration `021_multi_inventory_per_branch.sql` — new `inventories` table; `sku_branch_inventory.inventory_id` FK; auto-created "Default" inventory per branch; trigger blocks rename/delete of `is_default = true`
+- ✅ Hierarchy: `store_branches (1) → inventories (N) → sku_branch_inventory (N)`
+- ✅ Admin page `/admin/branches-inventory` — three-level UI (branch → inventory → stock) with audit logging on all mutations
+- ✅ Server APIs:
+  - `GET/POST /api/admin/branches`
+  - `PATCH /api/admin/branches/:branchId`
+  - `GET/POST /api/admin/branches/:branchId/inventories`
+  - `PATCH/DELETE /api/admin/branches/:branchId/inventories/:inventoryId`
+  - `GET/POST /api/admin/inventories/:inventoryId/stock`
+  - `PATCH/DELETE /api/admin/inventories/:inventoryId/stock/:stockId`
+
+#### Admin product detail rebuild (`/admin/products/[productId]`)
+
+- ✅ Product info form + JSONB editors for spec / detail blocks
+- ✅ Photo manager (frozen — do not modify) using `AdminMediaGalleryManager` for product + SKU galleries
+- ✅ SKU rows reorganized: each row is independent and can expand an **inline inventory panel**
+- ✅ Inline inventory panel shows all stock rows across branches/inventories for that SKU, with add/edit/delete and branch/inventory selectors
+- ✅ Branch + inventory dropdowns dynamically load via `/api/admin/branches` and `/api/admin/branches/:id/inventories`
+- ✅ Quick Create Default SKU — products with 0 SKUs get a one-click button that creates a default SKU (`useProductImages = true`, price `0`, `skuCode = product.slug`) and auto-expands its inventory panel
+
+#### Admin product list (`/admin/products`)
+
+- ✅ List API now returns `minPrice`, `maxPrice`, `maxOriginalPrice`, `currencyCode` aggregated from SKUs
+- ✅ List card shows price (single value or range) with strike-through original price when discounted
+
+#### Photo manager freeze
+
+- 🔒 The Photo Manager block inside `app/pages/admin/products/[productId].vue` is locked until further notice — do not modify
 
 ---
 
@@ -290,5 +342,7 @@ hop-rental/
 
 1. อ่านไฟล์นี้ก่อนเริ่มทำงาน เพื่อ Recap context
 2. เช็ค git log เพื่อดู commit history
-3. ดู Task 3 section ด้านบน เพื่อเริ่มต่อจากจุดที่ค้างไว้
-4. เริ่ม Phase A1: ติดตั้ง @nuxtjs/supabase + config environment
+3. **โฟกัสถัดไป**: ปิดงาน asset ตาม `ASSET_ACTION_PLAN.md`
+   - U3 (remove product-owned booking ownership), U5 (customer docs in rental UI), U6 (backoffice checklist/doc workflow UI)
+   - M5 (move booking submit path to use `asset_id`), M6 (retire product-owned booking UI)
+4. ห้ามแตะ Photo Manager ในหน้า `/admin/products/[productId]` จนกว่าจะมีคำสั่งใหม่

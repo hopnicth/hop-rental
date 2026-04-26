@@ -5,30 +5,48 @@ definePageMeta({
   platformRoles: ["staff", "super_admin"],
 });
 
-const sections = [
-  {
-    title: "Products",
-    description: "Prepare sale catalog rows and basic product metadata.",
-    to: "/admin/products",
-  },
-  {
-    title: "Rental Accesses",
-    description: "Manage rental packages/sets exposed to the storefront.",
-    to: "/admin/rental-accesses",
-  },
-  {
-    title: "Matches",
-    description:
-      "Link rental access packages to products for booking compatibility.",
-    to: "/admin/matches",
-  },
-  {
-    title: "Home Content",
-    description:
-      "Manage homepage banners, link cards, and curated featured rails.",
-    to: "/admin/home-content",
-  },
-];
+const { profile } = useUserProfile();
+
+const sections = computed(() => {
+  const items = [
+    {
+      title: "Products",
+      description:
+        "Manage catalog products, main category, tags, JSONB specs, and SKU albums.",
+      to: "/admin/products",
+    },
+    {
+      title: "Assets",
+      description: "Manage asset packages/sets exposed to the storefront.",
+      to: "/admin/assets",
+    },
+    {
+      title: "Branch & Inventory",
+      description:
+        "Manage store branches and inventory stock per branch. Branch editing is super-admin only.",
+      to: "/admin/branches-inventory",
+    },
+  ];
+
+  if (profile.value?.platformRole === "super_admin") {
+    items.push(
+      {
+        title: "Main Categories",
+        description:
+          "Create and control the primary categories that product forms are allowed to use.",
+        to: "/admin/main-categories",
+      },
+      {
+        title: "Home Content",
+        description:
+          "Manage homepage banners, link cards, and curated featured rails.",
+        to: "/admin/home-content",
+      },
+    );
+  }
+
+  return items;
+});
 </script>
 
 <template>
@@ -37,9 +55,10 @@ const sections = [
       <template #header>
         <div>
           <h2 class="text-lg font-semibold">Admin entry point</h2>
-          <p class="text-sm text-[var(--ui-text-muted)]">
-            Phase 1 is scaffolded. Next step is wiring real CRUD forms and
-            storage upload.
+          <p class="text-sm text-muted">
+            Admin now covers catalog, assets, inventory, and super-admin
+            content/category tools. Product matches are managed inline from each
+            asset.
           </p>
         </div>
       </template>
@@ -49,7 +68,7 @@ const sections = [
           <div class="space-y-3">
             <div>
               <h3 class="font-medium">{{ section.title }}</h3>
-              <p class="text-sm text-[var(--ui-text-muted)]">
+              <p class="text-sm text-muted">
                 {{ section.description }}
               </p>
             </div>
@@ -65,7 +84,7 @@ const sections = [
       color="info"
       variant="soft"
       title="Current scope"
-      description="This admin MVP currently provides routing, layout, and access control. CRUD screens are scaffolded next."
+      description="Use Main Categories first, then create/update Products with strict primary category selection, flexible tags, JSONB spec/detail fields, and SKU-level albums/attributes."
     />
   </div>
 </template>

@@ -1,20 +1,20 @@
 <script setup lang="ts">
 import { useProducts } from "~/composables/useProducts";
-import { useRentalAccesses } from "~/composables/useRentalAccesses";
+import { useAssets } from "~/composables/useAssets";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import SearchFilters from "~/components/search/SearchFilters.vue";
 import type { CatalogType } from "~/composables/useProductSearch";
 import type { Product } from "~/types/product";
-import type { RentalAccess } from "~/types/rental-access";
+import type { Asset } from "~/types/asset";
 
 const route = useRoute();
 const { t } = useI18n();
-const { products, getDisplayPrice, getTotalStock, isRental } = useProducts();
-const { rentalAccesses, getRentalAccessShowPath } = useRentalAccesses();
+const { products, getDisplayPrice, getTotalStock } = useProducts();
+const { assets, getAssetShowPath } = useAssets();
 
 type ListingType = CatalogType | "all";
-type ListingMode = "products" | "rental-accesses";
+type ListingMode = "products" | "assets";
 type SortDir = "high" | "low";
 
 const RESERVED_GROUPS = new Set(["all", "sale", "rental"]);
@@ -42,7 +42,7 @@ const inStockOnly = ref(false);
 
 const listingMode = computed<ListingMode>(() => {
   if (group.value === "rental" || selectedType.value === "rental") {
-    return "rental-accesses";
+    return "assets";
   }
 
   return "products";
@@ -63,7 +63,7 @@ function resetFilters() {
   inStockOnly.value = false;
 }
 
-function hasRentalAccessAvailability(access: RentalAccess): boolean {
+function hasAssetAvailability(access: Asset): boolean {
   return access.matchedProductIds.some((productId) => {
     const product = products.value.find((item) => item.id === productId);
     if (!product) return false;
@@ -71,6 +71,11 @@ function hasRentalAccessAvailability(access: RentalAccess): boolean {
     return stock.available > 0 || stock.inStock > 0;
   });
 }
+
+const rentableProductIds = computed(
+  () =>
+    new Set(assets.value.flatMap((access) => access.matchedProductIds)),
+);
 
 const sortDir = ref<SortDir>("high");
 
@@ -100,7 +105,12 @@ const filteredProducts = computed<Product[]>(() => {
       return false;
     }
     if (selectedType.value === "sale" && !product.isForSale) return false;
-    if (selectedType.value === "rental" && !isRental(product)) return false;
+    if (
+      selectedType.value === "rental" &&
+      !rentableProductIds.value.has(product.id)
+    ) {
+      return false;
+    }
     if (selectedBrands.value.length > 0) {
       if (!product.brand || !selectedBrands.value.includes(product.brand)) {
         return false;
@@ -124,11 +134,11 @@ const filteredProducts = computed<Product[]>(() => {
   });
 });
 
-const filteredRentalAccesses = computed<RentalAccess[]>(() => {
+const filteredAssets = computed<Asset[]>(() => {
   const effectiveMax =
     maxPrice.value !== null && maxPrice.value > 0 ? maxPrice.value : null;
 
-  return rentalAccesses.value.filter((access) => {
+  return assets.value.filter((access) => {
     if (
       selectedCategory.value !== "all" &&
       !access.categories.includes(selectedCategory.value)
@@ -146,7 +156,7 @@ const filteredRentalAccesses = computed<RentalAccess[]>(() => {
     if (effectiveMax !== null && access.pricing.daily > effectiveMax) {
       return false;
     }
-    if (inStockOnly.value && !hasRentalAccessAvailability(access)) {
+    if (inStockOnly.value && !hasAssetAvailability(access)) {
       return false;
     }
     return true;
@@ -160,16 +170,16 @@ const sortedProducts = computed(() => {
     : list.sort((a, b) => getDisplayPrice(a).final - getDisplayPrice(b).final);
 });
 
-const sortedRentalAccesses = computed(() => {
-  const list = [...filteredRentalAccesses.value];
+const sortedAssets = computed(() => {
+  const list = [...filteredAssets.value];
   return sortDir.value === "high"
     ? list.sort((a, b) => b.pricing.daily - a.pricing.daily)
     : list.sort((a, b) => a.pricing.daily - b.pricing.daily);
 });
 
 const totalItems = computed(() =>
-  listingMode.value === "rental-accesses"
-    ? sortedRentalAccesses.value.length
+  listingMode.value === "assets"
+    ? sortedAssets.value.length
     : sortedProducts.value.length,
 );
 
@@ -179,10 +189,10 @@ const paginatedProducts = computed(() => {
   return sortedProducts.value.slice(start, start + itemsPerPage.value);
 });
 
-const paginatedRentalAccesses = computed(() => {
-  if (listingMode.value !== "rental-accesses") return [];
+const paginatedAssets = computed(() => {
+  if (listingMode.value !== "assets") return [];
   const start = (currentPage.value - 1) * itemsPerPage.value;
-  return sortedRentalAccesses.value.slice(start, start + itemsPerPage.value);
+  return sortedAssets.value.slice(start, start + itemsPerPage.value);
 });
 
 const hasActiveFilters = computed(() => {
@@ -228,9 +238,9 @@ watch(
 const recommendedProducts = computed(() =>
   listingMode.value === "products" ? filteredProducts.value.slice(0, 3) : [],
 );
-const recommendedRentalAccesses = computed(() =>
-  listingMode.value === "rental-accesses"
-    ? filteredRentalAccesses.value.slice(0, 3)
+const recommendedAssets = computed(() =>
+  listingMode.value === "assets"
+    ? filteredAssets.value.slice(0, 3)
     : [],
 );
 </script>
@@ -265,7 +275,7 @@ const recommendedRentalAccesses = computed(() =>
         </div>
 
         <div
-          v-if="paginatedProducts.length || paginatedRentalAccesses.length"
+          v-if="paginatedProducts.length || paginatedAssets.length"
           class="grid grid-cols-2 gap-4 sm:grid-cols-3"
         >
           <LazyProductsProductCard
@@ -273,11 +283,11 @@ const recommendedRentalAccesses = computed(() =>
             :key="product.id"
             :product-id="product.id"
           />
-          <LazyProductsRentalAccessCard
-            v-for="access in paginatedRentalAccesses"
+          <LazyProductsAssetCard
+            v-for="access in paginatedAssets"
             :key="access.id"
             :access="access"
-            :browse-to="getRentalAccessShowPath(access)"
+            :browse-to="getAssetShowPath(access)"
           />
         </div>
         <div v-else class="py-20 text-center text-gray-400">
@@ -320,11 +330,11 @@ const recommendedRentalAccesses = computed(() =>
               :key="`rec-product-${product.id}`"
               :product-id="product.id"
             />
-            <LazyProductsRentalAccessCard
-              v-for="access in recommendedRentalAccesses"
+            <LazyProductsAssetCard
+              v-for="access in recommendedAssets"
               :key="`rec-rental-${access.id}`"
               :access="access"
-              :browse-to="getRentalAccessShowPath(access)"
+              :browse-to="getAssetShowPath(access)"
             />
           </div>
         </div>

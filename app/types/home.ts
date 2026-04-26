@@ -22,9 +22,9 @@ export interface HomeFeaturedProduct {
   isActive: boolean;
 }
 
-export interface HomeFeaturedRentalAccess {
+export interface HomeFeaturedAsset {
   id: string;
-  rentalAccessId: string;
+  assetId: string;
   sortOrder: number;
   isActive: boolean;
 }

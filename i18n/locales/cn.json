@@ -291,7 +291,7 @@
     "sold": "已售",
     "rented": "已租"
   },
-  "rentalAccess": {
+  "asset": {
     "backToRentals": "返回租赁入口列表",
     "notFound": "未找到租赁入口",
     "notFoundDesc": "您请求的租赁入口可能已被移除或隐藏。",
@@ -383,9 +383,9 @@
     "orderSummary": "订单摘要",
     "itemCount": "{n} 件商品",
     "bookingCount": "{n} 件租赁",
-    "rentalAccessLabel": "租赁入口",
+    "assetLabel": "租赁入口",
     "matchedProductLabel": "匹配商品",
-    "bookingCheckoutPending": "Rental Access 项目已保存到购物车，但当前在线结算仍仅支持购买商品。",
+    "bookingCheckoutPending": "Asset 项目已保存到购物车，但当前在线结算仍仅支持购买商品。",
     "submitRental": "提交租赁预约",
     "submittingRental": "正在提交租赁预约...",
     "bookingHubRequiredTitle": "需要选择提货网点",

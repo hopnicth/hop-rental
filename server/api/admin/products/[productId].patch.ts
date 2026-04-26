@@ -14,7 +14,23 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = (await readBody(event)) as Record<string, unknown>;
-  const payload = buildProductPayload(body);
+  const payload = buildProductPayload(body, { partial: true });
+
+  if (typeof payload.main_category_key === "string") {
+    const { error: mainCategoryError } = await adminClient
+      .from("main_categories")
+      .select("key")
+      .eq("key", payload.main_category_key)
+      .eq("is_active", true)
+      .single();
+
+    if (mainCategoryError) {
+      throw createError({
+        statusCode: 422,
+        statusMessage: "mainCategoryKey must reference an active main category",
+      });
+    }
+  }
 
   const { data, error } = await adminClient
     .from("products")

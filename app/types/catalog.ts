@@ -49,55 +49,45 @@ export interface CatalogProductSKU {
   stock: number;
 }
 
-/** DB-like document record used by transitional mocks. */
-export interface CatalogDocumentRecord {
+export interface CatalogMediaVariantRecord {
   url: string;
-  name: CatalogLocalizedFields;
+  path?: string;
+  width?: number;
+  height?: number;
+  format?: string;
 }
 
-/** DB-like product document bundle used by transitional mocks. */
-export interface CatalogProductDocuments {
-  manual?: CatalogDocumentRecord;
-  catalog?: CatalogDocumentRecord;
-  datasheet?: CatalogDocumentRecord;
+export interface CatalogMediaGalleryItemRecord {
+  id: string;
+  title?: string | null;
+  altText?: string | null;
+  fit?: "contain" | "cover";
+  status?: "processing" | "ready" | "failed";
+  position?: number;
+  error?: string | null;
+  variants?: {
+    thumbnail?: CatalogMediaVariantRecord;
+    card?: CatalogMediaVariantRecord;
+    large?: CatalogMediaVariantRecord;
+  };
 }
 
-/**
- * Transitional SKU record.
- * Keeps core DB-like columns but adds enough fields for current UI mapping.
- */
-export interface CatalogProductSKURecord extends CatalogProductSKU {
-  image_url?: string;
-  image_urls?: string[];
-  attributes?: Record<string, string | undefined>;
-  original_price?: number;
-  discount_percent?: number;
-  rental_deposit?: number;
-  rental_daily?: number;
-  rental_weekly?: number;
-  rental_monthly?: number;
-  rental_stock?: number;
-  reserved_stock?: number;
+export interface CatalogMediaLinkRecord {
+  id: string;
+  kind: "youtube" | "external_video";
+  title: string;
+  url: string;
+  thumbnailUrl?: string | null;
 }
 
-/**
- * Transitional catalog product record.
- * Core identity/localized fields stay DB-like; the remaining properties are
- * temporary metadata needed to keep the current UI model working.
- */
-export interface CatalogProductRecord extends CatalogProduct {
-  category_keys?: string[];
-  brand?: string;
-  thumbnail_url?: string;
-  image_urls?: string[];
-  spec?: Record<string, string | undefined>;
-  documents?: CatalogProductDocuments;
-  supplier_ids?: string[];
-  skus: CatalogProductSKURecord[];
-  rental_min_days?: number;
-  rental_max_days?: number;
-  rental_buffer_days?: number;
-  store_location_ids?: string[];
+export interface CatalogDocumentLinkRecord {
+  id: string;
+  kind: "manual" | "catalog" | "datasheet" | "guide" | "other";
+  title: string;
+  url: string;
+}
+
+export interface CatalogProductMetricsRecord {
   view_count?: number;
   add_to_cart_count?: number;
   order_count?: number;
@@ -109,6 +99,35 @@ export interface CatalogProductRecord extends CatalogProduct {
   trending_score?: number;
   last_sold_at?: string;
   last_rented_at?: string;
+}
+
+/**
+ * Transitional SKU record.
+ * Keeps core DB-like columns but adds enough fields for current UI mapping.
+ */
+export interface CatalogProductSKURecord extends CatalogProductSKU {
+  media_gallery?: CatalogMediaGalleryItemRecord[];
+  use_product_images?: boolean;
+  attributes?: Record<string, string | undefined>;
+  original_price?: number;
+  discount_percent?: number;
+}
+
+/**
+ * Transitional catalog product record.
+ * Core identity/localized fields stay DB-like; the remaining properties are
+ * temporary metadata needed to keep the current UI model working.
+ */
+export interface CatalogProductRecord extends CatalogProduct {
+  category_keys?: string[];
+  brand?: string;
+  media_gallery?: CatalogMediaGalleryItemRecord[];
+  media_links?: CatalogMediaLinkRecord[];
+  spec?: Record<string, string | undefined>;
+  documents?: CatalogDocumentLinkRecord[];
+  supplier_ids?: string[];
+  skus: CatalogProductSKURecord[];
+  metrics?: CatalogProductMetricsRecord | CatalogProductMetricsRecord[] | null;
   is_hidden?: boolean;
   created_at?: string;
   updated_at?: string;

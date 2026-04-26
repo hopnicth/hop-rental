@@ -1,6 +1,6 @@
 # Augment Master Plan: Catalog / Cart / Booking MVP + Ops Minimum
 
-Last updated: 2026-04-21
+Last updated: 2026-04-26
 Checkpoint commit: `34bcf5e` (`feat: improve storefront search and mobile filters`)
 
 ## Purpose
@@ -88,6 +88,26 @@ Guiding principles:
 - migration `005_seed_minimal_rental_catalog.sql` already seeds a bridge catalog for DB-backed booking references
 - migration `007_orders_schema.sql` already added the minimum order tables for sale checkout and quotation-mode persistence
 - migration `009_split_order_status_dimensions.sql` already split order, payment, and fulfillment statuses for clearer customer/staff visibility
+- migration `015_main_categories_and_product_admin_fields.sql` is now the launch-path schema for product primary-category governance
+- `public.main_categories` is now the intended launch-1 source of truth for primary product classification
+- `/admin/main-categories` super-admin CRUD was manually validated for create/update/delete on 2026-04-24
+- changing this category-governance model after this point should require deliberate review because it affects product admin behavior and future search/filter assumptions
+- migration `016_catalog_media_and_documents.sql` normalized product/SKU media into `media_gallery` + `media_links` + `documents` JSONB
+- migration `017_catalog_terms_dictionary.sql` added a registry for tag/category keys
+- migration `018_sku_branch_inventory.sql` moved SKU stock counters into per-branch `sku_branch_inventory` rows
+- migration `019_clean_catalog_refactor.sql` consolidated catalog mappers around the new media model (see `server/utils/admin-catalog.ts`)
+- migration `020_branch_business_fields_and_inventory_log.sql` added branch business fields and `inventory_change_log` audit trail
+- migration `021_multi_inventory_per_branch.sql` introduced `inventories` (multiple pools per branch) with a default-inventory protection trigger
+- migration `022_asset_pricing_flags.sql`, `023_rental_default_inventory_and_asset_storage.sql`, and `024_asset_branch_inventory.sql` rounded out asset pricing flags, default-inventory wiring, and per-branch asset stock
+- migration `025_rename_rental_access_to_assets.sql` renamed the `rental_access*` domain to `asset*` end-to-end (DB → API → UI); legacy `/admin/rental-accesses` and `/admin/matches` routes are gone
+- migration `026_assets_main_category_and_tags.sql` added `main_category_key` + `tag_keys` to `assets` (mirroring products); a trigger derives `category_keys`
+- migration `027_assets_catalog_terms_sync.sql` mirrors the products trigger so `assets.tag_keys` upserts into the central `catalog_terms` dictionary on insert/update
+- the inventory hierarchy is now `store_branches (1) → inventories (N) → sku_branch_inventory (N)`
+- `/admin/branches-inventory` provides the cross-product branch + inventory + stock admin view; all stock mutations write `inventory_change_log` audit rows
+- `/admin/products/[productId]` was rebuilt with media manager + SKU rows that each have an inline expandable inventory panel reusing the branches/inventories endpoints
+- products with zero SKUs get a one-click "Quick create default SKU" empty state on product detail (price `0`, `useProductImages = true`, `skuCode = product.slug`) that auto-expands its inventory panel
+- the admin product list (`/admin/products`) now shows price aggregates (`minPrice` / `maxPrice` / `maxOriginalPrice`) computed from each product's SKUs
+- the Photo Manager block in `app/pages/admin/products/[productId].vue` is locked until further notice — do not modify
 
 ### What is still transitional
 
@@ -158,7 +178,7 @@ What rental already has:
 - `/user/cart` shows rental draft bookings together with the sale cart and requires hub selection before submit
 - `/user/cart` can now change rental bookings from `draft -> confirmed`
 - `/user/rentals` now gives customers a booking list/history view plus a submitted-success state
-- the booking write path includes schema fallback so older DBs without the newer rental-access columns still remain usable
+- the booking write path includes schema fallback so older DBs without the newer asset columns still remain usable
 
 What rental still needs before MVP can be called done:
 
@@ -316,13 +336,13 @@ Retention policy:
 
 ### Before asset ledger migration completes
 
-- listing/detail may still show SKU-level rental availability counters
+- listing/detail may still show aggregated rental availability derived from `sku_branch_inventory` rows (since migration `018`, this is no longer SKU-column-based)
 - booking confirmation must re-check availability before persisting
 
 ### Final target
 
-- `product_skus.stock.available` is no longer the final authority for rental fulfillment
-- actual rentable capacity comes from `rental_assets` filtered by status + hub + allocation window
+- `sku_branch_inventory` (and its multi-inventory split since migration `021`) is the interim authority for sale + rental stock visibility
+- actual rentable capacity will eventually come from `rental_assets` filtered by status + hub + allocation window
 - `rental_bookings` is the commercial promise
 - `rental_booking_assets` is the operational allocation of actual units
 

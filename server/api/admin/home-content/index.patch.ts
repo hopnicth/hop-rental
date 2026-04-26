@@ -2,7 +2,7 @@ import { createError, defineEventHandler, readBody } from "h3";
 import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
   buildFeaturedProductPayload,
-  buildFeaturedRentalAccessPayload,
+  buildFeaturedAssetPayload,
   buildHomeBannerPayload,
   buildHomeLinkCardPayload,
 } from "~~/server/utils/admin-home";
@@ -71,12 +71,12 @@ export default defineEventHandler(async (event) => {
     return { ok: true };
   }
 
-  if (resource === "featuredRentalAccess") {
+  if (resource === "featuredAsset") {
     const { error } = await adminClient
-      .from("home_featured_rental_accesses")
+      .from("home_featured_assets")
       .update({
-        sort_order: buildFeaturedRentalAccessPayload(body).sort_order,
-        is_active: buildFeaturedRentalAccessPayload(body).is_active,
+        sort_order: buildFeaturedAssetPayload(body).sort_order,
+        is_active: buildFeaturedAssetPayload(body).is_active,
       })
       .eq("id", id)
       .select("id")

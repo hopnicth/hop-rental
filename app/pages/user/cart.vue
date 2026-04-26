@@ -186,16 +186,16 @@ const hasItems = computed(
 );
 
 function getBookingTitle(booking: BookingItem): string {
-  return booking.rentalAccessName || booking.productName;
+  return booking.assetName || booking.productName;
 }
 
 function getBookingThumbnail(booking: BookingItem): string {
-  return booking.rentalAccessThumbnail || booking.thumbnail;
+  return booking.assetThumbnail || booking.thumbnail;
 }
 
 function getBookingAccessPath(booking: BookingItem): string | null {
-  return booking.rentalAccessSlug
-    ? `/rental-access/${booking.rentalAccessSlug}`
+  return booking.assetSlug
+    ? `/asset/${booking.assetSlug}`
     : null;
 }
 
@@ -474,20 +474,20 @@ async function handlePay() {
                     </h3>
                     <div class="flex flex-wrap gap-2">
                       <UBadge
-                        v-if="booking.rentalAccessCode"
+                        v-if="booking.assetCode"
                         color="secondary"
                         variant="soft"
                         size="sm"
                       >
-                        {{ booking.rentalAccessCode }}
+                        {{ booking.assetCode }}
                       </UBadge>
                       <UBadge
-                        v-if="booking.rentalAccessName"
+                        v-if="booking.assetName"
                         color="info"
                         variant="subtle"
                         size="sm"
                       >
-                        {{ t("cart.rentalAccessLabel") }}
+                        {{ t("cart.assetLabel") }}
                       </UBadge>
                     </div>
                   </div>
@@ -502,7 +502,7 @@ async function handlePay() {
                 </div>
 
                 <p
-                  v-if="booking.rentalAccessName && booking.matchedProductName"
+                  v-if="booking.assetName && booking.matchedProductName"
                   class="text-sm text-muted"
                 >
                   {{ t("cart.matchedProductLabel") }}:
@@ -538,7 +538,7 @@ async function handlePay() {
                     variant="soft"
                     size="sm"
                     icon="bx:info-circle"
-                    :label="t('rentalAccess.viewDetails')"
+                    :label="t('asset.viewDetails')"
                   />
                 </div>
 

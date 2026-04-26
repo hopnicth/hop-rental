@@ -85,18 +85,18 @@ CREATE TABLE public.home_featured_products (
 COMMENT ON TABLE public.home_featured_products IS 'Super-admin curated product list for homepage recommendation rails.';
 
 
-CREATE TABLE public.home_featured_rental_accesses (
+CREATE TABLE public.home_featured_assets (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  rental_access_id UUID NOT NULL REFERENCES public.rental_accesses(id) ON DELETE CASCADE,
+  asset_id UUID NOT NULL REFERENCES public.assets(id) ON DELETE CASCADE,
   sort_order       INTEGER NOT NULL DEFAULT 0,
   is_active        BOOLEAN NOT NULL DEFAULT TRUE,
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
 
-  UNIQUE (rental_access_id)
+  UNIQUE (asset_id)
 );
 
-COMMENT ON TABLE public.home_featured_rental_accesses IS 'Super-admin curated rental-access list for homepage rails.';
+COMMENT ON TABLE public.home_featured_assets IS 'Super-admin curated asset list for homepage rails.';
 
 
 INSERT INTO public.home_banners (
@@ -229,8 +229,8 @@ CREATE INDEX idx_home_link_cards_section_active_sort
 CREATE INDEX idx_home_featured_products_active_sort
   ON public.home_featured_products(is_active, sort_order, created_at DESC);
 
-CREATE INDEX idx_home_featured_rental_accesses_active_sort
-  ON public.home_featured_rental_accesses(is_active, sort_order, created_at DESC);
+CREATE INDEX idx_home_featured_assets_active_sort
+  ON public.home_featured_assets(is_active, sort_order, created_at DESC);
 
 
 CREATE TRIGGER set_home_banners_updated_at
@@ -245,15 +245,15 @@ CREATE TRIGGER set_home_featured_products_updated_at
   BEFORE UPDATE ON public.home_featured_products
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
-CREATE TRIGGER set_home_featured_rental_accesses_updated_at
-  BEFORE UPDATE ON public.home_featured_rental_accesses
+CREATE TRIGGER set_home_featured_assets_updated_at
+  BEFORE UPDATE ON public.home_featured_assets
   FOR EACH ROW EXECUTE FUNCTION public.update_updated_at();
 
 
 ALTER TABLE public.home_banners ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.home_link_cards ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.home_featured_products ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.home_featured_rental_accesses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.home_featured_assets ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "home_banners_select_public"
   ON public.home_banners FOR SELECT
@@ -275,14 +275,14 @@ CREATE POLICY "home_featured_products_select_public"
     )
   );
 
-CREATE POLICY "home_featured_rental_accesses_select_public"
-  ON public.home_featured_rental_accesses FOR SELECT
+CREATE POLICY "home_featured_assets_select_public"
+  ON public.home_featured_assets FOR SELECT
   USING (
     is_active = TRUE
     AND EXISTS (
       SELECT 1
-      FROM public.rental_accesses ra
-      WHERE ra.id = home_featured_rental_accesses.rental_access_id
+      FROM public.assets ra
+      WHERE ra.id = home_featured_assets.asset_id
         AND ra.status = 'active'
         AND ra.is_hidden = FALSE
     )

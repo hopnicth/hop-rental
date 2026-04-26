@@ -10,11 +10,9 @@ const props = defineProps<{
 }>();
 
 const { locale, t } = useI18n();
-const { getProductById, getDefaultSKU, getTotalStock, isRental } =
-  useProducts();
-const { rentalAccesses } = useRentalAccesses();
+const { getProductById, getDefaultSKU, getTotalStock } = useProducts();
+const { assets } = useAssets();
 const { addToCart } = useCart();
-const { getRemainingAvailability } = useBooking();
 
 const product = getProductById(props.productId);
 const lang = computed(() => locale.value as LocaleCode);
@@ -29,30 +27,16 @@ const stock = computed(() =>
     : { inStock: 0, available: 0, reserved: 0 },
 );
 
-const rentalProduct = computed(() =>
-  product.value ? isRental(product.value) : false,
-);
-
-const matchedRentalAccesses = computed(() =>
+const matchedAssets = computed(() =>
   product.value
-    ? rentalAccesses.value.filter((access) =>
+    ? assets.value.filter((access) =>
         access.matchedProductIds.includes(product.value!.id),
       )
     : [],
 );
 
-const matchedRentalAccessCount = computed(
-  () => matchedRentalAccesses.value.length,
-);
-
-const remainingRentalAvailability = computed(() =>
-  product.value
-    ? product.value.skus.reduce(
-        (total, itemSku) =>
-          total + getRemainingAvailability(itemSku.id, itemSku.stock.available),
-        0,
-      )
-    : 0,
+const matchedAssetCount = computed(
+  () => matchedAssets.value.length,
 );
 
 const hasMultipleSkus = computed(() => (product.value?.skus.length ?? 0) > 1);
@@ -62,7 +46,6 @@ const canQuickAddToCart = computed(
     !!product.value &&
     !!sku.value &&
     product.value.isForSale &&
-    !rentalProduct.value &&
     !hasMultipleSkus.value &&
     stock.value.inStock > 0,
 );
@@ -86,32 +69,6 @@ const productUrl = computed(() =>
     ? `/product-${product.value.categories[0]}/${product.value.slug}`
     : "#",
 );
-
-const rentalLabel = computed(() => {
-  switch (lang.value) {
-    case "th":
-      return "เช่า";
-    case "cn":
-      return "租赁";
-    case "jp":
-      return "レンタル";
-    default:
-      return "Rent";
-  }
-});
-
-const rentalDayLabel = computed(() => {
-  switch (lang.value) {
-    case "th":
-      return "วัน";
-    case "cn":
-      return "天";
-    case "jp":
-      return "日";
-    default:
-      return "day";
-  }
-});
 
 function capCount(n: number): string {
   return n > 99 ? "99+" : String(n);
@@ -180,14 +137,6 @@ function handleAddToCart() {
               ฿{{ sku.price.final.toLocaleString() }}
             </span>
           </div>
-
-          <div
-            v-if="isRental(product) && sku.rentalPrice.daily > 0"
-            class="text-xs text-gray-500"
-          >
-            {{ rentalLabel }}
-            ฿{{ sku.rentalPrice.daily.toLocaleString() }}/{{ rentalDayLabel }}
-          </div>
         </div>
       </template>
 
@@ -205,26 +154,14 @@ function handleAddToCart() {
         </UBadge>
 
         <UBadge
-          v-if="matchedRentalAccessCount > 0"
+          v-if="matchedAssetCount > 0"
           color="secondary"
           size="sm"
           variant="subtle"
         >
           {{ t("productPage.available") }}
           <span class="ml-1">
-            {{ capCount(matchedRentalAccessCount) }}
-          </span>
-        </UBadge>
-
-        <UBadge
-          v-else-if="isRental(product)"
-          :color="remainingRentalAvailability > 0 ? 'info' : 'neutral'"
-          size="sm"
-          variant="subtle"
-        >
-          {{ t("productPage.available") }}
-          <span v-if="remainingRentalAvailability > 0" class="ml-1">
-            {{ capCount(remainingRentalAvailability) }}
+            {{ capCount(matchedAssetCount) }}
           </span>
         </UBadge>
       </template>

@@ -48,18 +48,18 @@ export interface BookingItem
   productId: string;
   /** SKU ID of the selected variant */
   skuId: string;
-  /** Rental access ID when the booking is rooted at the rental access layer */
-  rentalAccessId?: string;
-  /** Rental access business code snapshot */
-  rentalAccessCode?: string;
-  /** Rental access slug snapshot */
-  rentalAccessSlug?: string;
-  /** Rental access name snapshot */
-  rentalAccessName?: string;
-  /** Rental access thumbnail snapshot */
-  rentalAccessThumbnail?: string;
-  /** Flexible rental access snapshot blob */
-  rentalAccessSnapshot?: Record<string, unknown>;
+  /** Asset ID when the booking is rooted at the asset layer */
+  assetId?: string;
+  /** Asset business code snapshot */
+  assetCode?: string;
+  /** Asset slug snapshot */
+  assetSlug?: string;
+  /** Asset name snapshot */
+  assetName?: string;
+  /** Asset thumbnail snapshot */
+  assetThumbnail?: string;
+  /** Flexible asset snapshot blob */
+  assetSnapshot?: Record<string, unknown>;
   /** Product attribution snapshot kept during the transition */
   matchedProductId?: string;
   /** Product attribution display snapshot */

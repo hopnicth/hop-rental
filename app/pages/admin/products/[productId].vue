@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { getAdminApiErrorMessage, type AdminApiMeta } from "~/utils/admin-api";
+import AdminMediaGalleryManager from "~/components/admin/AdminMediaGalleryManager.vue";
 
 definePageMeta({
   layout: "admin",
@@ -7,25 +7,70 @@ definePageMeta({
   platformRoles: ["staff", "super_admin"],
 });
 
+type MediaStatus = "ready" | "processing" | "failed";
+
+type AdminMediaItem = Record<string, unknown>;
+
+type ExistingImageCard = {
+  id: string;
+  imageUrl: string;
+  title: string;
+  caption?: string;
+  status?: MediaStatus;
+  error?: string;
+};
+
+type AdminSkuInventoryItem = {
+  id: string;
+  inventoryId: string;
+  inventoryName: string;
+  isDefaultInventory: boolean;
+  branchId: string;
+  branchCode: string;
+  branchName: string;
+  onHand: number;
+  available: number;
+  reserved: number;
+  incoming: number;
+  updatedAt?: string;
+};
+
+type BranchOption = {
+  id: string;
+  code: string;
+  nameTh: string;
+  nameEn: string;
+  isActive: boolean;
+};
+
+type InventoryOption = {
+  id: string;
+  branchId: string;
+  name: string;
+  isDefault: boolean;
+};
+
 type AdminSkuItem = {
   id: string;
   productId: string;
+  skuCode: string;
   labelTh: string;
   labelEn: string;
   imageUrl: string;
+  mediaGallery: AdminMediaItem[];
+  useProductImages: boolean;
+  attributes: Record<string, unknown>;
   price: number;
   originalPrice: number | null;
   discountPercent: number;
-  rentalDeposit: number;
-  rentalDaily: number;
-  rentalWeekly: number;
-  rentalMonthly: number;
+  currencyCode: string;
+  pricingTiers: unknown[];
   stock: number;
-  rentalStock: number;
-  reservedStock: number;
-  createdAt?: string;
+  inventory: AdminSkuInventoryItem[];
   updatedAt?: string;
 };
+
+/* inventory helpers kept lightweight – full management moved to /admin/branches-inventory */
 
 type AdminProductDetail = {
   id: string;
@@ -35,18 +80,20 @@ type AdminProductDetail = {
   nameEn: string;
   descriptionTh: string;
   descriptionEn: string;
-  categoryKeys: string[];
+  mainCategoryKey: string;
+  tagKeys: string[];
+  searchKeywords: string[];
   brand: string;
   thumbnailUrl: string;
-  rentalMinDays: number;
-  rentalMaxDays: number;
-  rentalBufferDays: number;
-  storeLocationIds: string[];
+  mediaGallery: AdminMediaItem[];
+  spec: Record<string, unknown>;
+  detailBlocks: unknown[];
   isHidden: boolean;
-  createdAt?: string;
   updatedAt?: string;
   skus: AdminSkuItem[];
 };
+
+/* BranchOption type removed – inventory management moved to /admin/branches-inventory */
 
 const route = useRoute();
 const toast = useToast();
@@ -70,62 +117,323 @@ const productForm = reactive({
   nameEn: "",
   descriptionTh: "",
   descriptionEn: "",
-  categoryKeysText: "",
+  mainCategoryKey: "",
+  tagKeysText: "",
+  searchKeywordsText: "",
   brand: "",
-  thumbnailUrl: "",
-  rentalMinDays: 1,
-  rentalMaxDays: 0,
-  rentalBufferDays: 0,
-  storeLocationIdsText: "",
   isHidden: false,
 });
 
 const skuForm = reactive({
-  id: "",
+  skuCode: "",
   labelTh: "",
   labelEn: "",
-  imageUrl: "",
   price: 0,
-  originalPrice: null as number | null,
+  originalPriceText: "",
   discountPercent: 0,
-  rentalDeposit: 0,
-  rentalDaily: 0,
-  rentalWeekly: 0,
-  rentalMonthly: 0,
-  stock: 0,
-  rentalStock: 0,
-  reservedStock: 0,
+  currencyCode: "THB",
+  useProductImages: true,
 });
+
+const specText = ref("{}");
+const detailBlocksText = ref("[]");
+const skuAttributesText = ref("{}");
+const skuPricingTiersText = ref("[]");
 
 const savingProduct = ref(false);
 const savingSku = ref(false);
+const savingProductMedia = ref(false);
+const savingSkuMedia = ref(false);
+
 const editingSkuId = ref<string | null>(null);
+const activeSkuId = ref<string | null>(null);
+
+// ── Per-SKU inventory panel state ──
+const expandedInventorySkuId = ref<string | null>(null);
+const editingStockId = ref<string | null>(null);
+const savingStock = ref(false);
+
+const stockForm = reactive({
+  branchId: "",
+  inventoryId: "",
+  onHand: 0,
+});
 
 const { data, pending, error, refresh } = await useFetch<{
   product: AdminProductDetail;
-  meta?: AdminApiMeta;
 }>(productApiPath, {
   key: `admin-product-${productId.value}`,
 });
 
 const product = computed(() => data.value?.product ?? null);
-const adminMeta = computed(() => data.value?.meta ?? null);
-const adminWarning = computed(() => adminMeta.value?.warning ?? null);
-const isReadOnlyAdminMode = computed(
-  () => adminMeta.value?.adminMode === "read_only",
-);
-const loadErrorMessage = computed(() =>
-  getAdminApiErrorMessage(error.value, "Unknown admin product error"),
-);
 const skuItems = computed(() =>
-  [...(product.value?.skus ?? [])].sort((a, b) => a.id.localeCompare(b.id)),
+  [...(product.value?.skus ?? [])].sort(
+    (a, b) => a.skuCode.localeCompare(b.skuCode) || a.id.localeCompare(b.id),
+  ),
+);
+const activeSku = computed(
+  () => skuItems.value.find((item) => item.id === activeSkuId.value) ?? null,
 );
 
-function parseCsv(value: string): string[] {
+// ── Branches list (for inventory picker) ──
+const { data: branchesData } = await useFetch<{ items: BranchOption[] }>(
+  "/api/admin/branches",
+  { key: "admin-product-detail-branches" },
+);
+const branchOptions = computed(() =>
+  (branchesData.value?.items ?? []).filter((b) => b.isActive),
+);
+
+// ── Inventories list per selected branch (for inventory picker) ──
+const inventoriesApiPath = computed(() =>
+  stockForm.branchId
+    ? `/api/admin/branches/${encodeURIComponent(stockForm.branchId)}/inventories`
+    : null,
+);
+const { data: inventoriesData, pending: inventoriesPending } = await useFetch<{
+  items: InventoryOption[];
+}>(inventoriesApiPath, {
+  key: "admin-product-detail-inventories",
+  watch: [inventoriesApiPath],
+  immediate: false,
+});
+const inventoryOptions = computed(() => inventoriesData.value?.items ?? []);
+
+watch(
+  () => stockForm.branchId,
+  () => {
+    stockForm.inventoryId = "";
+  },
+);
+
+function parseCsv(value: string) {
   return value
     .split(",")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+function parseJsonText<T>(value: string, label: string, fallback: T): T {
+  const raw = value.trim();
+  if (!raw) return fallback;
+
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(`${label} must be valid JSON`);
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asText(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function mediaVariantUrl(item: Record<string, unknown>, key: string) {
+  const variants = asRecord(item.variants);
+  const variant = asRecord(variants[key]);
+  return asText(variant.url);
+}
+
+function mediaItemUrl(item: Record<string, unknown>) {
+  return (
+    mediaVariantUrl(item, "card") ||
+    mediaVariantUrl(item, "thumbnail") ||
+    mediaVariantUrl(item, "large") ||
+    asText(item.url)
+  );
+}
+
+function mapMediaCards(mediaGallery: AdminMediaItem[]): ExistingImageCard[] {
+  return (Array.isArray(mediaGallery) ? mediaGallery : []).map(
+    (entry, index) => {
+      const item = asRecord(entry);
+      const status = item.status;
+
+      return {
+        id: String(item.id ?? `media-${index}`),
+        imageUrl: mediaItemUrl(item),
+        title: asText(item.title) || `Image ${index + 1}`,
+        caption:
+          asText(item.altText) || asText(item.originalFilename) || undefined,
+        status:
+          status === "processing" || status === "failed" || status === "ready"
+            ? status
+            : undefined,
+        error: asText(item.error) || undefined,
+      };
+    },
+  );
+}
+
+function normalizeMediaPositions(mediaGallery: AdminMediaItem[]) {
+  return mediaGallery.map((entry, index) => ({
+    ...asRecord(entry),
+    position: index,
+  }));
+}
+
+function moveMediaItemToFront(mediaGallery: AdminMediaItem[], imageId: string) {
+  const items = mediaGallery.map((entry) => asRecord(entry));
+  const selected = items.find((item) => String(item.id ?? "") === imageId);
+  if (!selected) return normalizeMediaPositions(items);
+
+  return normalizeMediaPositions([
+    selected,
+    ...items.filter((item) => String(item.id ?? "") !== imageId),
+  ]);
+}
+
+function removeMediaItem(mediaGallery: AdminMediaItem[], imageId: string) {
+  return normalizeMediaPositions(
+    mediaGallery
+      .map((entry) => asRecord(entry))
+      .filter((item) => String(item.id ?? "") !== imageId),
+  );
+}
+
+function galleryHasProcessing(mediaGallery: AdminMediaItem[]) {
+  return mediaGallery.some((entry) => asRecord(entry).status === "processing");
+}
+
+/* inventoryStockTotal removed – inventory management moved to /admin/branches-inventory */
+
+function formatCurrency(value: number, currencyCode = "THB") {
+  try {
+    return new Intl.NumberFormat("th-TH", {
+      style: "currency",
+      currency: currencyCode,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${value} ${currencyCode}`;
+  }
+}
+
+function formatIsoDate(value?: string) {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleString("th-TH", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      });
+}
+
+function displayedSkuImageUrl(item: AdminSkuItem) {
+  if (item.imageUrl) return item.imageUrl;
+  if (item.useProductImages) return product.value?.thumbnailUrl || "";
+  return "";
+}
+
+// ── Inventory management for SKU rows ──
+function resetStockForm() {
+  editingStockId.value = null;
+  stockForm.branchId = "";
+  stockForm.inventoryId = "";
+  stockForm.onHand = 0;
+}
+
+function toggleInventoryPanel(skuId: string) {
+  if (expandedInventorySkuId.value === skuId) {
+    expandedInventorySkuId.value = null;
+    resetStockForm();
+  } else {
+    expandedInventorySkuId.value = skuId;
+    resetStockForm();
+  }
+}
+
+function fillStockForm(row: AdminSkuInventoryItem) {
+  editingStockId.value = row.id;
+  stockForm.branchId = row.branchId;
+  stockForm.inventoryId = row.inventoryId;
+  stockForm.onHand = row.onHand;
+}
+
+async function saveStock(sku: AdminSkuItem) {
+  if (!stockForm.inventoryId) {
+    toast.add({ title: "Please select an inventory", color: "warning" });
+    return;
+  }
+  if (!window.confirm("Confirm stock change?")) return;
+
+  savingStock.value = true;
+  try {
+    const isEdit = !!editingStockId.value;
+    const endpoint = isEdit
+      ? `/api/admin/inventories/${encodeURIComponent(stockForm.inventoryId)}/stock/${encodeURIComponent(editingStockId.value!)}`
+      : `/api/admin/inventories/${encodeURIComponent(stockForm.inventoryId)}/stock`;
+
+    const body: Record<string, unknown> = {
+      onHand: stockForm.onHand,
+      available: stockForm.onHand,
+    };
+    if (!isEdit) {
+      body.productId = sku.productId;
+      body.skuId = sku.id;
+    }
+
+    await $fetch(endpoint, {
+      method: isEdit ? "PATCH" : "POST",
+      body,
+    });
+
+    toast.add({
+      title: isEdit ? "Stock updated" : "Stock added",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+
+    await refresh();
+    resetStockForm();
+  } catch (err) {
+    toast.add({
+      title: "Stock save failed",
+      description: err instanceof Error ? err.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    savingStock.value = false;
+  }
+}
+
+async function deleteStockRow(row: AdminSkuInventoryItem) {
+  if (
+    !window.confirm(
+      `Remove this SKU from "${row.inventoryName}" (${row.branchName})?`,
+    )
+  )
+    return;
+
+  savingStock.value = true;
+  try {
+    await $fetch(
+      `/api/admin/inventories/${encodeURIComponent(row.inventoryId)}/stock/${encodeURIComponent(row.id)}`,
+      { method: "DELETE" },
+    );
+    toast.add({
+      title: "Stock removed",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+    await refresh();
+    if (editingStockId.value === row.id) resetStockForm();
+  } catch (err) {
+    toast.add({
+      title: "Delete failed",
+      description: err instanceof Error ? err.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    savingStock.value = false;
+  }
 }
 
 function fillProductForm(item: AdminProductDetail) {
@@ -135,50 +443,43 @@ function fillProductForm(item: AdminProductDetail) {
   productForm.nameEn = item.nameEn;
   productForm.descriptionTh = item.descriptionTh;
   productForm.descriptionEn = item.descriptionEn;
-  productForm.categoryKeysText = item.categoryKeys.join(", ");
+  productForm.mainCategoryKey = item.mainCategoryKey;
+  productForm.tagKeysText = item.tagKeys.join(", ");
+  productForm.searchKeywordsText = item.searchKeywords.join(", ");
   productForm.brand = item.brand;
-  productForm.thumbnailUrl = item.thumbnailUrl;
-  productForm.rentalMinDays = item.rentalMinDays;
-  productForm.rentalMaxDays = item.rentalMaxDays;
-  productForm.rentalBufferDays = item.rentalBufferDays;
-  productForm.storeLocationIdsText = item.storeLocationIds.join(", ");
   productForm.isHidden = item.isHidden;
+  specText.value = JSON.stringify(item.spec ?? {}, null, 2);
+  detailBlocksText.value = JSON.stringify(item.detailBlocks ?? [], null, 2);
 }
 
 function resetSkuForm() {
   editingSkuId.value = null;
-  skuForm.id = "";
+  skuForm.skuCode = "";
   skuForm.labelTh = "";
   skuForm.labelEn = "";
-  skuForm.imageUrl = "";
   skuForm.price = 0;
-  skuForm.originalPrice = null;
+  skuForm.originalPriceText = "";
   skuForm.discountPercent = 0;
-  skuForm.rentalDeposit = 0;
-  skuForm.rentalDaily = 0;
-  skuForm.rentalWeekly = 0;
-  skuForm.rentalMonthly = 0;
-  skuForm.stock = 0;
-  skuForm.rentalStock = 0;
-  skuForm.reservedStock = 0;
+  skuForm.currencyCode = "THB";
+  skuForm.useProductImages = true;
+  skuAttributesText.value = "{}";
+  skuPricingTiersText.value = "[]";
 }
 
-function editSku(item: AdminSkuItem) {
+function fillSkuForm(item: AdminSkuItem) {
   editingSkuId.value = item.id;
-  skuForm.id = item.id;
+  activeSkuId.value = item.id;
+  skuForm.skuCode = item.skuCode;
   skuForm.labelTh = item.labelTh;
   skuForm.labelEn = item.labelEn;
-  skuForm.imageUrl = item.imageUrl;
   skuForm.price = item.price;
-  skuForm.originalPrice = item.originalPrice;
+  skuForm.originalPriceText =
+    item.originalPrice == null ? "" : String(item.originalPrice);
   skuForm.discountPercent = item.discountPercent;
-  skuForm.rentalDeposit = item.rentalDeposit;
-  skuForm.rentalDaily = item.rentalDaily;
-  skuForm.rentalWeekly = item.rentalWeekly;
-  skuForm.rentalMonthly = item.rentalMonthly;
-  skuForm.stock = item.stock;
-  skuForm.rentalStock = item.rentalStock;
-  skuForm.reservedStock = item.reservedStock;
+  skuForm.currencyCode = item.currencyCode || "THB";
+  skuForm.useProductImages = item.useProductImages;
+  skuAttributesText.value = JSON.stringify(item.attributes ?? {}, null, 2);
+  skuPricingTiersText.value = JSON.stringify(item.pricingTiers ?? [], null, 2);
 }
 
 watch(
@@ -187,24 +488,63 @@ watch(
     if (value) {
       fillProductForm(value);
     }
+
+    if (
+      activeSkuId.value &&
+      !value?.skus.some((sku) => sku.id === activeSkuId.value)
+    ) {
+      activeSkuId.value = null;
+    }
   },
   { immediate: true },
 );
 
+const productMediaItems = computed(() =>
+  mapMediaCards(product.value?.mediaGallery ?? []),
+);
+const activeSkuMediaItems = computed(() =>
+  mapMediaCards(activeSku.value?.mediaGallery ?? []),
+);
+
+const hasProcessingMedia = computed(() => {
+  if (galleryHasProcessing(product.value?.mediaGallery ?? [])) return true;
+  return skuItems.value.some((sku) =>
+    galleryHasProcessing(sku.mediaGallery ?? []),
+  );
+});
+
+let mediaPollingHandle: ReturnType<typeof setInterval> | null = null;
+
+function stopMediaPolling() {
+  if (mediaPollingHandle) {
+    clearInterval(mediaPollingHandle);
+    mediaPollingHandle = null;
+  }
+}
+
+function startMediaPolling() {
+  if (!import.meta.client || mediaPollingHandle) return;
+  mediaPollingHandle = setInterval(() => {
+    void refresh();
+  }, 3000);
+}
+
+watch(
+  hasProcessingMedia,
+  (value) => {
+    if (!import.meta.client) return;
+    if (value) startMediaPolling();
+    else stopMediaPolling();
+  },
+  { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  stopMediaPolling();
+});
+
 async function saveProduct() {
   if (!product.value) return;
-
-  if (isReadOnlyAdminMode.value) {
-    toast.add({
-      title: "Product save unavailable",
-      description:
-        adminWarning.value?.message ??
-        "Admin write mode is unavailable right now.",
-      color: "warning",
-      icon: "bx:error-circle",
-    });
-    return;
-  }
 
   savingProduct.value = true;
 
@@ -218,14 +558,13 @@ async function saveProduct() {
         nameEn: productForm.nameEn,
         descriptionTh: productForm.descriptionTh,
         descriptionEn: productForm.descriptionEn,
-        categoryKeys: parseCsv(productForm.categoryKeysText),
+        mainCategoryKey: productForm.mainCategoryKey,
+        tagKeys: parseCsv(productForm.tagKeysText),
+        searchKeywords: parseCsv(productForm.searchKeywordsText),
         brand: productForm.brand,
-        thumbnailUrl: productForm.thumbnailUrl,
-        rentalMinDays: productForm.rentalMinDays,
-        rentalMaxDays: productForm.rentalMaxDays,
-        rentalBufferDays: productForm.rentalBufferDays,
-        storeLocationIds: parseCsv(productForm.storeLocationIdsText),
         isHidden: productForm.isHidden,
+        spec: parseJsonText(specText.value, "spec", {}),
+        detailBlocks: parseJsonText(detailBlocksText.value, "detailBlocks", []),
       },
     });
 
@@ -239,7 +578,8 @@ async function saveProduct() {
   } catch (saveError) {
     toast.add({
       title: "Save product failed",
-      description: getAdminApiErrorMessage(saveError, "Unknown error"),
+      description:
+        saveError instanceof Error ? saveError.message : "Unknown error",
       color: "error",
       icon: "bx:error-circle",
     });
@@ -251,54 +591,38 @@ async function saveProduct() {
 async function saveSku() {
   if (!product.value) return;
 
-  if (isReadOnlyAdminMode.value) {
-    toast.add({
-      title: editingSkuId.value
-        ? "SKU update unavailable"
-        : "SKU create unavailable",
-      description:
-        adminWarning.value?.message ??
-        "Admin write mode is unavailable right now.",
-      color: "warning",
-      icon: "bx:error-circle",
-    });
-    return;
-  }
-
   savingSku.value = true;
 
   try {
+    const originalPriceText = String(skuForm.originalPriceText ?? "").trim();
     const body = {
-      id: skuForm.id,
+      skuCode: skuForm.skuCode,
       labelTh: skuForm.labelTh,
       labelEn: skuForm.labelEn,
-      imageUrl: skuForm.imageUrl,
       price: skuForm.price,
-      originalPrice: skuForm.originalPrice,
+      originalPrice:
+        originalPriceText.length > 0 ? Number(originalPriceText) : null,
       discountPercent: skuForm.discountPercent,
-      rentalDeposit: skuForm.rentalDeposit,
-      rentalDaily: skuForm.rentalDaily,
-      rentalWeekly: skuForm.rentalWeekly,
-      rentalMonthly: skuForm.rentalMonthly,
-      stock: skuForm.stock,
-      rentalStock: skuForm.rentalStock,
-      reservedStock: skuForm.reservedStock,
+      currencyCode: skuForm.currencyCode,
+      useProductImages: skuForm.useProductImages,
+      attributes: parseJsonText(skuAttributesText.value, "attributes", {}),
+      pricingTiers: parseJsonText(
+        skuPricingTiersText.value,
+        "pricingTiers",
+        [],
+      ),
+      stock: activeSku.value?.stock ?? 0,
     };
 
-    if (editingSkuId.value) {
-      await $fetch(
-        `${skuApiBasePath.value}/${encodeURIComponent(editingSkuId.value)}`,
-        {
-          method: "PATCH",
+    const result = editingSkuId.value
+      ? await $fetch<{ item: AdminSkuItem }>(
+          `${skuApiBasePath.value}/${encodeURIComponent(editingSkuId.value)}`,
+          { method: "PATCH", body },
+        )
+      : await $fetch<{ item: AdminSkuItem }>(skuApiBasePath.value, {
+          method: "POST",
           body,
-        },
-      );
-    } else {
-      await $fetch(skuApiBasePath.value, {
-        method: "POST",
-        body,
-      });
-    }
+        });
 
     toast.add({
       title: editingSkuId.value ? "SKU updated" : "SKU created",
@@ -306,12 +630,22 @@ async function saveSku() {
       icon: "bx:check-circle",
     });
 
-    resetSkuForm();
+    activeSkuId.value = result.item.id;
     await refresh();
+
+    const refreshedSku = data.value?.product?.skus.find(
+      (sku) => sku.id === result.item.id,
+    );
+    if (refreshedSku) {
+      fillSkuForm(refreshedSku);
+    } else {
+      resetSkuForm();
+    }
   } catch (saveError) {
     toast.add({
       title: editingSkuId.value ? "Update SKU failed" : "Create SKU failed",
-      description: getAdminApiErrorMessage(saveError, "Unknown error"),
+      description:
+        saveError instanceof Error ? saveError.message : "Unknown error",
       color: "error",
       icon: "bx:error-circle",
     });
@@ -319,6 +653,142 @@ async function saveSku() {
     savingSku.value = false;
   }
 }
+
+async function quickCreateDefaultSku() {
+  if (!product.value) return;
+  if (skuItems.value.length > 0) return;
+  if (!window.confirm("Create a default SKU for this product?")) return;
+
+  savingSku.value = true;
+  try {
+    const labelTh = product.value.nameTh || product.value.nameEn || "Default";
+    const labelEn = product.value.nameEn || product.value.nameTh || "Default";
+    const skuCode = product.value.slug;
+
+    const result = await $fetch<{ item: AdminSkuItem }>(skuApiBasePath.value, {
+      method: "POST",
+      body: {
+        skuCode,
+        labelTh,
+        labelEn,
+        price: 0,
+        originalPrice: null,
+        discountPercent: 0,
+        currencyCode: "THB",
+        useProductImages: true,
+        attributes: {},
+        pricingTiers: [],
+        stock: 0,
+      },
+    });
+
+    toast.add({
+      title: "Default SKU created",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+
+    activeSkuId.value = result.item.id;
+    await refresh();
+
+    expandedInventorySkuId.value = result.item.id;
+    resetStockForm();
+
+    const refreshedSku = data.value?.product?.skus.find(
+      (sku) => sku.id === result.item.id,
+    );
+    if (refreshedSku) {
+      fillSkuForm(refreshedSku);
+    }
+  } catch (err) {
+    toast.add({
+      title: "Quick create SKU failed",
+      description: err instanceof Error ? err.message : "Unknown error",
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    savingSku.value = false;
+  }
+}
+
+async function patchProductMediaGallery(mediaGallery: AdminMediaItem[]) {
+  savingProductMedia.value = true;
+
+  try {
+    await $fetch(productApiPath.value, {
+      method: "PATCH",
+      body: { mediaGallery },
+    });
+
+    await refresh();
+  } finally {
+    savingProductMedia.value = false;
+  }
+}
+
+async function patchSkuMediaGallery(
+  skuId: string,
+  mediaGallery: AdminMediaItem[],
+) {
+  savingSkuMedia.value = true;
+
+  try {
+    await $fetch(`${skuApiBasePath.value}/${encodeURIComponent(skuId)}`, {
+      method: "PATCH",
+      body: {
+        mediaGallery,
+        useProductImages: mediaGallery.length === 0,
+      },
+    });
+
+    await refresh();
+  } finally {
+    savingSkuMedia.value = false;
+  }
+}
+
+async function refreshAfterProductUpload() {
+  await refresh();
+}
+
+async function refreshAfterSkuUpload() {
+  await refresh();
+}
+
+async function setProductCoverImage(imageId: string) {
+  if (!product.value) return;
+  await patchProductMediaGallery(
+    moveMediaItemToFront(product.value.mediaGallery ?? [], imageId),
+  );
+}
+
+async function deleteProductImage(imageId: string) {
+  if (!product.value) return;
+  if (!window.confirm("Delete this product image?")) return;
+  await patchProductMediaGallery(
+    removeMediaItem(product.value.mediaGallery ?? [], imageId),
+  );
+}
+
+async function setActiveSkuCoverImage(imageId: string) {
+  if (!activeSku.value) return;
+  await patchSkuMediaGallery(
+    activeSku.value.id,
+    moveMediaItemToFront(activeSku.value.mediaGallery ?? [], imageId),
+  );
+}
+
+async function deleteActiveSkuImage(imageId: string) {
+  if (!activeSku.value) return;
+  if (!window.confirm("Delete this SKU image?")) return;
+  await patchSkuMediaGallery(
+    activeSku.value.id,
+    removeMediaItem(activeSku.value.mediaGallery ?? [], imageId),
+  );
+}
+
+/* Inventory CRUD moved to /admin/branches-inventory */
 </script>
 
 <template>
@@ -340,19 +810,11 @@ async function saveSku() {
     </div>
 
     <UAlert
-      v-if="adminWarning"
-      color="warning"
-      variant="soft"
-      :title="adminWarning.title"
-      :description="adminWarning.message"
-    />
-
-    <UAlert
       v-if="error"
       color="error"
       variant="soft"
       title="Failed to load product"
-      :description="loadErrorMessage"
+      :description="error.message"
     />
 
     <div v-else-if="pending" class="py-8 text-sm text-muted">
@@ -363,155 +825,187 @@ async function saveSku() {
       <UCard>
         <template #header>
           <div
-            class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
+            class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"
           >
-            <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="text-lg font-semibold">{{ product.nameTh }}</h3>
-                <UBadge color="primary" variant="soft">{{
-                  product.type
-                }}</UBadge>
-                <UBadge v-if="product.isHidden" color="neutral" variant="soft">
-                  hidden
-                </UBadge>
+            <div class="flex items-start gap-4">
+              <div
+                v-if="product.thumbnailUrl"
+                class="hidden h-20 w-20 overflow-hidden rounded-xl border border-default bg-muted sm:block"
+              >
+                <img
+                  :src="product.thumbnailUrl"
+                  :alt="product.nameEn || product.nameTh"
+                  class="h-full w-full object-cover"
+                />
               </div>
-              <p class="text-sm text-muted">
-                {{ product.id }} · {{ product.slug }}
-              </p>
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-semibold">{{ product.nameTh }}</h3>
+                  <UBadge color="primary" variant="soft">{{
+                    product.type
+                  }}</UBadge>
+                  <UBadge
+                    v-if="product.isHidden"
+                    color="neutral"
+                    variant="soft"
+                  >
+                    hidden
+                  </UBadge>
+                </div>
+                <p class="text-sm text-muted">
+                  {{ product.id }} · {{ product.slug }}
+                </p>
+                <p class="text-xs text-muted">
+                  Updated {{ formatIsoDate(product.updatedAt) }} · SKU rows
+                  {{ skuItems.length }}
+                </p>
+              </div>
             </div>
 
-            <div class="text-sm text-muted">
-              SKU rows: {{ skuItems.length }}
+            <div class="grid grid-cols-2 gap-3 text-sm lg:min-w-80">
+              <div class="rounded-xl border border-default p-3">
+                <p class="text-xs uppercase tracking-wide text-muted">
+                  Main category
+                </p>
+                <p class="mt-1 font-medium">
+                  {{ product.mainCategoryKey || "—" }}
+                </p>
+              </div>
+              <div class="rounded-xl border border-default p-3">
+                <p class="text-xs uppercase tracking-wide text-muted">
+                  Product images
+                </p>
+                <p class="mt-1 font-medium">
+                  {{ product.mediaGallery.length }}
+                </p>
+              </div>
             </div>
           </div>
         </template>
-
-        <UAlert
-          v-if="adminWarning"
-          class="mb-4"
-          color="warning"
-          variant="soft"
-          title="Write actions are disabled"
-          :description="adminWarning.message"
-        />
-
-        <form class="space-y-4" @submit.prevent="saveProduct">
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Product ID">
-              <UInput :model-value="product.id" disabled />
-            </UFormField>
-
-            <UFormField label="Slug" required>
-              <UInput v-model="productForm.slug" />
-            </UFormField>
-          </div>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Type" required>
-              <USelectMenu
-                v-model="productForm.type"
-                :items="typeOptions"
-                value-key="value"
-              />
-            </UFormField>
-
-            <UFormField label="Brand">
-              <UInput v-model="productForm.brand" />
-            </UFormField>
-          </div>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Name (TH)" required>
-              <UInput v-model="productForm.nameTh" />
-            </UFormField>
-
-            <UFormField label="Name (EN)" required>
-              <UInput v-model="productForm.nameEn" />
-            </UFormField>
-          </div>
-
-          <UFormField label="Description (TH)" required>
-            <UTextarea v-model="productForm.descriptionTh" :rows="3" />
-          </UFormField>
-
-          <UFormField label="Description (EN)" required>
-            <UTextarea v-model="productForm.descriptionEn" :rows="3" />
-          </UFormField>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Category keys (comma separated)" required>
-              <UInput v-model="productForm.categoryKeysText" />
-            </UFormField>
-
-            <UFormField label="Store location IDs (comma separated)">
-              <UInput v-model="productForm.storeLocationIdsText" />
-            </UFormField>
-          </div>
-
-          <div class="grid gap-4 sm:grid-cols-2">
-            <UFormField label="Thumbnail URL">
-              <UInput
-                v-model="productForm.thumbnailUrl"
-                placeholder="https://..."
-              />
-            </UFormField>
-
-            <UFormField label="Hidden from storefront">
-              <div class="flex h-10 items-center">
-                <UCheckbox v-model="productForm.isHidden" />
-              </div>
-            </UFormField>
-          </div>
-
-          <div class="grid gap-4 sm:grid-cols-3">
-            <UFormField label="Min rental days">
-              <UInput
-                v-model.number="productForm.rentalMinDays"
-                type="number"
-                min="1"
-              />
-            </UFormField>
-
-            <UFormField label="Max rental days (0 = no limit)">
-              <UInput
-                v-model.number="productForm.rentalMaxDays"
-                type="number"
-                min="0"
-              />
-            </UFormField>
-
-            <UFormField label="Buffer days">
-              <UInput
-                v-model.number="productForm.rentalBufferDays"
-                type="number"
-                min="0"
-              />
-            </UFormField>
-          </div>
-
-          <div class="flex gap-2">
-            <UButton
-              type="submit"
-              color="primary"
-              :loading="savingProduct"
-              :disabled="isReadOnlyAdminMode"
-            >
-              Save product
-            </UButton>
-            <UButton
-              type="button"
-              variant="soft"
-              color="neutral"
-              @click="fillProductForm(product)"
-            >
-              Reset changes
-            </UButton>
-          </div>
-        </form>
       </UCard>
 
       <div
-        class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]"
+        class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]"
+      >
+        <UCard>
+          <template #header>
+            <div>
+              <h3 class="text-lg font-semibold">Product details</h3>
+              <p class="text-sm text-muted">
+                Edit product detail as usual and manage product photos here.
+              </p>
+            </div>
+          </template>
+
+          <form class="space-y-4" @submit.prevent="saveProduct">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Product ID">
+                <UInput :model-value="product.id" disabled />
+              </UFormField>
+              <UFormField label="Slug" required>
+                <UInput v-model="productForm.slug" />
+              </UFormField>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Type" required>
+                <USelectMenu
+                  v-model="productForm.type"
+                  :items="typeOptions"
+                  value-key="value"
+                />
+              </UFormField>
+              <UFormField label="Brand">
+                <UInput v-model="productForm.brand" placeholder="DCA" />
+              </UFormField>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Name (TH)" required>
+                <UInput v-model="productForm.nameTh" />
+              </UFormField>
+              <UFormField label="Name (EN)" required>
+                <UInput v-model="productForm.nameEn" />
+              </UFormField>
+            </div>
+
+            <UFormField label="Description (TH)" required>
+              <UTextarea v-model="productForm.descriptionTh" :rows="3" />
+            </UFormField>
+
+            <UFormField label="Description (EN)" required>
+              <UTextarea v-model="productForm.descriptionEn" :rows="3" />
+            </UFormField>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Main category key" required>
+                <UInput
+                  v-model="productForm.mainCategoryKey"
+                  placeholder="impact_drivers"
+                />
+              </UFormField>
+              <UFormField label="Hidden from storefront">
+                <div class="flex h-10 items-center">
+                  <UCheckbox v-model="productForm.isHidden" />
+                </div>
+              </UFormField>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField label="Tags (comma separated)">
+                <UInput
+                  v-model="productForm.tagKeysText"
+                  placeholder="impact_driver, brushless"
+                />
+              </UFormField>
+              <UFormField label="Search keywords (comma separated)">
+                <UInput
+                  v-model="productForm.searchKeywordsText"
+                  placeholder="cordless drill, one key"
+                />
+              </UFormField>
+            </div>
+
+            <UFormField label="Shared spec JSONB">
+              <UTextarea v-model="specText" :rows="6" />
+            </UFormField>
+
+            <UFormField label="Detail blocks JSONB">
+              <UTextarea v-model="detailBlocksText" :rows="6" />
+            </UFormField>
+
+            <div class="flex gap-2">
+              <UButton type="submit" color="primary" :loading="savingProduct">
+                Save product
+              </UButton>
+              <UButton
+                type="button"
+                variant="soft"
+                color="neutral"
+                @click="fillProductForm(product)"
+              >
+                Reset changes
+              </UButton>
+            </div>
+          </form>
+        </UCard>
+
+        <AdminMediaGalleryManager
+          title="Product pictures"
+          description="Manage product gallery images. The first image is the storefront cover."
+          :upload-endpoint="`${productApiPath}/media`"
+          :existing-items="productMediaItems"
+          empty-message="No product images yet"
+          :disabled="savingProduct"
+          :existing-actions-disabled="savingProductMedia"
+          @uploaded="refreshAfterProductUpload"
+          @set-cover-existing="setProductCoverImage"
+          @remove-existing="deleteProductImage"
+        />
+      </div>
+
+      <div
+        class="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)]"
       >
         <UCard>
           <template #header>
@@ -519,16 +1013,15 @@ async function saveSku() {
               <div>
                 <h3 class="text-lg font-semibold">SKU rows</h3>
                 <p class="text-sm text-muted">
-                  Manage pricing and stock variants under this product.
+                  Edit SKU details, add SKU photos, and manage inventory per
+                  branch.
                 </p>
               </div>
-
               <UButton
                 color="primary"
                 variant="soft"
                 size="sm"
                 icon="bx:refresh"
-                :loading="pending"
                 @click="refresh"
               >
                 Refresh
@@ -536,8 +1029,37 @@ async function saveSku() {
             </div>
           </template>
 
-          <div v-if="skuItems.length === 0" class="py-8 text-sm text-muted">
-            No SKU rows yet. Create the first SKU using the form.
+          <div
+            v-if="skuItems.length === 0"
+            class="space-y-4 rounded-xl border border-dashed border-default bg-muted/30 p-6"
+          >
+            <div class="space-y-1">
+              <p class="text-sm font-medium">No SKU yet</p>
+              <p class="text-sm text-muted">
+                ผลิตภัณฑ์นี้ยังไม่มี SKU จึงยังเข้า inventory ไม่ได้ — สร้าง
+                default SKU เพื่อเริ่มจัดการ stock ได้ทันที (ใช้ชื่อและรูปจาก
+                product, ราคาเริ่มต้น 0)
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                color="primary"
+                icon="bx:bolt-circle"
+                :loading="savingSku"
+                @click="quickCreateDefaultSku"
+              >
+                Quick create default SKU
+              </UButton>
+              <UButton
+                color="neutral"
+                variant="soft"
+                icon="bx:edit"
+                :disabled="savingSku"
+                @click="resetSkuForm"
+              >
+                Custom create (use form →)
+              </UButton>
+            </div>
           </div>
 
           <div v-else class="space-y-3">
@@ -547,201 +1069,378 @@ async function saveSku() {
               class="rounded-xl border border-default p-4"
             >
               <div
-                class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between"
+                class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
               >
-                <div>
-                  <h4 class="font-medium">{{ sku.labelTh }}</h4>
-                  <p class="text-sm text-muted">
-                    {{ sku.id }} · {{ sku.labelEn }}
-                  </p>
-                  <p
-                    v-if="sku.imageUrl"
-                    class="mt-2 text-xs text-muted break-all"
+                <div class="flex gap-4">
+                  <div
+                    class="h-24 w-24 shrink-0 overflow-hidden rounded-xl border border-default bg-muted"
                   >
-                    {{ sku.imageUrl }}
-                  </p>
-                </div>
-
-                <div class="flex items-start gap-6">
-                  <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                    <div>
-                      <p class="text-muted">Price</p>
-                      <p class="font-medium">{{ sku.price }}</p>
-                    </div>
-                    <div>
-                      <p class="text-muted">Discount %</p>
-                      <p class="font-medium">{{ sku.discountPercent }}</p>
-                    </div>
-                    <div>
-                      <p class="text-muted">Stock</p>
-                      <p class="font-medium">{{ sku.stock }}</p>
-                    </div>
-                    <div>
-                      <p class="text-muted">Rental stock</p>
-                      <p class="font-medium">{{ sku.rentalStock }}</p>
+                    <img
+                      v-if="displayedSkuImageUrl(sku)"
+                      :src="displayedSkuImageUrl(sku)"
+                      :alt="sku.labelEn || sku.labelTh"
+                      class="h-full w-full object-cover"
+                    />
+                    <div
+                      v-else
+                      class="flex h-full items-center justify-center px-3 text-center text-xs text-muted"
+                    >
+                      No preview
                     </div>
                   </div>
 
+                  <div class="space-y-2">
+                    <div>
+                      <div class="flex flex-wrap items-center gap-2">
+                        <h4 class="font-medium">{{ sku.labelTh }}</h4>
+                        <UBadge color="primary" variant="soft">{{
+                          sku.skuCode
+                        }}</UBadge>
+                        <UBadge
+                          v-if="sku.useProductImages"
+                          color="neutral"
+                          variant="soft"
+                        >
+                          uses product images
+                        </UBadge>
+                      </div>
+                      <p class="text-sm text-muted">
+                        {{ sku.id }} · {{ sku.labelEn }}
+                      </p>
+                    </div>
+
+                    <div
+                      class="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4"
+                    >
+                      <div>
+                        <p class="text-muted">Price</p>
+                        <p class="font-medium">
+                          {{ formatCurrency(sku.price, sku.currencyCode) }}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-muted">Original</p>
+                        <p class="font-medium">
+                          {{
+                            sku.originalPrice == null
+                              ? "—"
+                              : formatCurrency(
+                                  sku.originalPrice,
+                                  sku.currencyCode,
+                                )
+                          }}
+                        </p>
+                      </div>
+                      <div>
+                        <p class="text-muted">Stock</p>
+                        <p class="font-medium">{{ sku.stock }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-2">
                   <UButton
                     color="primary"
                     variant="soft"
                     size="sm"
                     icon="bx:edit"
-                    :disabled="isReadOnlyAdminMode"
-                    @click="editSku(sku)"
+                    @click="fillSkuForm(sku)"
                   >
-                    Edit
+                    Edit SKU
+                  </UButton>
+                  <UButton
+                    color="neutral"
+                    variant="soft"
+                    size="sm"
+                    :icon="
+                      expandedInventorySkuId === sku.id
+                        ? 'bx:chevron-up'
+                        : 'bx:box'
+                    "
+                    @click="toggleInventoryPanel(sku.id)"
+                  >
+                    {{
+                      expandedInventorySkuId === sku.id
+                        ? "Hide inventory"
+                        : "Manage inventory"
+                    }}
                   </UButton>
                 </div>
+              </div>
+
+              <!-- ── Inventory panel (expanded per SKU) ── -->
+              <div
+                v-if="expandedInventorySkuId === sku.id"
+                class="mt-4 space-y-4 rounded-xl border border-default bg-muted/30 p-4"
+              >
+                <!-- Existing stock rows -->
+                <div
+                  v-if="sku.inventory.length === 0"
+                  class="text-sm text-muted"
+                >
+                  No inventory rows yet for this SKU. Add one below.
+                </div>
+                <div v-else class="space-y-2">
+                  <div
+                    v-for="row in sku.inventory"
+                    :key="row.id"
+                    class="rounded-lg border border-default bg-elevated p-3"
+                  >
+                    <div
+                      class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <p class="font-medium truncate">
+                            {{ row.branchName }} · {{ row.inventoryName }}
+                          </p>
+                          <UBadge
+                            v-if="row.isDefaultInventory"
+                            color="primary"
+                            variant="soft"
+                            size="xs"
+                            >default</UBadge
+                          >
+                          <UBadge color="neutral" variant="soft" size="xs">
+                            {{ row.branchCode }}
+                          </UBadge>
+                        </div>
+                        <p class="text-xs text-muted">
+                          Updated {{ formatIsoDate(row.updatedAt) }}
+                        </p>
+                      </div>
+                      <div class="flex items-center gap-4 text-sm">
+                        <div class="text-center">
+                          <p class="text-xs text-muted">On hand</p>
+                          <p class="font-semibold">{{ row.onHand }}</p>
+                        </div>
+                        <div class="text-center">
+                          <p class="text-xs text-muted">Available</p>
+                          <p class="font-semibold text-primary">
+                            {{ row.available }}
+                          </p>
+                        </div>
+                        <div class="text-center">
+                          <p class="text-xs text-muted">Reserved</p>
+                          <p class="font-semibold">{{ row.reserved }}</p>
+                        </div>
+                        <div class="flex gap-1">
+                          <UButton
+                            size="xs"
+                            variant="soft"
+                            color="primary"
+                            icon="bx:edit"
+                            @click="fillStockForm(row)"
+                          />
+                          <UButton
+                            size="xs"
+                            variant="soft"
+                            color="error"
+                            icon="bx:trash"
+                            @click="deleteStockRow(row)"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Add / edit form -->
+                <form
+                  class="space-y-3 border-t border-default pt-3"
+                  @submit.prevent="saveStock(sku)"
+                >
+                  <p class="text-sm font-medium">
+                    {{ editingStockId ? "Edit stock row" : "Add to inventory" }}
+                  </p>
+                  <div class="grid gap-3 sm:grid-cols-3">
+                    <UFormField label="Branch" required>
+                      <USelectMenu
+                        v-model="stockForm.branchId"
+                        :items="branchOptions"
+                        value-key="id"
+                        label-key="nameTh"
+                        placeholder="Select branch"
+                        :disabled="!!editingStockId"
+                      />
+                    </UFormField>
+                    <UFormField label="Inventory" required>
+                      <USelectMenu
+                        v-model="stockForm.inventoryId"
+                        :items="inventoryOptions"
+                        value-key="id"
+                        label-key="name"
+                        :placeholder="
+                          stockForm.branchId
+                            ? inventoriesPending
+                              ? 'Loading...'
+                              : 'Select inventory'
+                            : 'Select branch first'
+                        "
+                        :disabled="!stockForm.branchId || !!editingStockId"
+                      />
+                    </UFormField>
+                    <UFormField label="On hand" required>
+                      <UInput
+                        v-model.number="stockForm.onHand"
+                        type="number"
+                        min="0"
+                      />
+                    </UFormField>
+                  </div>
+                  <div class="flex gap-2">
+                    <UButton
+                      type="submit"
+                      color="primary"
+                      size="sm"
+                      :loading="savingStock"
+                      :disabled="!stockForm.inventoryId"
+                    >
+                      {{ editingStockId ? "Save stock" : "Add to inventory" }}
+                    </UButton>
+                    <UButton
+                      v-if="editingStockId"
+                      type="button"
+                      variant="soft"
+                      color="neutral"
+                      size="sm"
+                      @click="resetStockForm"
+                    >
+                      Cancel edit
+                    </UButton>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
         </UCard>
 
-        <UCard>
-          <template #header>
-            <div>
-              <h3 class="text-lg font-semibold">
-                {{ editingSkuId ? "Edit SKU" : "Create SKU" }}
-              </h3>
-              <p class="text-sm text-muted">
-                Minimal pricing + stock fields from `product_skus`.
-              </p>
-            </div>
+        <div class="space-y-6">
+          <UCard>
+            <template #header>
+              <div>
+                <h3 class="text-lg font-semibold">
+                  {{ editingSkuId ? "Edit SKU" : "Create SKU" }}
+                </h3>
+                <p class="text-sm text-muted">
+                  SKU edit stays here. Photo manager appears for the selected
+                  SKU. Inventory is managed in Branch &amp; Inventory.
+                </p>
+              </div>
+            </template>
+
+            <form class="space-y-4" @submit.prevent="saveSku">
+              <div class="grid gap-4 sm:grid-cols-2">
+                <UFormField label="SKU code" required>
+                  <UInput
+                    v-model="skuForm.skuCode"
+                    placeholder="SKU-DRILL-01"
+                  />
+                </UFormField>
+                <UFormField label="Currency code">
+                  <UInput v-model="skuForm.currencyCode" placeholder="THB" />
+                </UFormField>
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-2">
+                <UFormField label="Label (TH)" required>
+                  <UInput v-model="skuForm.labelTh" />
+                </UFormField>
+                <UFormField label="Label (EN)" required>
+                  <UInput v-model="skuForm.labelEn" />
+                </UFormField>
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-3">
+                <UFormField label="Price" required>
+                  <UInput
+                    v-model.number="skuForm.price"
+                    type="number"
+                    min="0"
+                  />
+                </UFormField>
+                <UFormField label="Original price">
+                  <UInput
+                    v-model="skuForm.originalPriceText"
+                    type="text"
+                    inputmode="decimal"
+                    placeholder="optional"
+                  />
+                </UFormField>
+                <UFormField label="Discount %">
+                  <UInput
+                    v-model.number="skuForm.discountPercent"
+                    type="number"
+                    min="0"
+                    max="100"
+                  />
+                </UFormField>
+              </div>
+
+              <UCheckbox
+                v-model="skuForm.useProductImages"
+                label="Use product images when this SKU has no custom gallery"
+              />
+
+              <UFormField label="SKU attributes JSONB">
+                <UTextarea v-model="skuAttributesText" :rows="5" />
+              </UFormField>
+
+              <UFormField label="Pricing tiers JSONB">
+                <UTextarea v-model="skuPricingTiersText" :rows="5" />
+              </UFormField>
+
+              <div class="flex gap-2">
+                <UButton type="submit" color="primary" :loading="savingSku">
+                  {{ editingSkuId ? "Update SKU" : "Create SKU" }}
+                </UButton>
+                <UButton
+                  type="button"
+                  variant="soft"
+                  color="neutral"
+                  @click="resetSkuForm"
+                >
+                  Reset
+                </UButton>
+              </div>
+            </form>
+          </UCard>
+
+          <template v-if="activeSku">
+            <UAlert
+              v-if="
+                activeSku.useProductImages &&
+                activeSku.mediaGallery.length === 0
+              "
+              color="neutral"
+              variant="soft"
+              title="This SKU currently falls back to the product gallery"
+              description="Upload a custom SKU image to create a dedicated gallery automatically."
+            />
+
+            <AdminMediaGalleryManager
+              title="SKU pictures"
+              :description="`Manage gallery for ${activeSku.skuCode}.`"
+              :upload-endpoint="`${skuApiBasePath}/${encodeURIComponent(activeSku.id)}/media`"
+              :existing-items="activeSkuMediaItems"
+              empty-message="No custom SKU images yet"
+              :disabled="savingSku"
+              :existing-actions-disabled="savingSkuMedia"
+              @uploaded="refreshAfterSkuUpload"
+              @set-cover-existing="setActiveSkuCoverImage"
+              @remove-existing="deleteActiveSkuImage"
+            />
           </template>
 
           <UAlert
-            v-if="adminWarning"
-            class="mb-4"
-            color="warning"
+            v-else
+            color="neutral"
             variant="soft"
-            title="Write actions are disabled"
-            :description="adminWarning.message"
+            title="SKU photo manager appears after selecting a SKU"
+            description="Create a SKU first, or click Edit SKU on an existing row."
           />
-
-          <form class="space-y-4" @submit.prevent="saveSku">
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="SKU ID" :required="!editingSkuId">
-                <UInput
-                  v-model="skuForm.id"
-                  :disabled="Boolean(editingSkuId)"
-                />
-              </UFormField>
-
-              <UFormField label="Image URL">
-                <UInput v-model="skuForm.imageUrl" placeholder="https://..." />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Label (TH)" required>
-                <UInput v-model="skuForm.labelTh" />
-              </UFormField>
-
-              <UFormField label="Label (EN)" required>
-                <UInput v-model="skuForm.labelEn" />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-3">
-              <UFormField label="Price" required>
-                <UInput v-model.number="skuForm.price" type="number" min="0" />
-              </UFormField>
-
-              <UFormField label="Original price">
-                <UInput
-                  v-model.number="skuForm.originalPrice"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
-
-              <UFormField label="Discount %">
-                <UInput
-                  v-model.number="skuForm.discountPercent"
-                  type="number"
-                  min="0"
-                  max="100"
-                />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-4">
-              <UFormField label="Rental deposit">
-                <UInput
-                  v-model.number="skuForm.rentalDeposit"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
-
-              <UFormField label="Rental daily">
-                <UInput
-                  v-model.number="skuForm.rentalDaily"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
-
-              <UFormField label="Rental weekly">
-                <UInput
-                  v-model.number="skuForm.rentalWeekly"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
-
-              <UFormField label="Rental monthly">
-                <UInput
-                  v-model.number="skuForm.rentalMonthly"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-3">
-              <UFormField label="Sale stock">
-                <UInput v-model.number="skuForm.stock" type="number" min="0" />
-              </UFormField>
-
-              <UFormField label="Rental stock">
-                <UInput
-                  v-model.number="skuForm.rentalStock"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
-
-              <UFormField label="Reserved stock">
-                <UInput
-                  v-model.number="skuForm.reservedStock"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
-            </div>
-
-            <div class="flex gap-2">
-              <UButton
-                type="submit"
-                color="primary"
-                :loading="savingSku"
-                :disabled="isReadOnlyAdminMode"
-              >
-                {{ editingSkuId ? "Update SKU" : "Create SKU" }}
-              </UButton>
-              <UButton
-                type="button"
-                variant="soft"
-                color="neutral"
-                @click="resetSkuForm"
-              >
-                Reset
-              </UButton>
-            </div>
-          </form>
-        </UCard>
+        </div>
       </div>
     </template>
   </div>

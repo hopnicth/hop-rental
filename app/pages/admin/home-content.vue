@@ -63,14 +63,14 @@ type AdminFeaturedProduct = {
   productHidden: boolean;
 };
 
-type AdminFeaturedRentalAccess = {
+type AdminFeaturedAsset = {
   id: string;
-  rentalAccessId: string;
+  assetId: string;
   sortOrder: number;
   isActive: boolean;
-  rentalAccessLabel: string;
-  rentalAccessHidden: boolean;
-  rentalAccessStatus: string;
+  assetLabel: string;
+  assetHidden: boolean;
+  assetStatus: string;
 };
 
 const toast = useToast();
@@ -120,8 +120,8 @@ const newFeaturedProduct = reactive({
   sortOrder: 0,
   isActive: true,
 });
-const newFeaturedRentalAccess = reactive({
-  rentalAccessId: "",
+const newFeaturedAsset = reactive({
+  assetId: "",
   sortOrder: 0,
   isActive: true,
 });
@@ -130,25 +130,25 @@ const { data, pending, error, refresh } = await useFetch<{
   banners: AdminBanner[];
   linkCards: AdminLinkCard[];
   featuredProducts: AdminFeaturedProduct[];
-  featuredRentalAccesses: AdminFeaturedRentalAccess[];
+  featuredAssets: AdminFeaturedAsset[];
   productOptions: SelectOption[];
-  rentalAccessOptions: SelectOption[];
+  assetOptions: SelectOption[];
 }>("/api/admin/home-content", {
   key: "admin-home-content",
   default: () => ({
     banners: [],
     linkCards: [],
     featuredProducts: [],
-    featuredRentalAccesses: [],
+    featuredAssets: [],
     productOptions: [],
-    rentalAccessOptions: [],
+    assetOptions: [],
   }),
 });
 
 const banners = ref<AdminBanner[]>([]);
 const linkCards = ref<AdminLinkCard[]>([]);
 const featuredProducts = ref<AdminFeaturedProduct[]>([]);
-const featuredRentalAccesses = ref<AdminFeaturedRentalAccess[]>([]);
+const featuredAssets = ref<AdminFeaturedAsset[]>([]);
 
 watch(
   data,
@@ -156,14 +156,14 @@ watch(
     banners.value = structuredClone(value?.banners ?? []);
     linkCards.value = structuredClone(value?.linkCards ?? []);
     featuredProducts.value = structuredClone(value?.featuredProducts ?? []);
-    featuredRentalAccesses.value = structuredClone(value?.featuredRentalAccesses ?? []);
+    featuredAssets.value = structuredClone(value?.featuredAssets ?? []);
 
     if (!newFeaturedProduct.productId && value?.productOptions?.[0]) {
       newFeaturedProduct.productId = value.productOptions[0].value;
     }
 
-    if (!newFeaturedRentalAccess.rentalAccessId && value?.rentalAccessOptions?.[0]) {
-      newFeaturedRentalAccess.rentalAccessId = value.rentalAccessOptions[0].value;
+    if (!newFeaturedAsset.assetId && value?.assetOptions?.[0]) {
+      newFeaturedAsset.assetId = value.assetOptions[0].value;
     }
   },
   { immediate: true },
@@ -176,7 +176,11 @@ const serviceCards = computed(() =>
   linkCards.value.filter((item) => item.sectionKey === "service"),
 );
 
-async function createResource(resource: string, body: Record<string, unknown>, successTitle: string) {
+async function createResource(
+  resource: string,
+  body: Record<string, unknown>,
+  successTitle: string,
+) {
   try {
     await $fetch("/api/admin/home-content", {
       method: "POST",
@@ -203,7 +207,11 @@ async function createResource(resource: string, body: Record<string, unknown>, s
   }
 }
 
-async function saveResource(resource: string, body: Record<string, unknown>, successTitle: string) {
+async function saveResource(
+  resource: string,
+  body: Record<string, unknown>,
+  successTitle: string,
+) {
   try {
     await $fetch("/api/admin/home-content", {
       method: "PATCH",
@@ -247,7 +255,13 @@ function resetLinkCardForm() {
         <h2 class="text-2xl font-semibold">Homepage content</h2>
       </div>
 
-      <UButton color="primary" variant="soft" icon="bx:refresh" :loading="pending" @click="refresh">
+      <UButton
+        color="primary"
+        variant="soft"
+        icon="bx:refresh"
+        :loading="pending"
+        @click="refresh"
+      >
         Refresh
       </UButton>
     </div>
@@ -315,7 +329,9 @@ function resetLinkCardForm() {
                   </UFormField>
                 </div>
 
-                <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_120px]">
+                <div
+                  class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_120px]"
+                >
                   <UFormField label="Link URL">
                     <UInput v-model="item.linkUrl" />
                   </UFormField>
@@ -330,12 +346,19 @@ function resetLinkCardForm() {
                     />
                   </UFormField>
                   <UFormField label="Sort order">
-                    <UInput v-model.number="item.sortOrder" type="number" min="0" />
+                    <UInput
+                      v-model.number="item.sortOrder"
+                      type="number"
+                      min="0"
+                    />
                   </UFormField>
                 </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                  <UCheckbox v-model="item.isActive" label="Active on homepage" />
+                  <UCheckbox
+                    v-model="item.isActive"
+                    label="Active on homepage"
+                  />
 
                   <UButton
                     color="primary"
@@ -360,12 +383,19 @@ function resetLinkCardForm() {
             </div>
           </template>
 
-          <div v-if="promotionCards.length === 0" class="py-6 text-sm text-muted">
+          <div
+            v-if="promotionCards.length === 0"
+            class="py-6 text-sm text-muted"
+          >
             No promotion cards yet.
           </div>
 
           <div v-else class="space-y-4">
-            <UCard v-for="item in promotionCards" :key="item.id" variant="subtle">
+            <UCard
+              v-for="item in promotionCards"
+              :key="item.id"
+              variant="subtle"
+            >
               <div class="space-y-4">
                 <div class="grid gap-4 sm:grid-cols-2">
                   <UFormField label="Title (TH)">
@@ -385,7 +415,9 @@ function resetLinkCardForm() {
                   </UFormField>
                 </div>
 
-                <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px_120px]">
+                <div
+                  class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px_120px]"
+                >
                   <UFormField label="Image URL">
                     <UInput v-model="item.imageUrl" />
                   </UFormField>
@@ -393,17 +425,26 @@ function resetLinkCardForm() {
                     <UInput v-model="item.linkUrl" />
                   </UFormField>
                   <UFormField label="Sort order">
-                    <UInput v-model.number="item.sortOrder" type="number" min="0" />
+                    <UInput
+                      v-model.number="item.sortOrder"
+                      type="number"
+                      min="0"
+                    />
                   </UFormField>
                 </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                  <UCheckbox v-model="item.isActive" label="Active on homepage" />
+                  <UCheckbox
+                    v-model="item.isActive"
+                    label="Active on homepage"
+                  />
 
                   <UButton
                     color="primary"
                     variant="soft"
-                    @click="saveResource('linkCard', item, 'Promotion card updated')"
+                    @click="
+                      saveResource('linkCard', item, 'Promotion card updated')
+                    "
                   >
                     Save card
                   </UButton>
@@ -417,9 +458,7 @@ function resetLinkCardForm() {
           <template #header>
             <div>
               <h3 class="text-lg font-semibold">Service cards</h3>
-              <p class="text-sm text-muted">
-                Custom link cards for section 6.
-              </p>
+              <p class="text-sm text-muted">Custom link cards for section 6.</p>
             </div>
           </template>
 
@@ -448,7 +487,9 @@ function resetLinkCardForm() {
                   </UFormField>
                 </div>
 
-                <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px_120px]">
+                <div
+                  class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_200px_120px]"
+                >
                   <UFormField label="Image URL">
                     <UInput v-model="item.imageUrl" />
                   </UFormField>
@@ -456,17 +497,26 @@ function resetLinkCardForm() {
                     <UInput v-model="item.linkUrl" />
                   </UFormField>
                   <UFormField label="Sort order">
-                    <UInput v-model.number="item.sortOrder" type="number" min="0" />
+                    <UInput
+                      v-model.number="item.sortOrder"
+                      type="number"
+                      min="0"
+                    />
                   </UFormField>
                 </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-3">
-                  <UCheckbox v-model="item.isActive" label="Active on homepage" />
+                  <UCheckbox
+                    v-model="item.isActive"
+                    label="Active on homepage"
+                  />
 
                   <UButton
                     color="primary"
                     variant="soft"
-                    @click="saveResource('linkCard', item, 'Service card updated')"
+                    @click="
+                      saveResource('linkCard', item, 'Service card updated')
+                    "
                   >
                     Save card
                   </UButton>
@@ -486,7 +536,10 @@ function resetLinkCardForm() {
             </div>
           </template>
 
-          <div v-if="featuredProducts.length === 0" class="py-6 text-sm text-muted">
+          <div
+            v-if="featuredProducts.length === 0"
+            class="py-6 text-sm text-muted"
+          >
             No featured products yet.
           </div>
 
@@ -499,18 +552,29 @@ function resetLinkCardForm() {
               <div>
                 <p class="font-medium">{{ item.productLabel }}</p>
                 <p class="text-sm text-muted">
-                  Hidden: {{ item.productHidden ? 'Yes' : 'No' }}
+                  Hidden: {{ item.productHidden ? "Yes" : "No" }}
                 </p>
               </div>
 
               <div class="flex flex-wrap items-center gap-3">
-                <UInput v-model.number="item.sortOrder" type="number" min="0" class="w-28" />
+                <UInput
+                  v-model.number="item.sortOrder"
+                  type="number"
+                  min="0"
+                  class="w-28"
+                />
                 <UCheckbox v-model="item.isActive" label="Active" />
                 <UButton
                   size="sm"
                   color="primary"
                   variant="soft"
-                  @click="saveResource('featuredProduct', item, 'Featured product updated')"
+                  @click="
+                    saveResource(
+                      'featuredProduct',
+                      item,
+                      'Featured product updated',
+                    )
+                  "
                 >
                   Save
                 </UButton>
@@ -522,39 +586,53 @@ function resetLinkCardForm() {
         <UCard>
           <template #header>
             <div>
-              <h3 class="text-lg font-semibold">Featured rental-access rail</h3>
+              <h3 class="text-lg font-semibold">Featured asset rail</h3>
               <p class="text-sm text-muted">
                 Super-admin curated cards for homepage section 4.
               </p>
             </div>
           </template>
 
-          <div v-if="featuredRentalAccesses.length === 0" class="py-6 text-sm text-muted">
-            No featured rental accesses yet.
+          <div
+            v-if="featuredAssets.length === 0"
+            class="py-6 text-sm text-muted"
+          >
+            No featured assets yet.
           </div>
 
           <div v-else class="space-y-3">
             <div
-              v-for="item in featuredRentalAccesses"
+              v-for="item in featuredAssets"
               :key="item.id"
               class="flex flex-col gap-3 rounded-xl border border-default p-4 sm:flex-row sm:items-center sm:justify-between"
             >
               <div>
-                <p class="font-medium">{{ item.rentalAccessLabel }}</p>
+                <p class="font-medium">{{ item.assetLabel }}</p>
                 <p class="text-sm text-muted">
-                  Status: {{ item.rentalAccessStatus }} · Hidden:
-                  {{ item.rentalAccessHidden ? 'Yes' : 'No' }}
+                  Status: {{ item.assetStatus }} · Hidden:
+                  {{ item.assetHidden ? "Yes" : "No" }}
                 </p>
               </div>
 
               <div class="flex flex-wrap items-center gap-3">
-                <UInput v-model.number="item.sortOrder" type="number" min="0" class="w-28" />
+                <UInput
+                  v-model.number="item.sortOrder"
+                  type="number"
+                  min="0"
+                  class="w-28"
+                />
                 <UCheckbox v-model="item.isActive" label="Active" />
                 <UButton
                   size="sm"
                   color="secondary"
                   variant="soft"
-                  @click="saveResource('featuredRentalAccess', item, 'Featured rental access updated')"
+                  @click="
+                    saveResource(
+                      'featuredAsset',
+                      item,
+                      'Featured asset updated',
+                    )
+                  "
                 >
                   Save
                 </UButton>
@@ -575,7 +653,10 @@ function resetLinkCardForm() {
 
           <form
             class="space-y-4"
-            @submit.prevent="createResource('banner', newBanner, 'Banner created'); resetBannerForm()"
+            @submit.prevent="
+              createResource('banner', newBanner, 'Banner created');
+              resetBannerForm();
+            "
           >
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField label="Title (TH)" required>
@@ -617,15 +698,27 @@ function resetLinkCardForm() {
                 <UInput v-model="newBanner.linkUrl" />
               </UFormField>
               <UFormField label="Sort order">
-                <UInput v-model.number="newBanner.sortOrder" type="number" min="0" />
+                <UInput
+                  v-model.number="newBanner.sortOrder"
+                  type="number"
+                  min="0"
+                />
               </UFormField>
             </div>
 
-            <UCheckbox v-model="newBanner.isActive" label="Active on homepage" />
+            <UCheckbox
+              v-model="newBanner.isActive"
+              label="Active on homepage"
+            />
 
             <div class="flex gap-2">
               <UButton type="submit" color="primary">Create banner</UButton>
-              <UButton type="button" variant="soft" color="neutral" @click="resetBannerForm">
+              <UButton
+                type="button"
+                variant="soft"
+                color="neutral"
+                @click="resetBannerForm"
+              >
                 Reset
               </UButton>
             </div>
@@ -635,14 +728,21 @@ function resetLinkCardForm() {
         <UCard>
           <template #header>
             <div>
-              <h3 class="text-lg font-semibold">Create promotion / service card</h3>
-              <p class="text-sm text-muted">Add a new horizontal card for section 3 or 6.</p>
+              <h3 class="text-lg font-semibold">
+                Create promotion / service card
+              </h3>
+              <p class="text-sm text-muted">
+                Add a new horizontal card for section 3 or 6.
+              </p>
             </div>
           </template>
 
           <form
             class="space-y-4"
-            @submit.prevent="createResource('linkCard', newLinkCard, 'Link card created'); resetLinkCardForm()"
+            @submit.prevent="
+              createResource('linkCard', newLinkCard, 'Link card created');
+              resetLinkCardForm();
+            "
           >
             <UFormField label="Section" required>
               <USelectMenu
@@ -682,15 +782,27 @@ function resetLinkCardForm() {
                 <UInput v-model="newLinkCard.linkUrl" />
               </UFormField>
               <UFormField label="Sort order">
-                <UInput v-model.number="newLinkCard.sortOrder" type="number" min="0" />
+                <UInput
+                  v-model.number="newLinkCard.sortOrder"
+                  type="number"
+                  min="0"
+                />
               </UFormField>
             </div>
 
-            <UCheckbox v-model="newLinkCard.isActive" label="Active on homepage" />
+            <UCheckbox
+              v-model="newLinkCard.isActive"
+              label="Active on homepage"
+            />
 
             <div class="flex gap-2">
               <UButton type="submit" color="primary">Create link card</UButton>
-              <UButton type="button" variant="soft" color="neutral" @click="resetLinkCardForm">
+              <UButton
+                type="button"
+                variant="soft"
+                color="neutral"
+                @click="resetLinkCardForm"
+              >
                 Reset
               </UButton>
             </div>
@@ -707,7 +819,13 @@ function resetLinkCardForm() {
 
           <form
             class="space-y-4"
-            @submit.prevent="createResource('featuredProduct', newFeaturedProduct, 'Featured product added')"
+            @submit.prevent="
+              createResource(
+                'featuredProduct',
+                newFeaturedProduct,
+                'Featured product added',
+              )
+            "
           >
             <UFormField label="Product" required>
               <USelectMenu
@@ -718,42 +836,66 @@ function resetLinkCardForm() {
             </UFormField>
 
             <UFormField label="Sort order">
-              <UInput v-model.number="newFeaturedProduct.sortOrder" type="number" min="0" />
+              <UInput
+                v-model.number="newFeaturedProduct.sortOrder"
+                type="number"
+                min="0"
+              />
             </UFormField>
 
-            <UCheckbox v-model="newFeaturedProduct.isActive" label="Active on homepage" />
+            <UCheckbox
+              v-model="newFeaturedProduct.isActive"
+              label="Active on homepage"
+            />
 
-            <UButton type="submit" color="primary">Add featured product</UButton>
+            <UButton type="submit" color="primary"
+              >Add featured product</UButton
+            >
           </form>
         </UCard>
 
         <UCard>
           <template #header>
             <div>
-              <h3 class="text-lg font-semibold">Add featured rental access</h3>
+              <h3 class="text-lg font-semibold">Add featured asset</h3>
               <p class="text-sm text-muted">Curate section 4 for Home.</p>
             </div>
           </template>
 
           <form
             class="space-y-4"
-            @submit.prevent="createResource('featuredRentalAccess', newFeaturedRentalAccess, 'Featured rental access added')"
+            @submit.prevent="
+              createResource(
+                'featuredAsset',
+                newFeaturedAsset,
+                'Featured asset added',
+              )
+            "
           >
-            <UFormField label="Rental access" required>
+            <UFormField label="Asset" required>
               <USelectMenu
-                v-model="newFeaturedRentalAccess.rentalAccessId"
-                :items="data?.rentalAccessOptions ?? []"
+                v-model="newFeaturedAsset.assetId"
+                :items="data?.assetOptions ?? []"
                 value-key="value"
               />
             </UFormField>
 
             <UFormField label="Sort order">
-              <UInput v-model.number="newFeaturedRentalAccess.sortOrder" type="number" min="0" />
+              <UInput
+                v-model.number="newFeaturedAsset.sortOrder"
+                type="number"
+                min="0"
+              />
             </UFormField>
 
-            <UCheckbox v-model="newFeaturedRentalAccess.isActive" label="Active on homepage" />
+            <UCheckbox
+              v-model="newFeaturedAsset.isActive"
+              label="Active on homepage"
+            />
 
-            <UButton type="submit" color="secondary">Add featured rental access</UButton>
+            <UButton type="submit" color="secondary"
+              >Add featured asset</UButton
+            >
           </form>
         </UCard>
       </div>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { DateValue } from "@internationalized/date";
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
-import type { Product, ProductSKU } from "~/types/product";
-import type { RentalAccess } from "~/types/rental-access";
+import type { ProductSKU } from "~/types/product";
+import type { Asset } from "~/types/asset";
 
 /**
  * RentalBookingForm — Range calendar picker for rental booking.
@@ -18,9 +18,8 @@ import type { RentalAccess } from "~/types/rental-access";
 
 const props = withDefaults(
   defineProps<{
-    product?: Product;
     selectedSku?: ProductSKU;
-    rentalAccess?: RentalAccess | null;
+    asset?: Asset | null;
     loading?: boolean;
   }>(),
   {
@@ -52,23 +51,10 @@ const { t } = useI18n();
 const { blockingBookings } = useBooking();
 
 // ── Config shortcuts ──
-const minDays = computed(
-  () =>
-    props.rentalAccess?.rentalRules.minDays ??
-    props.product?.rentalConfig.minDays ??
-    1,
-);
-const maxDays = computed(
-  () =>
-    props.rentalAccess?.rentalRules.maxDays ??
-    props.product?.rentalConfig.maxDays ??
-    365,
-);
+const minDays = computed(() => props.asset?.rentalRules.minDays ?? 1);
+const maxDays = computed(() => props.asset?.rentalRules.maxDays ?? 365);
 const bufferDays = computed(
-  () =>
-    props.rentalAccess?.rentalRules.bufferDays ??
-    props.product?.rentalConfig.bufferDays ??
-    0,
+  () => props.asset?.rentalRules.bufferDays ?? 0,
 );
 
 // ── Calendar state ──
@@ -79,15 +65,15 @@ const selectedRange = shallowRef<CalendarRangeValue | undefined>(undefined);
 
 const relevantBookings = computed(() => {
   const skuId = props.selectedSku?.id;
-  const rentalAccessId = props.rentalAccess?.id;
+  const assetId = props.asset?.id;
 
   if (!skuId) return [];
 
   return blockingBookings.value.filter((booking) => {
-    if (rentalAccessId) {
+    if (assetId) {
       return (
-        booking.rentalAccessId === rentalAccessId ||
-        (!booking.rentalAccessId && booking.skuId === skuId)
+        booking.assetId === assetId ||
+        (!booking.assetId && booking.skuId === skuId)
       );
     }
 
@@ -124,18 +110,8 @@ const numDays = computed(() => {
   return diffCalendarDays(startDate.value, returnDate.value);
 });
 
-const dailyRate = computed(
-  () =>
-    props.rentalAccess?.pricing.daily ??
-    props.selectedSku?.rentalPrice.daily ??
-    0,
-);
-const deposit = computed(
-  () =>
-    props.rentalAccess?.pricing.deposit ??
-    props.selectedSku?.rentalPrice.deposit ??
-    0,
-);
+const dailyRate = computed(() => props.asset?.pricing.daily ?? 0);
+const deposit = computed(() => props.asset?.pricing.deposit ?? 0);
 
 const totalCost = computed(() => {
   return dailyRate.value * numDays.value;
@@ -226,7 +202,7 @@ function handleSubmit() {
   });
 }
 
-watch([() => props.selectedSku?.id, () => props.rentalAccess?.id], () => {
+watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
   selectedRange.value = undefined;
 });
 </script>

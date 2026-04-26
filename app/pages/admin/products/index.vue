@@ -13,44 +13,43 @@ type AdminProductListItem = {
   type: "sale" | "rental" | "hybrid";
   nameTh: string;
   nameEn: string;
+  mainCategoryKey: string;
+  tagKeys: string[];
   categoryKeys: string[];
   brand: string;
   thumbnailUrl: string;
-  rentalMinDays: number;
-  rentalMaxDays: number;
-  rentalBufferDays: number;
-  storeLocationIds: string[];
+  searchKeywords: string[];
   isHidden: boolean;
   updatedAt?: string;
   skuCount: number;
+  minPrice: number | null;
+  maxPrice: number | null;
+  maxOriginalPrice: number | null;
+  currencyCode: string;
+  viewCount: number;
+  orderCount: number;
+  rentalCount: number;
+  wishlistCount: number;
+  trendingScore: number;
 };
 
-const toast = useToast();
+type MainCategoryItem = {
+  key: string;
+  labelTh: string;
+  labelEn: string;
+  isActive: boolean;
+};
 
-const form = reactive({
-  id: "",
-  slug: "",
-  type: "sale" as AdminProductListItem["type"],
-  nameTh: "",
-  nameEn: "",
-  descriptionTh: "",
-  descriptionEn: "",
-  categoryKeysText: "tools",
-  brand: "",
-  thumbnailUrl: "",
-  rentalMinDays: 1,
-  rentalMaxDays: 0,
-  rentalBufferDays: 0,
-  storeLocationIdsText: "",
-  isHidden: false,
-});
+const { profile } = useUserProfile();
 
-const creating = ref(false);
+const searchQuery = ref("");
+const selectedCategory = ref("all");
+const visibilityFilter = ref("all");
 
-const typeOptions = [
-  { label: "Sale", value: "sale" },
-  { label: "Rental", value: "rental" },
-  { label: "Hybrid", value: "hybrid" },
+const visibilityOptions = [
+  { label: "All visibility", value: "all" },
+  { label: "Visible only", value: "visible" },
+  { label: "Hidden only", value: "hidden" },
 ];
 
 const { data, pending, error, refresh } = await useFetch<{
@@ -61,129 +60,144 @@ const { data, pending, error, refresh } = await useFetch<{
   default: () => ({ items: [] }),
 });
 
+const {
+  data: categoriesData,
+  pending: categoriesPending,
+  refresh: refreshCategories,
+} = await useFetch<{
+  items: MainCategoryItem[];
+  options: Array<{ value: string; label: string }>;
+}>("/api/admin/main-categories", {
+  key: "admin-main-categories-options",
+  default: () => ({ items: [], options: [] }),
+});
+
 const items = computed(() => data.value?.items ?? []);
-const adminMeta = computed(() => data.value?.meta ?? null);
-const adminWarning = computed(() => adminMeta.value?.warning ?? null);
-const isReadOnlyAdminMode = computed(
-  () => adminMeta.value?.adminMode === "read_only",
-);
+const adminWarning = computed(() => data.value?.meta?.warning ?? null);
 const loadErrorMessage = computed(() =>
   getAdminApiErrorMessage(error.value, "Unknown admin products error"),
 );
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
 
-function parseCsv(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
+const categoryLabelMap = computed(() => {
+  return Object.fromEntries(
+    (categoriesData.value?.items ?? []).map((item) => [item.key, item.labelTh]),
+  );
+});
+
+const categoryOptions = computed(() => [
+  { label: "All main categories", value: "all" },
+  ...((categoriesData.value?.options ?? []) as Array<{
+    label: string;
+    value: string;
+  }>),
+]);
+
+const filteredItems = computed(() => {
+  const keyword = searchQuery.value.trim().toLowerCase();
+
+  return items.value.filter((item) => {
+    const matchesSearch =
+      keyword.length === 0 ||
+      [
+        item.id,
+        item.slug,
+        item.nameTh,
+        item.nameEn,
+        item.brand,
+        item.mainCategoryKey,
+        ...item.tagKeys,
+        ...item.searchKeywords,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword);
+
+    const matchesCategory =
+      selectedCategory.value === "all" ||
+      item.mainCategoryKey === selectedCategory.value;
+
+    const matchesVisibility =
+      visibilityFilter.value === "all" ||
+      (visibilityFilter.value === "hidden" && item.isHidden) ||
+      (visibilityFilter.value === "visible" && !item.isHidden);
+
+    return matchesSearch && matchesCategory && matchesVisibility;
+  });
+});
+
+function categoryLabel(key: string) {
+  return categoryLabelMap.value[key] ?? key;
 }
 
-function resetForm() {
-  form.id = "";
-  form.slug = "";
-  form.type = "sale";
-  form.nameTh = "";
-  form.nameEn = "";
-  form.descriptionTh = "";
-  form.descriptionEn = "";
-  form.categoryKeysText = "tools";
-  form.brand = "";
-  form.thumbnailUrl = "";
-  form.rentalMinDays = 1;
-  form.rentalMaxDays = 0;
-  form.rentalBufferDays = 0;
-  form.storeLocationIdsText = "";
-  form.isHidden = false;
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("en-US").format(value);
 }
 
-async function createProduct() {
-  if (isReadOnlyAdminMode.value) {
-    toast.add({
-      title: "Product create unavailable",
-      description:
-        adminWarning.value?.message ??
-        "Admin write mode is unavailable right now.",
-      color: "warning",
-      icon: "bx:error-circle",
-    });
-    return;
+function formatCurrency(value: number, currencyCode: string) {
+  return new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency: currencyCode || "THB",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function formatPriceRange(item: AdminProductListItem) {
+  if (item.minPrice == null || item.maxPrice == null) return "—";
+  if (item.minPrice === item.maxPrice) {
+    return formatCurrency(item.minPrice, item.currencyCode);
   }
+  return `${formatCurrency(item.minPrice, item.currencyCode)} – ${formatCurrency(
+    item.maxPrice,
+    item.currencyCode,
+  )}`;
+}
 
-  creating.value = true;
-
-  try {
-    const response = await $fetch<{ item: AdminProductListItem }>(
-      "/api/admin/products",
-      {
-        method: "POST",
-        body: {
-          id: form.id,
-          slug: form.slug,
-          type: form.type,
-          nameTh: form.nameTh,
-          nameEn: form.nameEn,
-          descriptionTh: form.descriptionTh,
-          descriptionEn: form.descriptionEn,
-          categoryKeys: parseCsv(form.categoryKeysText),
-          brand: form.brand,
-          thumbnailUrl: form.thumbnailUrl,
-          rentalMinDays: form.rentalMinDays,
-          rentalMaxDays: form.rentalMaxDays,
-          rentalBufferDays: form.rentalBufferDays,
-          storeLocationIds: parseCsv(form.storeLocationIdsText),
-          isHidden: form.isHidden,
-        },
-      },
-    );
-
-    toast.add({
-      title: "Product created",
-      description: "Open the detail page to add or update SKU rows.",
-      color: "success",
-      icon: "bx:check-circle",
-    });
-
-    resetForm();
-    await refresh();
-    await navigateTo(`/admin/products/${response.item.id}`);
-  } catch (createError) {
-    toast.add({
-      title: "Create product failed",
-      description: getAdminApiErrorMessage(createError, "Unknown error"),
-      color: "error",
-      icon: "bx:error-circle",
-    });
-  } finally {
-    creating.value = false;
-  }
+async function refreshAll() {
+  await Promise.all([refresh(), refreshCategories()]);
 }
 </script>
 
 <template>
-  <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+  <div class="space-y-6">
     <UCard>
       <template #header>
         <div
-          class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+          class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
         >
           <div>
             <h2 class="text-lg font-semibold">Products</h2>
             <p class="text-sm text-muted">
-              Staff-facing product list with direct links to detail + SKU
-              management.
+              List view for product shells before drilling into SKU attributes,
+              JSONB spec, tags, and albums.
             </p>
           </div>
 
-          <UButton
-            color="primary"
-            variant="soft"
-            size="sm"
-            icon="bx:refresh"
-            :loading="pending"
-            @click="refresh"
-          >
-            Refresh
-          </UButton>
+          <div class="flex flex-wrap gap-2">
+            <UButton to="/admin/products/new" color="primary" icon="bx:plus">
+              New product
+            </UButton>
+            <UButton
+              v-if="isSuperAdmin"
+              to="/admin/main-categories"
+              variant="soft"
+              color="neutral"
+              icon="bx:category-alt"
+            >
+              Manage categories
+            </UButton>
+            <UButton
+              color="primary"
+              variant="soft"
+              icon="bx:refresh"
+              :loading="pending || categoriesPending"
+              @click="refreshAll"
+            >
+              Refresh
+            </UButton>
+          </div>
         </div>
       </template>
 
@@ -205,51 +219,150 @@ async function createProduct() {
         :description="loadErrorMessage"
       />
 
+      <div class="grid gap-4 md:grid-cols-[minmax(0,1.4fr)_240px_200px]">
+        <UFormField label="Search">
+          <UInput
+            v-model="searchQuery"
+            icon="bx:search"
+            placeholder="Search by name, slug, brand, tags, keywords"
+          />
+        </UFormField>
+
+        <UFormField label="Main category">
+          <USelectMenu
+            v-model="selectedCategory"
+            :items="categoryOptions"
+            value-key="value"
+          />
+        </UFormField>
+
+        <UFormField label="Visibility">
+          <USelectMenu
+            v-model="visibilityFilter"
+            :items="visibilityOptions"
+            value-key="value"
+          />
+        </UFormField>
+      </div>
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-semibold">Product list</h3>
+            <p class="text-sm text-muted">
+              {{ filteredItems.length }} of {{ items.length }} products
+            </p>
+          </div>
+        </div>
+      </template>
+
       <div v-if="pending" class="py-8 text-sm text-muted">
         Loading products...
       </div>
 
-      <div v-else-if="items.length === 0" class="py-8 text-sm text-muted">
-        No product rows yet. Create the first product, then add SKU rows in the
-        detail page.
+      <div
+        v-else-if="filteredItems.length === 0"
+        class="py-8 text-sm text-muted"
+      >
+        No products matched the current filters.
       </div>
 
-      <div v-else class="space-y-3">
+      <div v-else class="space-y-4">
         <div
-          v-for="item in items"
+          v-for="item in filteredItems"
           :key="item.id"
-          class="rounded-xl border border-default p-4"
+          class="rounded-2xl border border-default p-4"
         >
           <div
-            class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"
+            class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between"
           >
-            <div>
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="font-medium">{{ item.nameTh }}</h3>
-                <UBadge color="primary" variant="soft">{{ item.type }}</UBadge>
-                <UBadge v-if="item.isHidden" color="neutral" variant="soft">
-                  hidden
-                </UBadge>
-              </div>
+            <div class="flex gap-4">
+              <img
+                v-if="item.thumbnailUrl"
+                :src="item.thumbnailUrl"
+                alt=""
+                class="hidden size-24 rounded-xl object-cover sm:block"
+              />
 
-              <p class="text-sm text-muted">{{ item.id }} · {{ item.slug }}</p>
-              <p class="mt-2 text-sm text-muted">
-                Categories: {{ item.categoryKeys.join(", ") || "—" }}
-              </p>
-              <p class="text-sm text-muted">
-                Stores: {{ item.storeLocationIds.join(", ") || "—" }}
-              </p>
+              <div class="space-y-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <h4 class="font-medium">{{ item.nameTh }}</h4>
+                  <UBadge color="primary" variant="soft">{{
+                    item.type
+                  }}</UBadge>
+                  <UBadge color="neutral" variant="soft">
+                    {{ categoryLabel(item.mainCategoryKey) }}
+                  </UBadge>
+                  <UBadge v-if="item.isHidden" color="warning" variant="soft">
+                    hidden
+                  </UBadge>
+                </div>
+
+                <p class="text-sm text-muted">
+                  {{ item.id }} · {{ item.slug }}
+                  <span v-if="item.brand">· {{ item.brand }}</span>
+                </p>
+
+                <div
+                  v-if="item.tagKeys.length > 0"
+                  class="flex flex-wrap gap-2"
+                >
+                  <UBadge
+                    v-for="tag in item.tagKeys"
+                    :key="tag"
+                    color="neutral"
+                    variant="subtle"
+                  >
+                    {{ tag }}
+                  </UBadge>
+                </div>
+
+                <p
+                  v-if="item.searchKeywords.length > 0"
+                  class="text-xs text-muted"
+                >
+                  Search keywords: {{ item.searchKeywords.join(", ") }}
+                </p>
+              </div>
             </div>
 
-            <div class="flex flex-col gap-3 lg:items-end">
+            <div class="flex flex-col gap-3 xl:items-end">
+              <div class="xl:text-right">
+                <p class="text-xs text-muted">Price</p>
+                <p class="text-lg font-semibold text-primary">
+                  {{ formatPriceRange(item) }}
+                </p>
+                <p
+                  v-if="
+                    item.maxOriginalPrice != null &&
+                    item.maxPrice != null &&
+                    item.maxOriginalPrice > item.maxPrice
+                  "
+                  class="text-xs text-muted line-through"
+                >
+                  {{ formatCurrency(item.maxOriginalPrice, item.currencyCode) }}
+                </p>
+              </div>
               <div class="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div>
                   <p class="text-muted">SKU rows</p>
                   <p class="font-medium">{{ item.skuCount }}</p>
                 </div>
                 <div>
-                  <p class="text-muted">Min rental days</p>
-                  <p class="font-medium">{{ item.rentalMinDays }}</p>
+                  <p class="text-muted">Views</p>
+                  <p class="font-medium">{{ formatNumber(item.viewCount) }}</p>
+                </div>
+                <div>
+                  <p class="text-muted">Orders</p>
+                  <p class="font-medium">{{ formatNumber(item.orderCount) }}</p>
+                </div>
+                <div>
+                  <p class="text-muted">Wishlist</p>
+                  <p class="font-medium">
+                    {{ formatNumber(item.wishlistCount) }}
+                  </p>
                 </div>
               </div>
 
@@ -266,130 +379,6 @@ async function createProduct() {
           </div>
         </div>
       </div>
-    </UCard>
-
-    <UCard>
-      <template #header>
-        <div>
-          <h2 class="text-lg font-semibold">Create product</h2>
-          <p class="text-sm text-muted">
-            Minimal product metadata first, then continue to SKU setup.
-          </p>
-        </div>
-      </template>
-
-      <UAlert
-        v-if="adminWarning"
-        class="mb-4"
-        color="warning"
-        variant="soft"
-        title="Write actions are disabled"
-        :description="adminWarning.message"
-      />
-
-      <form class="space-y-4" @submit.prevent="createProduct">
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Product ID" required>
-            <UInput v-model="form.id" placeholder="prod-electric-drill-01" />
-          </UFormField>
-
-          <UFormField label="Slug" required>
-            <UInput v-model="form.slug" placeholder="electric-drill-pro" />
-          </UFormField>
-        </div>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Type" required>
-            <USelectMenu
-              v-model="form.type"
-              :items="typeOptions"
-              value-key="value"
-            />
-          </UFormField>
-
-          <UFormField label="Brand">
-            <UInput v-model="form.brand" placeholder="Makita" />
-          </UFormField>
-        </div>
-
-        <div class="grid gap-4 sm:grid-cols-2">
-          <UFormField label="Name (TH)" required>
-            <UInput v-model="form.nameTh" />
-          </UFormField>
-
-          <UFormField label="Name (EN)" required>
-            <UInput v-model="form.nameEn" />
-          </UFormField>
-        </div>
-
-        <UFormField label="Description (TH)" required>
-          <UTextarea v-model="form.descriptionTh" :rows="3" />
-        </UFormField>
-
-        <UFormField label="Description (EN)" required>
-          <UTextarea v-model="form.descriptionEn" :rows="3" />
-        </UFormField>
-
-        <UFormField label="Category keys (comma separated)" required>
-          <UInput
-            v-model="form.categoryKeysText"
-            placeholder="tools, drilling"
-          />
-        </UFormField>
-
-        <UFormField label="Thumbnail URL">
-          <UInput v-model="form.thumbnailUrl" placeholder="https://..." />
-        </UFormField>
-
-        <UFormField label="Store location IDs (comma separated)">
-          <UInput
-            v-model="form.storeLocationIdsText"
-            placeholder="rama3, bangna"
-          />
-        </UFormField>
-
-        <div class="grid gap-4 sm:grid-cols-3">
-          <UFormField label="Min rental days">
-            <UInput v-model.number="form.rentalMinDays" type="number" min="1" />
-          </UFormField>
-
-          <UFormField label="Max rental days (0 = no limit)">
-            <UInput v-model.number="form.rentalMaxDays" type="number" min="0" />
-          </UFormField>
-
-          <UFormField label="Buffer days">
-            <UInput
-              v-model.number="form.rentalBufferDays"
-              type="number"
-              min="0"
-            />
-          </UFormField>
-        </div>
-
-        <UCheckbox
-          v-model="form.isHidden"
-          label="Hidden from public storefront"
-        />
-
-        <div class="flex gap-2">
-          <UButton
-            type="submit"
-            color="primary"
-            :loading="creating"
-            :disabled="isReadOnlyAdminMode"
-          >
-            Create product
-          </UButton>
-          <UButton
-            type="button"
-            variant="soft"
-            color="neutral"
-            @click="resetForm"
-          >
-            Reset
-          </UButton>
-        </div>
-      </form>
     </UCard>
   </div>
 </template>

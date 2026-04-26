@@ -3,10 +3,10 @@ import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_HOME_BANNER_SELECT,
   ADMIN_HOME_FEATURED_PRODUCT_SELECT,
-  ADMIN_HOME_FEATURED_RENTAL_ACCESS_SELECT,
+  ADMIN_HOME_FEATURED_ASSET_SELECT,
   ADMIN_HOME_LINK_CARD_SELECT,
   buildFeaturedProductPayload,
-  buildFeaturedRentalAccessPayload,
+  buildFeaturedAssetPayload,
   buildHomeBannerPayload,
   buildHomeLinkCardPayload,
 } from "~~/server/utils/admin-home";
@@ -67,11 +67,11 @@ export default defineEventHandler(async (event) => {
     return { item: data };
   }
 
-  if (resource === "featuredRentalAccess") {
+  if (resource === "featuredAsset") {
     const { data, error } = await adminClient
-      .from("home_featured_rental_accesses")
-      .insert(buildFeaturedRentalAccessPayload(body))
-      .select(ADMIN_HOME_FEATURED_RENTAL_ACCESS_SELECT)
+      .from("home_featured_assets")
+      .insert(buildFeaturedAssetPayload(body))
+      .select(ADMIN_HOME_FEATURED_ASSET_SELECT)
       .single();
 
     if (error) {

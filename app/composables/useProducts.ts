@@ -1,7 +1,9 @@
-import { mockProducts } from "~/mock/products";
 import { mapCatalogProductsToProducts } from "~/mappers/catalog";
 import type {
-  CatalogDocumentRecord,
+  CatalogDocumentLinkRecord,
+  CatalogMediaGalleryItemRecord,
+  CatalogMediaLinkRecord,
+  CatalogProductMetricsRecord,
   CatalogProductRecord,
   CatalogProductSKURecord,
 } from "~/types/catalog";
@@ -47,38 +49,134 @@ function normalizeProductType(value: unknown): CatalogProductRecord["type"] {
     : "sale";
 }
 
-function normalizeDocument(value: unknown): CatalogDocumentRecord | undefined {
-  if (!isRecord(value) || !isRecord(value.name)) return undefined;
+function normalizeMediaGallery(
+  value: unknown,
+): CatalogMediaGalleryItemRecord[] {
+  if (!Array.isArray(value)) return [];
 
-  const url = toString(value.url);
-  const th = toString(value.name.th) ?? toString(value.name.en);
-  const en = toString(value.name.en) ?? toString(value.name.th);
+  return value
+    .filter(isRecord)
+    .map(
+      (item, index): CatalogMediaGalleryItemRecord => ({
+        id: toString(item.id) ?? `media-${index + 1}`,
+        title: toString(item.title) ?? null,
+        altText: toString(item.altText) ?? null,
+        fit: item.fit === "cover" ? "cover" : "contain",
+        status:
+          item.status === "processing" || item.status === "failed"
+            ? item.status
+            : "ready",
+        position: toNumber(item.position, index),
+        error: toString(item.error) ?? null,
+        variants: isRecord(item.variants)
+          ? {
+              thumbnail: isRecord(item.variants.thumbnail)
+                ? {
+                    url: toString(item.variants.thumbnail.url) ?? "",
+                    path: toString(item.variants.thumbnail.path),
+                    width: toNumber(item.variants.thumbnail.width, 300),
+                    height: toNumber(item.variants.thumbnail.height, 300),
+                    format: toString(item.variants.thumbnail.format),
+                  }
+                : undefined,
+              card: isRecord(item.variants.card)
+                ? {
+                    url: toString(item.variants.card.url) ?? "",
+                    path: toString(item.variants.card.path),
+                    width: toNumber(item.variants.card.width, 800),
+                    height: toNumber(item.variants.card.height, 800),
+                    format: toString(item.variants.card.format),
+                  }
+                : undefined,
+              large: isRecord(item.variants.large)
+                ? {
+                    url: toString(item.variants.large.url) ?? "",
+                    path: toString(item.variants.large.path),
+                    width: toNumber(item.variants.large.width, 1600),
+                    height: toNumber(item.variants.large.height, 1600),
+                    format: toString(item.variants.large.format),
+                  }
+                : undefined,
+            }
+          : undefined,
+      }),
+    )
+    .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+}
 
-  if (!url || !th || !en) return undefined;
+function normalizeMediaLinks(value: unknown): CatalogMediaLinkRecord[] {
+  if (!Array.isArray(value)) return [];
 
-  return {
-    url,
-    name: {
-      th,
-      en,
-      cn: toString(value.name.cn),
-      jp: toString(value.name.jp),
-    },
-  };
+  return value
+    .filter(isRecord)
+    .map(
+      (item, index): CatalogMediaLinkRecord => ({
+        id: toString(item.id) ?? `media-link-${index + 1}`,
+        kind: item.kind === "external_video" ? "external_video" : "youtube",
+        title: toString(item.title) ?? `Video ${index + 1}`,
+        url: toString(item.url) ?? "",
+        thumbnailUrl: toString(item.thumbnailUrl) ?? null,
+      }),
+    )
+    .filter((item) => item.url.length > 0);
 }
 
 function normalizeDocuments(
   value: unknown,
-): CatalogProductRecord["documents"] | undefined {
-  if (!isRecord(value)) return undefined;
+): CatalogDocumentLinkRecord[] | undefined {
+  if (!Array.isArray(value)) return undefined;
 
-  const manual = normalizeDocument(value.manual);
-  const catalog = normalizeDocument(value.catalog);
-  const datasheet = normalizeDocument(value.datasheet);
+  const items = value
+    .filter(isRecord)
+    .map((item, index) => ({
+      id: toString(item.id) ?? `document-${index + 1}`,
+      kind: (["manual", "catalog", "datasheet", "guide"].includes(
+        toString(item.kind) ?? "",
+      )
+        ? (toString(item.kind) as CatalogDocumentLinkRecord["kind"])
+        : "other") as CatalogDocumentLinkRecord["kind"],
+      title: toString(item.title) ?? `Document ${index + 1}`,
+      url: toString(item.url) ?? "",
+    }))
+    .filter((item) => item.url.length > 0);
 
-  return manual || catalog || datasheet
-    ? { manual, catalog, datasheet }
-    : undefined;
+  return items.length > 0 ? items : undefined;
+}
+
+function normalizeMetrics(
+  value: unknown,
+): CatalogProductMetricsRecord | CatalogProductMetricsRecord[] | null {
+  if (Array.isArray(value)) {
+    return value.filter(isRecord).map((item) => ({
+      view_count: toNumber(item.view_count),
+      add_to_cart_count: toNumber(item.add_to_cart_count),
+      order_count: toNumber(item.order_count),
+      rental_count: toNumber(item.rental_count),
+      wishlist_count: toNumber(item.wishlist_count),
+      avg_rating: toNumber(item.avg_rating),
+      review_count: toNumber(item.review_count),
+      return_rate: toNumber(item.return_rate),
+      trending_score: toNumber(item.trending_score),
+      last_sold_at: toString(item.last_sold_at),
+      last_rented_at: toString(item.last_rented_at),
+    }));
+  }
+
+  if (!isRecord(value)) return null;
+
+  return {
+    view_count: toNumber(value.view_count),
+    add_to_cart_count: toNumber(value.add_to_cart_count),
+    order_count: toNumber(value.order_count),
+    rental_count: toNumber(value.rental_count),
+    wishlist_count: toNumber(value.wishlist_count),
+    avg_rating: toNumber(value.avg_rating),
+    review_count: toNumber(value.review_count),
+    return_rate: toNumber(value.return_rate),
+    trending_score: toNumber(value.trending_score),
+    last_sold_at: toString(value.last_sold_at),
+    last_rented_at: toString(value.last_rented_at),
+  };
 }
 
 function normalizeCatalogSkuRow(row: unknown): CatalogProductSKURecord | null {
@@ -98,27 +196,15 @@ function normalizeCatalogSkuRow(row: unknown): CatalogProductSKURecord | null {
     label_en: labelEn,
     label_cn: toString(row.label_cn),
     label_jp: toString(row.label_jp),
-    image_url: toString(row.image_url),
-    image_urls: toStringArray(row.image_urls),
+    media_gallery: normalizeMediaGallery(row.media_gallery),
+    use_product_images: row.use_product_images !== false,
     attributes: toStringRecord(row.attributes),
     price: toNumber(row.price),
     original_price:
       row.original_price == null ? undefined : toNumber(row.original_price),
     discount_percent:
       row.discount_percent == null ? undefined : toNumber(row.discount_percent),
-    rental_deposit:
-      row.rental_deposit == null ? undefined : toNumber(row.rental_deposit),
-    rental_daily:
-      row.rental_daily == null ? undefined : toNumber(row.rental_daily),
-    rental_weekly:
-      row.rental_weekly == null ? undefined : toNumber(row.rental_weekly),
-    rental_monthly:
-      row.rental_monthly == null ? undefined : toNumber(row.rental_monthly),
     stock: toNumber(row.stock),
-    rental_stock:
-      row.rental_stock == null ? undefined : toNumber(row.rental_stock),
-    reserved_stock:
-      row.reserved_stock == null ? undefined : toNumber(row.reserved_stock),
   };
 }
 
@@ -157,27 +243,13 @@ function normalizeCatalogProductRow(row: unknown): CatalogProductRecord | null {
     description_jp: toString(row.description_jp),
     category_keys: toStringArray(row.category_keys),
     brand: toString(row.brand),
-    thumbnail_url: toString(row.thumbnail_url),
-    image_urls: toStringArray(row.image_urls),
+    media_gallery: normalizeMediaGallery(row.media_gallery),
+    media_links: normalizeMediaLinks(row.media_links),
     spec: toStringRecord(row.spec),
     documents: normalizeDocuments(row.documents),
     supplier_ids: toStringArray(row.supplier_ids),
     skus,
-    rental_min_days: toNumber(row.rental_min_days, 1),
-    rental_max_days: toNumber(row.rental_max_days, 0),
-    rental_buffer_days: toNumber(row.rental_buffer_days, 0),
-    store_location_ids: toStringArray(row.store_location_ids),
-    view_count: toNumber(row.view_count),
-    add_to_cart_count: toNumber(row.add_to_cart_count),
-    order_count: toNumber(row.order_count),
-    rental_count: toNumber(row.rental_count),
-    wishlist_count: toNumber(row.wishlist_count),
-    avg_rating: toNumber(row.avg_rating),
-    review_count: toNumber(row.review_count),
-    return_rate: toNumber(row.return_rate),
-    trending_score: toNumber(row.trending_score),
-    last_sold_at: toString(row.last_sold_at),
-    last_rented_at: toString(row.last_rented_at),
+    metrics: normalizeMetrics(row.metrics),
     is_hidden: row.is_hidden === true,
     created_at: toString(row.created_at),
     updated_at: toString(row.updated_at),
@@ -191,10 +263,7 @@ function normalizeCatalogProductRow(row: unknown): CatalogProductRecord | null {
  */
 export function useProducts() {
   const supabase = useSupabaseClient();
-  const allProducts = useState<Product[]>(
-    "catalog:all-products",
-    () => mockProducts,
-  );
+  const allProducts = useState<Product[]>("catalog:all-products", () => []);
   const hasRemoteCatalog = useState<boolean>(
     "catalog:remote-loaded",
     () => false,
@@ -224,26 +293,24 @@ export function useProducts() {
             description_jp,
             category_keys,
             brand,
-            thumbnail_url,
-            image_urls,
+            media_gallery,
+            media_links,
             spec,
             documents,
             supplier_ids,
-            rental_min_days,
-            rental_max_days,
-            rental_buffer_days,
-            store_location_ids,
-            view_count,
-            add_to_cart_count,
-            order_count,
-            rental_count,
-            wishlist_count,
-            avg_rating,
-            review_count,
-            return_rate,
-            trending_score,
-            last_sold_at,
-            last_rented_at,
+            metrics:product_metrics(
+              view_count,
+              add_to_cart_count,
+              order_count,
+              rental_count,
+              wishlist_count,
+              avg_rating,
+              review_count,
+              return_rate,
+              trending_score,
+              last_sold_at,
+              last_rented_at
+            ),
             is_hidden,
             created_at,
             updated_at,
@@ -254,19 +321,13 @@ export function useProducts() {
               label_en,
               label_cn,
               label_jp,
-              image_url,
-              image_urls,
+              media_gallery,
+              use_product_images,
               attributes,
               price,
               original_price,
               discount_percent,
-              rental_deposit,
-              rental_daily,
-              rental_weekly,
-              rental_monthly,
-              stock,
-              rental_stock,
-              reserved_stock
+              stock
             )
           `,
         )
@@ -282,15 +343,16 @@ export function useProducts() {
 
       const remoteProducts = mapCatalogProductsToProducts(remoteCatalogRecords);
 
-      if (remoteProducts.length > 0) {
-        allProducts.value = remoteProducts;
-        hasRemoteCatalog.value = true;
-      } else {
-        console.warn(
-          "[useProducts] No usable remote catalog rows found. Keeping mock catalog.",
+      allProducts.value = remoteProducts;
+      hasRemoteCatalog.value = true;
+
+      if (remoteProducts.length === 0) {
+        console.info(
+          "[useProducts] No product rows found in Supabase catalog.",
         );
       }
     } catch (fetchError) {
+      allProducts.value = [];
       error.value =
         fetchError instanceof Error
           ? fetchError.message
@@ -359,7 +421,7 @@ export function useProducts() {
    * Get the default (first) SKU of a product.
    */
   function getDefaultSKU(product: Product): ProductSKU {
-    return product.skus[0];
+    return product.skus[0]!;
   }
 
   /**
@@ -408,13 +470,6 @@ export function useProducts() {
     return Math.max(0, sku.stock.inStock);
   }
 
-  /**
-   * Check if a product is available for rental.
-   */
-  function isRental(product: Product): boolean {
-    return product.rentalConfig.isRental;
-  }
-
   return {
     products,
     getProductById,
@@ -426,6 +481,5 @@ export function useProducts() {
     getDisplayPrice,
     getTotalStock,
     getSaleStockBySku,
-    isRental,
   };
 }

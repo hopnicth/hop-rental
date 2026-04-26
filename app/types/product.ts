@@ -23,23 +23,19 @@ export interface ProductSpec {
   [key: string]: string | undefined;
 }
 
-/**
- * A single document file (manual, catalog, datasheet).
- */
-export interface ProductDocFile {
-  /** URL of the file (PDF, etc.) */
+export interface ProductDocumentLink {
+  id: string;
+  kind: "manual" | "catalog" | "datasheet" | "guide" | "other";
+  title: string;
   url: string;
-  /** Display name — localized */
-  name: LocalizedString;
 }
 
-/**
- * Product documents — all optional.
- */
-export interface ProductDoc {
-  manual?: ProductDocFile;
-  catalog?: ProductDocFile;
-  datasheet?: ProductDocFile;
+export interface ProductMediaLink {
+  id: string;
+  kind: "youtube" | "external_video";
+  title: string;
+  url: string;
+  thumbnailUrl?: string | null;
 }
 
 // ─────────────────────────────────────────────
@@ -72,20 +68,6 @@ export interface ProductPrice {
   final: number;
   /** Wholesale tiers — optional, for bulk pricing */
   wholesale?: WholesaleTier[];
-}
-
-/**
- * Rental pricing.
- */
-export interface RentalPrice {
-  /** Deposit amount */
-  deposit: number;
-  /** Daily rental rate */
-  daily: number;
-  /** Weekly rental rate */
-  weekly: number;
-  /** Monthly rental rate */
-  monthly: number;
 }
 
 // ─────────────────────────────────────────────
@@ -129,34 +111,12 @@ export interface ProductSKU {
   image?: string;
   /** Variant-specific gallery images (falls back to product.images) */
   images?: string[];
+  /** Explicitly force product-level images even if SKU gallery exists */
+  useProductImages?: boolean;
   /** Source-of-truth sale pricing for this SKU */
   price: ProductPrice;
-  /** Source-of-truth rental pricing for this SKU */
-  rentalPrice: RentalPrice;
   /** Source-of-truth offer-level stock/availability counters for this SKU */
   stock: SKUStock;
-}
-
-// ─────────────────────────────────────────────
-// Sub-interfaces — Rental Configuration
-// ─────────────────────────────────────────────
-
-/**
- * Rental business rules — controls capability and logistics.
- *
- * This is not the live reservation ledger for physical asset instances.
- */
-export interface RentalConfig {
-  /** Whether this product is capable of being rented */
-  isRental: boolean;
-  /** Minimum rental period (days) */
-  minDays: number;
-  /** Maximum rental period (days), 0 = unlimited */
-  maxDays: number;
-  /** Buffer days between two rental orders (maintenance/cleaning) */
-  bufferDays: number;
-  /** Hub IDs allowed to fulfill the rental — capability, not live availability */
-  storeLocationIds: string[];
 }
 
 // ─────────────────────────────────────────────
@@ -221,16 +181,16 @@ export interface Product {
   description: LocalizedString;
   /** Technical specifications (shared across all SKUs) */
   spec: ProductSpec;
-  /** Related documents (manual, catalog, datasheet) */
-  doc: ProductDoc;
+  /** Product-level external document links */
+  documents?: ProductDocumentLink[];
+  /** Product-level external media/video links */
+  mediaLinks?: ProductMediaLink[];
   /** Supplier IDs — references Supplier.id */
   suppliers: string[];
   /** Whether this product is sale-capable at the product level */
   isForSale: boolean;
   /** SKU variants — source of truth for price/stock within this product */
   skus: ProductSKU[];
-  /** Rental capability rules & configuration */
-  rentalConfig: RentalConfig;
   /** Marketing & analytics insights */
   insight: ProductInsight;
   /** ISO date string — when product was created */

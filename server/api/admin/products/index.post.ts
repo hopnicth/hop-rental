@@ -2,18 +2,64 @@ import { createError, defineEventHandler, readBody } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_PRODUCT_LIST_SELECT,
-  asNonEmptyString,
+  asOptionalString,
   buildProductPayload,
+  mapAdminProductListItem,
 } from "~~/server/utils/admin-catalog";
+
+function generateProductId() {
+  const seed = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  return `prod-${seed}`;
+}
+
+function slugifySegment(value: string) {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-")
+    .slice(0, 48);
+}
+
+function buildProductSlug(input: {
+  nameEn?: string | null;
+  nameTh?: string | null;
+  brand?: string | null;
+  productId: string;
+}) {
+  const nameSegment =
+    slugifySegment(input.nameEn || "") ||
+    slugifySegment(input.nameTh || "") ||
+    "product";
+  const brandSegment = slugifySegment(input.brand || "");
+  const shortId = input.productId.replace(/^prod-/, "").slice(0, 8) || "draft";
+
+  return [nameSegment, brandSegment, shortId].filter(Boolean).join("-");
+}
 
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requirePlatformAdmin(event);
   const body = (await readBody(event)) as Record<string, unknown>;
 
-  const id = asNonEmptyString(body.id, "id");
+  const id = asOptionalString(body.id) ?? generateProductId();
+  const slug =
+    asOptionalString(body.slug) ??
+    buildProductSlug({
+      nameEn: asOptionalString(body.nameEn),
+      nameTh: asOptionalString(body.nameTh),
+      brand: asOptionalString(body.brand),
+      productId: id,
+    });
+
   const payload = {
     id,
-    ...buildProductPayload(body),
+    ...buildProductPayload({
+      ...body,
+      slug,
+      isHidden: typeof body.isHidden === "boolean" ? body.isHidden : true,
+    }),
   };
 
   const { data, error } = await adminClient
@@ -30,24 +76,6 @@ export default defineEventHandler(async (event) => {
   }
 
   return {
-    item: {
-      id: data.id,
-      slug: data.slug,
-      type: data.type,
-      nameTh: data.name_th,
-      nameEn: data.name_en,
-      categoryKeys: Array.isArray(data.category_keys) ? data.category_keys : [],
-      brand: data.brand ?? "",
-      thumbnailUrl: data.thumbnail_url ?? "",
-      rentalMinDays: Number(data.rental_min_days ?? 1),
-      rentalMaxDays: Number(data.rental_max_days ?? 0),
-      rentalBufferDays: Number(data.rental_buffer_days ?? 0),
-      storeLocationIds: Array.isArray(data.store_location_ids)
-        ? data.store_location_ids
-        : [],
-      isHidden: data.is_hidden === true,
-      updatedAt: data.updated_at,
-      skuCount: Array.isArray(data.skus) ? data.skus.length : 0,
-    },
+    item: mapAdminProductListItem(data as Record<string, unknown>),
   };
 });

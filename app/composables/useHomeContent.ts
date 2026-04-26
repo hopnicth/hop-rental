@@ -1,11 +1,11 @@
 import { mockPromotionCards, mockServiceCards } from "~/mock/home-content";
 import type {
   HomeFeaturedProduct,
-  HomeFeaturedRentalAccess,
+  HomeFeaturedAsset,
   HomeLinkCard,
 } from "~/types/home";
 import type { Product } from "~/types/product";
-import type { RentalAccess } from "~/types/rental-access";
+import type { Asset } from "~/types/asset";
 
 const HOME_CONTENT_ONCE_KEY = "home:content";
 
@@ -57,7 +57,7 @@ function isMissingHomeContentSchemaError(error: unknown): boolean {
   return (
     (combined.includes("home_link_cards") ||
       combined.includes("home_featured_products") ||
-      combined.includes("home_featured_rental_accesses")) &&
+      combined.includes("home_featured_assets")) &&
     (combined.includes("schema cache") ||
       combined.includes("does not exist") ||
       combined.includes("404") ||
@@ -117,15 +117,15 @@ function normalizeFeaturedProductRow(row: unknown): HomeFeaturedProduct | null {
 
 function normalizeFeaturedRentalRow(
   row: unknown,
-): HomeFeaturedRentalAccess | null {
+): HomeFeaturedAsset | null {
   if (!isRecord(row)) return null;
   const id = toString(row.id);
-  const rentalAccessId = toString(row.rental_access_id);
-  if (!id || !rentalAccessId) return null;
+  const assetId = toString(row.asset_id);
+  if (!id || !assetId) return null;
 
   return {
     id,
-    rentalAccessId,
+    assetId,
     sortOrder: Number(row.sort_order ?? 0),
     isActive: row.is_active !== false,
   };
@@ -135,7 +135,7 @@ function byTrendingScoreDesc(a: Product, b: Product): number {
   return b.insight.trendingScore - a.insight.trendingScore;
 }
 
-function byRentalPriority(a: RentalAccess, b: RentalAccess): number {
+function byRentalPriority(a: Asset, b: Asset): number {
   return b.rentalCount - a.rentalCount || a.sortOrder - b.sortOrder;
 }
 
@@ -172,7 +172,7 @@ function pickDeterministicRandomItems<T>(
 export function useHomeContent() {
   const supabase = useSupabaseClient();
   const { products } = useProducts();
-  const { rentalAccesses } = useRentalAccesses();
+  const { assets } = useAssets();
   const fallbackSeed = useState<string>("home:featured-fallback-seed", () =>
     new Date().toISOString().slice(0, 10),
   );
@@ -185,8 +185,8 @@ export function useHomeContent() {
     "home:featured-products",
     () => [],
   );
-  const allFeaturedRentalAccesses = useState<HomeFeaturedRentalAccess[]>(
-    "home:featured-rental-accesses",
+  const allFeaturedAssets = useState<HomeFeaturedAsset[]>(
+    "home:featured-assets",
     () => [],
   );
   const hasRemoteLinkCards = useState<boolean>(
@@ -197,8 +197,8 @@ export function useHomeContent() {
     "home:featured-products:remote",
     () => false,
   );
-  const hasRemoteFeaturedRentalAccesses = useState<boolean>(
-    "home:featured-rental-accesses:remote",
+  const hasRemoteFeaturedAssets = useState<boolean>(
+    "home:featured-assets:remote",
     () => false,
   );
 
@@ -219,8 +219,8 @@ export function useHomeContent() {
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: false }),
           supabase
-            .from("home_featured_rental_accesses")
-            .select("id, rental_access_id, sort_order, is_active")
+            .from("home_featured_assets")
+            .select("id, asset_id, sort_order, is_active")
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: false }),
         ]);
@@ -237,20 +237,20 @@ export function useHomeContent() {
       )
         .map(normalizeFeaturedProductRow)
         .filter((item): item is HomeFeaturedProduct => !!item);
-      allFeaturedRentalAccesses.value = (
+      allFeaturedAssets.value = (
         (featuredRentalsResult.data ?? []) as unknown[]
       )
         .map(normalizeFeaturedRentalRow)
-        .filter((item): item is HomeFeaturedRentalAccess => !!item);
+        .filter((item): item is HomeFeaturedAsset => !!item);
 
       hasRemoteLinkCards.value = true;
       hasRemoteFeaturedProducts.value = true;
-      hasRemoteFeaturedRentalAccesses.value = true;
+      hasRemoteFeaturedAssets.value = true;
     } catch (fetchError) {
       if (isMissingHomeContentSchemaError(fetchError)) {
         hasRemoteLinkCards.value = false;
         hasRemoteFeaturedProducts.value = false;
-        hasRemoteFeaturedRentalAccesses.value = false;
+        hasRemoteFeaturedAssets.value = false;
         return;
       }
 
@@ -304,26 +304,26 @@ export function useHomeContent() {
     );
   });
 
-  const featuredRentalAccesses = computed(() => {
-    const curatedRentalAccesses = allFeaturedRentalAccesses.value
+  const featuredAssets = computed(() => {
+    const curatedAssets = allFeaturedAssets.value
       .filter((item) => item.isActive)
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((item) =>
-        rentalAccesses.value.find(
-          (access) => access.id === item.rentalAccessId,
+        assets.value.find(
+          (access) => access.id === item.assetId,
         ),
       )
-      .filter((access): access is RentalAccess => !!access);
+      .filter((access): access is Asset => !!access);
 
     if (
-      hasRemoteFeaturedRentalAccesses.value &&
-      curatedRentalAccesses.length > 0
+      hasRemoteFeaturedAssets.value &&
+      curatedAssets.length > 0
     ) {
-      return curatedRentalAccesses;
+      return curatedAssets;
     }
 
     return pickDeterministicRandomItems(
-      [...rentalAccesses.value].sort(byRentalPriority),
+      [...assets.value].sort(byRentalPriority),
       8,
       (access) => access.id,
       `${fallbackSeed.value}:rentals`,
@@ -334,6 +334,6 @@ export function useHomeContent() {
     promotionCards,
     serviceCards,
     featuredProducts,
-    featuredRentalAccesses,
+    featuredAssets,
   };
 }

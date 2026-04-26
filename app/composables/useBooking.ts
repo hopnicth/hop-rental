@@ -57,7 +57,7 @@ function isUuid(value: unknown): value is string {
   );
 }
 
-function normalizeRentalAccessId(value: unknown): string | undefined {
+function normalizeAssetId(value: unknown): string | undefined {
   return isUuid(value) ? value : undefined;
 }
 
@@ -68,12 +68,12 @@ function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
     bookingId: raw.bookingId ?? generateBookingId(),
     productId: raw.productId ?? "",
     skuId: raw.skuId ?? "",
-    rentalAccessId: normalizeRentalAccessId(raw.rentalAccessId),
-    rentalAccessCode: raw.rentalAccessCode,
-    rentalAccessSlug: raw.rentalAccessSlug,
-    rentalAccessName: raw.rentalAccessName,
-    rentalAccessThumbnail: raw.rentalAccessThumbnail,
-    rentalAccessSnapshot: normalizeRecord(raw.rentalAccessSnapshot),
+    assetId: normalizeAssetId(raw.assetId),
+    assetCode: raw.assetCode,
+    assetSlug: raw.assetSlug,
+    assetName: raw.assetName,
+    assetThumbnail: raw.assetThumbnail,
+    assetSnapshot: normalizeRecord(raw.assetSnapshot),
     matchedProductId: raw.matchedProductId,
     matchedProductName: raw.matchedProductName,
     productName: raw.productName ?? "",
@@ -136,27 +136,27 @@ function mapRowToBooking(
     bookingId: (row.id as string) ?? fallback?.bookingId,
     productId: (row.product_id as string) ?? fallback?.productId,
     skuId: (row.sku_id as string) ?? fallback?.skuId,
-    rentalAccessId:
-      (row.rental_access_id as string) ?? fallback?.rentalAccessId ?? undefined,
-    rentalAccessCode:
-      (row.rental_access_code as string) ??
-      fallback?.rentalAccessCode ??
+    assetId:
+      (row.asset_id as string) ?? fallback?.assetId ?? undefined,
+    assetCode:
+      (row.asset_code as string) ??
+      fallback?.assetCode ??
       undefined,
-    rentalAccessSlug:
-      (row.rental_access_slug as string) ??
-      fallback?.rentalAccessSlug ??
+    assetSlug:
+      (row.asset_slug as string) ??
+      fallback?.assetSlug ??
       undefined,
-    rentalAccessName:
-      (row.rental_access_name as string) ??
-      fallback?.rentalAccessName ??
+    assetName:
+      (row.asset_name as string) ??
+      fallback?.assetName ??
       undefined,
-    rentalAccessThumbnail:
-      (row.rental_access_thumbnail as string) ??
-      fallback?.rentalAccessThumbnail ??
+    assetThumbnail:
+      (row.asset_thumbnail as string) ??
+      fallback?.assetThumbnail ??
       undefined,
-    rentalAccessSnapshot:
-      normalizeRecord(row.rental_access_snapshot) ??
-      fallback?.rentalAccessSnapshot ??
+    assetSnapshot:
+      normalizeRecord(row.asset_snapshot) ??
+      fallback?.assetSnapshot ??
       undefined,
     matchedProductId:
       (row.matched_product_id as string) ??
@@ -167,11 +167,11 @@ function mapRowToBooking(
       fallback?.matchedProductName ??
       undefined,
     productName:
-      (row.rental_access_name as string) ??
+      (row.asset_name as string) ??
       (row.product_name as string) ??
       fallback?.productName,
     thumbnail:
-      (row.rental_access_thumbnail as string) ??
+      (row.asset_thumbnail as string) ??
       (row.thumbnail as string) ??
       fallback?.thumbnail ??
       "",
@@ -195,22 +195,22 @@ function mapBookingToInsert(
   userId: string,
   booking: BookingItem,
 ): RentalBookingInsert {
-  const rentalAccessId = normalizeRentalAccessId(booking.rentalAccessId);
+  const assetId = normalizeAssetId(booking.assetId);
 
   return {
     user_id: userId,
     product_id: booking.productId,
     sku_id: booking.skuId,
-    rental_access_id: rentalAccessId ?? null,
+    asset_id: assetId ?? null,
     hub_id: booking.hubId,
     product_name: booking.productName,
     thumbnail: booking.thumbnail,
     hub_name: booking.hubName,
-    rental_access_code: booking.rentalAccessCode ?? null,
-    rental_access_slug: booking.rentalAccessSlug ?? null,
-    rental_access_name: booking.rentalAccessName ?? null,
-    rental_access_thumbnail: booking.rentalAccessThumbnail ?? null,
-    rental_access_snapshot: booking.rentalAccessSnapshot ?? {},
+    asset_code: booking.assetCode ?? null,
+    asset_slug: booking.assetSlug ?? null,
+    asset_name: booking.assetName ?? null,
+    asset_thumbnail: booking.assetThumbnail ?? null,
+    asset_snapshot: booking.assetSnapshot ?? {},
     matched_product_id: booking.matchedProductId ?? booking.productId,
     matched_product_name: booking.matchedProductName ?? booking.productName,
     start_date: booking.startDate,
@@ -381,12 +381,12 @@ export function useBooking() {
     const missingExtendedColumn = [
       "matched_product_id",
       "matched_product_name",
-      "rental_access_id",
-      "rental_access_code",
-      "rental_access_slug",
-      "rental_access_name",
-      "rental_access_thumbnail",
-      "rental_access_snapshot",
+      "asset_id",
+      "asset_code",
+      "asset_slug",
+      "asset_name",
+      "asset_thumbnail",
+      "asset_snapshot",
     ].some((column) => isMissingColumnError(error, column));
 
     if (!missingExtendedColumn) {
@@ -465,12 +465,12 @@ export function useBooking() {
     const missingExtendedColumn = [
       "matched_product_id",
       "matched_product_name",
-      "rental_access_id",
-      "rental_access_code",
-      "rental_access_slug",
-      "rental_access_name",
-      "rental_access_thumbnail",
-      "rental_access_snapshot",
+      "asset_id",
+      "asset_code",
+      "asset_slug",
+      "asset_name",
+      "asset_thumbnail",
+      "asset_snapshot",
     ].some((column) => isMissingColumnError(error, column));
 
     if (!missingExtendedColumn) {
@@ -729,12 +729,12 @@ export function useBooking() {
       userId?: string;
       productId: string;
       skuId: string;
-      rentalAccessId?: string;
-      rentalAccessCode?: string;
-      rentalAccessSlug?: string;
-      rentalAccessName?: string;
-      rentalAccessThumbnail?: string;
-      rentalAccessSnapshot?: Record<string, unknown>;
+      assetId?: string;
+      assetCode?: string;
+      assetSlug?: string;
+      assetName?: string;
+      assetThumbnail?: string;
+      assetSnapshot?: Record<string, unknown>;
       matchedProductId?: string;
       matchedProductName?: string;
       productName: string;
@@ -797,12 +797,12 @@ export function useBooking() {
     userId?: string;
     productId: string;
     skuId: string;
-    rentalAccessId?: string;
-    rentalAccessCode?: string;
-    rentalAccessSlug?: string;
-    rentalAccessName?: string;
-    rentalAccessThumbnail?: string;
-    rentalAccessSnapshot?: Record<string, unknown>;
+    assetId?: string;
+    assetCode?: string;
+    assetSlug?: string;
+    assetName?: string;
+    assetThumbnail?: string;
+    assetSnapshot?: Record<string, unknown>;
     matchedProductId?: string;
     matchedProductName?: string;
     productName: string;
@@ -826,12 +826,12 @@ export function useBooking() {
     userId?: string;
     productId: string;
     skuId: string;
-    rentalAccessId?: string;
-    rentalAccessCode?: string;
-    rentalAccessSlug?: string;
-    rentalAccessName?: string;
-    rentalAccessThumbnail?: string;
-    rentalAccessSnapshot?: Record<string, unknown>;
+    assetId?: string;
+    assetCode?: string;
+    assetSlug?: string;
+    assetName?: string;
+    assetThumbnail?: string;
+    assetSnapshot?: Record<string, unknown>;
     matchedProductId?: string;
     matchedProductName?: string;
     productName: string;

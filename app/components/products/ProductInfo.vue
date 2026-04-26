@@ -11,46 +11,28 @@ const props = withDefaults(
   defineProps<{
     product: Product;
     selectedSkuIndex: number;
-    rentalAvailable?: number;
-    matchedRentalAccessCount?: number;
-    showRentalAction?: boolean;
+    matchedAssetCount?: number;
   }>(),
   {
-    rentalAvailable: undefined,
-    matchedRentalAccessCount: 0,
-    showRentalAction: true,
+    matchedAssetCount: 0,
   },
 );
 
 const emit = defineEmits<{
   "update:selectedSkuIndex": [value: number];
   addToCart: [];
-  bookNow: [];
 }>();
 
 const { t, locale } = useI18n();
 const lang = computed(() => locale.value as LocaleCode);
-const { isRental } = useProducts();
 
 const selectedSku = computed(() => props.product.skus[props.selectedSkuIndex]);
 
 const selectedSaleStock = computed(() => selectedSku.value?.stock.inStock ?? 0);
 
-const rentalAvailable = computed(
-  () => props.rentalAvailable ?? selectedSku.value?.stock.available ?? 0,
+const hasMatchedAssets = computed(
+  () => (props.matchedAssetCount ?? 0) > 0,
 );
-
-const hasMatchedRentalAccesses = computed(
-  () => (props.matchedRentalAccessCount ?? 0) > 0,
-);
-
-const rentalBadgeCount = computed(() =>
-  hasMatchedRentalAccesses.value
-    ? (props.matchedRentalAccessCount ?? 0)
-    : rentalAvailable.value,
-);
-
-const rental = computed(() => isRental(props.product));
 </script>
 
 <template>
@@ -115,42 +97,6 @@ const rental = computed(() => isRental(props.product));
       </div>
     </div>
 
-    <!-- Rental Price -->
-    <div
-      v-if="selectedSku && rental"
-      class="rounded-lg bg-blue-50 p-3 dark:bg-blue-950"
-    >
-      <p class="mb-2 text-sm font-medium text-blue-700 dark:text-blue-300">
-        {{ t("productDetail.rentalPrice") }}
-      </p>
-      <div class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-        <div>
-          <span class="text-gray-500">{{ t("productDetail.deposit") }}</span>
-          <p class="font-semibold">
-            ฿{{ selectedSku.rentalPrice.deposit.toLocaleString() }}
-          </p>
-        </div>
-        <div>
-          <span class="text-gray-500">{{ t("productDetail.perDay") }}</span>
-          <p class="font-semibold">
-            ฿{{ selectedSku.rentalPrice.daily.toLocaleString() }}
-          </p>
-        </div>
-        <div>
-          <span class="text-gray-500">{{ t("productDetail.perWeek") }}</span>
-          <p class="font-semibold">
-            ฿{{ selectedSku.rentalPrice.weekly.toLocaleString() }}
-          </p>
-        </div>
-        <div>
-          <span class="text-gray-500">{{ t("productDetail.perMonth") }}</span>
-          <p class="font-semibold">
-            ฿{{ selectedSku.rentalPrice.monthly.toLocaleString() }}
-          </p>
-        </div>
-      </div>
-    </div>
-
     <!-- Stock Badges -->
     <div class="flex gap-3">
       <UBadge
@@ -161,17 +107,12 @@ const rental = computed(() => isRental(props.product));
         {{ t("productDetail.inStock") }}: {{ selectedSaleStock }}
       </UBadge>
       <UBadge
-        v-if="hasMatchedRentalAccesses || rental"
-        :color="
-          hasMatchedRentalAccesses
-            ? 'secondary'
-            : rentalAvailable > 0
-              ? 'info'
-              : 'neutral'
-        "
+        v-if="hasMatchedAssets"
+        color="secondary"
         variant="subtle"
       >
-        {{ t("productDetail.available") }}: {{ rentalBadgeCount }}
+        {{ t("productDetail.available") }}:
+        {{ matchedAssetCount }}
       </UBadge>
     </div>
 
@@ -185,14 +126,6 @@ const rental = computed(() => isRental(props.product));
         size="lg"
         @click="emit('addToCart')"
       />
-      <UButton
-        v-if="rental && props.showRentalAction && rentalAvailable > 0"
-        icon="bx:calendar-check"
-        :label="t('productDetail.bookNow')"
-        color="secondary"
-        size="lg"
-        @click="emit('bookNow')"
-      />
     </div>
 
     <!-- Insight stats -->
@@ -200,7 +133,7 @@ const rental = computed(() => isRental(props.product));
       <span>
         {{ t("productDetail.sold") }}: {{ product.insight.orderCount }}
       </span>
-      <span v-if="rental">
+      <span v-if="hasMatchedAssets">
         {{ t("productDetail.rented") }}: {{ product.insight.rentalCount }}
       </span>
     </div>

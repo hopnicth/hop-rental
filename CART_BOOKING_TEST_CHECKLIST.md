@@ -18,7 +18,7 @@ Current expected behavior in this branch:
 
 ### 2. Rental booking only
 
-- [ ] Open a rental access page, or a rental product that still uses the fallback booking form.
+- [ ] Open a asset page, or a rental product that still uses the fallback booking form.
 - [ ] Select SKU/dates and press `Book`.
 - [ ] Verify loading state appears before success feedback.
 - [ ] Verify redirect goes to `/user/cart` and the booking is shown in the Rental Items section as `draft`.
@@ -95,7 +95,7 @@ Current expected behavior in this branch:
 ### 14. Admin rental smoke check
 
 - [ ] Confirm local `.env` includes `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_KEY`) before testing admin writes.
-- [ ] Confirm the target DB has migration `013_rental_access_schema.sql` applied before testing rental admin pages.
+- [ ] Confirm the target DB has migration `013_asset_schema.sql` applied before testing asset admin pages.
 - [ ] Open `/admin/products` and verify the first click navigates immediately without briefly showing `Customer` in the admin badge.
-- [ ] Open `/admin/rental-accesses` and verify the page loads without missing-table errors.
-- [ ] Open `/admin/matches` and verify the page loads without missing-table errors.
+- [ ] Open `/admin/assets` and verify the page loads without missing-table errors.
+- [ ] Select an asset and verify the inline Product matches card can load existing matches.

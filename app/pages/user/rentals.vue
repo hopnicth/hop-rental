@@ -66,7 +66,7 @@ function rentalPeriodLabel(booking: BookingItem): string {
 }
 
 function bookingTitle(booking: BookingItem): string {
-  return booking.rentalAccessName || booking.productName;
+  return booking.assetName || booking.productName;
 }
 </script>
 

@@ -8,34 +8,32 @@ const { profile } = useUserProfile();
 const navItems = [
   { label: "Overview", to: "/admin" },
   { label: "Products", to: "/admin/products" },
-  { label: "Rental Accesses", to: "/admin/rental-accesses" },
-  { label: "Matches", to: "/admin/matches" },
-  { label: "Home Content", to: "/admin/home-content" },
+  { label: "Assets", to: "/admin/assets" },
+  { label: "Branch & Inventory", to: "/admin/branches-inventory" },
 ];
 </script>
 
 <template>
   <HopHeader />
-  <UMain class="min-h-screen bg-[var(--ui-bg-elevated)]/30">
+  <UMain class="min-h-screen bg-(--ui-bg-elevated)/30">
     <UContainer class="py-6">
       <div
-        class="mb-6 rounded-2xl border border-[var(--ui-border)] bg-white p-4 shadow-sm"
+        class="mb-6 rounded-2xl border border-default bg-white p-4 shadow-sm"
       >
         <div
           class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
         >
           <div>
             <p
-              class="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--ui-primary)]"
+              class="text-xs font-semibold uppercase tracking-[0.2em] text-primary"
             >
               Admin MVP
             </p>
-            <h1 class="text-2xl font-semibold text-[var(--ui-text)]">
+            <h1 class="text-2xl font-semibold text-default">
               Catalog & rental backoffice
             </h1>
-            <p class="text-sm text-[var(--ui-text-muted)]">
-              Lightweight internal area for products, rental packages, homepage
-              content, and matching.
+            <p class="text-sm text-muted">
+              Lightweight internal area for products, assets, and inventory.
             </p>
           </div>
 

@@ -7,15 +7,15 @@ import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
 import ProductCard from "~/components/products/ProductCard.vue";
-import RentalAccessCard from "~/components/products/RentalAccessCard.vue";
+import AssetCard from "~/components/products/AssetCard.vue";
 import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
 
 const { t } = useI18n();
 const isCategoryPanelOpen = ref(false);
-const { getRentalAccessShowPath } = useRentalAccesses();
+const { getAssetShowPath } = useAssets();
 const {
   promotionCards,
-  featuredRentalAccesses,
+  featuredAssets,
   featuredProducts,
   serviceCards,
 } = useHomeContent();
@@ -70,13 +70,13 @@ const {
           </template>
 
           <HomeHorizontalRail
-            :items="featuredRentalAccesses"
+            :items="featuredAssets"
             :empty-label="t('home.emptyRentals')"
           >
             <template #item="{ item }">
-              <RentalAccessCard
+              <AssetCard
                 :access="item"
-                :browse-to="getRentalAccessShowPath(item)"
+                :browse-to="getAssetShowPath(item)"
               />
             </template>
           </HomeHorizontalRail>
