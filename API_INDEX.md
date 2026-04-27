@@ -28,7 +28,16 @@ Read this after `map.md` when debugging or implementing features.
 | Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                    |
 | Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                           |
 | Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners`, `home_link_cards`, `home_featured_*`, `home_partner_logos` |
+| Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages`                                                            |
 | Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                              |
+
+## Storefront UI conventions
+
+- Home content sections render through `app/components/home/HomeHorizontalRail.vue`, a Nuxt UI `UCarousel`/Embla wrapper using loop + timed autoplay, arrows, and dots.
+- Do not use the continuous Auto Scroll plugin for Home section cards unless explicitly requested.
+- Product/asset listing cards share `CatalogCardShell.vue`; card media should stay `aspect-square w-full object-cover`.
+- Home promotion/service cards use `HomeLinkCard.vue` and follow the same square media convention.
+- Global HOP theme tokens live in `app/assets/css/main.css` (`--ui-primary`, `--ui-secondary`, status colors, and `0.2rem` radius scale).
 
 ## Main write paths
 
@@ -42,6 +51,7 @@ Read this after `map.md` when debugging or implementing features.
 | Admin booking update               | `/api/admin/rental-bookings/[id].patch.ts`                       | `rental_bookings`                        |
 | Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables           |
 | Admin homepage content CRUD/upload | `/api/admin/home-content/*`                                      | `home_*` tables + `catalog-media` bucket |
+| Admin content pages CRUD/upload    | `/api/admin/content/*`                                           | `content_pages` + `catalog-media` bucket |
 
 ## Important customer routes
 
@@ -59,6 +69,7 @@ Read this after `map.md` when debugging or implementing features.
 - `/admin/orders/[id]`
 - `/admin/rental-bookings/[id]`
 - `/admin/home-content`
+- `/admin/content`
 
 ## Important admin server areas
 
@@ -71,6 +82,9 @@ Read this after `map.md` when debugging or implementing features.
 - `server/api/admin/home-content/*`
 - `server/utils/admin-home.ts`
 - `server/utils/home-media.ts`
+- `server/api/admin/content/*`
+- `server/utils/content-pages.ts`
+- `server/utils/content-media.ts`
 
 ### `014_homepage_content.sql`
 
@@ -112,6 +126,12 @@ Read this after `map.md` when debugging or implementing features.
 - SVG upload is accepted only for Home `partner-logo` media
 - non-SVG Home media is still processed to WebP
 
+### `036_content_pages.sql`
+
+- `content_pages` stores blog, service, and promotion pages
+- Page body uses JSONB blocks: heading, paragraph, image, button, link, file download, callout, gallery, FAQ
+- Admin uploads share `catalog-media` with `content-pages/*` storage prefix
+
 ## Fast debug checklist
 
 1. Is the user authenticated for customer-owned writes?
@@ -124,6 +144,7 @@ Read this after `map.md` when debugging or implementing features.
 8. If a cancelled booking still shows in `/user/rentals`, verify the row is `status = 'cancelled'`.
 9. If homepage uploads fail, verify `catalog-media` bucket access and `/api/admin/home-content/upload`.
 10. If SVG partner logo upload fails, verify migration `035` reached the remote storage bucket config.
+11. If Home carousel cards feel wrong, check `HomeHorizontalRail.vue` first for `UCarousel` item basis, arrows, loop, and autoplay options.
 
 ## Cross refs
 
