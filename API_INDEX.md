@@ -19,27 +19,29 @@ Read this after `map.md` when debugging or implementing features.
 
 ## Main read paths
 
-| Surface | Main code | Source |
-| --- | --- | --- |
-| Product browse/detail | `app/composables/useProducts.ts` | `products`, `product_skus` |
-| Asset browse/detail | `app/composables/useAssets.ts` | `assets`, `asset_matches` |
-| Cart | `app/composables/useCart.ts` | `carts`, `cart_items` |
-| Rental booking store | `app/composables/useBooking.ts` | `rental_bookings` |
-| Orders history | `app/composables/useOrders.ts` | `orders`, `order_items` |
-| Branch picker | `app/composables/useBranches.ts` | `store_branches` |
-| Admin order dashboard | `app/composables/useAdminOrders.ts` | `/api/admin/orders/customers` |
+| Surface                        | Main code                                              | Source                                                                     |
+| ------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------- |
+| Product browse/detail          | `app/composables/useProducts.ts`                       | `products`, `product_skus`                                                 |
+| Asset browse/detail            | `app/composables/useAssets.ts`                         | `assets`, `asset_matches`                                                  |
+| Cart                           | `app/composables/useCart.ts`                           | `carts`, `cart_items`                                                      |
+| Rental booking store           | `app/composables/useBooking.ts`                        | `rental_bookings`                                                          |
+| Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                    |
+| Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                           |
+| Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners`, `home_link_cards`, `home_featured_*`, `home_partner_logos` |
+| Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                              |
 
 ## Main write paths
 
-| Action | Main code | Writes to |
-| --- | --- | --- |
-| Add sale item | `useCart().addToCart()` | `carts`, `cart_items` |
-| Create booking draft | `useBooking().addBooking()` | `rental_bookings` |
-| Confirm booking | `useBooking().updateBookingStatus()` | `rental_bookings` |
-| Submit sale order | `useOrders().submitOrder()` | `orders`, `order_items` |
-| Admin order update | `/api/admin/orders/[id].patch.ts` | `orders` |
-| Admin booking update | `/api/admin/rental-bookings/[id].patch.ts` | `rental_bookings` |
-| Admin booking ops | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables |
+| Action                             | Main code                                                        | Writes to                                |
+| ---------------------------------- | ---------------------------------------------------------------- | ---------------------------------------- |
+| Add sale item                      | `useCart().addToCart()`                                          | `carts`, `cart_items`                    |
+| Create booking draft               | `useBooking().addBooking()`                                      | `rental_bookings`                        |
+| Confirm booking                    | `useBooking().updateBookingStatus()`                             | `rental_bookings`                        |
+| Submit sale order                  | `useOrders().submitOrder()`                                      | `orders`, `order_items`                  |
+| Admin order update                 | `/api/admin/orders/[id].patch.ts`                                | `orders`                                 |
+| Admin booking update               | `/api/admin/rental-bookings/[id].patch.ts`                       | `rental_bookings`                        |
+| Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables           |
+| Admin homepage content CRUD/upload | `/api/admin/home-content/*`                                      | `home_*` tables + `catalog-media` bucket |
 
 ## Important customer routes
 
@@ -56,6 +58,7 @@ Read this after `map.md` when debugging or implementing features.
 - `/admin/orders`
 - `/admin/orders/[id]`
 - `/admin/rental-bookings/[id]`
+- `/admin/home-content`
 
 ## Important admin server areas
 
@@ -65,37 +68,62 @@ Read this after `map.md` when debugging or implementing features.
 - `server/api/admin/rental-bookings/*`
 - `server/api/admin/assets/*`
 - `server/api/admin/products/*`
+- `server/api/admin/home-content/*`
+- `server/utils/admin-home.ts`
+- `server/utils/home-media.ts`
+
+### `014_homepage_content.sql`
+
+- `home_banners`, `home_link_cards`, `home_featured_products`, `home_featured_assets`
 
 ## Migration-sensitive behavior
 
 ### `029_rental_bookings_pricing_breakdown.sql`
+
 - `pricing_breakdown`, `weekly_rate`, `monthly_rate`
 
 ### `030_shipping_cost.sql`
+
 - `products.shipping_size`
 - `orders.shipping_cost`, `orders.shipping_breakdown`
 
 ### `031_rental_bookings_asset_only.sql`
+
 - rental bookings may be rooted by `asset_id` alone
 - `product_id` / `sku_id` can be null
 
 ### `032_orders_tracking.sql`
+
 - sale orders support tracking/admin fulfillment metadata
 
 ### `033_rental_booking_docs_storage.sql`
+
 - booking docs store `storage_bucket`, `storage_path`
 - rental bookings store `booker_name`, `booker_phone`
+
+### `034_home_partner_logos.sql`
+
+- `home_partner_logos`
+- homepage partner/logo marquee is DB-backed
+
+### `035_catalog_media_svg_mime.sql`
+
+- `catalog-media` storage bucket allows `image/svg+xml`
+- SVG upload is accepted only for Home `partner-logo` media
+- non-SVG Home media is still processed to WebP
 
 ## Fast debug checklist
 
 1. Is the user authenticated for customer-owned writes?
 2. Does the user have the correct `platform_role` for admin routes?
-3. Is the target DB on migrations `029` through `033`?
+3. Is the target DB on migrations `029` through `035`?
 4. If search fails on PostgREST, are you using `*term*` wildcards?
 5. If asset booking fails, is `asset_id` valid and allowed by the current schema?
 6. If booking docs fail to delete cleanly, are `storage_bucket` and `storage_path` present?
 7. If admin order list lacks contact info, check both `booker_phone` and account `users.phone`.
 8. If a cancelled booking still shows in `/user/rentals`, verify the row is `status = 'cancelled'`.
+9. If homepage uploads fail, verify `catalog-media` bucket access and `/api/admin/home-content/upload`.
+10. If SVG partner logo upload fails, verify migration `035` reached the remote storage bucket config.
 
 ## Cross refs
 

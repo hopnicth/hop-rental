@@ -5,6 +5,8 @@ import {
   asOptionalString,
 } from "~~/server/utils/admin-catalog";
 
+export const HOME_FEATURED_LIMIT = 15;
+
 export const ADMIN_HOME_BANNER_SELECT =
   "id, title_th, title_en, title_cn, title_jp, subtitle_th, subtitle_en, subtitle_cn, subtitle_jp, cta_label_th, cta_label_en, cta_label_cn, cta_label_jp, image_url, mobile_image_url, link_url, link_target, sort_order, is_active, created_at, updated_at";
 
@@ -16,6 +18,9 @@ export const ADMIN_HOME_FEATURED_PRODUCT_SELECT =
 
 export const ADMIN_HOME_FEATURED_ASSET_SELECT =
   "id, asset_id, sort_order, is_active, created_at, updated_at, asset:assets(id, code, slug, name_th, status, is_hidden)";
+
+export const ADMIN_HOME_PARTNER_LOGO_SELECT =
+  "id, name, image_url, link_url, link_target, sort_order, is_active, created_at, updated_at";
 
 function fail422(message: string): never {
   throw createError({
@@ -89,6 +94,17 @@ export function buildFeaturedProductPayload(body: Record<string, unknown>) {
 export function buildFeaturedAssetPayload(body: Record<string, unknown>) {
   return {
     asset_id: asNonEmptyString(body.assetId, "assetId"),
+    sort_order: Math.max(0, asNumber(body.sortOrder, 0)),
+    is_active: body.isActive !== false,
+  };
+}
+
+export function buildHomePartnerLogoPayload(body: Record<string, unknown>) {
+  return {
+    name: asNonEmptyString(body.name, "name"),
+    image_url: asNonEmptyString(body.imageUrl, "imageUrl"),
+    link_url: asNonEmptyString(body.linkUrl, "linkUrl"),
+    link_target: asLinkTarget(body.linkTarget),
     sort_order: Math.max(0, asNumber(body.sortOrder, 0)),
     is_active: body.isActive !== false,
   };

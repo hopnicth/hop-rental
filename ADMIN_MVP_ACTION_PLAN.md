@@ -20,9 +20,11 @@ Use this as the active admin backlog, not as a historical transcript.
 ## Phase status
 
 ### Phase 0 — foundation
+
 - [x] Admin shell, guard, landing page
 
 ### Phase 1 — catalog CRUD
+
 - [x] Product list/detail admin
 - [x] SKU CRUD under product
 - [x] Asset list/detail admin
@@ -30,18 +32,22 @@ Use this as the active admin backlog, not as a historical transcript.
 - [x] Homepage content admin
 
 ### Phase 2 — media/admin usability
+
 - [x] Product/asset media upload to Supabase Storage
 - [x] Thumbnail/gallery sync rules
+- [x] Homepage image upload flow instead of URL-only input
+- [x] Homepage partner logo SVG upload and compact logo rail
 - [ ] Required-field validation polish across remaining forms
 - [ ] Quick storefront check links from admin surfaces
-- [ ] Homepage image upload flow instead of URL-only input
 
 ### Phase 3 — server/admin security
+
 - [x] Privileged `/api/admin/*` pattern
 - [x] Admin role gates enforced on server routes
 - [ ] Continue removing places that still depend on read-only fallback assumptions
 
 ### Phase 4 — branches + inventory
+
 - [x] Branch CRUD
 - [x] Inventory pool CRUD
 - [x] Stock CRUD with audit log
@@ -49,6 +55,7 @@ Use this as the active admin backlog, not as a historical transcript.
 - [x] Inline product inventory management
 
 ### Phase 5 — order operations
+
 - [x] Customer-grouped admin order dashboard
 - [x] Sale order detail page
 - [x] Rental booking detail page
@@ -79,9 +86,8 @@ Use this as the active admin backlog, not as a historical transcript.
 
 1. [ ] Improve validation/messages on remaining admin forms
 2. [ ] Add storefront quick-links for spot checking product/asset/admin edits
-3. [ ] Add homepage media upload instead of URL-only entry
-4. [ ] Add checklist-template management polish if ops team needs more control
-5. [ ] Continue documenting which admin flows are staff vs super-admin only
+3. [ ] Add checklist-template management polish if ops team needs more control
+4. [ ] Continue documenting which admin flows are staff vs super-admin only
 
 ## Notes to preserve
 
@@ -89,6 +95,8 @@ Use this as the active admin backlog, not as a historical transcript.
 - Admin order QR payloads are `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
 - Incomplete sale/rental rows in the admin order list should remain visually highlighted.
 - Booker contact on a rental booking should be preferred over account contact when present.
+- Homepage admin now covers banners, partner logos, promotion/service cards, and curated featured rails with upload/delete flows.
+- Partner logo uploads may be SVG only for `partner-logo`; other Home image uploads are processed to WebP.
 
 ## Cross refs
 

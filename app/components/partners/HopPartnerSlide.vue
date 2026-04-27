@@ -13,5 +13,5 @@ const { partnerItems } = usePartners();
 </script>
 
 <template>
-  <IconSlide :items="partnerItems" :speed="25" height="100px" />
+  <IconSlide :items="partnerItems" :speed="25" height="40px" />
 </template>

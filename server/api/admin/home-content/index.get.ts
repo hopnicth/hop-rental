@@ -5,6 +5,7 @@ import {
   ADMIN_HOME_FEATURED_PRODUCT_SELECT,
   ADMIN_HOME_FEATURED_ASSET_SELECT,
   ADMIN_HOME_LINK_CARD_SELECT,
+  ADMIN_HOME_PARTNER_LOGO_SELECT,
 } from "~~/server/utils/admin-home";
 
 export default defineEventHandler(async (event) => {
@@ -15,6 +16,7 @@ export default defineEventHandler(async (event) => {
     linkCardsResult,
     featuredProductsResult,
     featuredAssetsResult,
+    partnerLogosResult,
     productsResult,
     assetsResult,
   ] = await Promise.all([
@@ -40,6 +42,11 @@ export default defineEventHandler(async (event) => {
       .order("sort_order", { ascending: true })
       .order("updated_at", { ascending: false }),
     adminClient
+      .from("home_partner_logos")
+      .select(ADMIN_HOME_PARTNER_LOGO_SELECT)
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: false }),
+    adminClient
       .from("products")
       .select("id, slug, name_th, is_hidden")
       .order("updated_at", { ascending: false }),
@@ -55,6 +62,7 @@ export default defineEventHandler(async (event) => {
     linkCardsResult.error,
     featuredProductsResult.error,
     featuredAssetsResult.error,
+    partnerLogosResult.error,
     productsResult.error,
     assetsResult.error,
   ].filter(Boolean);
@@ -125,6 +133,16 @@ export default defineEventHandler(async (event) => {
       assetLabel: `${row.asset?.code ?? "—"} · ${row.asset?.name_th ?? row.asset_id}`,
       assetHidden: row.asset?.is_hidden === true,
       assetStatus: row.asset?.status ?? "draft",
+      updatedAt: row.updated_at,
+    })),
+    partnerLogos: (partnerLogosResult.data ?? []).map((row) => ({
+      id: row.id,
+      name: row.name,
+      imageUrl: row.image_url,
+      linkUrl: row.link_url,
+      linkTarget: row.link_target === "_blank" ? "_blank" : "_self",
+      sortOrder: Number(row.sort_order ?? 0),
+      isActive: row.is_active !== false,
       updatedAt: row.updated_at,
     })),
     productOptions: (productsResult.data ?? []).map((row) => ({

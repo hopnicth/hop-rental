@@ -28,6 +28,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 ## Current business flow
 
 ### Sale
+
 - Browse products
 - Add to cart
 - Submit order from `/user/cart`
@@ -35,6 +36,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Admin manages status from `/admin/orders`
 
 ### Rental
+
 - Browse assets from `/product-rental`
 - Open `/asset/[slug]`
 - Create booking draft
@@ -46,13 +48,17 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 ## Major completed slices
 
 ### Catalog + assets
+
 - Product admin CRUD is live
 - Asset admin CRUD is live
 - Asset matching to products is live
 - Multi-inventory branch stock management is live
-- Homepage content admin exists and is `super_admin` only
+- Homepage content admin exists and is `super_admin` only, including banners, partner logos, curated product/asset rails, upload, and delete flows
+- Homepage curated product/asset sections use the same card components as product/all-rental listing grids
+- Partner logos are DB-backed, support SVG uploads, and render through a compact 40px marquee
 
 ### Booking + checkout
+
 - Unified cart supports sale + rental review
 - Asset-only bookings are supported
 - Tiered rental pricing breakdown is persisted
@@ -61,6 +67,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Booker name + contact phone are required for rental submit
 
 ### Admin order operations
+
 - `/admin/orders` groups sale orders + rental bookings by customer
 - QR scan supports `order:<number>`, `booking:<uuid>`, `customer:<uuid>`
 - Incomplete rows are highlighted visually
@@ -71,6 +78,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 ## Key routes
 
 ### Storefront
+
 - `/`
 - `/product-{group}`
 - `/product-{group}/{slug}`
@@ -78,11 +86,13 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/asset/{slug}`
 
 ### Customer
+
 - `/user/cart`
 - `/user/orders`
 - `/user/rentals`
 
 ### Admin
+
 - `/admin/products`
 - `/admin/assets`
 - `/admin/branches-inventory`

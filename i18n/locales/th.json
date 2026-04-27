@@ -151,7 +151,27 @@
     "signUpError": "สมัครสมาชิกไม่สำเร็จ"
   },
   "home": {
-    "title": "หน้าแรก"
+    "title": "หน้าแรก",
+    "heroBadge": "แบนเนอร์หลัก",
+    "promotionsTitle": "โปรโมชั่น",
+    "promotionsDescription": "",
+    "emptyPromotions": "ยังไม่มีโปรโมชั่นสำหรับหน้าแรก",
+    "rentalTitle": "บริการให้เช่า",
+    "rentalDescription": "รายการจัดชุดให้เช่าเพื่อช่างตัวจริง",
+    "viewAllRentals": "ดูบริการเช่าทั้งหมด",
+    "emptyRentals": "ยังไม่มีบริการเช่าที่เลือกไว้สำหรับหน้าแรก",
+    "productsTitle": "สินค้าแนะนำ",
+    "productsDescription": "สินค้าที่พิเศษสำหรับคุณ",
+    "viewAllProducts": "ดูสินค้าทั้งหมด",
+    "emptyProducts": "ยังไม่มีสินค้าแนะนำที่เลือกไว้สำหรับหน้าแรก",
+    "servicesTitle": "บริการของเรา",
+    "servicesDescription": "บริการต่างๆ ของทางเราและ Partner",
+    "emptyServices": "ยังไม่มีบริการสำหรับหน้าแรก",
+    "promotionBadge": "โปรโมชั่น",
+    "serviceBadge": "บริการ",
+    "learnMore": "ดูเพิ่มเติม",
+    "viewDetails": "ดูรายละเอียด",
+    "perDay": "วัน"
   },
   "chatWidget": {
     "fabLabel": "แชทกับเรา",

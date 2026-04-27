@@ -13,7 +13,7 @@ const props = withDefaults(
   }>(),
   {
     speed: 30,
-    height: "100px",
+    height: "40px",
   },
 );
 
@@ -115,7 +115,7 @@ const duplicatedItems = computed(() => [...props.items, ...props.items]);
   >
     <div
       ref="trackRef"
-      class="marquee-track flex items-center gap-8"
+      class="marquee-track flex h-full items-center gap-6"
       :class="{ 'marquee-animate': !isPaused }"
       :style="{
         '--marquee-speed': `${speed}s`,
@@ -130,12 +130,12 @@ const duplicatedItems = computed(() => [...props.items, ...props.items]);
           :is="item.linkUrl ? NuxtLink : 'div'"
           :to="item.linkUrl || undefined"
           :target="item.linkTarget || '_self'"
-          class="marquee-item shrink-0 cursor-pointer transition-opacity hover:opacity-80"
+          class="marquee-item flex h-full shrink-0 cursor-pointer items-center transition-opacity hover:opacity-80"
         >
           <img
             :src="item.imageUrl"
             :alt="item.alt"
-            class="h-full max-h-16 w-auto object-contain"
+            class="h-[calc(100%-8px)] max-h-8 w-auto object-contain"
             loading="lazy"
           />
         </component>
@@ -176,5 +176,6 @@ const duplicatedItems = computed(() => [...props.items, ...props.items]);
 .marquee-item {
   flex-shrink: 0;
   padding: 0 0.75rem;
+  line-height: 0;
 }
 </style>

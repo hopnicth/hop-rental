@@ -8,6 +8,7 @@ import type { Product } from "~/types/product";
 import type { Asset } from "~/types/asset";
 
 const HOME_CONTENT_ONCE_KEY = "home:content";
+const FEATURED_HOME_LIMIT = 15;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -115,9 +116,7 @@ function normalizeFeaturedProductRow(row: unknown): HomeFeaturedProduct | null {
   };
 }
 
-function normalizeFeaturedRentalRow(
-  row: unknown,
-): HomeFeaturedAsset | null {
+function normalizeFeaturedRentalRow(row: unknown): HomeFeaturedAsset | null {
   if (!isRecord(row)) return null;
   const id = toString(row.id);
   const assetId = toString(row.asset_id);
@@ -287,18 +286,19 @@ export function useHomeContent() {
     const curatedProducts = allFeaturedProducts.value
       .filter((item) => item.isActive)
       .sort((a, b) => a.sortOrder - b.sortOrder)
+      .slice(0, FEATURED_HOME_LIMIT)
       .map((item) =>
         products.value.find((product) => product.id === item.productId),
       )
-      .filter((product): product is Product => !!product && product.isForSale);
+      .filter((product): product is Product => !!product);
 
-    if (hasRemoteFeaturedProducts.value && curatedProducts.length > 0) {
+    if (hasRemoteFeaturedProducts.value) {
       return curatedProducts;
     }
 
     return pickDeterministicRandomItems(
-      products.value.filter((product) => product.isForSale),
-      8,
+      products.value,
+      FEATURED_HOME_LIMIT,
       (product) => product.id,
       `${fallbackSeed.value}:products`,
     );
@@ -308,23 +308,17 @@ export function useHomeContent() {
     const curatedAssets = allFeaturedAssets.value
       .filter((item) => item.isActive)
       .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map((item) =>
-        assets.value.find(
-          (access) => access.id === item.assetId,
-        ),
-      )
+      .slice(0, FEATURED_HOME_LIMIT)
+      .map((item) => assets.value.find((access) => access.id === item.assetId))
       .filter((access): access is Asset => !!access);
 
-    if (
-      hasRemoteFeaturedAssets.value &&
-      curatedAssets.length > 0
-    ) {
+    if (hasRemoteFeaturedAssets.value) {
       return curatedAssets;
     }
 
     return pickDeterministicRandomItems(
       [...assets.value].sort(byRentalPriority),
-      8,
+      FEATURED_HOME_LIMIT,
       (access) => access.id,
       `${fallbackSeed.value}:rentals`,
     );

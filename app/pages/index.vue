@@ -6,19 +6,18 @@ import HomeSectionShell from "~/components/home/HomeSectionShell.vue";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
-import ProductCard from "~/components/products/ProductCard.vue";
-import AssetCard from "~/components/products/AssetCard.vue";
 import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
+import type { HomeLinkCard as HomeLinkCardType } from "~/types/home";
 
 const { t } = useI18n();
 const isCategoryPanelOpen = ref(false);
 const { getAssetShowPath } = useAssets();
-const {
-  promotionCards,
-  featuredAssets,
-  featuredProducts,
-  serviceCards,
-} = useHomeContent();
+const { promotionCards, featuredAssets, featuredProducts, serviceCards } =
+  useHomeContent();
+
+function asHomeLinkCard(item: unknown) {
+  return item as HomeLinkCardType;
+}
 </script>
 
 <template>
@@ -34,7 +33,7 @@ const {
         <div class="space-y-4 sm:space-y-5">
           <HopFeatureBar />
           <div
-            class="rounded-3xl border border-default bg-white/70 px-4 py-4 sm:px-5"
+            class="rounded-1xl border border-default bg-white/70 px-4 py-4 sm:px-5"
           >
             <HopPartnerSlide />
           </div>
@@ -49,7 +48,7 @@ const {
             :empty-label="t('home.emptyPromotions')"
           >
             <template #item="{ item }">
-              <HomeLinkCard :card="item" />
+              <HomeLinkCard :card="asHomeLinkCard(item)" />
             </template>
           </HomeHorizontalRail>
         </HomeSectionShell>
@@ -69,17 +68,24 @@ const {
             </UButton>
           </template>
 
-          <HomeHorizontalRail
-            :items="featuredAssets"
-            :empty-label="t('home.emptyRentals')"
+          <div
+            v-if="featuredAssets.length"
+            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
           >
-            <template #item="{ item }">
-              <AssetCard
-                :access="item"
-                :browse-to="getAssetShowPath(item)"
-              />
-            </template>
-          </HomeHorizontalRail>
+            <LazyProductsAssetCard
+              v-for="access in featuredAssets"
+              :key="access.id"
+              :access="access"
+              :browse-to="getAssetShowPath(access)"
+              hide-matches
+            />
+          </div>
+          <div
+            v-else
+            class="flex min-h-56 items-center justify-center rounded-3xl border border-dashed border-default bg-(--ui-bg-elevated)/40 px-6 text-center text-sm text-muted"
+          >
+            {{ t("home.emptyRentals") }}
+          </div>
         </HomeSectionShell>
 
         <HomeSectionShell
@@ -92,14 +98,22 @@ const {
             </UButton>
           </template>
 
-          <HomeHorizontalRail
-            :items="featuredProducts"
-            :empty-label="t('home.emptyProducts')"
+          <div
+            v-if="featuredProducts.length"
+            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
           >
-            <template #item="{ item }">
-              <ProductCard :product-id="item.id" />
-            </template>
-          </HomeHorizontalRail>
+            <LazyProductsProductCard
+              v-for="product in featuredProducts"
+              :key="product.id"
+              :product-id="product.id"
+            />
+          </div>
+          <div
+            v-else
+            class="flex min-h-56 items-center justify-center rounded-3xl border border-dashed border-default bg-(--ui-bg-elevated)/40 px-6 text-center text-sm text-muted"
+          >
+            {{ t("home.emptyProducts") }}
+          </div>
         </HomeSectionShell>
 
         <HomeSectionShell
@@ -111,7 +125,7 @@ const {
             :empty-label="t('home.emptyServices')"
           >
             <template #item="{ item }">
-              <HomeLinkCard :card="item" />
+              <HomeLinkCard :card="asHomeLinkCard(item)" />
             </template>
           </HomeHorizontalRail>
         </HomeSectionShell>
