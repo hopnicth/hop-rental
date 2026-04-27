@@ -10,6 +10,7 @@ const navItems = [
   { label: "Products", to: "/admin/products" },
   { label: "Assets", to: "/admin/assets" },
   { label: "Branch & Inventory", to: "/admin/branches-inventory" },
+  { label: "Orders", to: "/admin/orders" },
 ];
 </script>
 

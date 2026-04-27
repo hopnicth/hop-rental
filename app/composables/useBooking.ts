@@ -34,6 +34,8 @@ interface CreateBookingParams {
   pricingBreakdown?: RentalPricingBreakdown;
   hubId?: string | null;
   hubName?: string | null;
+  bookerName?: string | null;
+  bookerPhone?: string | null;
 }
 
 /**
@@ -122,6 +124,8 @@ function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
     pricingBreakdown: raw.pricingBreakdown,
     hubId: raw.hubId ?? null,
     hubName: raw.hubName ?? null,
+    bookerName: raw.bookerName ?? null,
+    bookerPhone: raw.bookerPhone ?? null,
     status: normalizeBookingStatus(raw.status),
     createdAt,
   };
@@ -217,6 +221,8 @@ function mapRowToBooking(
     pricingBreakdown,
     hubId: (row.hub_id as string) ?? fallback?.hubId ?? null,
     hubName: (row.hub_name as string) ?? fallback?.hubName ?? null,
+    bookerName: (row.booker_name as string) ?? fallback?.bookerName ?? null,
+    bookerPhone: (row.booker_phone as string) ?? fallback?.bookerPhone ?? null,
     status: (row.status as BookingItem["status"]) ?? fallback?.status,
     createdAt:
       (row.created_at as string) ??
@@ -258,6 +264,8 @@ function mapBookingToInsert(
     rental_total: booking.totalCost,
     deposit_amount: booking.deposit,
     pricing_breakdown: booking.pricingBreakdown ?? {},
+    booker_name: booking.bookerName ?? null,
+    booker_phone: booking.bookerPhone ?? null,
     status: booking.status,
   };
 }
@@ -427,6 +435,8 @@ export function useBooking() {
       "weekly_rate",
       "monthly_rate",
       "pricing_breakdown",
+      "booker_name",
+      "booker_phone",
     ].some((column) => isMissingColumnError(error, column));
 
     if (!missingExtendedColumn) {
@@ -514,6 +524,8 @@ export function useBooking() {
       "weekly_rate",
       "monthly_rate",
       "pricing_breakdown",
+      "booker_name",
+      "booker_phone",
     ].some((column) => isMissingColumnError(error, column));
 
     if (!missingExtendedColumn) {

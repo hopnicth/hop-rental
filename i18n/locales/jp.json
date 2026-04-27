@@ -354,7 +354,11 @@
     "priceBreakdownTitle": "レンタル料金内訳",
     "unitMonths": "{n} か月",
     "unitWeeks": "{n} 週間",
-    "unitDays": "{n} 日"
+    "unitDays": "{n} 日",
+    "bookerName": "予約者名",
+    "bookerNamePlaceholder": "予約者のフルネーム",
+    "bookerPhone": "連絡先電話番号",
+    "bookerPhonePlaceholder": "例: 081-234-5678"
   },
   "cart": {
     "pageTitle": "ショッピングカート",
@@ -488,6 +492,12 @@
         "returned": "返品済み",
         "cancelled": "キャンセル済み"
       }
+    },
+    "tracking": {
+      "title": "配送追跡",
+      "carrier": "配送業者",
+      "number": "追跡番号",
+      "shippedAt": "発送日時"
     }
   },
   "rentalsPage": {
@@ -502,6 +512,8 @@
     "rentalPeriod": "レンタル期間",
     "pickupHub": "受取拠点",
     "noHub": "受取拠点が未選択です",
+    "bookerName": "予約者",
+    "bookerPhone": "連絡先電話番号",
     "showQr": "QRコードを表示",
     "qrModalTitle": "受取用QRコード",
     "qrInstruction": "受取拠点のスタッフにこのQRを提示してください。",

@@ -1,101 +1,87 @@
-## Cart & Booking Test Checklist
+# Cart & Booking Test Checklist
 
-Manual regression checklist before the next Git/GitHub update.
+Last updated: 2026-04-27
+Purpose: manual smoke checklist for the current sale + rental flow
 
-Current expected behavior in this branch:
+## Expected baseline
 
-- `Book` creates a rental booking as `draft`.
-- Draft bookings appear in `/user/cart` in a separate rental section.
-- Rental submit from `/user/cart` requires a pickup hub and changes `draft -> confirmed`.
-- Confirmed bookings move to `/user/rentals` with a submitted-success state.
-- Cart badge count = purchase item quantity + rental draft booking count.
+- Sale items and rental drafts coexist in `/user/cart`
+- Rental bookings are created as `draft`
+- Rental confirmation happens from `/user/cart`
+- Cancelled bookings are hidden from `/user/rentals` and shown in `/user/orders`
+- Booker name + phone are required on rental submit
 
-### 1. Purchase cart only
+## Customer flow smoke tests
 
-- [ ] Login with a normal user.
-- [ ] Add 1 purchase item from a product page.
-- [ ] Open `/user/cart` and verify the item, quantity, and subtotal show correctly.
+### 1. Sale cart
+- [ ] Login as a normal user
+- [ ] Add a sale item
+- [ ] Verify `/user/cart` shows item, quantity, subtotal
 
-### 2. Rental booking only
+### 2. Rental draft creation
+- [ ] Open `/asset/[slug]`
+- [ ] Fill booker name + phone
+- [ ] Select dates and create booking
+- [ ] Verify redirect to `/user/cart`
+- [ ] Verify booking is shown as `draft`
 
-- [ ] Open a asset page, or a rental product that still uses the fallback booking form.
-- [ ] Select SKU/dates and press `Book`.
-- [ ] Verify loading state appears before success feedback.
-- [ ] Verify redirect goes to `/user/cart` and the booking is shown in the Rental Items section as `draft`.
-- [ ] Verify the cart badge increases for the rental draft.
+### 3. Mixed cart
+- [ ] Keep at least one sale item and one rental draft
+- [ ] Verify both sections render together
+- [ ] Verify totals look correct
 
-### 3. Mixed cart + booking
+### 4. Rental confirmation
+- [ ] Select pickup hub / branch
+- [ ] Verify submit is blocked if hub is missing
+- [ ] Confirm booking
+- [ ] Verify redirect to `/user/rentals?submitted=1...`
 
-- [ ] Keep at least 1 purchase item and 1 rental draft booking.
-- [ ] Verify both sections render together on `/user/cart`.
-- [ ] Verify totals include cart subtotal + booking rental + booking deposit.
+### 5. Cancel flow
+- [ ] Cancel a confirmed booking
+- [ ] Verify it disappears from `/user/rentals`
+- [ ] Verify it appears in `/user/orders`
 
-### 4. Rental submit flow
+### 6. Shipping / pickup
+- [ ] Submit a sale order with delivery
+- [ ] Verify shipping line + breakdown exist
+- [ ] Submit with pickup-at-branch
+- [ ] Verify shipping is zero and no address is required
 
-- [ ] With at least 1 rental draft in `/user/cart`, select a pickup hub.
-- [ ] Verify submit is blocked while any rental booking has no hub.
-- [ ] Press `Submit Rental Booking`.
-- [ ] Verify bookings are changed to `confirmed`.
-- [ ] Verify redirect goes to `/user/rentals?submitted=1...` with success feedback.
-- [ ] Verify submitted bookings no longer remain in the cart draft section.
+### 7. Persistence
+- [ ] Refresh `/user/cart` and `/user/rentals`
+- [ ] Verify state persists correctly for logged-in user
 
-### 5. Refresh persistence
+## Admin smoke tests
 
-- [ ] While logged in, refresh `/user/cart`.
-- [ ] Verify purchase items still appear.
-- [ ] Verify draft bookings still appear.
-- [ ] After rental submit, refresh `/user/rentals` and verify confirmed bookings still appear.
+### 8. Admin dashboard access
+- [ ] Confirm local env includes `SUPABASE_SECRET_KEY`
+- [ ] Open `/admin` and verify access for admin account
 
-### 6. Logout / login restore
+### 9. Admin order dashboard
+- [ ] Open `/admin/orders`
+- [ ] Verify grouped customer cards load
+- [ ] Verify incomplete rows are highlighted
+- [ ] Verify rental rows show booker phone/name when present
 
-- [ ] From a state with both cart item(s) and booking(s), logout.
-- [ ] Verify UI/badge clears for the logged-out session.
-- [ ] Login with the same account.
-- [ ] Verify purchase items and draft bookings are restored.
+### 10. Sale order tracking
+- [ ] Open `/admin/orders/[id]`
+- [ ] Update tracking / fulfillment info
+- [ ] Verify customer-visible order history reflects it
 
-### 7. Booking hub update
+### 11. Rental booking ops
+- [ ] Open `/admin/rental-bookings/[id]`
+- [ ] Create/use a checklist
+- [ ] Upload a booking document
+- [ ] Delete a document and verify storage cleanup path works
 
-- [ ] Change the pickup/return hub for a draft booking in `/user/cart`.
-- [ ] Verify the selected hub updates in UI and remains after refresh.
+### 12. Inventory/admin sanity
+- [ ] Open `/admin/products`
+- [ ] Open `/admin/assets`
+- [ ] Open `/admin/branches-inventory`
+- [ ] Verify key admin pages load without missing-table errors
 
-### 8. Remove actions
+## Notes
 
-- [ ] Remove 1 purchase item and verify subtotal updates.
-- [ ] Remove 1 draft booking and verify booking totals update.
-- [ ] Refresh and verify removed entries do not return.
-
-### 9. Quantity update
-
-- [ ] Increase and decrease purchase item quantity in `/user/cart`.
-- [ ] Verify line total and subtotal update correctly.
-
-### 10. Availability re-check
-
-- [ ] Add the same rental selection repeatedly until stock is exhausted.
-- [ ] Verify draft + confirmed bookings both reduce availability.
-- [ ] Verify the next attempt is blocked when no availability remains.
-
-### 11. Guest-to-user merge sanity
-
-- [ ] As guest, add purchase item(s).
-- [ ] Login.
-- [ ] Verify guest cart items merge into the logged-in cart without losing existing server data.
-
-### 12. Routing sanity
-
-- [ ] Click a product card from the listing page.
-- [ ] Verify it opens in the same tab.
-- [ ] Verify `/product-{group}/{slug}` resolves without connection or route errors while the dev server is running.
-
-### 13. Empty-state sanity
-
-- [ ] Remove all purchase items and all bookings.
-- [ ] Verify `/user/cart` shows the empty-state UI without broken totals or errors.
-
-### 14. Admin rental smoke check
-
-- [ ] Confirm local `.env` includes `SUPABASE_SECRET_KEY` (or legacy `SUPABASE_SERVICE_KEY`) before testing admin writes.
-- [ ] Confirm the target DB has migration `013_asset_schema.sql` applied before testing asset admin pages.
-- [ ] Open `/admin/products` and verify the first click navigates immediately without briefly showing `Customer` in the admin badge.
-- [ ] Open `/admin/assets` and verify the page loads without missing-table errors.
-- [ ] Select an asset and verify the inline Product matches card can load existing matches.
+- If search filters hit PostgREST, use `*term*` wildcard style.
+- If admin order contacts look empty, check both booking `booker_phone` and account `users.phone`.
+- If booking ops fail, confirm migrations `032` and `033` are applied.

@@ -73,6 +73,10 @@ export interface BookingItem
   matchedProductName?: string;
   /** Selected hub/store ID for pickup (null = not yet selected) */
   hubId: string | null;
+  /** Contact name of the person making the booking */
+  bookerName?: string | null;
+  /** Contact phone of the person making the booking */
+  bookerPhone?: string | null;
   /** Booking status */
   status: BookingStatus;
   /** ISO date string — when booking was created */

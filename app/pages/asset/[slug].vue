@@ -101,6 +101,8 @@ async function handleBookingSubmit(payload: {
   weeklyRate: number;
   monthlyRate: number;
   pricingBreakdown: import("~/utils/rental-pricing").RentalPricingBreakdown;
+  bookerName: string;
+  bookerPhone: string;
 }) {
   if (!access.value || isSubmittingBooking.value) {
     return;
@@ -146,6 +148,8 @@ async function handleBookingSubmit(payload: {
       totalCost: payload.totalCost,
       deposit: payload.deposit,
       pricingBreakdown: payload.pricingBreakdown,
+      bookerName: payload.bookerName,
+      bookerPhone: payload.bookerPhone,
     });
 
     toast.add({

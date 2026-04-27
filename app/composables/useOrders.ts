@@ -168,6 +168,10 @@ function mapRowToOrder(row: Record<string, unknown>): OrderRecord {
     grandTotal: Number(row.grand_total) || 0,
     currencyCode: (row.currency_code as string) ?? "THB",
     notes: (row.notes as string) ?? null,
+    trackingCarrier: (row.tracking_carrier as string) ?? null,
+    trackingNumber: (row.tracking_number as string) ?? null,
+    trackingNote: (row.tracking_note as string) ?? null,
+    shippedAt: (row.shipped_at as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };

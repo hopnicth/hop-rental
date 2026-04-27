@@ -334,7 +334,11 @@
     "priceBreakdownTitle": "租金明细",
     "unitMonths": "{n} 个月",
     "unitWeeks": "{n} 周",
-    "unitDays": "{n} 天"
+    "unitDays": "{n} 天",
+    "bookerName": "预订人姓名",
+    "bookerNamePlaceholder": "预订人全名",
+    "bookerPhone": "联系电话",
+    "bookerPhonePlaceholder": "例如 081-234-5678"
   },
   "cart": {
     "pageTitle": "购物车",
@@ -468,6 +472,12 @@
         "returned": "已退回",
         "cancelled": "已取消"
       }
+    },
+    "tracking": {
+      "title": "物流追踪",
+      "carrier": "承运商",
+      "number": "运单号",
+      "shippedAt": "发货时间"
     }
   },
   "rentalsPage": {
@@ -482,6 +492,8 @@
     "rentalPeriod": "租赁期间",
     "pickupHub": "提货网点",
     "noHub": "尚未选择提货网点",
+    "bookerName": "预订人",
+    "bookerPhone": "联系电话",
     "showQr": "显示二维码",
     "qrModalTitle": "提货二维码",
     "qrInstruction": "请向提货网点的工作人员出示此二维码进行扫码。",

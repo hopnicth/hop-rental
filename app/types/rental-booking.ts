@@ -73,6 +73,10 @@ export interface RentalBooking
   asset_snapshot?: Record<string, unknown>;
   matched_product_id?: string | null;
   hub_id: string | null;
+  /** Contact name of the person making the booking */
+  booker_name?: string | null;
+  /** Contact phone of the person making the booking */
+  booker_phone?: string | null;
   status: RentalBookingStatus;
   created_at: string;
   updated_at: string;

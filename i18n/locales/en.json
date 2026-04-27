@@ -359,7 +359,11 @@
     "priceBreakdownTitle": "Rental price breakdown",
     "unitMonths": "{n} months",
     "unitWeeks": "{n} weeks",
-    "unitDays": "{n} days"
+    "unitDays": "{n} days",
+    "bookerName": "Booker name",
+    "bookerNamePlaceholder": "Full name of person booking",
+    "bookerPhone": "Contact phone",
+    "bookerPhonePlaceholder": "e.g. 081-234-5678"
   },
   "cart": {
     "pageTitle": "Shopping Cart",
@@ -493,6 +497,12 @@
         "returned": "Returned",
         "cancelled": "Cancelled"
       }
+    },
+    "tracking": {
+      "title": "Shipment tracking",
+      "carrier": "Carrier",
+      "number": "Tracking number",
+      "shippedAt": "Shipped at"
     }
   },
   "rentalsPage": {
@@ -507,6 +517,8 @@
     "rentalPeriod": "Rental period",
     "pickupHub": "Pickup hub",
     "noHub": "Pickup hub not selected",
+    "bookerName": "Booker",
+    "bookerPhone": "Contact phone",
     "showQr": "Show QR Code",
     "qrModalTitle": "Pickup QR Code",
     "qrInstruction": "Show this QR to staff at the pickup branch.",

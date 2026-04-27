@@ -339,7 +339,11 @@
     "priceBreakdownTitle": "รายละเอียดค่าเช่า",
     "unitMonths": "{n} เดือน",
     "unitWeeks": "{n} สัปดาห์",
-    "unitDays": "{n} วัน"
+    "unitDays": "{n} วัน",
+    "bookerName": "ชื่อผู้จอง",
+    "bookerNamePlaceholder": "ชื่อ-นามสกุล ผู้จอง",
+    "bookerPhone": "เบอร์โทรติดต่อ",
+    "bookerPhonePlaceholder": "เช่น 081-234-5678"
   },
   "cart": {
     "pageTitle": "ตะกร้าสินค้า",
@@ -473,6 +477,12 @@
         "returned": "ส่งคืนแล้ว",
         "cancelled": "ยกเลิกแล้ว"
       }
+    },
+    "tracking": {
+      "title": "การติดตามพัสดุ",
+      "carrier": "ผู้ให้บริการขนส่ง",
+      "number": "หมายเลขติดตาม",
+      "shippedAt": "จัดส่งเมื่อ"
     }
   },
   "rentalsPage": {
@@ -487,6 +497,8 @@
     "rentalPeriod": "ช่วงวันเช่า",
     "pickupHub": "จุดรับสินค้า",
     "noHub": "ยังไม่ได้เลือกจุดรับสินค้า",
+    "bookerName": "ชื่อผู้จอง",
+    "bookerPhone": "เบอร์ติดต่อ",
     "showQr": "แสดง QR Code",
     "qrModalTitle": "QR Code สำหรับรับสินค้า",
     "qrInstruction": "แสดง QR นี้ให้พนักงานสแกนที่จุดรับสินค้า",

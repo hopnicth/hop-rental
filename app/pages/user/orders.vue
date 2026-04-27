@@ -283,6 +283,39 @@ function fulfillmentStatusColor(status: OrderFulfillmentStatus): BadgeColor {
             </p>
           </div>
         </div>
+
+        <div
+          v-if="
+            order.trackingNumber || order.trackingCarrier || order.trackingNote
+          "
+          class="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
+        >
+          <p class="mb-1 flex items-center gap-1 font-semibold text-primary">
+            <UIcon name="bx:package" />
+            {{ t("ordersPage.tracking.title") }}
+          </p>
+          <div class="space-y-0.5">
+            <p v-if="order.trackingCarrier">
+              <span class="font-medium"
+                >{{ t("ordersPage.tracking.carrier") }}:</span
+              >
+              {{ order.trackingCarrier }}
+            </p>
+            <p v-if="order.trackingNumber">
+              <span class="font-medium"
+                >{{ t("ordersPage.tracking.number") }}:</span
+              >
+              <span class="font-mono">{{ order.trackingNumber }}</span>
+            </p>
+            <p v-if="order.shippedAt" class="text-xs text-muted">
+              {{ t("ordersPage.tracking.shippedAt") }}:
+              {{ formatDate(order.shippedAt) }}
+            </p>
+            <p v-if="order.trackingNote" class="mt-1 text-xs">
+              {{ order.trackingNote }}
+            </p>
+          </div>
+        </div>
       </UCard>
     </div>
 

@@ -254,6 +254,23 @@ async function confirmCancel() {
                 >
                 {{ booking.hubName || t("rentalsPage.noHub") }}
               </p>
+              <p v-if="booking.bookerName">
+                <span class="font-medium text-default"
+                  >{{ t("rentalsPage.bookerName") }}:</span
+                >
+                {{ booking.bookerName }}
+              </p>
+              <p v-if="booking.bookerPhone">
+                <span class="font-medium text-default"
+                  >{{ t("rentalsPage.bookerPhone") }}:</span
+                >
+                <a
+                  :href="`tel:${booking.bookerPhone}`"
+                  class="text-primary hover:underline"
+                >
+                  {{ booking.bookerPhone }}
+                </a>
+              </p>
             </div>
           </div>
 

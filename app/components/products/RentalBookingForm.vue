@@ -56,6 +56,8 @@ const emit = defineEmits<{
       weeklyRate: number;
       monthlyRate: number;
       pricingBreakdown: RentalPricingBreakdown;
+      bookerName: string;
+      bookerPhone: string;
     },
   ];
   cancel: [];
@@ -64,6 +66,24 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const { blockingBookings } = useBooking();
 const { profile } = useUserProfile();
+
+// ── Booker contact fields ──
+const bookerName = ref("");
+const bookerPhone = ref("");
+
+// Pre-fill from user profile when available
+watch(
+  () => profile.value,
+  (p) => {
+    if (p && !bookerName.value) {
+      bookerName.value = p.fullName ?? "";
+    }
+    if (p && !bookerPhone.value) {
+      bookerPhone.value = p.phone ?? "";
+    }
+  },
+  { immediate: true },
+);
 
 // ── Config shortcuts ──
 const minDays = computed(() => props.asset?.rentalRules.minDays ?? 1);
@@ -210,6 +230,8 @@ const isValid = computed(() => {
   if (numDays.value < minDays.value) return false;
   if (maxDays.value > 0 && numDays.value > maxDays.value) return false;
   if (selectionHitsBlockedDates.value) return false;
+  if (!bookerName.value.trim()) return false;
+  if (!bookerPhone.value.trim()) return false;
   return true;
 });
 
@@ -273,6 +295,8 @@ function handleSubmit() {
     weeklyRate: weeklyRate.value,
     monthlyRate: monthlyRate.value,
     pricingBreakdown: pricingBreakdown.value,
+    bookerName: bookerName.value.trim(),
+    bookerPhone: bookerPhone.value.trim(),
   });
 }
 
@@ -301,6 +325,25 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
       class="space-y-4"
       :class="{ 'pointer-events-none opacity-60': props.loading }"
     >
+      <!-- Booker contact info -->
+      <div class="grid gap-3 sm:grid-cols-2">
+        <UFormField :label="t('booking.bookerName')" required>
+          <UInput
+            v-model="bookerName"
+            :placeholder="t('booking.bookerNamePlaceholder')"
+            icon="bx:user"
+          />
+        </UFormField>
+        <UFormField :label="t('booking.bookerPhone')" required>
+          <UInput
+            v-model="bookerPhone"
+            type="tel"
+            :placeholder="t('booking.bookerPhonePlaceholder')"
+            icon="bx:phone"
+          />
+        </UFormField>
+      </div>
+
       <!-- Calendar -->
       <div>
         <div class="mb-2 flex flex-wrap items-start justify-between gap-2">

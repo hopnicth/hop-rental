@@ -1,96 +1,101 @@
-# Nuxt Minimal Starter
+# HOP-RENTAL
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Last updated: 2026-04-27
 
-## Setup
+HOP-RENTAL is a Nuxt-based commerce + rental platform for HOPNIC.
+This single app contains storefront, customer self-service, and internal admin surfaces.
 
-Make sure to install dependencies:
+## What the app currently does
+
+- Sale catalog + checkout flow
+- Asset-first rental browsing and booking
+- Unified customer cart for sale items + rental drafts
+- Customer order history and rental history
+- Internal admin for catalog, assets, stock, orders, and rental operations
+
+## Quick start
+
+### Install
 
 ```bash
-# npm
 npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
 ```
 
-## Development Server
+### Required `.env`
 
-### Environment setup
+Minimum variables:
 
-Copy `.env.example` to `.env` and fill in your Supabase values.
-
-- `SUPABASE_URL` = project URL
-- `SUPABASE_KEY` = public anon key
-- `SUPABASE_SECRET_KEY` = server-only secret key for privileged admin APIs
+- `SUPABASE_URL`
+- `SUPABASE_KEY`
+- `SUPABASE_SECRET_KEY`
 
 Important notes:
 
-- `/api/admin/*` and `/admin/*` write actions require `SUPABASE_SECRET_KEY`
-  (recommended) or `SUPABASE_SERVICE_KEY` (deprecated fallback).
-- If the server-only key is missing, admin pages fall back to read-only mode and
-  show setup warnings instead of raw 500 errors.
-- Asset admin pages also expect DB migration `013_asset_schema.sql` to
-  be applied so `assets` and `asset_matches` exist.
-- After changing `.env`, restart `npm run dev`.
+- `SUPABASE_SECRET_KEY` must remain server-only.
+- Most `/api/admin/*` write routes require that server key.
+- Restart the dev server after env changes.
 
-Start the development server on `http://localhost:3000`:
+### Run locally
 
 ```bash
-# npm
 npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
+App URL: `http://localhost:3000`
 
-Build the application for production:
+### Verification commands
 
 ```bash
-# npm
+npm test
 npm run build
-
-# pnpm
-pnpm build
-
-# yarn
-yarn build
-
-# bun
-bun run build
 ```
 
-Locally preview production build:
+## Main routes
 
-```bash
-# npm
-npm run preview
+### Storefront
+- `/`
+- `/product-{group}`
+- `/product-{group}/{slug}`
+- `/product-rental`
+- `/asset/{slug}`
 
-# pnpm
-pnpm preview
+### Customer
+- `/user/cart`
+- `/user/orders`
+- `/user/rentals`
 
-# yarn
-yarn preview
+### Admin
+- `/admin`
+- `/admin/products`
+- `/admin/assets`
+- `/admin/branches-inventory`
+- `/admin/orders`
+- `/admin/orders/[id]`
+- `/admin/rental-bookings/[id]`
 
-# bun
-bun run preview
-```
+## Important current rules
 
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+- Rental is now `asset`-first.
+- Rental bookings are created as `draft` and confirmed from `/user/cart`.
+- Booking cancellation is soft-delete via `status = 'cancelled'`.
+- Booker name + phone are captured on rental submission.
+- Admin order tracking info is customer-visible after admin updates it.
 
-icon usage
-Boxicon: https://icones.js.org/collection/bx
+## Documentation
+
+Start with `map.md`.
+
+Then use:
+
+- `PROJECT_SUMMARY.md` — current state snapshot
+- `API_INDEX.md` — routes, endpoints, composables, debug rules
+- `ADMIN_MVP_ACTION_PLAN.md` — admin backlog and status
+- `ASSET_ACTION_PLAN.md` — asset/rental decisions and backlog
+- `DATABASE_ADMIN_MANUAL.md` — setup rules for admin data
+- `ROLE_MATRIX.md` — permission model
+- `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
+
+## UI notes
+
+- UI: `@nuxt/ui`
+- Icons: Boxicons (`bx:`)

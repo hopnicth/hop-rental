@@ -26,6 +26,12 @@ const sections = computed(() => {
         "Manage store branches and inventory stock per branch. Branch editing is super-admin only.",
       to: "/admin/branches-inventory",
     },
+    {
+      title: "Orders & Bookings",
+      description:
+        "Customer-grouped view of sale orders and rental bookings with QR scan, filters, and lazy load.",
+      to: "/admin/orders",
+    },
   ];
 
   if (profile.value?.platformRole === "super_admin") {

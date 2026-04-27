@@ -54,6 +54,10 @@ export interface OrderRecord {
   grandTotal: number;
   currencyCode: string;
   notes: string | null;
+  trackingCarrier: string | null;
+  trackingNumber: string | null;
+  trackingNote: string | null;
+  shippedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
