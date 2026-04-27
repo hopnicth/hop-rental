@@ -1,6 +1,6 @@
 # Asset Action Plan
 
-Last updated: 2026-04-26
+Last updated: 2026-04-27
 Owner: Augment continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -191,10 +191,11 @@ Future Augment sessions should treat this as the approved baseline unless the us
   - Show cards inline without requiring a separate detail page first.
   - 2026-04-21: product detail now shows related asset cards under the main product content.
 
-- [/] U3. Product detail: remove direct booking ownership
+- [x] U3. Product detail: remove direct booking ownership
   - Existing product-level `Book Now` should stop being the primary booking trigger.
   - Product page becomes discovery + handoff to asset.
   - 2026-04-21: when matched assets exist, product detail now hands off to the asset list; the legacy inline booking form remains only as a fallback when no asset match exists.
+  - 2026-04-27: `/product-[group]` listing was refactored to products-only and the rental discovery surface uses `/product-rental` asset cards; the product-detail booking handoff is the canonical entry.
 
 - [x] U4. Asset booking CTA
   - Clicking an asset card should open the booking flow for that asset.
@@ -217,9 +218,11 @@ Future Augment sessions should treat this as the approved baseline unless the us
   - 2026-04-21: `/product-rental` now browses asset entries instead of raw product cards.
 - [x] M4. Add inline rental list under product detail.
   - 2026-04-21: related asset cards now appear on product detail when matches exist.
-- [/] M5. Move booking submit path to use `asset_id`.
+- [x] M5. Move booking submit path to use `asset_id`.
   - 2026-04-21: asset booking submits now send asset snapshot fields and use `asset_id` when it is a valid UUID; legacy-schema fallback keeps older DBs working.
-- [ ] M6. Retire product-owned booking UI after new flow is verified.
+  - 2026-04-27: migration `031_rental_bookings_asset_only.sql` made `product_id` / `sku_id` nullable and added check constraint `rental_bookings_root_chk` (asset_id OR product+sku). Asset-only bookings now persist without requiring a matched product/SKU.
+- [x] M6. Retire product-owned booking UI after new flow is verified.
+  - 2026-04-27: rental discovery is now asset-first (`/product-rental` asset listing + asset detail booking). The product-level inline booking form remains as a fallback only when an asset has no SKU/match.
 
 ## Current known code areas to change
 
@@ -247,6 +250,9 @@ Future Augment sessions should treat this as the approved baseline unless the us
 
 ## Latest implementation notes
 
+- 2026-04-27: migration `031_rental_bookings_asset_only.sql` relaxed `rental_bookings.product_id` / `sku_id` to nullable and added `rental_bookings_root_chk`. `useBooking.mapBookingToInsert` now coerces empty product/SKU to `null`; `RentalBookingForm.relevantBookings` falls back to `assetId` when no SKU is selected. `app/pages/asset/[slug].vue` book-now is now gated only by access existence (`canBookAccess = !!access`), not by `asset_matches`.
+- 2026-04-27: cancellation is implemented as soft-delete (`updateBookingStatus(id, 'cancelled')`). `/user/rentals` filters out `status === 'cancelled'`; `/user/orders` shows them under a new "Cancelled bookings" section.
+- 2026-04-27: migration `028_assets_detail_blocks.sql` added `assets.detail_blocks` JSONB. Storefront viewer `AssetDetailBlocks.vue` and admin editor `AdminAssetDetailBlocksEditor.vue` mirror the product `detail_blocks` model; server APIs live under `/api/admin/assets/:id/detail-blocks/*`.
 - 2026-04-26: asset tag input uses the shared `catalog_terms` dictionary via migration `027_assets_catalog_terms_sync.sql` (AFTER INSERT/UPDATE trigger `assets_after_sync_catalog_terms_trg` mirrors the products one). `/admin/assets` now uses `AdminCommaSuggestInput` for `tag_keys` with autocomplete fed from `/api/admin/products/suggestions` (which reads central `catalog_terms`) plus active main categories. The previous comma-separated free-text input is gone; the form stores `tagKeys` as `string[]` directly.
 - 2026-04-26: assets now carry `main_category_key` + `tag_keys` (mirroring products) via migration `026_assets_main_category_and_tags.sql`. A `BEFORE INSERT/UPDATE` trigger derives `category_keys` from `main_category_key` + `tag_keys` so the storefront URL pattern (`/product-{category_keys[0]}/{slug}`) stays consistent. `/admin/assets` exposes a `Main category` `USelectMenu` (sourced from `/api/admin/main-categories`) in place of the previous free-text `Category keys` field. Server util `server/utils/admin-asset.ts` accepts `mainCategoryKey` + `tagKeys` and returns them on list and detail.
 - 2026-04-26: rental_access domain renamed to `asset` end-to-end (DB → API → UI) via migration `025_rename_rental_access_to_assets.sql`. All `/admin/rental-accesses/*` and `/admin/matches/*` routes/endpoints removed; canonical surface is now `/admin/assets` and `/api/admin/assets/*`.
@@ -275,11 +281,9 @@ The catalog/inventory side has been rebuilt and is documented in `PROJECT_SUMMAR
 
 Priority order for the next asset slice:
 
-1. **U3** — finish removing product-owned booking ownership; the legacy inline booking form should retire once U2 + access list are confirmed reliable.
-2. **M5** — finalize the `asset_id`-driven booking submit path and remove the legacy-schema fallback once all environments are migrated to `013`.
-3. **M6** — retire the product-owned booking UI after U3 + M5 land.
-4. **U5** — surface customer-facing docs (`asset_documents` with `visibility` modes) inside the rental UI / booking history.
-5. **U6** — start the backoffice checklist + doc workflow UI on top of the existing schema (`asset_checklist_templates`, `rental_booking_checklists`, `rental_booking_documents`).
+1. **U5** — surface customer-facing docs (`asset_documents` with `visibility` modes) inside the rental UI / booking history.
+2. **U6** — start the backoffice checklist + doc workflow UI on top of the existing schema (`asset_checklist_templates`, `rental_booking_checklists`, `rental_booking_documents`).
+3. Cleanup: once all environments are confirmed on migration `031`, drop the remaining legacy-schema fallback in `useBooking.insertBookingWithSchemaFallback`.
 
 Cross-references to keep aligned while doing this:
 

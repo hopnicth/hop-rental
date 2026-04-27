@@ -14,6 +14,20 @@ import type {
   SKUStock,
 } from "~/types/product";
 import type { LocalizedString } from "~/types/locale";
+import { DEFAULT_SHIPPING_SIZE, type ShippingSize } from "~/config/shipping";
+
+function normalizeShippingSize(value: string | null | undefined): ShippingSize {
+  if (
+    value === "free" ||
+    value === "s" ||
+    value === "m" ||
+    value === "l" ||
+    value === "xl"
+  ) {
+    return value;
+  }
+  return DEFAULT_SHIPPING_SIZE;
+}
 
 const PRODUCT_PLACEHOLDER_IMAGE =
   "https://placehold.co/400x400/E0E0E0/757575?text=Product&font=roboto";
@@ -174,9 +188,11 @@ export function mapCatalogProductToProduct(
     spec: record.spec ?? {},
     documents: toProductDocumentLinks(record),
     mediaLinks: toProductMediaLinks(record),
+    detailBlocks: record.detail_blocks,
     suppliers: record.supplier_ids ?? [],
     isForSale,
     skus: record.skus.map((sku) => mapCatalogSkuToProductSku(sku)),
+    shippingSize: normalizeShippingSize(record.shipping_size),
     insight: {
       viewCount: metrics.view_count ?? 0,
       addToCartCount: metrics.add_to_cart_count ?? 0,

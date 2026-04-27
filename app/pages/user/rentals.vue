@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { BookingItem, BookingStatus } from "~/types/booking";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
+import QrcodeVue from "qrcode.vue";
 
 type BadgeColor = "neutral" | "info" | "warning" | "success" | "error";
 
 const { t, locale } = useI18n();
 const route = useRoute();
+const toast = useToast();
 const { isLoggedIn } = useAuthSession();
 const {
   bookingItems,
@@ -13,6 +15,7 @@ const {
   bookingTotalDeposit,
   bookingTotalRental,
   loading,
+  updateBookingStatus,
 } = useBooking();
 
 watchEffect(() => {
@@ -22,9 +25,13 @@ watchEffect(() => {
 });
 
 const sortedBookings = computed(() =>
-  [...bookingItems.value].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  ),
+  bookingItems.value
+    .filter((b) => b.status !== "cancelled")
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    ),
 );
 
 const submittedBookingCount = computed(() => {
@@ -67,6 +74,72 @@ function rentalPeriodLabel(booking: BookingItem): string {
 
 function bookingTitle(booking: BookingItem): string {
   return booking.assetName || booking.productName;
+}
+
+// ── QR Code modal ──
+const qrTarget = ref<BookingItem | null>(null);
+const isQrModalOpen = computed({
+  get: () => qrTarget.value !== null,
+  set: (open: boolean) => {
+    if (!open) qrTarget.value = null;
+  },
+});
+
+function openQr(booking: BookingItem) {
+  qrTarget.value = booking;
+}
+
+// ── Cancel booking flow ──
+function todayDateString(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function canCancelBooking(booking: BookingItem): boolean {
+  if (booking.status === "cancelled") return false;
+  return todayDateString() < booking.startDate;
+}
+
+const cancelTarget = ref<BookingItem | null>(null);
+const cancelling = ref(false);
+const isCancelModalOpen = computed({
+  get: () => cancelTarget.value !== null,
+  set: (open: boolean) => {
+    if (!open && !cancelling.value) cancelTarget.value = null;
+  },
+});
+
+function openCancel(booking: BookingItem) {
+  cancelTarget.value = booking;
+}
+
+async function confirmCancel() {
+  const target = cancelTarget.value;
+  if (!target || cancelling.value) return;
+
+  cancelling.value = true;
+  try {
+    const ok = await updateBookingStatus(target.bookingId, "cancelled");
+    if (ok) {
+      toast.add({
+        title: t("rentalsPage.cancelSuccess"),
+        icon: "bx:check-circle",
+        color: "success",
+      });
+      cancelTarget.value = null;
+    } else {
+      toast.add({
+        title: t("rentalsPage.cancelFailed"),
+        icon: "bx:error-circle",
+        color: "error",
+      });
+    }
+  } finally {
+    cancelling.value = false;
+  }
 }
 </script>
 
@@ -184,18 +257,119 @@ function bookingTitle(booking: BookingItem): string {
             </div>
           </div>
 
-          <div class="text-left sm:text-right">
-            <p class="text-sm text-muted">{{ t("rentalsPage.rentalTotal") }}</p>
-            <p class="text-lg font-bold text-primary">
-              {{ formatCurrency(booking.totalCost) }}
-            </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ t("cart.depositLabel") }}:
-              {{ formatCurrency(booking.deposit) }}
-            </p>
+          <div class="flex flex-col gap-3 text-left sm:items-end sm:text-right">
+            <div>
+              <p class="text-sm text-muted">
+                {{ t("rentalsPage.rentalTotal") }}
+              </p>
+              <p class="text-lg font-bold text-primary">
+                {{ formatCurrency(booking.totalCost) }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                {{ t("cart.depositLabel") }}:
+                {{ formatCurrency(booking.deposit) }}
+              </p>
+            </div>
+            <div class="flex flex-col gap-2 sm:items-end">
+              <UButton
+                :label="t('rentalsPage.showQr')"
+                icon="bx:qr"
+                size="sm"
+                variant="outline"
+                @click="openQr(booking)"
+              />
+              <UButton
+                :label="t('rentalsPage.cancelBooking')"
+                icon="bx:x-circle"
+                size="sm"
+                color="error"
+                variant="ghost"
+                :disabled="!canCancelBooking(booking)"
+                :title="
+                  canCancelBooking(booking)
+                    ? undefined
+                    : t('rentalsPage.cancelDisabledHint')
+                "
+                @click="openCancel(booking)"
+              />
+            </div>
           </div>
         </div>
       </UCard>
     </div>
+
+    <UModal
+      v-model:open="isCancelModalOpen"
+      :title="t('rentalsPage.cancelConfirmTitle')"
+      :description="t('rentalsPage.cancelConfirmDesc')"
+      :dismissible="!cancelling"
+    >
+      <template #body>
+        <div v-if="cancelTarget" class="space-y-2 text-sm">
+          <div class="text-center">
+            <UIcon
+              name="bx:error-circle"
+              class="mx-auto mb-2 text-4xl text-error"
+            />
+          </div>
+          <p class="font-semibold">{{ bookingTitle(cancelTarget) }}</p>
+          <p class="text-xs text-muted">
+            {{ t("rentalsPage.reference", { id: cancelTarget.bookingId }) }}
+          </p>
+          <p>
+            <span class="font-medium">{{
+              t("rentalsPage.pickupDateLabel")
+            }}</span
+            >: {{ cancelTarget.startDate }}
+          </p>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-center gap-2">
+          <UButton
+            :label="t('rentalsPage.cancelKeep')"
+            color="neutral"
+            variant="ghost"
+            :disabled="cancelling"
+            @click="cancelTarget = null"
+          />
+          <UButton
+            :label="t('rentalsPage.cancelConfirm')"
+            color="error"
+            icon="bx:trash"
+            :loading="cancelling"
+            :disabled="cancelling"
+            @click="confirmCancel"
+          />
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="isQrModalOpen" :title="t('rentalsPage.qrModalTitle')">
+      <template #body>
+        <div v-if="qrTarget" class="flex flex-col items-center gap-4 py-2">
+          <p class="text-sm text-muted">{{ t("rentalsPage.qrInstruction") }}</p>
+          <div class="rounded-xl border bg-white p-4">
+            <QrcodeVue :value="qrTarget.bookingId" :size="220" level="H" />
+          </div>
+          <div class="w-full space-y-1 text-sm">
+            <p class="font-semibold">{{ bookingTitle(qrTarget) }}</p>
+            <p class="text-xs text-muted">
+              {{ t("rentalsPage.reference", { id: qrTarget.bookingId }) }}
+            </p>
+            <p>
+              <span class="font-medium">{{
+                t("rentalsPage.pickupDateLabel")
+              }}</span
+              >: {{ qrTarget.startDate }}
+            </p>
+            <p>
+              <span class="font-medium">{{ t("rentalsPage.pickupHub") }}</span
+              >: {{ qrTarget.hubName || t("rentalsPage.noHub") }}
+            </p>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </UContainer>
 </template>

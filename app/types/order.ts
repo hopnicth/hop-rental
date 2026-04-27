@@ -1,4 +1,5 @@
 import type { Address } from "~/types/user";
+import type { ShippingBreakdown } from "~/utils/shipping";
 
 export type OrderCheckoutMode = "payment" | "quotation";
 export type OrderPaymentMethod = "credit_card" | "promptpay" | "company_credit";
@@ -48,6 +49,8 @@ export interface OrderRecord {
   addressSnapshot: OrderAddressSnapshot;
   subtotal: number;
   discountTotal: number;
+  shippingCost: number;
+  shippingBreakdown: ShippingBreakdown | Record<string, never>;
   grandTotal: number;
   currencyCode: string;
   notes: string | null;
@@ -72,4 +75,6 @@ export interface CreateOrderParams {
   cartId?: string | null;
   companyId?: string | null;
   notes?: string | null;
+  shippingCost?: number;
+  shippingBreakdown?: ShippingBreakdown;
 }

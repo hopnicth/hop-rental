@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { BookingItem } from "~/types/booking";
 import type {
   OrderCheckoutMode,
   OrderFulfillmentStatus,
@@ -20,6 +21,25 @@ const route = useRoute();
 const { t } = useI18n();
 const { isLoggedIn } = useAuthSession();
 const { orders, loading, error, fetchOrders } = useOrders();
+const { bookingItems } = useBooking();
+
+const cancelledBookings = computed<BookingItem[]>(() =>
+  bookingItems.value
+    .filter((b) => b.status === "cancelled")
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    ),
+);
+
+function bookingTitle(booking: BookingItem): string {
+  return booking.assetName || booking.productName;
+}
+
+function rentalPeriodLabel(booking: BookingItem): string {
+  return `${booking.startDate} → ${booking.returnDate} • ${t("cart.days", { n: booking.numDays })}`;
+}
 
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
@@ -264,6 +284,79 @@ function fulfillmentStatusColor(status: OrderFulfillmentStatus): BadgeColor {
           </div>
         </div>
       </UCard>
+    </div>
+
+    <div v-if="cancelledBookings.length > 0" class="mt-10">
+      <div class="mb-4">
+        <h2 class="text-xl font-bold">
+          {{ t("ordersPage.cancelledBookingsTitle") }}
+        </h2>
+        <p class="text-sm text-muted">
+          {{ t("ordersPage.cancelledBookingsDesc") }}
+        </p>
+      </div>
+      <div class="space-y-4">
+        <UCard
+          v-for="booking in cancelledBookings"
+          :key="booking.bookingId"
+          class="opacity-80"
+        >
+          <div
+            class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div class="space-y-2">
+              <div>
+                <p class="font-semibold">{{ bookingTitle(booking) }}</p>
+                <p class="text-xs text-muted">
+                  {{ t("rentalsPage.reference", { id: booking.bookingId }) }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <UBadge color="error" variant="subtle">
+                  {{
+                    t("rentalsPage.badges.status", {
+                      status: t("rentalsPage.status.cancelled"),
+                    })
+                  }}
+                </UBadge>
+              </div>
+              <div class="space-y-1 text-sm text-muted">
+                <p>
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.createdAt") }}:</span
+                  >
+                  {{ formatDate(booking.createdAt) }}
+                </p>
+                <p>
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.rentalPeriod") }}:</span
+                  >
+                  {{ rentalPeriodLabel(booking) }}
+                </p>
+                <p>
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.pickupHub") }}:</span
+                  >
+                  {{ booking.hubName || t("rentalsPage.noHub") }}
+                </p>
+              </div>
+            </div>
+
+            <div class="text-left sm:text-right">
+              <p class="text-sm text-muted">
+                {{ t("rentalsPage.rentalTotal") }}
+              </p>
+              <p class="text-lg font-bold text-primary">
+                {{ formatCurrency(booking.totalCost) }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                {{ t("cart.depositLabel") }}:
+                {{ formatCurrency(booking.deposit) }}
+              </p>
+            </div>
+          </div>
+        </UCard>
+      </div>
     </div>
   </UContainer>
 </template>

@@ -1,7 +1,40 @@
 import type { BookingItem, BookingStore } from "~/types/booking";
 import type { RentalBookingInsert } from "~/types/rental-booking";
+import {
+  normalizeRentalPricingBreakdown,
+  type RentalPricingBreakdown,
+} from "~/utils/rental-pricing";
 
 const BOOKING_STORAGE_PREFIX = "hop-rental-bookings";
+
+interface CreateBookingParams {
+  userId?: string;
+  /** Optional — empty/undefined for asset-only bookings */
+  productId?: string;
+  /** Optional — empty/undefined for asset-only bookings */
+  skuId?: string;
+  assetId?: string;
+  assetCode?: string;
+  assetSlug?: string;
+  assetName?: string;
+  assetThumbnail?: string;
+  assetSnapshot?: Record<string, unknown>;
+  matchedProductId?: string;
+  matchedProductName?: string;
+  productName: string;
+  thumbnail: string;
+  startDate: string;
+  numDays: number;
+  returnDate: string;
+  dailyRate: number;
+  weeklyRate?: number;
+  monthlyRate?: number;
+  totalCost: number;
+  deposit: number;
+  pricingBreakdown?: RentalPricingBreakdown;
+  hubId?: string | null;
+  hubName?: string | null;
+}
 
 /**
  * Build a user-scoped storage key.
@@ -82,8 +115,11 @@ function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
     numDays: Math.max(1, Number(raw.numDays) || 1),
     returnDate: raw.returnDate ?? raw.startDate ?? "",
     dailyRate: normalizeMoney(raw.dailyRate),
+    weeklyRate: normalizeMoney(raw.weeklyRate),
+    monthlyRate: normalizeMoney(raw.monthlyRate),
     totalCost: normalizeMoney(raw.totalCost),
     deposit: normalizeMoney(raw.deposit),
+    pricingBreakdown: raw.pricingBreakdown,
     hubId: raw.hubId ?? null,
     hubName: raw.hubName ?? null,
     status: normalizeBookingStatus(raw.status),
@@ -129,31 +165,24 @@ function mapRowToBooking(
 ): BookingItem {
   const numDays = Number(row.rental_days);
   const dailyRate = Number(row.daily_rate);
+  const weeklyRate = Number(row.weekly_rate);
+  const monthlyRate = Number(row.monthly_rate);
   const totalCost = Number(row.rental_total);
   const deposit = Number(row.deposit_amount);
+  const pricingBreakdown =
+    normalizeRentalPricingBreakdown(row.pricing_breakdown) ??
+    fallback?.pricingBreakdown;
 
   return normalizeBookingItem({
     bookingId: (row.id as string) ?? fallback?.bookingId,
     productId: (row.product_id as string) ?? fallback?.productId,
     skuId: (row.sku_id as string) ?? fallback?.skuId,
-    assetId:
-      (row.asset_id as string) ?? fallback?.assetId ?? undefined,
-    assetCode:
-      (row.asset_code as string) ??
-      fallback?.assetCode ??
-      undefined,
-    assetSlug:
-      (row.asset_slug as string) ??
-      fallback?.assetSlug ??
-      undefined,
-    assetName:
-      (row.asset_name as string) ??
-      fallback?.assetName ??
-      undefined,
+    assetId: (row.asset_id as string) ?? fallback?.assetId ?? undefined,
+    assetCode: (row.asset_code as string) ?? fallback?.assetCode ?? undefined,
+    assetSlug: (row.asset_slug as string) ?? fallback?.assetSlug ?? undefined,
+    assetName: (row.asset_name as string) ?? fallback?.assetName ?? undefined,
     assetThumbnail:
-      (row.asset_thumbnail as string) ??
-      fallback?.assetThumbnail ??
-      undefined,
+      (row.asset_thumbnail as string) ?? fallback?.assetThumbnail ?? undefined,
     assetSnapshot:
       normalizeRecord(row.asset_snapshot) ??
       fallback?.assetSnapshot ??
@@ -179,8 +208,13 @@ function mapRowToBooking(
     numDays: Number.isFinite(numDays) ? numDays : fallback?.numDays,
     returnDate: (row.end_date as string) ?? fallback?.returnDate,
     dailyRate: Number.isFinite(dailyRate) ? dailyRate : fallback?.dailyRate,
+    weeklyRate: Number.isFinite(weeklyRate) ? weeklyRate : fallback?.weeklyRate,
+    monthlyRate: Number.isFinite(monthlyRate)
+      ? monthlyRate
+      : fallback?.monthlyRate,
     totalCost: Number.isFinite(totalCost) ? totalCost : fallback?.totalCost,
     deposit: Number.isFinite(deposit) ? deposit : fallback?.deposit,
+    pricingBreakdown,
     hubId: (row.hub_id as string) ?? fallback?.hubId ?? null,
     hubName: (row.hub_name as string) ?? fallback?.hubName ?? null,
     status: (row.status as BookingItem["status"]) ?? fallback?.status,
@@ -199,8 +233,8 @@ function mapBookingToInsert(
 
   return {
     user_id: userId,
-    product_id: booking.productId,
-    sku_id: booking.skuId,
+    product_id: booking.productId || null,
+    sku_id: booking.skuId || null,
     asset_id: assetId ?? null,
     hub_id: booking.hubId,
     product_name: booking.productName,
@@ -211,7 +245,7 @@ function mapBookingToInsert(
     asset_name: booking.assetName ?? null,
     asset_thumbnail: booking.assetThumbnail ?? null,
     asset_snapshot: booking.assetSnapshot ?? {},
-    matched_product_id: booking.matchedProductId ?? booking.productId,
+    matched_product_id: booking.matchedProductId || booking.productId || null,
     matched_product_name: booking.matchedProductName ?? booking.productName,
     start_date: booking.startDate,
     end_date: booking.returnDate,
@@ -219,8 +253,11 @@ function mapBookingToInsert(
     pricing_model: "daily",
     currency_code: "THB",
     daily_rate: booking.dailyRate,
+    weekly_rate: booking.weeklyRate,
+    monthly_rate: booking.monthlyRate,
     rental_total: booking.totalCost,
     deposit_amount: booking.deposit,
+    pricing_breakdown: booking.pricingBreakdown ?? {},
     status: booking.status,
   };
 }
@@ -249,8 +286,8 @@ function mapBookingToLegacyInsert(
 > {
   return {
     user_id: userId,
-    product_id: booking.productId,
-    sku_id: booking.skuId,
+    product_id: booking.productId || null,
+    sku_id: booking.skuId || null,
     hub_id: booking.hubId,
     product_name: booking.productName,
     thumbnail: booking.thumbnail,
@@ -387,6 +424,9 @@ export function useBooking() {
       "asset_name",
       "asset_thumbnail",
       "asset_snapshot",
+      "weekly_rate",
+      "monthly_rate",
+      "pricing_breakdown",
     ].some((column) => isMissingColumnError(error, column));
 
     if (!missingExtendedColumn) {
@@ -471,6 +511,9 @@ export function useBooking() {
       "asset_name",
       "asset_thumbnail",
       "asset_snapshot",
+      "weekly_rate",
+      "monthly_rate",
+      "pricing_breakdown",
     ].some((column) => isMissingColumnError(error, column));
 
     if (!missingExtendedColumn) {
@@ -725,29 +768,7 @@ export function useBooking() {
   }
 
   async function createBooking(
-    params: {
-      userId?: string;
-      productId: string;
-      skuId: string;
-      assetId?: string;
-      assetCode?: string;
-      assetSlug?: string;
-      assetName?: string;
-      assetThumbnail?: string;
-      assetSnapshot?: Record<string, unknown>;
-      matchedProductId?: string;
-      matchedProductName?: string;
-      productName: string;
-      thumbnail: string;
-      startDate: string;
-      numDays: number;
-      returnDate: string;
-      dailyRate: number;
-      totalCost: number;
-      deposit: number;
-      hubId?: string | null;
-      hubName?: string | null;
-    },
+    params: CreateBookingParams,
     status: BookingItem["status"],
   ): Promise<BookingItem> {
     let userId =
@@ -793,58 +814,16 @@ export function useBooking() {
   /**
    * Add a new booking (status = "draft").
    */
-  function addBooking(params: {
-    userId?: string;
-    productId: string;
-    skuId: string;
-    assetId?: string;
-    assetCode?: string;
-    assetSlug?: string;
-    assetName?: string;
-    assetThumbnail?: string;
-    assetSnapshot?: Record<string, unknown>;
-    matchedProductId?: string;
-    matchedProductName?: string;
-    productName: string;
-    thumbnail: string;
-    startDate: string;
-    numDays: number;
-    returnDate: string;
-    dailyRate: number;
-    totalCost: number;
-    deposit: number;
-    hubId?: string | null;
-    hubName?: string | null;
-  }): Promise<BookingItem> {
+  function addBooking(params: CreateBookingParams): Promise<BookingItem> {
     return createBooking(params, "draft");
   }
 
   /**
    * Confirm a booking by writing the final confirmed row to Supabase.
    */
-  async function confirmBooking(params: {
-    userId?: string;
-    productId: string;
-    skuId: string;
-    assetId?: string;
-    assetCode?: string;
-    assetSlug?: string;
-    assetName?: string;
-    assetThumbnail?: string;
-    assetSnapshot?: Record<string, unknown>;
-    matchedProductId?: string;
-    matchedProductName?: string;
-    productName: string;
-    thumbnail: string;
-    startDate: string;
-    numDays: number;
-    returnDate: string;
-    dailyRate: number;
-    totalCost: number;
-    deposit: number;
-    hubId?: string | null;
-    hubName?: string | null;
-  }): Promise<BookingItem> {
+  async function confirmBooking(
+    params: CreateBookingParams,
+  ): Promise<BookingItem> {
     return createBooking(params, "confirmed");
   }
 

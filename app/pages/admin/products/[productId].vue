@@ -88,6 +88,7 @@ type AdminProductDetail = {
   mediaGallery: AdminMediaItem[];
   spec: Record<string, unknown>;
   detailBlocks: unknown[];
+  shippingSize: "free" | "s" | "m" | "l" | "xl";
   isHidden: boolean;
   updatedAt?: string;
   skus: AdminSkuItem[];
@@ -110,6 +111,14 @@ const typeOptions = [
   { label: "Hybrid", value: "hybrid" },
 ];
 
+const shippingSizeOptions = [
+  { label: "Free (0 ฿)", value: "free" },
+  { label: "S (50 ฿)", value: "s" },
+  { label: "M (100 ฿)", value: "m" },
+  { label: "L (150 ฿)", value: "l" },
+  { label: "XL (200 ฿)", value: "xl" },
+];
+
 const productForm = reactive({
   slug: "",
   type: "sale" as AdminProductDetail["type"],
@@ -121,6 +130,7 @@ const productForm = reactive({
   tagKeysText: "",
   searchKeywordsText: "",
   brand: "",
+  shippingSize: "s" as AdminProductDetail["shippingSize"],
   isHidden: false,
 });
 
@@ -447,6 +457,7 @@ function fillProductForm(item: AdminProductDetail) {
   productForm.tagKeysText = item.tagKeys.join(", ");
   productForm.searchKeywordsText = item.searchKeywords.join(", ");
   productForm.brand = item.brand;
+  productForm.shippingSize = item.shippingSize ?? "s";
   productForm.isHidden = item.isHidden;
   specText.value = JSON.stringify(item.spec ?? {}, null, 2);
   detailBlocksText.value = JSON.stringify(item.detailBlocks ?? [], null, 2);
@@ -562,6 +573,7 @@ async function saveProduct() {
         tagKeys: parseCsv(productForm.tagKeysText),
         searchKeywords: parseCsv(productForm.searchKeywordsText),
         brand: productForm.brand,
+        shippingSize: productForm.shippingSize,
         isHidden: productForm.isHidden,
         spec: parseJsonText(specText.value, "spec", {}),
         detailBlocks: parseJsonText(detailBlocksText.value, "detailBlocks", []),
@@ -948,6 +960,19 @@ async function deleteActiveSkuImage(imageId: string) {
                 <div class="flex h-10 items-center">
                   <UCheckbox v-model="productForm.isHidden" />
                 </div>
+              </UFormField>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+              <UFormField
+                label="Shipping size"
+                hint="Used to compute the cart shipping fee via free-unit bin packing."
+              >
+                <USelectMenu
+                  v-model="productForm.shippingSize"
+                  :items="shippingSizeOptions"
+                  value-key="value"
+                />
               </UFormField>
             </div>
 

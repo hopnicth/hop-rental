@@ -1,4 +1,5 @@
 import type { LocalizedString } from "~/types/locale";
+import type { ShippingSize } from "~/config/shipping";
 
 // ─────────────────────────────────────────────
 // Sub-interfaces — Spec & Docs
@@ -37,6 +38,35 @@ export interface ProductMediaLink {
   url: string;
   thumbnailUrl?: string | null;
 }
+
+// ─────────────────────────────────────────────
+// Sub-interfaces — Detail blocks (jsonb-driven)
+// ─────────────────────────────────────────────
+
+/**
+ * Link button rendered inside a detail block.
+ * Stored in DB as a flat record with `label_*` and `url` keys.
+ */
+export interface ProductDetailBlockButton {
+  id?: string;
+  label: LocalizedString;
+  url: string;
+  icon?: string;
+}
+
+/**
+ * One detail block — top-level key from `products.detail_blocks` jsonb.
+ * Renders as a stacked section on the product detail page.
+ */
+export interface ProductDetailBlock {
+  title?: LocalizedString;
+  body?: LocalizedString;
+  items?: string[];
+  buttons?: ProductDetailBlockButton[];
+}
+
+/** Map of admin-defined section key → block. Insertion order is preserved. */
+export type ProductDetailBlocks = Record<string, ProductDetailBlock>;
 
 // ─────────────────────────────────────────────
 // Sub-interfaces — Pricing
@@ -185,12 +215,16 @@ export interface Product {
   documents?: ProductDocumentLink[];
   /** Product-level external media/video links */
   mediaLinks?: ProductMediaLink[];
+  /** Admin-authored detail sections from `products.detail_blocks` jsonb */
+  detailBlocks?: ProductDetailBlocks;
   /** Supplier IDs — references Supplier.id */
   suppliers: string[];
   /** Whether this product is sale-capable at the product level */
   isForSale: boolean;
   /** SKU variants — source of truth for price/stock within this product */
   skus: ProductSKU[];
+  /** Shipping size bucket — drives the cart shipping fee bin-pack. */
+  shippingSize?: ShippingSize;
   /** Marketing & analytics insights */
   insight: ProductInsight;
   /** ISO date string — when product was created */

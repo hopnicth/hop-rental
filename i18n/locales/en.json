@@ -310,6 +310,8 @@
     "recommended": "Recommended",
     "rentalOptions": "Rental Options",
     "rentalOptionsDesc": "Browse related assets below. Open an access to review availability and book there.",
+    "rentalAvailableTitle": "Also available for rent",
+    "rentalAvailableDesc": "This item is also offered for rent. See the rental options below.",
     "notFound": "Product not found",
     "rating": "Rating",
     "reviews": "Reviews",
@@ -325,7 +327,8 @@
     "minDays": "Minimum days",
     "maxDays": "Maximum days",
     "bufferDays": "Buffer days",
-    "specSummary": "Access Specs",
+    "specSummary": "Details",
+    "detailContents": "Contents",
     "viewProduct": "View Product",
     "viewDetails": "View Details"
   },
@@ -340,6 +343,7 @@
     "selectRangeHint": "Select your rental period. Dates already booked cannot be chosen.",
     "bookedLegend": "Booked / unavailable",
     "blockedRangeHint": "The selected range includes unavailable dates.",
+    "cutoffActiveBanner": "It's past {time} — rentals can start from tomorrow onwards.",
     "selectStartDate": "Please select a start date",
     "loginRequired": "Please sign in before saving this rental",
     "loginRequiredDesc": "Sign in to save your rental item and continue in cart.",
@@ -351,7 +355,11 @@
     "unavailable": "No rental units are available",
     "unavailableDesc": "Availability was just updated. Please review the current option and try again.",
     "confirm": "Add to Cart",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "priceBreakdownTitle": "Rental price breakdown",
+    "unitMonths": "{n} months",
+    "unitWeeks": "{n} weeks",
+    "unitDays": "{n} days"
   },
   "cart": {
     "pageTitle": "Shopping Cart",
@@ -372,6 +380,16 @@
     "depositTotal": "Total Deposit",
     "rentalTotal": "Total Rental",
     "cartTotal": "Cart Total",
+    "shippingFee": "Shipping Fee",
+    "shippingFreeAtPickup": "Free (pickup at branch)",
+    "shippingBreakdownTitle": "Shipping box breakdown",
+    "shippingBreakdownLine": {
+      "xl": "{n} × XL box",
+      "l": "{n} × L box",
+      "m": "{n} × M box",
+      "s": "{n} × S box",
+      "free": "{n} × Free item (no shipping)"
+    },
     "grandTotal": "Grand Total",
     "quantity": "Quantity",
     "unitPrice": "Unit Price",
@@ -418,7 +436,16 @@
     "rentalSubmitError": "Unable to submit rental booking",
     "rentalSubmitErrorDesc": "Some rental items could not be submitted. Please review the cart and try again.",
     "bookingHubRequiredNotice": "{n} rental item(s) still need a pickup hub before submission.",
-    "bookingSubmitReady": "Your rental items are ready to submit. We will move them to your rentals list after confirmation."
+    "bookingSubmitReady": "Your rental items are ready to submit. We will move them to your rentals list after confirmation.",
+    "priceBreakdownTitle": "Rental price breakdown",
+    "payAtBranchTitle": "Pay at branch",
+    "payAtBranchDesc": "Rental fees and deposits are paid at the branch when you pick up your equipment. We will not charge online for rental items.",
+    "depositNotIncluded": "refundable, paid at branch — not included in total",
+    "pickupAtBranchTitle": "Pick up at branch with rental",
+    "pickupAtBranchDesc": "Collect your purchased items at the same branch where you pick up your rental — no delivery address needed.",
+    "pickupBranchPlaceholder": "Choose pickup branch",
+    "pickupBookingConfirmed": "Confirmed",
+    "pickupBookingDraft": "In cart"
   },
   "ordersPage": {
     "description": "Track order, payment, and fulfillment progress for your submitted orders and quotation requests.",
@@ -434,6 +461,8 @@
       "payment": "Payment: {status}",
       "fulfillment": "Fulfillment: {status}"
     },
+    "cancelledBookingsTitle": "Cancelled bookings",
+    "cancelledBookingsDesc": "History of cancelled rental bookings, kept for reference.",
     "mode": {
       "quotation": "Quotation request",
       "payment": "Payment order"
@@ -478,8 +507,20 @@
     "rentalPeriod": "Rental period",
     "pickupHub": "Pickup hub",
     "noHub": "Pickup hub not selected",
+    "showQr": "Show QR Code",
+    "qrModalTitle": "Pickup QR Code",
+    "qrInstruction": "Show this QR to staff at the pickup branch.",
+    "pickupDateLabel": "Pickup date",
     "submittedTitle": "Rental booking submitted",
     "submittedDesc": "{count} rental item(s) have been moved to your rentals list.",
+    "cancelBooking": "Cancel booking",
+    "cancelDisabledHint": "Cancellation is only allowed before the pickup date.",
+    "cancelConfirmTitle": "Confirm cancellation",
+    "cancelConfirmDesc": "The booking will be marked as cancelled. This action cannot be undone.",
+    "cancelKeep": "Keep booking",
+    "cancelConfirm": "Cancel booking",
+    "cancelSuccess": "Booking cancelled successfully.",
+    "cancelFailed": "Failed to cancel the booking. Please try again.",
     "badges": {
       "status": "Status: {status}"
     },

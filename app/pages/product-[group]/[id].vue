@@ -10,8 +10,7 @@ const lang = computed(() => locale.value as LocaleCode);
 // ── Fetch product by slug from route param ──
 const slug = computed(() => route.params.id as string);
 const { getProductBySlug, products } = useProducts();
-const { getAssetsByProductId, getAssetShowPath } =
-  useAssets();
+const { getAssetsByProductId, getAssetShowPath } = useAssets();
 
 const product = getProductBySlug(slug.value);
 
@@ -52,9 +51,7 @@ const assetOptions = computed(() => {
   return getAssetsByProductId(product.value.id).value;
 });
 
-const matchedAssetCount = computed(
-  () => assetOptions.value.length,
-);
+const matchedAssetCount = computed(() => assetOptions.value.length);
 
 function handleAddToCart() {
   if (!product.value || !selectedSku.value) return;
@@ -89,21 +86,31 @@ function handleAddToCart() {
   });
 }
 
-// ── Tabs ──
-const tabs = computed(() => [
-  { label: t("productDetail.description"), value: "description" },
-  { label: t("productDetail.specifications"), value: "spec" },
-  { label: t("productDetail.documents"), value: "doc" },
-]);
-const activeTab = ref("description");
+// ── Section visibility (driven only by products-table data) ──
+const hasDescription = computed(
+  () => (product.value?.description?.[lang.value] ?? "").trim().length > 0,
+);
+const hasDetailBlocks = computed(
+  () => Object.keys(product.value?.detailBlocks ?? {}).length > 0,
+);
+const hasSpec = computed(
+  () =>
+    Object.values(product.value?.spec ?? {}).filter(
+      (v) => typeof v === "string" && v.trim().length > 0,
+    ).length > 0,
+);
+const hasDocs = computed(
+  () =>
+    (product.value?.documents?.length ?? 0) > 0 ||
+    (product.value?.mediaLinks?.length ?? 0) > 0,
+);
 
 // ── Breadcrumb ──
 const breadcrumbItems = computed(() => {
   if (!product.value) return [];
-  const group = route.params.group as string;
   return [
     { label: t("productDetail.home"), to: "/" },
-    { label: t("productDetail.allProducts"), to: `/product-${group}` },
+    { label: t("productDetail.allProducts"), to: "/product-all" },
     { label: product.value.name[lang.value] },
   ];
 });
@@ -160,13 +167,14 @@ const recommended = computed(() => {
         </div>
       </div>
 
-      <div v-if="assetOptions.length" class="mt-8 space-y-4">
+      <!-- ── Rental availability (matched assets) — placed before detail/spec ── -->
+      <section v-if="assetOptions.length" class="mt-8 space-y-4">
         <div>
           <h3 class="text-lg font-semibold">
-            {{ t("productDetail.rentalOptions") }}
+            {{ t("productDetail.rentalAvailableTitle") }}
           </h3>
           <p class="text-sm text-gray-500">
-            {{ t("productDetail.rentalOptionsDesc") }}
+            {{ t("productDetail.rentalAvailableDesc") }}
           </p>
         </div>
 
@@ -176,38 +184,44 @@ const recommended = computed(() => {
             :key="access.id"
             :access="access"
             :browse-to="getAssetShowPath(access)"
+            hide-matches
           />
         </div>
-      </div>
+      </section>
 
-      <!-- ── Bottom Section: Tabs ── -->
-      <div class="mt-10">
-        <UTabs
-          v-model="activeTab"
-          :items="tabs"
-          value-key="value"
-          class="w-full"
-          :content="false"
+      <!-- ── Description ── -->
+      <section v-if="hasDescription" class="mt-10">
+        <h3 class="mb-3 text-lg font-semibold">
+          {{ t("productDetail.description") }}
+        </h3>
+        <p class="whitespace-pre-line text-sm leading-relaxed text-default">
+          {{ product.description[lang] }}
+        </p>
+      </section>
+
+      <!-- ── Detail blocks (jsonb-driven sub-sections) ── -->
+      <section v-if="hasDetailBlocks" class="mt-10">
+        <LazyProductsProductDetailBlocks :blocks="product.detailBlocks" />
+      </section>
+
+      <!-- ── Specifications ── -->
+      <section v-if="hasSpec" class="mt-10">
+        <h3 class="mb-3 text-lg font-semibold">
+          {{ t("productDetail.specifications") }}
+        </h3>
+        <LazyProductsProductSpecTable :spec="product.spec" />
+      </section>
+
+      <!-- ── Documents & media links ── -->
+      <section v-if="hasDocs" class="mt-10 space-y-3">
+        <h3 class="mb-3 text-lg font-semibold">
+          {{ t("productDetail.documents") }}
+        </h3>
+        <LazyProductsProductDocLinks
+          :documents="product.documents"
+          :media-links="product.mediaLinks"
         />
-
-        <!-- Description Tab -->
-        <div v-if="activeTab === 'description'" class="prose max-w-none py-6">
-          <p>{{ product.description[lang] }}</p>
-        </div>
-
-        <!-- Spec Tab -->
-        <div v-else-if="activeTab === 'spec'" class="py-6">
-          <ProductsProductSpecTable :spec="product.spec" />
-        </div>
-
-        <!-- Doc Tab -->
-        <div v-else-if="activeTab === 'doc'" class="space-y-3 py-6">
-          <ProductsProductDocLinks
-            :documents="product.documents"
-            :media-links="product.mediaLinks"
-          />
-        </div>
-      </div>
+      </section>
 
       <!-- ── Recommended Products ── -->
       <div v-if="recommended.length" class="mt-10">

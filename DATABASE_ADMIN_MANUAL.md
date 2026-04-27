@@ -1,6 +1,6 @@
 # Database Admin Manual
 
-Last updated: 2026-04-26
+Last updated: 2026-04-27
 Audience: internal staff/data-entry + developers who need a practical setup guide
 
 ## Purpose
@@ -103,14 +103,15 @@ Current agreed direction for this branch:
 
 ### Important technical note
 
-Even though the business model does not require an anchor product, the current booking implementation still depends on product/SKU references for compatibility.
+Since migration `031_rental_bookings_asset_only.sql`, `rental_bookings` can be rooted on an `asset_id` alone — `product_id` and `sku_id` are now nullable, and the new `rental_bookings_root_chk` constraint requires either `asset_id` or the legacy `(product_id, sku_id)` pair to be set.
 
-That means each bookable asset should still have:
+In practice this means:
 
-- at least 1 matched product in `asset_matches`
-- at least 1 usable SKU under that matched product
+- An asset with no `asset_matches` row can still be booked from `/asset/{slug}`.
+- Pricing comes from the asset record itself (`daily_rate` / `weekly_rate` / `monthly_rate`) when no SKU is attached.
+- Setting `asset_matches` is still recommended so the asset shows up under product detail pages, but it is no longer a hard precondition for booking.
 
-This is a **technical compatibility rule**, not a business rule about which item is the primary item in the set.
+This is the current business + technical rule for asset-only bookings.
 
 ## Which tables admin should care about
 
@@ -161,6 +162,7 @@ This is a **technical compatibility rule**, not a business rule about which item
 - `documents`
 - `supplier_ids`
 - `store_location_ids` when the product can be rented
+- `shipping_size` — one of `free` / `s` / `m` / `l` / `xl` (default `s`); used to compute `orders.shipping_cost` (migration `030`)
 - rental rule fields:
   - `rental_min_days`
   - `rental_max_days`
@@ -416,12 +418,14 @@ Current lifecycle:
 
 - `draft` = staged in `/user/cart`
 - `confirmed` = submitted from `/user/cart`
-- `cancelled` = no longer active
+- `cancelled` = soft-deleted via `updateBookingStatus(id, 'cancelled')`. Rows are preserved for audit; `/user/rentals` filters them out and `/user/orders` shows them under "Cancelled bookings".
 
 Important notes:
 
 - Newer environments support `asset_id` + access snapshot fields.
-- Older environments may still work through the app's legacy-schema fallback.
+- Since migration `031`, either `asset_id` is set, or the legacy `(product_id, sku_id)` pair must be set (enforced by `rental_bookings_root_chk`).
+- Migration `029_rental_bookings_pricing_breakdown.sql` adds `pricing_breakdown` JSONB + `monthly_rate` + `weekly_rate` snapshot columns.
+- Older environments without `031`/`029` may still work through the app's legacy-schema fallback in `useBooking`.
 - Do not manually insert fake `asset_id` values; it must be a valid UUID.
 
 ### `public.orders` + `public.order_items`
@@ -432,6 +436,7 @@ Important notes:
 
 - `checkout_mode = 'payment'` requires a payment method.
 - `checkout_mode = 'quotation'` requires `payment_method = null`.
+- Migration `030_shipping_cost.sql` adds `shipping_cost` (NUMERIC) + `shipping_breakdown` (JSONB). Grand total = subtotal + `shipping_cost`. When the customer chooses pickup-at-branch in `/user/cart`, `shipping_cost = 0` and `address_id = null`.
 
 ### `public.addresses`
 
@@ -472,3 +477,8 @@ Important notes:
 - Multi-inventory per branch requires migration `021_multi_inventory_per_branch.sql`. The migration creates a default `inventories` row per branch and a trigger that protects it from rename/delete.
 - Stock columns on `product_skus` (`stock`, `rental_stock`, `reserved_stock`) are deprecated since migration `018_sku_branch_inventory.sql`; use `sku_branch_inventory` rows instead.
 - All stock mutations through `/api/admin/inventories/*` write to `inventory_change_log`. Direct DB writes bypass the audit trail and are discouraged.
+- Asset detail blocks depend on migration `028_assets_detail_blocks.sql` (`assets.detail_blocks` JSONB). The storefront viewer `AssetDetailBlocks.vue` and admin editor `AdminAssetDetailBlocksEditor.vue` mirror the product `detail_blocks` model.
+- Tiered rental pricing breakdown depends on migration `029_rental_bookings_pricing_breakdown.sql` (`pricing_breakdown` JSONB + `monthly_rate` / `weekly_rate` snapshot columns).
+- Shipping cost depends on migration `030_shipping_cost.sql`: `product_shipping_size` enum + `products.shipping_size` (NOT NULL DEFAULT `'s'`) and `orders.shipping_cost` / `orders.shipping_breakdown` JSONB. Rates: Free ฿0, S ฿50, M ฿100, L ฿150, XL ฿200 (see `app/config/shipping.ts`). Pickup-at-branch sets shipping to 0.
+- Asset-only bookings depend on migration `031_rental_bookings_asset_only.sql`: `product_id` / `sku_id` are nullable and the new `rental_bookings_root_chk` constraint requires either `asset_id` or `(product_id, sku_id)` to be set.
+- Bookings are cancelled via soft-delete (`status='cancelled'`); rows are kept for audit and surfaced under `/user/orders` "Cancelled bookings".

@@ -9,17 +9,10 @@ import { mainCategories, mockSubCategories } from "~/mock/categories";
 
 type TypeOption = CatalogType | "all";
 
-const props = withDefaults(
-  defineProps<{
-    allowedTypes?: TypeOption[];
-  }>(),
-  {
-    allowedTypes: () => ["all", "sale", "rental"] as TypeOption[],
-  },
-);
-
 const category = defineModel<string>("category", { default: "all" });
-const type = defineModel<TypeOption>("type", { default: "all" });
+// `type` model is retained so parent v-model bindings still work, but the
+// product-type selector UI has been removed by request.
+defineModel<TypeOption>("type", { default: "all" });
 const brands = defineModel<string[]>("brands", { default: () => [] });
 const minPrice = defineModel<number | null>("minPrice", { default: null });
 const maxPrice = defineModel<number | null>("maxPrice", { default: null });
@@ -62,24 +55,6 @@ const brandOptions = computed(() => {
   }
   return [...set].sort();
 });
-
-const typeOptions = computed(() => {
-  const allOptions = [
-    { label: t("search.typeAll"), value: "all" as const },
-    { label: t("search.typeSale"), value: "sale" as const },
-    { label: t("search.typeRental"), value: "rental" as const },
-  ];
-
-  return allOptions.filter((option) =>
-    props.allowedTypes.includes(option.value),
-  );
-});
-
-watchEffect(() => {
-  if (!props.allowedTypes.includes(type.value)) {
-    type.value = props.allowedTypes[0] ?? "all";
-  }
-});
 </script>
 
 <template>
@@ -96,12 +71,6 @@ watchEffect(() => {
         />
       </div>
     </template>
-
-    <!-- Product type -->
-    <div v-if="typeOptions.length > 1">
-      <p class="mb-1 text-xs font-medium text-muted">{{ t("search.type") }}</p>
-      <USelect v-model="type" :items="typeOptions" class="w-full" />
-    </div>
 
     <!-- Price range -->
     <div>

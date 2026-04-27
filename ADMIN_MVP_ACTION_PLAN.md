@@ -1,6 +1,6 @@
 # Admin MVP Action Plan
 
-Last updated: 2026-04-26
+Last updated: 2026-04-27
 Owner: Augment continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -107,6 +107,18 @@ asset packages, matches, and catalog images.
 - [x] P4.8 Show price aggregates (`minPrice` / `maxPrice` / `maxOriginalPrice`) on the admin product list.
   - 2026-04-26: list cards display single price or range with strike-through original price when discounted.
 - 🔒 P4.X Photo Manager block in `app/pages/admin/products/[productId].vue` is **frozen** — do not modify until further notice.
+
+## Phase 5 — order operations
+
+- [ ] P5.1 Admin Order Dashboard page (`/admin/orders`).
+  - List both `orders` (sale) and `rental_bookings` (rental) for the back office.
+  - Filter by status, date range, customer, branch.
+  - Status badges (sale: `pending` / `paid` / `shipped` / `cancelled`; rental: `draft` / `confirmed` / `cancelled`).
+- [ ] P5.2 Order detail view.
+  - Show line items, totals (incl. shipping breakdown for sale, pricing breakdown for rental), customer + address snapshot, branch, payment method.
+- [ ] P5.3 Order/booking status transitions from the admin UI (with audit fields).
+- [ ] P5.4 Server endpoints `/api/admin/orders/*` and `/api/admin/rental-bookings/*` with `staff` + `super_admin` gating.
+- [ ] P5.5 Rental booking documents/checklists surface (ties into ASSET_ACTION_PLAN U6).
 
 ## Recommended implementation order for this branch
 

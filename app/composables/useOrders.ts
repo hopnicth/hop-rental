@@ -162,6 +162,9 @@ function mapRowToOrder(row: Record<string, unknown>): OrderRecord {
       }),
     subtotal: Number(row.subtotal) || 0,
     discountTotal: Number(row.discount_total) || 0,
+    shippingCost: Number(row.shipping_cost) || 0,
+    shippingBreakdown:
+      (row.shipping_breakdown as OrderRecord["shippingBreakdown"]) ?? {},
     grandTotal: Number(row.grand_total) || 0,
     currencyCode: (row.currency_code as string) ?? "THB",
     notes: (row.notes as string) ?? null,
@@ -297,6 +300,9 @@ export function useOrders() {
         Math.max(0, item.originalUnitPrice - item.unitPrice) * item.quantity,
       0,
     );
+    const shippingCost = Math.max(0, Number(params.shippingCost) || 0);
+    const shippingBreakdown = params.shippingBreakdown ?? {};
+    const grandTotal = subtotal + shippingCost;
     const resolvedCartId = await resolveOrderCartId(userId, params.cartId);
 
     const orderInsert = {
@@ -311,11 +317,13 @@ export function useOrders() {
       status: deriveInitialOrderStatus(),
       payment_status: deriveInitialPaymentStatus(params),
       fulfillment_status: deriveInitialFulfillmentStatus(params),
-      address_id: params.address.id,
+      address_id: params.address.id ? params.address.id : null,
       address_snapshot: mapAddressToSnapshot(params.address),
       subtotal,
       discount_total: discountTotal,
-      grand_total: subtotal,
+      shipping_cost: shippingCost,
+      shipping_breakdown: shippingBreakdown,
+      grand_total: grandTotal,
       currency_code: "THB",
       notes: params.notes ?? null,
     };

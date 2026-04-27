@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import AdminAssetDetailBlocksEditor from "~/components/admin/AdminAssetDetailBlocksEditor.vue";
 import AdminCommaSuggestInput from "~/components/admin/AdminCommaSuggestInput.vue";
 import AdminMediaGalleryManager from "~/components/admin/AdminMediaGalleryManager.vue";
+import type { AssetDetailBlock } from "~/types/asset";
 import { getAdminApiErrorMessage, type AdminApiMeta } from "~/utils/admin-api";
 
 type SuggestionItem = {
@@ -85,6 +87,7 @@ type Detail = ListItem & {
   descriptionJp: string;
   imageUrls: string[];
   specSummary: Record<string, unknown>;
+  detailBlocks: AssetDetailBlock[];
   pricingModel: string;
   storageLocationNote: string;
   serviceCycleValue: number;
@@ -167,6 +170,7 @@ type FormState = {
   nextServiceDueAt: string;
   sortOrder: number;
   isHidden: boolean;
+  detailBlocks: AssetDetailBlock[];
 };
 
 const toast = useToast();
@@ -317,6 +321,7 @@ function emptyForm(): FormState {
     nextServiceDueAt: "",
     sortOrder: 0,
     isHidden: false,
+    detailBlocks: [],
   };
 }
 
@@ -337,6 +342,7 @@ const deleting = ref(false);
 const uploadingThumb = ref(false);
 const savingGallery = ref(false);
 const thumbnailFiles = ref<File[]>([]);
+const detailBlocksUploading = ref(false);
 
 const { data: branchesData } = await useFetch<{ items: BranchOption[] }>(
   "/api/admin/branches",
@@ -595,6 +601,9 @@ function fillFormFromDetail(d: Detail) {
   form.nextServiceDueAt = d.nextServiceDueAt;
   form.sortOrder = d.sortOrder;
   form.isHidden = d.isHidden;
+  form.detailBlocks = Array.isArray(d.detailBlocks)
+    ? JSON.parse(JSON.stringify(d.detailBlocks))
+    : [];
   specSummaryText.value = JSON.stringify(d.specSummary ?? {}, null, 2);
   specSummaryError.value = null;
 }
@@ -754,6 +763,7 @@ function buildPayload(): Record<string, unknown> {
     sortOrder: form.sortOrder,
     isHidden: form.isHidden,
     specSummary,
+    detailBlocks: form.detailBlocks,
   };
 }
 
@@ -959,6 +969,162 @@ async function removeGalleryImage(url: string) {
     });
   } finally {
     savingGallery.value = false;
+  }
+}
+
+// ── Detail blocks media handlers ──
+async function persistTextEditsBeforeUpload() {
+  if (!selectedId.value) return false;
+  try {
+    const result = await $fetch<{ item: Detail }>(
+      `/api/admin/assets/${encodeURIComponent(selectedId.value)}`,
+      { method: "PATCH", body: { detailBlocks: form.detailBlocks } },
+    );
+    detail.value = result.item;
+    fillFormFromDetail(result.item);
+    return true;
+  } catch (err) {
+    toast.add({
+      title: "Save failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+    return false;
+  }
+}
+
+async function uploadDetailBlockImage(payload: {
+  blockKey: string;
+  file: File;
+}) {
+  if (!selectedId.value || isReadOnlyAdminMode.value) return;
+  if (!(await persistTextEditsBeforeUpload())) return;
+  detailBlocksUploading.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", payload.file);
+    fd.append("blockKey", payload.blockKey);
+    const result = await $fetch<{ item: Detail }>(
+      `/api/admin/assets/${encodeURIComponent(selectedId.value)}/detail-blocks/image`,
+      { method: "POST", body: fd },
+    );
+    detail.value = result.item;
+    fillFormFromDetail(result.item);
+    toast.add({
+      title: "Image uploaded",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "Image upload failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    detailBlocksUploading.value = false;
+  }
+}
+
+async function uploadDetailBlockDocument(payload: {
+  blockKey: string;
+  file: File;
+  kind: string;
+  title: string;
+}) {
+  if (!selectedId.value || isReadOnlyAdminMode.value) return;
+  if (!(await persistTextEditsBeforeUpload())) return;
+  detailBlocksUploading.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", payload.file);
+    fd.append("blockKey", payload.blockKey);
+    fd.append("kind", payload.kind);
+    if (payload.title) fd.append("title", payload.title);
+    const result = await $fetch<{ item: Detail }>(
+      `/api/admin/assets/${encodeURIComponent(selectedId.value)}/detail-blocks/document`,
+      { method: "POST", body: fd },
+    );
+    detail.value = result.item;
+    fillFormFromDetail(result.item);
+    toast.add({
+      title: "Document uploaded",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "Document upload failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    detailBlocksUploading.value = false;
+  }
+}
+
+async function deleteDetailBlockImage(payload: {
+  blockKey: string;
+  imageId: string;
+}) {
+  if (!selectedId.value || isReadOnlyAdminMode.value) return;
+  if (!confirm("Remove this image from the block?")) return;
+  detailBlocksUploading.value = true;
+  try {
+    const result = await $fetch<{ item: Detail }>(
+      `/api/admin/assets/${encodeURIComponent(selectedId.value)}/detail-blocks/image`,
+      { method: "DELETE", body: payload },
+    );
+    detail.value = result.item;
+    fillFormFromDetail(result.item);
+    toast.add({
+      title: "Image removed",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "Remove image failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    detailBlocksUploading.value = false;
+  }
+}
+
+async function deleteDetailBlockDocument(payload: {
+  blockKey: string;
+  documentId: string;
+}) {
+  if (!selectedId.value || isReadOnlyAdminMode.value) return;
+  if (!confirm("Remove this document from the block?")) return;
+  detailBlocksUploading.value = true;
+  try {
+    const result = await $fetch<{ item: Detail }>(
+      `/api/admin/assets/${encodeURIComponent(selectedId.value)}/detail-blocks/document`,
+      { method: "DELETE", body: payload },
+    );
+    detail.value = result.item;
+    fillFormFromDetail(result.item);
+    toast.add({
+      title: "Document removed",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "Remove document failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    detailBlocksUploading.value = false;
   }
 }
 
@@ -1736,6 +1902,29 @@ async function deleteStockRow(id: string) {
         @set-cover-existing="setGalleryAsThumbnail"
         @remove-existing="removeGalleryImage"
       />
+
+      <UCard v-if="mode === 'edit' && detail">
+        <template #header>
+          <div>
+            <h3 class="text-lg font-semibold">Detail blocks</h3>
+            <p class="text-sm text-muted">
+              Essay-style content sections shown on the public asset page. Title
+              and body support all four locales. Images and PDF documents are
+              uploaded directly to the targeted block.
+            </p>
+          </div>
+        </template>
+
+        <AdminAssetDetailBlocksEditor
+          v-model="form.detailBlocks"
+          :disabled="isReadOnlyAdminMode || saving || creating"
+          :uploading="detailBlocksUploading"
+          @upload-image="uploadDetailBlockImage"
+          @upload-document="uploadDetailBlockDocument"
+          @remove-image="deleteDetailBlockImage"
+          @remove-document="deleteDetailBlockDocument"
+        />
+      </UCard>
 
       <UCard v-if="mode === 'edit' && detail">
         <template #header>

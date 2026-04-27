@@ -4,6 +4,41 @@ export type AssetStatus = "draft" | "active" | "archived";
 export type AssetPricingModel = "daily";
 export type RentalServiceCycleUnit = "day" | "week" | "month" | "year";
 
+export type AssetDetailBlockDocumentKind =
+  | "manual"
+  | "catalog"
+  | "datasheet"
+  | "guide"
+  | "report"
+  | "other";
+
+export interface AssetDetailBlockImage {
+  id: string;
+  url: string;
+  variants?: { thumbnail?: string; card?: string; large?: string };
+  caption?: string;
+  altText?: string;
+}
+
+export interface AssetDetailBlockDocument {
+  id: string;
+  url: string;
+  kind: AssetDetailBlockDocumentKind;
+  title: string;
+  filename?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+}
+
+export interface AssetDetailBlock {
+  key: string;
+  title?: LocalizedString;
+  body?: LocalizedString;
+  items?: string[];
+  images?: AssetDetailBlockImage[];
+  documents?: AssetDetailBlockDocument[];
+}
+
 export interface AssetPricing {
   model: AssetPricingModel;
   currencyCode: string;
@@ -37,6 +72,12 @@ export interface AssetMatchedProduct {
   thumbnail: string;
 }
 
+export interface AssetMatch {
+  productId: string;
+  matchType: string;
+  sortOrder: number;
+}
+
 export interface Asset {
   id: string;
   code: string;
@@ -60,7 +101,9 @@ export interface Asset {
   sortOrder: number;
   isHidden: boolean;
   matchedProductIds: string[];
+  matches: AssetMatch[];
   matchedProducts: AssetMatchedProduct[];
+  detailBlocks: AssetDetailBlock[];
   createdAt?: string;
   updatedAt?: string;
 }

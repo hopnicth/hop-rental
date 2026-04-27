@@ -4,6 +4,21 @@ export type RentalBookingStatus = "draft" | "confirmed" | "cancelled";
 /** Current rental pricing calculation model kept with the booking snapshot. */
 export type RentalPricingModel = "daily";
 
+/** Persisted shape of the tiered pricing breakdown column. */
+export interface RentalPricingBreakdownLineRow {
+  unit: "month" | "week" | "day";
+  count: number;
+  rate: number;
+  subtotal: number;
+}
+
+export interface RentalPricingBreakdownRow {
+  totalDays: number;
+  currencyCode: string;
+  lines: RentalPricingBreakdownLineRow[];
+  total: number;
+}
+
 /** Display fields preserved with the DB booking row. */
 export interface RentalBookingDisplaySnapshot {
   product_name: string;
@@ -28,8 +43,11 @@ export interface RentalBookingPricingSnapshot {
   pricing_model: RentalPricingModel;
   currency_code: string;
   daily_rate: number;
+  weekly_rate: number;
+  monthly_rate: number;
   rental_total: number;
   deposit_amount: number;
+  pricing_breakdown: RentalPricingBreakdownRow | Record<string, never>;
 }
 
 /**
@@ -47,8 +65,10 @@ export interface RentalBooking
     RentalBookingPricingSnapshot {
   id: string;
   user_id: string;
-  product_id: string;
-  sku_id: string;
+  /** NULL for asset-only bookings (no matched product/SKU). */
+  product_id: string | null;
+  /** NULL for asset-only bookings (no matched product/SKU). */
+  sku_id: string | null;
   asset_id?: string | null;
   asset_snapshot?: Record<string, unknown>;
   matched_product_id?: string | null;

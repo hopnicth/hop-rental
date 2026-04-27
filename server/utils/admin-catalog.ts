@@ -18,7 +18,7 @@ export const ADMIN_PRODUCT_METRICS_SELECT =
 
 export const ADMIN_SKU_SELECT = `id, product_id, sku_code, label_th, label_en, media_gallery, use_product_images, attributes, price, original_price, discount_percent, currency_code, promo_start_at, promo_end_at, pricing_tiers, stock, created_at, updated_at, inventory:sku_branch_inventory(${ADMIN_SKU_INVENTORY_SELECT})`;
 
-export const ADMIN_PRODUCT_DETAIL_SELECT = `id, slug, type, name_th, name_en, description_th, description_en, main_category_key, tag_keys, category_keys, brand, media_gallery, media_links, search_keywords, spec, detail_blocks, documents, is_hidden, created_at, updated_at, metrics:product_metrics(${ADMIN_PRODUCT_METRICS_SELECT}), skus:product_skus(${ADMIN_SKU_SELECT})`;
+export const ADMIN_PRODUCT_DETAIL_SELECT = `id, slug, type, name_th, name_en, description_th, description_en, main_category_key, tag_keys, category_keys, brand, media_gallery, media_links, search_keywords, spec, detail_blocks, documents, shipping_size, is_hidden, created_at, updated_at, metrics:product_metrics(${ADMIN_PRODUCT_METRICS_SELECT}), skus:product_skus(${ADMIN_SKU_SELECT})`;
 
 function fail422(message: string): never {
   throw createError({
@@ -244,6 +244,20 @@ export function buildProductPayload(
   }
   if (!partial || body.documents !== undefined) {
     payload.documents = normalizeCatalogDocuments(body.documents);
+  }
+  if (!partial || body.shippingSize !== undefined) {
+    const raw = asOptionalString(body.shippingSize);
+    if (
+      raw === "free" ||
+      raw === "s" ||
+      raw === "m" ||
+      raw === "l" ||
+      raw === "xl"
+    ) {
+      payload.shipping_size = raw;
+    } else if (!partial) {
+      payload.shipping_size = "s";
+    }
   }
   if (!partial) {
     payload.supplier_ids = [];
@@ -508,6 +522,14 @@ export function mapAdminProductDetail(row: Record<string, unknown>) {
     spec: isRecord(row.spec) ? row.spec : {},
     detailBlocks: Array.isArray(row.detail_blocks) ? row.detail_blocks : [],
     documents: Array.isArray(row.documents) ? row.documents : [],
+    shippingSize:
+      row.shipping_size === "free" ||
+      row.shipping_size === "s" ||
+      row.shipping_size === "m" ||
+      row.shipping_size === "l" ||
+      row.shipping_size === "xl"
+        ? (row.shipping_size as "free" | "s" | "m" | "l" | "xl")
+        : "s",
     createdAt: typeof row.created_at === "string" ? row.created_at : undefined,
     addToCartCount: Number(metrics.add_to_cart_count ?? 0),
     avgRating: Number(metrics.avg_rating ?? 0),

@@ -1,4 +1,5 @@
 import type { RentalBookingStatus } from "~/types/rental-booking";
+import type { RentalPricingBreakdown } from "~/utils/rental-pricing";
 
 /** Display fields locked at the time the booking is created. */
 export interface BookingDisplaySnapshot {
@@ -24,10 +25,16 @@ export interface BookingPeriodSnapshot {
 export interface BookingPricingSnapshot {
   /** Daily rental rate at the time of booking */
   dailyRate: number;
-  /** Total rental cost (dailyRate × numDays) */
+  /** Weekly rental rate snapshot (0 when not enabled) */
+  weeklyRate: number;
+  /** Monthly rental rate snapshot (0 when not enabled) */
+  monthlyRate: number;
+  /** Total rental cost — sum of breakdown subtotals */
   totalCost: number;
   /** Deposit amount at the time of booking */
   deposit: number;
+  /** Tiered duration breakdown used to produce totalCost */
+  pricingBreakdown?: RentalPricingBreakdown;
 }
 
 /**

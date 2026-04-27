@@ -3,6 +3,16 @@ import type { DateValue } from "@internationalized/date";
 import { CalendarDate, today, getLocalTimeZone } from "@internationalized/date";
 import type { ProductSKU } from "~/types/product";
 import type { Asset } from "~/types/asset";
+import {
+  decomposeRentalDuration,
+  type RentalPricingBreakdown,
+  type RentalPricingLine,
+} from "~/utils/rental-pricing";
+import {
+  canBypassBookingCutoff,
+  formatCutoffTime,
+  isPastDailyCutoff,
+} from "~/utils/booking-cutoff";
 
 /**
  * RentalBookingForm — Range calendar picker for rental booking.
@@ -42,6 +52,10 @@ const emit = defineEmits<{
       returnDate: string;
       totalCost: number;
       deposit: number;
+      dailyRate: number;
+      weeklyRate: number;
+      monthlyRate: number;
+      pricingBreakdown: RentalPricingBreakdown;
     },
   ];
   cancel: [];
@@ -49,17 +63,42 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const { blockingBookings } = useBooking();
+const { profile } = useUserProfile();
 
 // ── Config shortcuts ──
 const minDays = computed(() => props.asset?.rentalRules.minDays ?? 1);
 const maxDays = computed(() => props.asset?.rentalRules.maxDays ?? 365);
-const bufferDays = computed(
-  () => props.asset?.rentalRules.bufferDays ?? 0,
-);
+const bufferDays = computed(() => props.asset?.rentalRules.bufferDays ?? 0);
 
 // ── Calendar state ──
 const todayDate = today(getLocalTimeZone());
-const minDate = computed(() => todayDate.add({ days: bufferDays.value }));
+
+// ── Daily cutoff (Phase 1: global) ──
+// After the configured cutoff time, same-day rentals are blocked unless the
+// signed-in user has a bypass platform role (staff / super_admin).
+const nowTick = ref(new Date());
+let cutoffInterval: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  cutoffInterval = setInterval(() => {
+    nowTick.value = new Date();
+  }, 60_000);
+});
+onUnmounted(() => {
+  if (cutoffInterval) clearInterval(cutoffInterval);
+});
+
+const canBypassCutoff = computed(() =>
+  canBypassBookingCutoff(profile.value?.platformRole),
+);
+const isCutoffActive = computed(
+  () => !canBypassCutoff.value && isPastDailyCutoff(nowTick.value),
+);
+const cutoffTimeLabel = computed(() => formatCutoffTime());
+
+const minDate = computed(() => {
+  const base = todayDate.add({ days: bufferDays.value });
+  return isCutoffActive.value ? base.add({ days: 1 }) : base;
+});
 
 const selectedRange = shallowRef<CalendarRangeValue | undefined>(undefined);
 
@@ -67,13 +106,13 @@ const relevantBookings = computed(() => {
   const skuId = props.selectedSku?.id;
   const assetId = props.asset?.id;
 
-  if (!skuId) return [];
+  if (!skuId && !assetId) return [];
 
   return blockingBookings.value.filter((booking) => {
     if (assetId) {
       return (
         booking.assetId === assetId ||
-        (!booking.assetId && booking.skuId === skuId)
+        (!!skuId && !booking.assetId && booking.skuId === skuId)
       );
     }
 
@@ -111,11 +150,42 @@ const numDays = computed(() => {
 });
 
 const dailyRate = computed(() => props.asset?.pricing.daily ?? 0);
+const weeklyRate = computed(() => props.asset?.pricing.weekly ?? 0);
+const monthlyRate = computed(() => props.asset?.pricing.monthly ?? 0);
+const dailyEnabled = computed(() => props.asset?.pricing.dailyEnabled ?? true);
+const weeklyEnabled = computed(
+  () => props.asset?.pricing.weeklyEnabled ?? false,
+);
+const monthlyEnabled = computed(
+  () => props.asset?.pricing.monthlyEnabled ?? false,
+);
+const currencyCode = computed(() => props.asset?.pricing.currencyCode ?? "THB");
 const deposit = computed(() => props.asset?.pricing.deposit ?? 0);
 
-const totalCost = computed(() => {
-  return dailyRate.value * numDays.value;
-});
+const pricingBreakdown = computed<RentalPricingBreakdown>(() =>
+  decomposeRentalDuration({
+    days: numDays.value,
+    dailyRate: dailyRate.value,
+    dailyEnabled: dailyEnabled.value,
+    weeklyRate: weeklyRate.value,
+    weeklyEnabled: weeklyEnabled.value,
+    monthlyRate: monthlyRate.value,
+    monthlyEnabled: monthlyEnabled.value,
+    currencyCode: currencyCode.value,
+  }),
+);
+
+const totalCost = computed(() => pricingBreakdown.value.total);
+
+function unitLabel(line: RentalPricingLine): string {
+  if (line.unit === "month") {
+    return t("booking.unitMonths", { n: line.count });
+  }
+  if (line.unit === "week") {
+    return t("booking.unitWeeks", { n: line.count });
+  }
+  return t("booking.unitDays", { n: line.count });
+}
 
 const selectionHitsBlockedDates = computed(() => {
   if (!startDate.value || !returnDate.value) return false;
@@ -199,6 +269,10 @@ function handleSubmit() {
     returnDate: toISO(returnDate.value),
     totalCost: totalCost.value,
     deposit: deposit.value,
+    dailyRate: dailyRate.value,
+    weeklyRate: weeklyRate.value,
+    monthlyRate: monthlyRate.value,
+    pricingBreakdown: pricingBreakdown.value,
   });
 }
 
@@ -267,6 +341,10 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
             · {{ t("booking.maxDays", { max: maxDays }) }}
           </span>
         </p>
+        <p v-if="isCutoffActive" class="mt-1 text-xs font-medium text-warning">
+          <UIcon name="bx:time-five" class="mr-1 inline" />
+          {{ t("booking.cutoffActiveBanner", { time: cutoffTimeLabel }) }}
+        </p>
         <p
           v-if="selectionHitsBlockedDates"
           class="mt-1 text-xs font-medium text-error"
@@ -291,13 +369,35 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
             {{ numDays > 0 ? t("cart.days", { n: numDays }) : "—" }}
           </span>
         </div>
+
+        <div
+          v-if="pricingBreakdown.lines.length > 0"
+          class="space-y-1 border-t pt-2"
+        >
+          <p class="text-xs text-gray-500">
+            {{ t("booking.priceBreakdownTitle") }}
+          </p>
+          <div
+            v-for="line in pricingBreakdown.lines"
+            :key="line.unit"
+            class="flex justify-between"
+          >
+            <span class="text-gray-500">
+              {{ unitLabel(line) }} × ฿{{ line.rate.toLocaleString() }}
+            </span>
+            <span class="font-semibold">
+              ฿{{ line.subtotal.toLocaleString() }}
+            </span>
+          </div>
+        </div>
+
         <div class="flex justify-between">
           <span class="text-gray-500">{{ t("productDetail.deposit") }}</span>
           <span class="font-semibold"> ฿{{ deposit.toLocaleString() }} </span>
         </div>
         <div class="flex justify-between border-t pt-2">
           <span class="text-gray-500">{{ t("booking.totalCost") }}</span>
-          <span class="text-lg font-bold text-primary">
+          <span class="text-xl font-bold text-primary">
             ฿{{ totalCost.toLocaleString() }}
           </span>
         </div>

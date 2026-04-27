@@ -11,13 +11,15 @@ import type { CartItem } from "~/types/cart";
 import type { BookingItem } from "~/types/booking";
 import type { LocaleCode } from "~/types/locale";
 import type { Address } from "~/types/user";
+import type { PublicBranch } from "~/composables/useBranches";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
-import { mockStores } from "~/mock/stores";
+import type { RentalPricingLine } from "~/utils/rental-pricing";
+import { calculateShipping } from "~/utils/shipping";
 
 const { t, locale } = useI18n();
 const lang = computed(() => locale.value as LocaleCode);
 const toast = useToast();
-const { getSaleStockBySku } = useProducts();
+const { getSaleStockBySku, getProductById } = useProducts();
 
 // ── Auth guard ──
 const { isLoggedIn } = useAuthSession();
@@ -41,6 +43,7 @@ const {
 
 const {
   activeBookings,
+  confirmedBookings,
   activeBookingTotalDeposit,
   activeBookingTotalRental,
   updateBookingStatus,
@@ -125,55 +128,182 @@ const availableAddresses = computed(() => {
   );
 });
 
-// Auto-select default address
+// ── Hub options (for booking item hub selectors) ──
+const { branches: publicBranches, ensureBranchesLoaded } = useBranches();
+if (import.meta.client) {
+  void ensureBranchesLoaded();
+}
+const activeBranches = computed(() =>
+  publicBranches.value.filter((b) => b.isActive),
+);
+function branchLabel(
+  branch: { nameTh: string; nameEn: string },
+  localeCode: LocaleCode,
+): string {
+  if (localeCode === "th") return branch.nameTh || branch.nameEn;
+  return branch.nameEn || branch.nameTh;
+}
+const hubOptions = computed(() =>
+  activeBranches.value.map((b) => ({
+    label: branchLabel(b, lang.value),
+    value: b.id,
+  })),
+);
+
+// ── Pickup-at-branch option ──
+// Eligible bookings include cart drafts AND already-confirmed bookings the
+// customer has not yet collected, so the cart can be picked up at the same
+// branch on the same trip.
+const PICKUP_ADDRESS_SENTINEL = "__pickup__";
+const pickupBranchId = ref<string | null>(null);
+
+const pickupCandidateBookings = computed<BookingItem[]>(() => [
+  ...activeBookings.value,
+  ...confirmedBookings.value,
+]);
+
+const hasPickupCandidateBookings = computed(
+  () => pickupCandidateBookings.value.length > 0,
+);
+
+// Branches the user is allowed to pick up at — locked to the hubs of their
+// existing bookings (each booking is already tied to a specific branch, so a
+// free choice would be misleading).
+const pickupCandidateHubIds = computed(() => {
+  const ids = new Set<string>();
+  for (const b of pickupCandidateBookings.value) {
+    if (b.hubId) ids.add(b.hubId);
+  }
+  return ids;
+});
+
+const pickupBranchOptions = computed(() =>
+  activeBranches.value
+    .filter((b) => pickupCandidateHubIds.value.has(b.id))
+    .map((b) => ({
+      label: branchLabel(b, lang.value),
+      value: b.id,
+    })),
+);
+
+// Sync default + clear stale selection when bookings change.
 watchEffect(() => {
-  if (!selectedAddressId.value && availableAddresses.value.length > 0) {
+  if (
+    pickupBranchId.value &&
+    !pickupCandidateHubIds.value.has(pickupBranchId.value)
+  ) {
+    pickupBranchId.value = null;
+  }
+  if (pickupBranchId.value) return;
+  const firstHubId =
+    pickupCandidateBookings.value.find((b) => b.hubId)?.hubId ?? null;
+  if (firstHubId) pickupBranchId.value = firstHubId;
+});
+
+const selectedPickupBranch = computed(
+  () => activeBranches.value.find((b) => b.id === pickupBranchId.value) ?? null,
+);
+
+const isPickupSelected = computed(
+  () => selectedAddressId.value === PICKUP_ADDRESS_SENTINEL,
+);
+
+// Bookings that will share the pickup trip at the currently chosen branch.
+const pickupBookingsAtSelectedBranch = computed<BookingItem[]>(() => {
+  if (!pickupBranchId.value) return [];
+  return pickupCandidateBookings.value.filter(
+    (b) => b.hubId === pickupBranchId.value,
+  );
+});
+
+// Auto-select default address (or pickup if previously chosen).
+watchEffect(() => {
+  if (selectedAddressId.value) return;
+  if (availableAddresses.value.length > 0) {
     const defaultAddr = availableAddresses.value.find((a) => a.isDefault);
     selectedAddressId.value =
       defaultAddr?.id ?? availableAddresses.value[0]!.id;
   }
 });
 
-// ── Hub options (for booking item hub selectors) ──
-const activeStores = mockStores.filter((s) => s.isActive);
-const hubOptions = computed(() =>
-  activeStores.map((s) => ({
-    label: s.name[lang.value],
-    value: s.id,
-  })),
-);
-
-function getHubLabel(hubId: string | null): string {
-  if (!hubId) return t("cart.noHubSelected");
-  const store = activeStores.find((s) => s.id === hubId);
-  return store ? store.name[lang.value] : hubId;
-}
-
 // ── Payment method ──
 type PaymentMethod = "credit_card" | "promptpay" | "company_credit";
 const paymentMethod = ref<PaymentMethod>("credit_card");
 
 // ── B2B Quotation ──
-const selectedAddress = computed<Address | null>(
-  () =>
+// Build a synthetic Address when the user opts to pick up at a branch,
+// so the existing order-submit flow can persist the branch as the address
+// snapshot without writing a real addresses row.
+function buildPickupAddress(branch: PublicBranch): Address {
+  const fullAddress =
+    lang.value === "th"
+      ? branch.addressTh || branch.addressEn
+      : branch.addressEn || branch.addressTh;
+  return {
+    id: "",
+    userId: null,
+    companyId: null,
+    title: `${t("cart.pickupAtBranchTitle")} — ${branchLabel(branch, lang.value)}`,
+    contactName: null,
+    contactPhone: branch.phone || null,
+    isDefault: false,
+    fullAddress: fullAddress || branchLabel(branch, lang.value),
+    subDistrict: null,
+    district: null,
+    province: null,
+    postalCode: null,
+    latitude: null,
+    longitude: null,
+    note: null,
+    createdAt: "",
+    updatedAt: "",
+  };
+}
+
+const selectedAddress = computed<Address | null>(() => {
+  if (isPickupSelected.value) {
+    return selectedPickupBranch.value
+      ? buildPickupAddress(selectedPickupBranch.value)
+      : null;
+  }
+  return (
     availableAddresses.value.find(
       (addr) => addr.id === selectedAddressId.value,
-    ) ?? null,
-);
+    ) ?? null
+  );
+});
 
 const canManageAvailableAddresses = computed(
   () => !isB2B.value || isB2BAdmin.value,
 );
 
-const orderGrandTotal = computed(() => cartSubtotal.value);
+// Shipping is computed via greedy bin-pack of the cart's free-units; pickup
+// at branch waives the fee entirely.
+const shippingResult = computed(() => {
+  if (isPickupSelected.value) {
+    return calculateShipping([]);
+  }
+  return calculateShipping(
+    cartItems.value.map((item) => ({
+      shippingSize: getProductById(item.productId).value?.shippingSize,
+      quantity: item.quantity,
+    })),
+  );
+});
 
-// ── Grand total ──
-const grandTotal = computed(
+const shippingCost = computed(() => shippingResult.value.cost);
+const shippingBreakdown = computed(() => shippingResult.value.breakdown);
+const hasShippingBoxes = computed(
   () =>
-    activeBookingTotalDeposit.value +
-    activeBookingTotalRental.value +
-    cartSubtotal.value,
+    shippingBreakdown.value.xl > 0 ||
+    shippingBreakdown.value.l > 0 ||
+    shippingBreakdown.value.m > 0 ||
+    shippingBreakdown.value.s > 0,
 );
+
+// Online checkout total — sale items + shipping. Rental fees & deposits are
+// paid at the branch and never charged online.
+const orderGrandTotal = computed(() => cartSubtotal.value + shippingCost.value);
 
 const hasRentalBookings = computed(() => activeBookings.value.length > 0);
 const hasPurchaseItems = computed(() => cartItems.value.length > 0);
@@ -194,9 +324,7 @@ function getBookingThumbnail(booking: BookingItem): string {
 }
 
 function getBookingAccessPath(booking: BookingItem): string | null {
-  return booking.assetSlug
-    ? `/asset/${booking.assetSlug}`
-    : null;
+  return booking.assetSlug ? `/asset/${booking.assetSlug}` : null;
 }
 
 function showBookingActionError() {
@@ -235,13 +363,27 @@ function handleIncreaseQuantity(item: CartItem) {
 
 // ── Hub change handler ──
 async function handleHubChange(bookingId: string, hubId: string) {
-  const store = activeStores.find((s) => s.id === hubId);
-  if (store) {
-    const ok = await updateHub(bookingId, hubId, store.name[lang.value]);
+  const branch = activeBranches.value.find((b) => b.id === hubId);
+  if (branch) {
+    const ok = await updateHub(
+      bookingId,
+      hubId,
+      branchLabel(branch, lang.value),
+    );
     if (!ok) {
       showBookingActionError();
     }
   }
+}
+
+function unitLabel(line: RentalPricingLine): string {
+  if (line.unit === "month") {
+    return t("booking.unitMonths", { n: line.count });
+  }
+  if (line.unit === "week") {
+    return t("booking.unitWeeks", { n: line.count });
+  }
+  return t("booking.unitDays", { n: line.count });
 }
 
 async function handleRemoveBooking(bookingId: string) {
@@ -290,10 +432,17 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
   }
 
   if (!selectedAddress.value) {
-    showInlineOrderError(
-      "Delivery address required",
-      "Please select a delivery address before submitting the order.",
-    );
+    if (isPickupSelected.value) {
+      showInlineOrderError(
+        "Pickup branch required",
+        "Please choose a branch to pick up the order.",
+      );
+    } else {
+      showInlineOrderError(
+        "Delivery address required",
+        "Please select a delivery address before submitting the order.",
+      );
+    }
     return;
   }
 
@@ -333,6 +482,8 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
       items: cartItems.value,
       cartId: cartId.value || null,
       companyId: resolvedCompanyId,
+      shippingCost: shippingCost.value,
+      shippingBreakdown: shippingBreakdown.value,
     });
 
     await clearCartPersisted();
@@ -517,17 +668,33 @@ async function handlePay() {
                   }})
                 </p>
 
-                <!-- Daily rate + Rental cost -->
-                <div class="flex flex-wrap gap-4 text-sm">
-                  <span>
-                    {{ t("cart.dailyRate") }}: ฿{{
-                      booking.dailyRate.toLocaleString()
-                    }}
-                  </span>
-                  <span>
-                    {{ t("cart.rentalCost") }}: ฿{{
-                      booking.totalCost.toLocaleString()
-                    }}
+                <!-- Price breakdown (tiered: months / weeks / days) -->
+                <div
+                  v-if="booking.pricingBreakdown?.lines?.length"
+                  class="space-y-1 rounded-md bg-elevated/40 p-2 text-xs"
+                >
+                  <p class="text-muted">
+                    {{ t("cart.priceBreakdownTitle") }}
+                  </p>
+                  <div
+                    v-for="line in booking.pricingBreakdown.lines"
+                    :key="line.unit"
+                    class="flex justify-between"
+                  >
+                    <span>
+                      {{ unitLabel(line) }} × ฿{{ line.rate.toLocaleString() }}
+                    </span>
+                    <span class="font-medium">
+                      ฿{{ line.subtotal.toLocaleString() }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Rental cost (prominent total) -->
+                <div class="flex items-center justify-between text-sm">
+                  <span class="text-muted">{{ t("cart.rentalCost") }}</span>
+                  <span class="text-base font-semibold text-primary">
+                    ฿{{ booking.totalCost.toLocaleString() }}
                   </span>
                 </div>
 
@@ -591,6 +758,16 @@ async function handlePay() {
             </div>
           </template>
         </UCard>
+
+        <!-- Prominent "Pay at branch" notice (rental flow) -->
+        <UAlert
+          icon="bx:store"
+          color="warning"
+          variant="solid"
+          class="mt-4"
+          :title="t('cart.payAtBranchTitle')"
+          :description="t('cart.payAtBranchDesc')"
+        />
       </section>
 
       <!-- ─── Section 2: Cart Items (Consumables) ─── -->
@@ -729,18 +906,141 @@ async function handlePay() {
             />
           </div>
 
-          <!-- No addresses -->
-          <div
-            v-else-if="availableAddresses.length === 0"
-            class="py-8 text-center"
-          >
-            <UIcon name="bx:map" class="mx-auto mb-2 text-4xl text-muted" />
-            <p class="text-muted">{{ t("cart.noAddress") }}</p>
-            <p class="text-sm text-muted">{{ t("cart.noAddressDesc") }}</p>
-          </div>
-
-          <!-- Address list -->
           <div v-else class="space-y-3">
+            <!-- Pickup-at-branch option (when draft or confirmed bookings exist) -->
+            <div
+              v-if="hasPickupCandidateBookings"
+              class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors"
+              :class="
+                isPickupSelected
+                  ? 'border-primary bg-primary/5'
+                  : 'hover:border-muted'
+              "
+              @click="selectedAddressId = PICKUP_ADDRESS_SENTINEL"
+            >
+              <!-- Radio indicator -->
+              <div class="mt-0.5 shrink-0">
+                <div
+                  class="flex h-5 w-5 items-center justify-center rounded-full border-2"
+                  :class="isPickupSelected ? 'border-primary' : 'border-muted'"
+                >
+                  <div
+                    v-if="isPickupSelected"
+                    class="h-2.5 w-2.5 rounded-full bg-primary"
+                  />
+                </div>
+              </div>
+
+              <!-- Pickup info -->
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2">
+                  <UIcon name="bx:store" class="text-base text-warning" />
+                  <p class="font-medium">{{ t("cart.pickupAtBranchTitle") }}</p>
+                </div>
+                <p class="mt-1 text-sm text-muted">
+                  {{ t("cart.pickupAtBranchDesc") }}
+                </p>
+
+                <!-- Branch picker (visible when pickup is selected) -->
+                <!-- Branch is locked to the hubs of existing bookings: single
+                     hub renders as a static card, multiple hubs render as a
+                     dropdown limited to those hubs. -->
+                <div v-if="isPickupSelected" class="mt-3 space-y-2">
+                  <div
+                    v-if="
+                      pickupBranchOptions.length === 1 && selectedPickupBranch
+                    "
+                    class="inline-flex items-center gap-2 rounded-md border bg-elevated/50 px-3 py-1.5 text-sm font-medium"
+                  >
+                    <UIcon name="bx:store" class="text-warning" />
+                    {{ branchLabel(selectedPickupBranch, lang) }}
+                  </div>
+                  <USelectMenu
+                    v-else
+                    v-model="pickupBranchId"
+                    :items="pickupBranchOptions"
+                    value-key="value"
+                    :placeholder="t('cart.pickupBranchPlaceholder')"
+                    size="md"
+                    class="w-full sm:w-80"
+                    @click.stop
+                  />
+                  <p
+                    v-if="
+                      selectedPickupBranch && selectedPickupBranch.addressTh
+                    "
+                    class="text-xs text-muted"
+                  >
+                    {{
+                      lang === "th"
+                        ? selectedPickupBranch.addressTh
+                        : selectedPickupBranch.addressEn ||
+                          selectedPickupBranch.addressTh
+                    }}
+                    <template v-if="selectedPickupBranch.phone">
+                      · {{ selectedPickupBranch.phone }}
+                    </template>
+                  </p>
+
+                  <!-- Bookings that will share this pickup trip -->
+                  <ul
+                    v-if="pickupBookingsAtSelectedBranch.length > 0"
+                    class="mt-2 space-y-1 rounded-md bg-elevated/50 p-2 text-xs"
+                  >
+                    <li
+                      v-for="b in pickupBookingsAtSelectedBranch"
+                      :key="b.bookingId"
+                      class="flex items-center gap-2"
+                    >
+                      <UIcon
+                        :name="
+                          b.status === 'confirmed'
+                            ? 'bx:check-circle'
+                            : 'bx:cart'
+                        "
+                        :class="
+                          b.status === 'confirmed'
+                            ? 'text-success'
+                            : 'text-muted'
+                        "
+                      />
+                      <span class="truncate font-medium">
+                        {{ getBookingTitle(b) }}
+                      </span>
+                      <span class="text-muted">
+                        · {{ b.startDate }} → {{ b.returnDate }}
+                      </span>
+                      <UBadge
+                        :color="
+                          b.status === 'confirmed' ? 'success' : 'neutral'
+                        "
+                        variant="subtle"
+                        size="xs"
+                        :label="
+                          b.status === 'confirmed'
+                            ? t('cart.pickupBookingConfirmed')
+                            : t('cart.pickupBookingDraft')
+                        "
+                      />
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- No addresses (and pickup not applicable) -->
+            <div
+              v-if="
+                availableAddresses.length === 0 && !hasPickupCandidateBookings
+              "
+              class="py-8 text-center"
+            >
+              <UIcon name="bx:map" class="mx-auto mb-2 text-4xl text-muted" />
+              <p class="text-muted">{{ t("cart.noAddress") }}</p>
+              <p class="text-sm text-muted">{{ t("cart.noAddressDesc") }}</p>
+            </div>
+
+            <!-- Address cards -->
             <div
               v-for="addr in availableAddresses"
               :key="addr.id"
@@ -783,6 +1083,26 @@ async function handlePay() {
                 </div>
                 <p class="mt-1 text-sm text-muted">{{ addr.fullAddress }}</p>
                 <p
+                  v-if="
+                    addr.subDistrict ||
+                    addr.district ||
+                    addr.province ||
+                    addr.postalCode
+                  "
+                  class="mt-1 text-sm text-muted"
+                >
+                  {{
+                    [
+                      addr.subDistrict,
+                      addr.district,
+                      addr.province,
+                      addr.postalCode,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+                  }}
+                </p>
+                <p
                   v-if="addr.contactName || addr.contactPhone"
                   class="mt-1 text-xs text-muted"
                 >
@@ -791,6 +1111,9 @@ async function handlePay() {
                       .filter(Boolean)
                       .join(" · ")
                   }}
+                </p>
+                <p v-if="addr.note" class="mt-1 text-xs text-muted">
+                  {{ addr.note }}
                 </p>
               </div>
 
@@ -823,36 +1146,13 @@ async function handlePay() {
             </div>
           </template>
 
-          <!-- Order summary -->
-          <div class="space-y-4">
+          <!-- Order summary — sale items only (rental & deposit are paid at branch) -->
+          <div v-if="hasPurchaseItems" class="space-y-4">
             <h3 class="font-semibold">{{ t("cart.orderSummary") }}</h3>
 
             <div class="space-y-2 text-sm">
-              <!-- Rental total -->
-              <div
-                v-if="activeBookings.length > 0"
-                class="flex justify-between"
-              >
-                <span class="text-muted">
-                  {{ t("cart.rentalTotal") }}
-                  ({{ t("cart.bookingCount", { n: activeBookings.length }) }})
-                </span>
-                <span>฿{{ activeBookingTotalRental.toLocaleString() }}</span>
-              </div>
-
-              <!-- Deposit total -->
-              <div
-                v-if="activeBookings.length > 0"
-                class="flex justify-between"
-              >
-                <span class="text-info">{{ t("cart.depositTotal") }}</span>
-                <span class="text-info">
-                  ฿{{ activeBookingTotalDeposit.toLocaleString() }}
-                </span>
-              </div>
-
               <!-- Cart total -->
-              <div v-if="cartItems.length > 0" class="flex justify-between">
+              <div class="flex justify-between">
                 <span class="text-muted">
                   {{ t("cart.cartTotal") }}
                   ({{ t("cart.itemCount", { n: cartItemCount }) }})
@@ -860,13 +1160,109 @@ async function handlePay() {
                 <span>฿{{ cartSubtotal.toLocaleString() }}</span>
               </div>
 
+              <!-- Shipping fee — waived when picking up at branch -->
+              <div class="flex justify-between">
+                <span class="text-muted">{{ t("cart.shippingFee") }}</span>
+                <span v-if="isPickupSelected" class="text-success">
+                  {{ t("cart.shippingFreeAtPickup") }}
+                </span>
+                <span v-else>฿{{ shippingCost.toLocaleString() }}</span>
+              </div>
+
+              <!-- Shipping breakdown — only when there are real boxes -->
+              <div
+                v-if="!isPickupSelected && hasShippingBoxes"
+                class="rounded-md bg-elevated/40 px-3 py-2 text-xs text-muted"
+              >
+                <div class="mb-1 font-medium">
+                  {{ t("cart.shippingBreakdownTitle") }}
+                </div>
+                <ul class="space-y-0.5">
+                  <li
+                    v-if="shippingBreakdown.xl > 0"
+                    class="flex justify-between"
+                  >
+                    <span>
+                      {{
+                        t("cart.shippingBreakdownLine.xl", {
+                          n: shippingBreakdown.xl,
+                        })
+                      }}
+                    </span>
+                    <span
+                      >฿{{
+                        (shippingBreakdown.xl * 200).toLocaleString()
+                      }}</span
+                    >
+                  </li>
+                  <li
+                    v-if="shippingBreakdown.l > 0"
+                    class="flex justify-between"
+                  >
+                    <span>
+                      {{
+                        t("cart.shippingBreakdownLine.l", {
+                          n: shippingBreakdown.l,
+                        })
+                      }}
+                    </span>
+                    <span
+                      >฿{{ (shippingBreakdown.l * 150).toLocaleString() }}</span
+                    >
+                  </li>
+                  <li
+                    v-if="shippingBreakdown.m > 0"
+                    class="flex justify-between"
+                  >
+                    <span>
+                      {{
+                        t("cart.shippingBreakdownLine.m", {
+                          n: shippingBreakdown.m,
+                        })
+                      }}
+                    </span>
+                    <span
+                      >฿{{ (shippingBreakdown.m * 100).toLocaleString() }}</span
+                    >
+                  </li>
+                  <li
+                    v-if="shippingBreakdown.s > 0"
+                    class="flex justify-between"
+                  >
+                    <span>
+                      {{
+                        t("cart.shippingBreakdownLine.s", {
+                          n: shippingBreakdown.s,
+                        })
+                      }}
+                    </span>
+                    <span
+                      >฿{{ (shippingBreakdown.s * 50).toLocaleString() }}</span
+                    >
+                  </li>
+                  <li
+                    v-if="shippingBreakdown.free > 0"
+                    class="flex justify-between"
+                  >
+                    <span>
+                      {{
+                        t("cart.shippingBreakdownLine.free", {
+                          n: shippingBreakdown.free,
+                        })
+                      }}
+                    </span>
+                    <span>฿0</span>
+                  </li>
+                </ul>
+              </div>
+
               <UDivider />
 
-              <!-- Grand total -->
+              <!-- Grand total — cart subtotal + shipping -->
               <div class="flex justify-between text-lg font-bold">
                 <span>{{ t("cart.grandTotal") }}</span>
                 <span class="text-primary">
-                  ฿{{ grandTotal.toLocaleString() }}
+                  ฿{{ orderGrandTotal.toLocaleString() }}
                 </span>
               </div>
             </div>

@@ -4,6 +4,7 @@
  * Keep these separate from `~/types/product`, which is the current
  * UI-friendly mock/runtime shape used by the frontend today.
  */
+import type { ProductDetailBlocks } from "~/types/product";
 
 /** Sales channel for a catalog product. */
 export type CatalogProductType = "sale" | "rental" | "hybrid";
@@ -125,10 +126,12 @@ export interface CatalogProductRecord extends CatalogProduct {
   media_links?: CatalogMediaLinkRecord[];
   spec?: Record<string, string | undefined>;
   documents?: CatalogDocumentLinkRecord[];
+  detail_blocks?: ProductDetailBlocks;
   supplier_ids?: string[];
   skus: CatalogProductSKURecord[];
   metrics?: CatalogProductMetricsRecord | CatalogProductMetricsRecord[] | null;
   is_hidden?: boolean;
+  shipping_size?: string | null;
   created_at?: string;
   updated_at?: string;
 }

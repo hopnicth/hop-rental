@@ -1,7 +1,7 @@
 # 🏗 HOP-RENTAL — Project Summary & Recap
 
 > สรุปเนื้อหาสำคัญและแนวทางทำงานร่วมกัน
-> อัปเดตล่าสุด: 2026-04-26
+> อัปเดตล่าสุด: 2026-04-27
 
 ---
 
@@ -222,6 +222,49 @@ hop-rental/
 
 - 🔒 The Photo Manager block inside `app/pages/admin/products/[productId].vue` is locked until further notice — do not modify
 
+### Session 2026-04-27: Asset-only booking + Pricing breakdown + Shipping + Soft-delete cancel
+
+#### Booking root flexibility
+
+- ✅ Migration `031_rental_bookings_asset_only.sql` — `product_id` / `sku_id` are now nullable; new check constraint `rental_bookings_root_chk` requires either `asset_id` or the legacy `(product_id, sku_id)` pair
+- ✅ `app/types/rental-booking.ts`, `app/composables/useBooking.ts` (`mapBookingToInsert` empty-string → `null`), `app/pages/asset/[slug].vue` (`canBookAccess = !!access`), and `RentalBookingForm.vue` (`relevantBookings` falls back to `assetId` when no SKU) updated
+- ✅ Assets can now be booked even without a matched product in `asset_matches`
+
+#### Tiered rental pricing breakdown
+
+- ✅ Migration `029_rental_bookings_pricing_breakdown.sql` — added `pricing_breakdown` JSONB + `monthly_rate`, `weekly_rate` snapshot columns
+- ✅ `app/utils/rental-pricing.ts` decomposes a rental duration into month/week/day lines with their unit rates
+- ✅ `RentalBookingForm.vue` displays the breakdown lines and emits `pricingBreakdown` in the submit payload
+- ✅ `useBooking.ts` + booking types now persist + restore `pricingBreakdown`
+
+#### Shipping cost
+
+- ✅ Migration `030_shipping_cost.sql` — `product_shipping_size` enum + `products.shipping_size` (NOT NULL DEFAULT `'s'`); `orders.shipping_cost` + `orders.shipping_breakdown` JSONB
+- ✅ `app/config/shipping.ts` rates: Free ฿0, S ฿50, M ฿100, L ฿150, XL ฿200 (with free-unit ratios)
+- ✅ `app/utils/shipping.ts` — `calculateShipping(lines)` returns `{ cost, breakdown }`; covered by `app/utils/shipping.spec.ts`
+- ✅ Cart shows shipping line + breakdown in the summary (skipped when pickup is selected); `useOrders.submitOrder` writes `shipping_cost` + `shipping_breakdown` to `orders`
+- ✅ Admin product form + `server/utils/admin-catalog.ts` round-trip `shipping_size`
+
+#### Asset detail blocks
+
+- ✅ Migration `028_assets_detail_blocks.sql` — added `assets.detail_blocks` JSONB
+- ✅ `app/components/products/AssetDetailBlocks.vue` (storefront viewer) + `app/components/admin/AdminAssetDetailBlocksEditor.vue` (admin editor with image/document upload)
+- ✅ `server/utils/asset-detail-blocks.ts` + `server/api/admin/assets/[id]/detail-blocks/*` server APIs
+- ✅ Mirrors the existing product `detail_blocks` shape (key-driven sections with body/items/buttons)
+
+#### Cart + booking lifecycle UI
+
+- ✅ Pickup-at-branch added to Section 3 of `/user/cart` as an alternative to delivery; address is optional when pickup is chosen (`useOrders.submitOrder` accepts empty `address.id`)
+- ✅ Pickup branch dropdown is locked to the unique `hubId`s of the current rental candidates (single hub → display only)
+- ✅ Daily booking cutoff (`app/config/booking.ts` + `app/utils/booking-cutoff.ts`) — past the cutoff hour, today is removed from the asset booking calendar; bypassed for `super_admin` / `staff`
+- ✅ Cancelled bookings are kept as soft-delete rows (`updateBookingStatus(id, 'cancelled')`); `/user/rentals` filters them out, `/user/orders` shows them under a new "Cancelled bookings" section with `opacity-80` styling
+- ✅ Cart shipping address picker now displays full address (`fullAddress` + sub-district / district / province / postal code) plus contact name + phone
+
+#### Public branches API
+
+- ✅ `server/api/branches.get.ts` returns active `store_branches` for the storefront cart hub picker (replaces the old `app/mock/stores.ts` path)
+- ✅ `app/composables/useBranches.ts` consumes the endpoint
+
 ---
 
 ## 4. สิ่งที่กำลังทำ / แผนงานถัดไป
@@ -342,7 +385,6 @@ hop-rental/
 
 1. อ่านไฟล์นี้ก่อนเริ่มทำงาน เพื่อ Recap context
 2. เช็ค git log เพื่อดู commit history
-3. **โฟกัสถัดไป**: ปิดงาน asset ตาม `ASSET_ACTION_PLAN.md`
-   - U3 (remove product-owned booking ownership), U5 (customer docs in rental UI), U6 (backoffice checklist/doc workflow UI)
-   - M5 (move booking submit path to use `asset_id`), M6 (retire product-owned booking UI)
+3. **โฟกัสถัดไป**: Admin Order Dashboard (backoffice view สำหรับจัดการ orders + rental bookings)
+   - U5 (customer docs in rental UI), U6 (backoffice checklist/doc workflow UI) ตาม `ASSET_ACTION_PLAN.md`
 4. ห้ามแตะ Photo Manager ในหน้า `/admin/products/[productId]` จนกว่าจะมีคำสั่งใหม่

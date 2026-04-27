@@ -27,17 +27,15 @@ const stock = computed(() =>
     : { inStock: 0, available: 0, reserved: 0 },
 );
 
-const matchedAssets = computed(() =>
-  product.value
-    ? assets.value.filter((access) =>
-        access.matchedProductIds.includes(product.value!.id),
-      )
-    : [],
-);
-
-const matchedAssetCount = computed(
-  () => matchedAssets.value.length,
-);
+const matchedAssetCount = computed(() => {
+  if (!product.value) return 0;
+  const productId = product.value.id;
+  return assets.value.filter((access) =>
+    access.matches.some(
+      (m) => m.productId === productId && m.matchType === "compatible",
+    ),
+  ).length;
+});
 
 const hasMultipleSkus = computed(() => (product.value?.skus.length ?? 0) > 1);
 
@@ -125,45 +123,45 @@ function handleAddToCart() {
       </template>
 
       <template #details>
-        <div v-if="sku" class="space-y-1 text-right">
-          <div class="flex items-baseline justify-end gap-2">
-            <span
-              v-if="sku.price.discount > 0"
-              class="text-xs text-gray-400 line-through"
-            >
-              ฿{{ sku.price.original.toLocaleString() }}
+        <div class="flex flex-wrap gap-2">
+          <UBadge
+            v-if="product.isForSale"
+            :color="stock.inStock > 0 ? 'success' : 'neutral'"
+            size="sm"
+            variant="subtle"
+          >
+            {{ t("productPage.inStock") }}
+            <span v-if="stock.inStock > 0" class="ml-1">
+              {{ capCount(stock.inStock) }}
             </span>
-            <span class="text-base font-bold text-primary">
-              ฿{{ sku.price.final.toLocaleString() }}
+          </UBadge>
+
+          <UBadge
+            v-if="matchedAssetCount > 0"
+            color="secondary"
+            size="sm"
+            variant="subtle"
+          >
+            {{ t("productPage.available") }}
+            <span class="ml-1">
+              {{ capCount(matchedAssetCount) }}
             </span>
-          </div>
+          </UBadge>
         </div>
       </template>
 
       <template #badges>
-        <UBadge
-          v-if="product.isForSale"
-          :color="stock.inStock > 0 ? 'success' : 'neutral'"
-          size="sm"
-          variant="subtle"
-        >
-          {{ t("productPage.inStock") }}
-          <span v-if="stock.inStock > 0" class="ml-1">
-            {{ capCount(stock.inStock) }}
+        <div v-if="sku" class="flex items-baseline gap-2">
+          <span class="text-base font-bold text-primary">
+            ฿{{ sku.price.final.toLocaleString() }}
           </span>
-        </UBadge>
-
-        <UBadge
-          v-if="matchedAssetCount > 0"
-          color="secondary"
-          size="sm"
-          variant="subtle"
-        >
-          {{ t("productPage.available") }}
-          <span class="ml-1">
-            {{ capCount(matchedAssetCount) }}
+          <span
+            v-if="sku.price.discount > 0"
+            class="text-xs text-gray-400 line-through"
+          >
+            ฿{{ sku.price.original.toLocaleString() }}
           </span>
-        </UBadge>
+        </div>
       </template>
 
       <template #actions>

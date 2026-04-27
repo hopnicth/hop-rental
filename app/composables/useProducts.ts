@@ -7,7 +7,15 @@ import type {
   CatalogProductRecord,
   CatalogProductSKURecord,
 } from "~/types/catalog";
-import type { Product, ProductPrice, ProductSKU } from "~/types/product";
+import type {
+  Product,
+  ProductDetailBlock,
+  ProductDetailBlockButton,
+  ProductDetailBlocks,
+  ProductPrice,
+  ProductSKU,
+} from "~/types/product";
+import type { LocalizedString } from "~/types/locale";
 
 const CATALOG_ONCE_KEY = "catalog:products";
 
@@ -119,6 +127,109 @@ function normalizeMediaLinks(value: unknown): CatalogMediaLinkRecord[] {
       }),
     )
     .filter((item) => item.url.length > 0);
+}
+
+function localizedFromFlat(
+  source: Record<string, unknown>,
+  prefix: string,
+): LocalizedString | undefined {
+  const th = toString(source[`${prefix}_th`]);
+  const en = toString(source[`${prefix}_en`]);
+  const cn = toString(source[`${prefix}_cn`]);
+  const jp = toString(source[`${prefix}_jp`]);
+
+  const fallback = th ?? en ?? cn ?? jp;
+  if (!fallback) return undefined;
+
+  return {
+    th: th ?? fallback,
+    en: en ?? fallback,
+    cn: cn ?? en ?? fallback,
+    jp: jp ?? en ?? fallback,
+  };
+}
+
+function normalizeDetailBlockButtons(
+  value: unknown,
+): ProductDetailBlockButton[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const items = value
+    .filter(isRecord)
+    .map((item, index): ProductDetailBlockButton | null => {
+      const url = toString(item.url);
+      const label = localizedFromFlat(item, "label");
+      if (!url || !label) return null;
+
+      return {
+        id: toString(item.id) ?? `btn-${index + 1}`,
+        label,
+        url,
+        icon: toString(item.icon),
+      };
+    })
+    .filter((item): item is ProductDetailBlockButton => item !== null);
+
+  return items.length > 0 ? items : undefined;
+}
+
+function normalizeDetailBlock(value: unknown): ProductDetailBlock | null {
+  if (!isRecord(value)) return null;
+
+  const title = localizedFromFlat(value, "title");
+  const body = localizedFromFlat(value, "body");
+  const items = Array.isArray(value.items)
+    ? value.items
+        .filter((item): item is string => typeof item === "string")
+        .filter((item) => item.length > 0)
+    : undefined;
+  const buttons = normalizeDetailBlockButtons(value.buttons);
+
+  if (!title && !body && !items?.length && !buttons?.length) return null;
+
+  return {
+    ...(title ? { title } : {}),
+    ...(body ? { body } : {}),
+    ...(items && items.length > 0 ? { items } : {}),
+    ...(buttons && buttons.length > 0 ? { buttons } : {}),
+  };
+}
+
+function normalizeDetailBlocks(
+  value: unknown,
+): ProductDetailBlocks | undefined {
+  // Accepts either the canonical object form `{ key: block }` or the legacy
+  // array form `[{ type, title, body, items }]` that some admin tooling still
+  // produces. Array entries are keyed by their `type` (with a positional
+  // fallback) so downstream UI code can treat both shapes uniformly.
+  const entries: Array<[string, ProductDetailBlock]> = [];
+
+  if (Array.isArray(value)) {
+    const usedKeys = new Set<string>();
+    value.forEach((raw, index) => {
+      const block = normalizeDetailBlock(raw);
+      if (!block) return;
+      const baseKey =
+        (isRecord(raw) ? toString(raw.type) : undefined) ??
+        `block-${index + 1}`;
+      let key = baseKey;
+      let suffix = 2;
+      while (usedKeys.has(key)) {
+        key = `${baseKey}-${suffix++}`;
+      }
+      usedKeys.add(key);
+      entries.push([key, block]);
+    });
+  } else if (isRecord(value)) {
+    for (const [key, raw] of Object.entries(value)) {
+      const block = normalizeDetailBlock(raw);
+      if (block) entries.push([key, block]);
+    }
+  } else {
+    return undefined;
+  }
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function normalizeDocuments(
@@ -247,10 +358,12 @@ function normalizeCatalogProductRow(row: unknown): CatalogProductRecord | null {
     media_links: normalizeMediaLinks(row.media_links),
     spec: toStringRecord(row.spec),
     documents: normalizeDocuments(row.documents),
+    detail_blocks: normalizeDetailBlocks(row.detail_blocks),
     supplier_ids: toStringArray(row.supplier_ids),
     skus,
     metrics: normalizeMetrics(row.metrics),
     is_hidden: row.is_hidden === true,
+    shipping_size: toString(row.shipping_size),
     created_at: toString(row.created_at),
     updated_at: toString(row.updated_at),
   };
@@ -297,7 +410,9 @@ export function useProducts() {
             media_links,
             spec,
             documents,
+            detail_blocks,
             supplier_ids,
+            shipping_size,
             metrics:product_metrics(
               view_count,
               add_to_cart_count,

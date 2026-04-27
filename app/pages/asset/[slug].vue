@@ -37,9 +37,7 @@ const bookingSku = computed(() =>
     : undefined,
 );
 
-const canBookAccess = computed(
-  () => !!access.value && !!primaryMatchedProduct.value && !!bookingSku.value,
-);
+const canBookAccess = computed(() => !!access.value);
 
 const specSummary = computed<Record<string, string | undefined>>(() => {
   const raw = access.value?.specSummary ?? {};
@@ -99,13 +97,12 @@ async function handleBookingSubmit(payload: {
   returnDate: string;
   totalCost: number;
   deposit: number;
+  dailyRate: number;
+  weeklyRate: number;
+  monthlyRate: number;
+  pricingBreakdown: import("~/utils/rental-pricing").RentalPricingBreakdown;
 }) {
-  if (
-    !access.value ||
-    !primaryMatchedProduct.value ||
-    !bookingSku.value ||
-    isSubmittingBooking.value
-  ) {
+  if (!access.value || isSubmittingBooking.value) {
     return;
   }
 
@@ -128,24 +125,27 @@ async function handleBookingSubmit(payload: {
   try {
     await addBooking({
       userId: user.value.id,
-      productId: primaryMatchedProduct.value.id,
-      skuId: bookingSku.value.id,
+      productId: primaryMatchedProduct.value?.id,
+      skuId: bookingSku.value?.id,
       assetId: access.value.id,
       assetCode: access.value.code,
       assetSlug: access.value.slug,
       assetName: access.value.name[lang.value],
       assetThumbnail: access.value.thumbnail,
       assetSnapshot: buildAssetSnapshot(),
-      matchedProductId: primaryMatchedProduct.value.id,
-      matchedProductName: primaryMatchedProduct.value.name[lang.value],
+      matchedProductId: primaryMatchedProduct.value?.id,
+      matchedProductName: primaryMatchedProduct.value?.name[lang.value],
       productName: access.value.name[lang.value],
       thumbnail: access.value.thumbnail,
       startDate: payload.startDate,
       numDays: payload.numDays,
       returnDate: payload.returnDate,
-      dailyRate: access.value.pricing.daily,
+      dailyRate: payload.dailyRate,
+      weeklyRate: payload.weeklyRate,
+      monthlyRate: payload.monthlyRate,
       totalCost: payload.totalCost,
       deposit: payload.deposit,
+      pricingBreakdown: payload.pricingBreakdown,
     });
 
     toast.add({
@@ -312,9 +312,7 @@ watch(
               </p>
             </div>
             <div>
-              <span class="text-gray-500">{{
-                t("asset.bufferDays")
-              }}</span>
+              <span class="text-gray-500">{{ t("asset.bufferDays") }}</span>
               <p class="font-semibold">{{ access.rentalRules.bufferDays }}</p>
             </div>
           </div>
@@ -342,11 +340,7 @@ watch(
         </UCard>
       </div>
 
-      <div
-        v-if="showBookingForm && access && primaryMatchedProduct && bookingSku"
-        ref="bookingFormRef"
-        class="mt-6"
-      >
+      <div v-if="showBookingForm && access" ref="bookingFormRef" class="mt-6">
         <ProductsRentalBookingForm
           :selected-sku="bookingSku"
           :asset="access"
@@ -355,6 +349,16 @@ watch(
           @cancel="showBookingForm = false"
         />
       </div>
+
+      <UCard v-if="access.detailBlocks?.length" class="mt-6">
+        <template #header>
+          <h2 class="text-lg font-semibold">
+            {{ t("asset.detailContents") }}
+          </h2>
+        </template>
+
+        <LazyProductsAssetDetailBlocks :blocks="access.detailBlocks" />
+      </UCard>
 
       <UCard class="mt-6">
         <template #header>

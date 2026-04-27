@@ -59,6 +59,14 @@ type PendingImageItem = {
 const toast = useToast();
 const { profile } = useUserProfile();
 
+const shippingSizeOptions = [
+  { label: "Free (0 ฿)", value: "free" },
+  { label: "S (50 ฿)", value: "s" },
+  { label: "M (100 ฿)", value: "m" },
+  { label: "L (150 ฿)", value: "l" },
+  { label: "XL (200 ฿)", value: "xl" },
+];
+
 const typeOptions = [
   { label: "Sale", value: "sale" },
   { label: "Rental", value: "rental" },
@@ -151,6 +159,7 @@ const form = reactive({
   mainCategoryKey: "",
   tagKeys: [] as string[],
   searchKeywords: [] as string[],
+  shippingSize: "s" as "free" | "s" | "m" | "l" | "xl",
 });
 
 const specText = ref(formatJsonText({}, "object"));
@@ -425,6 +434,7 @@ function resetForm() {
   form.mainCategoryKey = "";
   form.tagKeys = [];
   form.searchKeywords = [];
+  form.shippingSize = "s";
   specText.value = formatJsonText({}, "object");
   detailBlocksText.value = formatJsonText([], "array");
   imageFiles.value = [];
@@ -482,6 +492,7 @@ function buildCreateBody() {
     searchKeywords: form.searchKeywords,
     spec: parseJsonObjectText(specText.value, "Spec"),
     detailBlocks: parseJsonArrayText(detailBlocksText.value, "Detail blocks"),
+    shippingSize: form.shippingSize,
     isHidden: true,
   };
 }
@@ -673,6 +684,19 @@ async function createProduct() {
 
             <UFormField label="Brand">
               <UInput v-model="form.brand" placeholder="DCA" />
+            </UFormField>
+          </div>
+
+          <div class="grid gap-4 sm:grid-cols-2">
+            <UFormField
+              label="Shipping size"
+              hint="Used to compute the cart shipping fee via free-unit bin packing."
+            >
+              <USelectMenu
+                v-model="form.shippingSize"
+                :items="shippingSizeOptions"
+                value-key="value"
+              />
             </UFormField>
           </div>
 

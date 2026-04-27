@@ -4,7 +4,155 @@ export const ADMIN_ASSET_LIST_SELECT =
   "id, code, slug, status, name_th, name_en, name_cn, name_jp, brand, thumbnail_url, main_category_key, tag_keys, category_keys, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, currency_code, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_branch_id, storage_inventory_id, is_hidden, sort_order, updated_at, matches:asset_matches(product_id)";
 
 export const ADMIN_ASSET_DETAIL_SELECT =
-  "id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, main_category_key, tag_keys, category_keys, brand, thumbnail_url, image_urls, spec_summary, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, storage_branch_id, storage_inventory_id, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at";
+  "id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, main_category_key, tag_keys, category_keys, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, storage_branch_id, storage_inventory_id, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at";
+
+const DOCUMENT_KINDS = new Set([
+  "manual",
+  "catalog",
+  "datasheet",
+  "guide",
+  "report",
+  "other",
+]);
+
+const LOCALE_KEYS = ["th", "en", "cn", "jp"] as const;
+
+function normalizeLocalized(
+  value: unknown,
+  field: string,
+): Record<string, string> | null {
+  if (value == null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    fail422(`${field} must be a localized object`);
+  }
+  const source = value as Record<string, unknown>;
+  const result: Record<string, string> = {};
+  for (const key of LOCALE_KEYS) {
+    const entry = source[key];
+    if (typeof entry === "string" && entry.length > 0) {
+      result[key] = entry;
+    }
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function normalizeBlockImage(item: unknown, index: number) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    fail422(`detailBlocks.images[${index}] must be an object`);
+  }
+  const raw = item as Record<string, unknown>;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  if (!id) fail422(`detailBlocks.images[${index}].id is required`);
+  const url = typeof raw.url === "string" ? raw.url.trim() : "";
+  if (!url) fail422(`detailBlocks.images[${index}].url is required`);
+  const variantsRaw =
+    raw.variants &&
+    typeof raw.variants === "object" &&
+    !Array.isArray(raw.variants)
+      ? (raw.variants as Record<string, unknown>)
+      : null;
+  const variants = variantsRaw
+    ? Object.fromEntries(
+        Object.entries(variantsRaw).filter(
+          ([, v]) => typeof v === "string" && v.length > 0,
+        ),
+      )
+    : undefined;
+  const caption =
+    typeof raw.caption === "string" && raw.caption.trim().length > 0
+      ? raw.caption.trim()
+      : undefined;
+  const altText =
+    typeof raw.altText === "string" && raw.altText.trim().length > 0
+      ? raw.altText.trim()
+      : undefined;
+  return {
+    id,
+    url,
+    ...(variants && Object.keys(variants).length > 0 ? { variants } : {}),
+    ...(caption ? { caption } : {}),
+    ...(altText ? { altText } : {}),
+  };
+}
+
+function normalizeBlockDocument(item: unknown, index: number) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    fail422(`detailBlocks.documents[${index}] must be an object`);
+  }
+  const raw = item as Record<string, unknown>;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  if (!id) fail422(`detailBlocks.documents[${index}].id is required`);
+  const url = typeof raw.url === "string" ? raw.url.trim() : "";
+  if (!url) fail422(`detailBlocks.documents[${index}].url is required`);
+  const kindRaw = typeof raw.kind === "string" ? raw.kind.trim() : "other";
+  const kind = DOCUMENT_KINDS.has(kindRaw) ? kindRaw : "other";
+  const title =
+    typeof raw.title === "string" && raw.title.trim().length > 0
+      ? raw.title.trim()
+      : `Document ${index + 1}`;
+  const filename =
+    typeof raw.filename === "string" && raw.filename.trim().length > 0
+      ? raw.filename.trim()
+      : undefined;
+  const mimeType =
+    typeof raw.mimeType === "string" && raw.mimeType.trim().length > 0
+      ? raw.mimeType.trim()
+      : undefined;
+  const sizeBytes =
+    typeof raw.sizeBytes === "number" && Number.isFinite(raw.sizeBytes)
+      ? raw.sizeBytes
+      : undefined;
+  return {
+    id,
+    url,
+    kind,
+    title,
+    ...(filename ? { filename } : {}),
+    ...(mimeType ? { mimeType } : {}),
+    ...(sizeBytes != null ? { sizeBytes } : {}),
+  };
+}
+
+export function normalizeAssetDetailBlocks(value: unknown) {
+  if (value == null) return [];
+  if (!Array.isArray(value)) fail422("detailBlocks must be a JSON array");
+  const usedKeys = new Set<string>();
+  return value.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      fail422(`detailBlocks[${index}] must be an object`);
+    }
+    const raw = entry as Record<string, unknown>;
+    const rawKey =
+      typeof raw.key === "string" && raw.key.trim().length > 0
+        ? raw.key.trim()
+        : `block-${index + 1}`;
+    let key = rawKey;
+    let suffix = 2;
+    while (usedKeys.has(key)) key = `${rawKey}-${suffix++}`;
+    usedKeys.add(key);
+    const title = normalizeLocalized(raw.title, `detailBlocks[${index}].title`);
+    const body = normalizeLocalized(raw.body, `detailBlocks[${index}].body`);
+    const items = Array.isArray(raw.items)
+      ? raw.items
+          .map((entry) => (typeof entry === "string" ? entry.trim() : ""))
+          .filter((entry) => entry.length > 0)
+      : [];
+    const images = Array.isArray(raw.images)
+      ? raw.images.map((img, i) => normalizeBlockImage(img, i))
+      : [];
+    const documents = Array.isArray(raw.documents)
+      ? raw.documents.map((doc, i) => normalizeBlockDocument(doc, i))
+      : [];
+    return {
+      key,
+      ...(title ? { title } : {}),
+      ...(body ? { body } : {}),
+      ...(items.length > 0 ? { items } : {}),
+      ...(images.length > 0 ? { images } : {}),
+      ...(documents.length > 0 ? { documents } : {}),
+    };
+  });
+}
 
 const SERVICE_CYCLE_UNITS = new Set(["day", "week", "month", "year"]);
 const STATUS_VALUES = new Set(["draft", "active", "archived"]);
@@ -146,6 +294,8 @@ export function buildAssetPayload(
     payload.image_urls = asStringArray(body.imageUrls);
   if (body.specSummary !== undefined)
     payload.spec_summary = asJsonObject(body.specSummary);
+  if (body.detailBlocks !== undefined)
+    payload.detail_blocks = normalizeAssetDetailBlocks(body.detailBlocks);
 
   if (body.dailyRate !== undefined)
     payload.daily_rate = Math.max(0, asNumber(body.dailyRate, 0));
@@ -281,6 +431,9 @@ export function mapAssetDetail(row: Record<string, unknown>) {
       !Array.isArray(row.spec_summary)
         ? (row.spec_summary as Record<string, unknown>)
         : {},
+    detailBlocks: Array.isArray(row.detail_blocks)
+      ? (row.detail_blocks as Record<string, unknown>[])
+      : [],
     pricingModel: (row.pricing_model as string) ?? "daily",
     currencyCode: (row.currency_code as string) ?? "THB",
     dailyRate: Number(row.daily_rate ?? 0),

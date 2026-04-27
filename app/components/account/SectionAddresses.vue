@@ -362,36 +362,71 @@ async function handleSetDefault(id: string) {
       </template>
 
       <div class="grid gap-4 sm:grid-cols-2">
-        <UInput
-          v-model="form.title"
-          :placeholder="t('user.addressTitle')"
-          required
-        />
-        <UInput
-          v-model="form.contactName"
-          :placeholder="t('user.contactName')"
-        />
-        <UInput
-          v-model="form.contactPhone"
-          :placeholder="t('user.contactPhone')"
-        />
-        <UInput v-model="form.postalCode" :placeholder="t('user.postalCode')" />
-        <UInput
-          v-model="form.fullAddress"
-          :placeholder="t('user.fullAddress')"
-          class="sm:col-span-2"
-        />
-        <UInput
-          v-model="form.subDistrict"
-          :placeholder="t('user.subDistrict')"
-        />
-        <UInput v-model="form.district" :placeholder="t('user.district')" />
-        <UInput v-model="form.province" :placeholder="t('user.province')" />
-        <UInput
-          v-model="form.note"
-          :placeholder="t('user.addressNote')"
-          class="sm:col-span-2"
-        />
+        <UFormField :label="t('user.addressTitle')" required>
+          <UInput
+            v-model="form.title"
+            :placeholder="t('user.addressTitle')"
+            class="w-full"
+            required
+          />
+        </UFormField>
+        <UFormField :label="t('user.contactName')">
+          <UInput
+            v-model="form.contactName"
+            :placeholder="t('user.contactName')"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField :label="t('user.contactPhone')" required>
+          <UInput
+            v-model="form.contactPhone"
+            :placeholder="t('user.contactPhone')"
+            class="w-full"
+            required
+          />
+        </UFormField>
+        <UFormField :label="t('user.postalCode')">
+          <UInput
+            v-model="form.postalCode"
+            :placeholder="t('user.postalCode')"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField :label="t('user.fullAddress')" class="sm:col-span-2">
+          <UInput
+            v-model="form.fullAddress"
+            :placeholder="t('user.fullAddress')"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField :label="t('user.subDistrict')">
+          <UInput
+            v-model="form.subDistrict"
+            :placeholder="t('user.subDistrict')"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField :label="t('user.district')">
+          <UInput
+            v-model="form.district"
+            :placeholder="t('user.district')"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField :label="t('user.province')">
+          <UInput
+            v-model="form.province"
+            :placeholder="t('user.province')"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField :label="t('user.addressNote')" class="sm:col-span-2">
+          <UInput
+            v-model="form.note"
+            :placeholder="t('user.addressNote')"
+            class="w-full"
+          />
+        </UFormField>
 
         <label class="flex items-center gap-2 sm:col-span-2">
           <input
@@ -415,7 +450,7 @@ async function handleSetDefault(id: string) {
             :label="t('user.save')"
             icon="bx:check"
             :loading="saving"
-            :disabled="!form.title || !form.fullAddress"
+            :disabled="!form.title || !form.fullAddress || !form.contactPhone"
             @click="handleSave"
           />
         </div>

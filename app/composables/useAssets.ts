@@ -1,6 +1,22 @@
 import type { LocalizedString } from "~/types/locale";
 import type { Product } from "~/types/product";
-import type { Asset } from "~/types/asset";
+import type {
+  Asset,
+  AssetDetailBlock,
+  AssetDetailBlockDocument,
+  AssetDetailBlockDocumentKind,
+  AssetDetailBlockImage,
+  AssetMatch,
+} from "~/types/asset";
+
+const DOCUMENT_KINDS: AssetDetailBlockDocumentKind[] = [
+  "manual",
+  "catalog",
+  "datasheet",
+  "guide",
+  "report",
+  "other",
+];
 
 const ASSET_ONCE_KEY = "catalog:assets";
 const RENTAL_PLACEHOLDER_IMAGE =
@@ -42,6 +58,165 @@ function localized(
   };
 }
 
+function localizedFromBlock(
+  raw: Record<string, unknown>,
+  field: string,
+): LocalizedString | undefined {
+  const flat = raw[field];
+  if (isRecord(flat)) {
+    const th = toString(flat.th);
+    const en = toString(flat.en);
+    if (!th && !en && !toString(flat.cn) && !toString(flat.jp))
+      return undefined;
+    const fallback = th ?? en ?? "";
+    return {
+      th: th ?? en ?? fallback,
+      en: en ?? th ?? fallback,
+      cn: toString(flat.cn) ?? en ?? th ?? fallback,
+      jp: toString(flat.jp) ?? en ?? th ?? fallback,
+    };
+  }
+  const th = toString(raw[`${field}_th`]);
+  const en = toString(raw[`${field}_en`]);
+  const cn = toString(raw[`${field}_cn`]);
+  const jp = toString(raw[`${field}_jp`]);
+  if (!th && !en && !cn && !jp) return undefined;
+  const fallback = th ?? en ?? "";
+  return {
+    th: th ?? en ?? fallback,
+    en: en ?? th ?? fallback,
+    cn: cn ?? en ?? th ?? fallback,
+    jp: jp ?? en ?? th ?? fallback,
+  };
+}
+
+function normalizeBlockImage(
+  raw: unknown,
+  index: number,
+): AssetDetailBlockImage | null {
+  if (!isRecord(raw)) return null;
+  const url =
+    toString(raw.url) ??
+    toString(isRecord(raw.variants) ? raw.variants.large : undefined) ??
+    toString(isRecord(raw.variants) ? raw.variants.card : undefined);
+  if (!url) return null;
+  const variantsRaw = isRecord(raw.variants) ? raw.variants : null;
+  const variants = variantsRaw
+    ? {
+        thumbnail: toString(variantsRaw.thumbnail),
+        card: toString(variantsRaw.card),
+        large: toString(variantsRaw.large),
+      }
+    : undefined;
+  return {
+    id: toString(raw.id) ?? `image-${index + 1}`,
+    url,
+    variants,
+    caption: toString(raw.caption),
+    altText: toString(raw.altText) ?? toString(raw.alt_text),
+  };
+}
+
+function normalizeBlockDocument(
+  raw: unknown,
+  index: number,
+): AssetDetailBlockDocument | null {
+  if (!isRecord(raw)) return null;
+  const url = toString(raw.url);
+  if (!url) return null;
+  const kindRaw = toString(raw.kind) ?? "other";
+  const kind: AssetDetailBlockDocumentKind = (
+    DOCUMENT_KINDS as string[]
+  ).includes(kindRaw)
+    ? (kindRaw as AssetDetailBlockDocumentKind)
+    : "other";
+  return {
+    id: toString(raw.id) ?? `doc-${index + 1}`,
+    url,
+    kind,
+    title: toString(raw.title) ?? `Document ${index + 1}`,
+    filename: toString(raw.filename),
+    mimeType: toString(raw.mimeType) ?? toString(raw.mime_type),
+    sizeBytes:
+      typeof raw.sizeBytes === "number"
+        ? raw.sizeBytes
+        : typeof raw.size_bytes === "number"
+          ? raw.size_bytes
+          : undefined,
+  };
+}
+
+function normalizeDetailBlock(
+  raw: unknown,
+  index: number,
+): AssetDetailBlock | null {
+  if (!isRecord(raw)) return null;
+  const key = toString(raw.key) ?? toString(raw.type) ?? `block-${index + 1}`;
+  const title = localizedFromBlock(raw, "title");
+  const body = localizedFromBlock(raw, "body");
+  const items = Array.isArray(raw.items)
+    ? raw.items
+        .map((item) => (typeof item === "string" ? item.trim() : ""))
+        .filter((item) => item.length > 0)
+    : undefined;
+  const images = Array.isArray(raw.images)
+    ? raw.images
+        .map((entry, i) => normalizeBlockImage(entry, i))
+        .filter((entry): entry is AssetDetailBlockImage => !!entry)
+    : undefined;
+  const documents = Array.isArray(raw.documents)
+    ? raw.documents
+        .map((entry, i) => normalizeBlockDocument(entry, i))
+        .filter((entry): entry is AssetDetailBlockDocument => !!entry)
+    : undefined;
+  if (
+    !title &&
+    !body &&
+    !(items && items.length > 0) &&
+    !(images && images.length > 0) &&
+    !(documents && documents.length > 0)
+  ) {
+    return null;
+  }
+  return {
+    key,
+    ...(title ? { title } : {}),
+    ...(body ? { body } : {}),
+    ...(items && items.length > 0 ? { items } : {}),
+    ...(images && images.length > 0 ? { images } : {}),
+    ...(documents && documents.length > 0 ? { documents } : {}),
+  };
+}
+
+function normalizeDetailBlocks(value: unknown): AssetDetailBlock[] {
+  const usedKeys = new Set<string>();
+  const ensureUniqueKey = (rawKey: string) => {
+    let key = rawKey;
+    let suffix = 2;
+    while (usedKeys.has(key)) {
+      key = `${rawKey}-${suffix++}`;
+    }
+    usedKeys.add(key);
+    return key;
+  };
+  if (Array.isArray(value)) {
+    return value
+      .map((entry, idx) => normalizeDetailBlock(entry, idx))
+      .filter((block): block is AssetDetailBlock => !!block)
+      .map((block) => ({ ...block, key: ensureUniqueKey(block.key) }));
+  }
+  if (isRecord(value)) {
+    return Object.entries(value)
+      .map(([key, entry], idx) => {
+        const block = normalizeDetailBlock(entry, idx);
+        return block ? { ...block, key: toString(key) ?? block.key } : null;
+      })
+      .filter((block): block is AssetDetailBlock => !!block)
+      .map((block) => ({ ...block, key: ensureUniqueKey(block.key) }));
+  }
+  return [];
+}
+
 function isMissingAssetSchemaError(error: unknown): boolean {
   const message =
     error instanceof Error
@@ -76,15 +251,22 @@ function normalizeAssetRow(row: unknown): Asset | null {
   if (!id || !slug || !code) return null;
 
   const matchRows = Array.isArray(row.matches) ? row.matches : [];
-  const matchedProductIds = matchRows
+  const matches: AssetMatch[] = matchRows
     .map((match) =>
       isRecord(match)
-        ? { id: toString(match.product_id), sort: toNumber(match.sort_order) }
+        ? {
+            productId: toString(match.product_id),
+            matchType: toString(match.match_type) ?? "compatible",
+            sortOrder: toNumber(match.sort_order),
+          }
         : null,
     )
-    .filter((item): item is { id: string; sort: number } => !!item?.id)
-    .sort((a, b) => a.sort - b.sort)
-    .map((item) => item.id);
+    .filter(
+      (item): item is AssetMatch =>
+        !!item && typeof item.productId === "string",
+    )
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const matchedProductIds = matches.map((item) => item.productId);
 
   return {
     id,
@@ -143,7 +325,9 @@ function normalizeAssetRow(row: unknown): Asset | null {
     sortOrder: toNumber(row.sort_order),
     isHidden: row.is_hidden === true,
     matchedProductIds,
+    matches,
     matchedProducts: [],
+    detailBlocks: normalizeDetailBlocks(row.detail_blocks),
     createdAt: toString(row.created_at),
     updatedAt: toString(row.updated_at),
   };
@@ -152,22 +336,13 @@ function normalizeAssetRow(row: unknown): Asset | null {
 export function useAssets() {
   const supabase = useSupabaseClient();
   const { products } = useProducts();
-  const allAssets = useState<Asset[]>(
-    "catalog:assets",
-    () => [],
-  );
+  const allAssets = useState<Asset[]>("catalog:assets", () => []);
   const hasRemoteAssets = useState<boolean>(
     "catalog:assets:remote",
     () => false,
   );
-  const loading = useState<boolean>(
-    "catalog:assets:loading",
-    () => false,
-  );
-  const error = useState<string | null>(
-    "catalog:assets:error",
-    () => null,
-  );
+  const loading = useState<boolean>("catalog:assets:loading", () => false);
+  const error = useState<string | null>("catalog:assets:error", () => null);
 
   async function fetchAssetsFromCatalog(): Promise<void> {
     loading.value = true;
@@ -176,7 +351,7 @@ export function useAssets() {
       const { data, error: fetchError } = await supabase
         .from("assets")
         .select(
-          `id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, category_keys, brand, thumbnail_url, image_urls, spec_summary, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at, matches:asset_matches(product_id, sort_order)`,
+          `id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, category_keys, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at, matches:asset_matches(product_id, match_type, sort_order)`,
         )
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false });
@@ -199,13 +374,8 @@ export function useAssets() {
       }
 
       error.value =
-        fetchErr instanceof Error
-          ? fetchErr.message
-          : "Unknown asset error";
-      console.warn(
-        "[useAssets] Failed to fetch assets:",
-        fetchErr,
-      );
+        fetchErr instanceof Error ? fetchErr.message : "Unknown asset error";
+      console.warn("[useAssets] Failed to fetch assets:", fetchErr);
     } finally {
       loading.value = false;
     }
@@ -247,9 +417,7 @@ export function useAssets() {
   });
 
   function getAssetById(id: string) {
-    return computed(() =>
-      assets.value.find((access) => access.id === id),
-    );
+    return computed(() => assets.value.find((access) => access.id === id));
   }
 
   function getAssetsByProductId(productId: string) {

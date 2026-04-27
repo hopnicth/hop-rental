@@ -7,6 +7,7 @@ const props = defineProps<{
   access: Asset;
   browseTo?: string | null;
   actionTo?: string | null;
+  hideMatches?: boolean;
 }>();
 
 const emit = defineEmits<{ bookNow: [access: Asset] }>();
@@ -64,7 +65,9 @@ function formatMoney(value: number): string {
           {{ access.brand }}
         </UBadge>
         <UBadge
-          v-for="product in access.matchedProducts.slice(0, 2)"
+          v-for="product in hideMatches
+            ? []
+            : access.matchedProducts.slice(0, 2)"
           :key="product.id"
           color="secondary"
           variant="soft"
