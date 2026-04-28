@@ -2,12 +2,12 @@
 import type { LocaleCode } from "~/types/locale";
 
 const { bannerSlides } = useBanners();
-const { locale, t } = useI18n();
+const { locale } = useI18n();
 const lang = computed(() => locale.value as LocaleCode);
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-[2rem] bg-neutral-950 shadow-sm">
+  <div class="overflow-hidden rounded-[0.2rem] bg-neutral-950 shadow-sm">
     <UCarousel
       v-slot="{ item }"
       loop
@@ -22,9 +22,7 @@ const lang = computed(() => locale.value as LocaleCode);
         next: 'hidden md:inline-flex right-4 z-20 border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur',
       }"
     >
-      <div
-        class="relative h-[33vh] min-h-[15rem] max-h-[22rem] w-full overflow-hidden"
-      >
+      <div class="relative h-[33vh] min-h-120 max-h-100 w-full overflow-hidden">
         <NuxtImg
           :src="item.mobileImageUrl || item.imageUrl"
           :alt="item.title[lang]"
@@ -39,14 +37,18 @@ const lang = computed(() => locale.value as LocaleCode);
         />
 
         <div
-          class="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/25"
+          class="absolute inset-0 bg-linear-to-l from-black/40 via-black/30 to-black/5"
         />
 
-        <div class="relative z-10 flex h-full items-end p-6 sm:p-8 lg:p-10">
-          <div class="max-w-2xl space-y-4 text-white">
-            <UBadge color="neutral" variant="soft" size="lg">
+        <div
+          class="relative z-10 flex h-full items-end justify-end p-6 sm:p-8 lg:p-10"
+        >
+          <div
+            class="flex max-w-2xl flex-col items-end space-y-4 text-right text-white"
+          >
+            <!-- <UBadge color="neutral" variant="soft" size="lg">
               {{ t("home.heroBadge") }}
-            </UBadge>
+            </UBadge> -->
             <div class="space-y-2">
               <h1
                 class="text-2xl font-semibold leading-tight sm:text-3xl lg:text-4xl"

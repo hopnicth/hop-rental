@@ -14,7 +14,7 @@ const props = withDefaults(
     subtitle: undefined,
     to: null,
     cardClass: "",
-    imageClass: "h-48 w-full object-cover",
+    imageClass: "aspect-square w-full object-cover",
     clickable: false,
   },
 );

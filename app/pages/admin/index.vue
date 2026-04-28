@@ -48,6 +48,12 @@ const sections = computed(() => {
           "Manage homepage banners, link cards, and curated featured rails.",
         to: "/admin/home-content",
       },
+      {
+        title: "Content Pages",
+        description:
+          "Manage blog, services, and promotions with reusable content blocks.",
+        to: "/admin/content",
+      },
     );
   }
 

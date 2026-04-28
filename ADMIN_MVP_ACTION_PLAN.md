@@ -30,6 +30,7 @@ Use this as the active admin backlog, not as a historical transcript.
 - [x] Asset list/detail admin
 - [x] Asset match management
 - [x] Homepage content admin
+- [x] Blog/service/promotion content page admin
 
 ### Phase 2 — media/admin usability
 
@@ -37,6 +38,9 @@ Use this as the active admin backlog, not as a historical transcript.
 - [x] Thumbnail/gallery sync rules
 - [x] Homepage image upload flow instead of URL-only input
 - [x] Homepage partner logo SVG upload and compact logo rail
+- [x] Homepage storefront sections standardized on shared carousel/card behavior
+- [x] Storefront card image frames standardized to square `1:1`
+- [x] Global HOP UI theme colors and `0.2rem` radius tokens applied
 - [ ] Required-field validation polish across remaining forms
 - [ ] Quick storefront check links from admin surfaces
 
@@ -96,7 +100,11 @@ Use this as the active admin backlog, not as a historical transcript.
 - Incomplete sale/rental rows in the admin order list should remain visually highlighted.
 - Booker contact on a rental booking should be preferred over account contact when present.
 - Homepage admin now covers banners, partner logos, promotion/service cards, and curated featured rails with upload/delete flows.
+- Content Pages admin covers blog, services, and promotions with reusable blocks: heading, paragraph, image, button, link, file download, callout, gallery, and FAQ.
 - Partner logo uploads may be SVG only for `partner-logo`; other Home image uploads are processed to WebP.
+- Storefront Home sections use shared `HomeHorizontalRail` carousel behavior; product/asset cards use listing components, and promotion/service cards use `HomeLinkCard`.
+- Do not reintroduce random fallback items for admin-curated Home product/asset rails; empty curated rails should show empty states.
+- Storefront card images should remain square `1:1`; card media defaults live in `CatalogCardShell.vue` and `HomeLinkCard.vue`.
 
 ## Cross refs
 

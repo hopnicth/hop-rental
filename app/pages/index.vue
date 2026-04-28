@@ -7,7 +7,9 @@ import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
 import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
+import type { Asset } from "~/types/asset";
 import type { HomeLinkCard as HomeLinkCardType } from "~/types/home";
+import type { Product } from "~/types/product";
 
 const { t } = useI18n();
 const isCategoryPanelOpen = ref(false);
@@ -17,6 +19,14 @@ const { promotionCards, featuredAssets, featuredProducts, serviceCards } =
 
 function asHomeLinkCard(item: unknown) {
   return item as HomeLinkCardType;
+}
+
+function asAsset(item: unknown) {
+  return item as Asset;
+}
+
+function asProduct(item: unknown) {
+  return item as Product;
 }
 </script>
 
@@ -39,96 +49,93 @@ function asHomeLinkCard(item: unknown) {
           </div>
         </div>
 
-        <HomeSectionShell
-          :title="t('home.promotionsTitle')"
-          :description="t('home.promotionsDescription')"
-        >
-          <HomeHorizontalRail
-            :items="promotionCards"
-            :empty-label="t('home.emptyPromotions')"
+        <div>
+          <HomeSectionShell
+            :title="t('home.promotionsTitle')"
+            :description="t('home.promotionsDescription')"
           >
-            <template #item="{ item }">
-              <HomeLinkCard :card="asHomeLinkCard(item)" />
-            </template>
-          </HomeHorizontalRail>
-        </HomeSectionShell>
-
-        <HomeSectionShell
-          :title="t('home.rentalTitle')"
-          :description="t('home.rentalDescription')"
-        >
-          <template #action>
-            <UButton
-              to="/product-rental"
-              variant="soft"
-              color="secondary"
-              size="sm"
+            <HomeHorizontalRail
+              :items="promotionCards"
+              :empty-label="t('home.emptyPromotions')"
             >
-              {{ t("home.viewAllRentals") }}
-            </UButton>
-          </template>
+              <template #item="{ item }">
+                <HomeLinkCard :card="asHomeLinkCard(item)" class="lg:mx-0.5 sm:mx-0" />
+              </template>
+            </HomeHorizontalRail>
+          </HomeSectionShell>
 
-          <div
-            v-if="featuredAssets.length"
-            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
+          <HomeSectionShell
+            :title="t('home.rentalTitle')"
+            :description="t('home.rentalDescription')"
           >
-            <LazyProductsAssetCard
-              v-for="access in featuredAssets"
-              :key="access.id"
-              :access="access"
-              :browse-to="getAssetShowPath(access)"
-              hide-matches
-            />
-          </div>
-          <div
-            v-else
-            class="flex min-h-56 items-center justify-center rounded-3xl border border-dashed border-default bg-(--ui-bg-elevated)/40 px-6 text-center text-sm text-muted"
-          >
-            {{ t("home.emptyRentals") }}
-          </div>
-        </HomeSectionShell>
-
-        <HomeSectionShell
-          :title="t('home.productsTitle')"
-          :description="t('home.productsDescription')"
-        >
-          <template #action>
-            <UButton to="/product-all" variant="soft" color="primary" size="sm">
-              {{ t("home.viewAllProducts") }}
-            </UButton>
-          </template>
-
-          <div
-            v-if="featuredProducts.length"
-            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
-          >
-            <LazyProductsProductCard
-              v-for="product in featuredProducts"
-              :key="product.id"
-              :product-id="product.id"
-            />
-          </div>
-          <div
-            v-else
-            class="flex min-h-56 items-center justify-center rounded-3xl border border-dashed border-default bg-(--ui-bg-elevated)/40 px-6 text-center text-sm text-muted"
-          >
-            {{ t("home.emptyProducts") }}
-          </div>
-        </HomeSectionShell>
-
-        <HomeSectionShell
-          :title="t('home.servicesTitle')"
-          :description="t('home.servicesDescription')"
-        >
-          <HomeHorizontalRail
-            :items="serviceCards"
-            :empty-label="t('home.emptyServices')"
-          >
-            <template #item="{ item }">
-              <HomeLinkCard :card="asHomeLinkCard(item)" />
+            <template #action>
+              <UButton
+                to="/product-rental"
+                variant="soft"
+                color="secondary"
+                size="sm"
+              >
+                {{ t("home.viewAllRentals") }}
+              </UButton>
             </template>
-          </HomeHorizontalRail>
-        </HomeSectionShell>
+
+            <HomeHorizontalRail
+              :items="featuredAssets"
+              :empty-label="t('home.emptyRentals')"
+            >
+              <template #item="{ item }">
+                <LazyProductsAssetCard
+                  :access="asAsset(item)"
+                  :browse-to="getAssetShowPath(asAsset(item))"
+                  hide-matches
+                  class="lg:mx-0.5"
+                />
+              </template>
+            </HomeHorizontalRail>
+          </HomeSectionShell>
+
+          <HomeSectionShell
+            :title="t('home.productsTitle')"
+            :description="t('home.productsDescription')"
+          >
+            <template #action>
+              <UButton
+                to="/product-all"
+                variant="soft"
+                color="primary"
+                size="sm"
+              >
+                {{ t("home.viewAllProducts") }}
+              </UButton>
+            </template>
+
+            <HomeHorizontalRail
+              :items="featuredProducts"
+              :empty-label="t('home.emptyProducts')"
+            >
+              <template #item="{ item }">
+                <LazyProductsProductCard
+                  :product-id="asProduct(item).id"
+                  class="lg:mx-0.5"
+                />
+              </template>
+            </HomeHorizontalRail>
+          </HomeSectionShell>
+
+          <HomeSectionShell
+            :title="t('home.servicesTitle')"
+            :description="t('home.servicesDescription')"
+          >
+            <HomeHorizontalRail
+              :items="serviceCards"
+              :empty-label="t('home.emptyServices')"
+            >
+              <template #item="{ item }">
+                <HomeLinkCard :card="asHomeLinkCard(item)" class="lg:mx-0.5" />
+              </template>
+            </HomeHorizontalRail>
+          </HomeSectionShell>
+        </div>
       </div>
     </div>
 

@@ -17,42 +17,42 @@ const lang = computed(() => locale.value as LocaleCode);
     class="block h-full"
   >
     <UCard
-      class="h-[22rem] overflow-hidden transition-shadow duration-200 hover:shadow-lg"
-      :ui="{ body: 'p-0 sm:p-0' }"
+      class="h-full overflow-hidden transition-all duration-200 hover:-translate-y-0.5 hover:ring-2 hover:ring-primary"
     >
-      <div class="flex h-full flex-col">
-        <NuxtImg
-          :src="props.card.imageUrl"
-          :alt="props.card.title[lang]"
-          class="h-48 w-full object-cover"
-          loading="lazy"
-        />
+      <template #header>
+        <div class="flex min-h-14 flex-col justify-start gap-1">
+          <UBadge color="primary" variant="soft" size="sm" class="w-fit">
+            {{
+              props.card.sectionKey === "service"
+                ? t("home.serviceBadge")
+                : t("home.promotionBadge")
+            }}
+          </UBadge>
+          <h3 class="line-clamp-2 text-sm font-semibold text-highlighted">
+            {{ props.card.title[lang] }}
+          </h3>
+        </div>
+      </template>
 
-        <div class="flex flex-1 flex-col gap-3 p-4">
-          <div class="space-y-2">
-            <UBadge color="primary" variant="soft" size="sm">
-              {{
-                props.card.sectionKey === "service"
-                  ? t("home.serviceBadge")
-                  : t("home.promotionBadge")
-              }}
-            </UBadge>
-            <h3
-              class="line-clamp-2 text-base font-semibold text-[var(--ui-text)]"
-            >
-              {{ props.card.title[lang] }}
-            </h3>
-            <p class="line-clamp-3 text-sm text-[var(--ui-text-muted)]">
-              {{ props.card.description[lang] }}
-            </p>
-          </div>
+      <NuxtImg
+        :src="props.card.imageUrl"
+        :alt="props.card.title[lang]"
+        class="aspect-square w-full object-cover"
+        loading="lazy"
+      />
 
-          <div
-            class="mt-auto flex items-center gap-2 text-sm font-medium text-[var(--ui-primary)]"
-          >
-            <span>{{ t("home.learnMore") }}</span>
-            <UIcon name="bx:right-arrow-alt" class="size-5" />
-          </div>
+      <div class="mt-3 flex min-h-60 flex-col gap-3">
+        <div class="min-h-10">
+          <p class="line-clamp-3 text-sm text-muted">
+            {{ props.card.description[lang] }}
+          </p>
+        </div>
+
+        <div class="mt-auto flex items-center justify-between gap-2">
+          <span class="text-sm font-medium text-primary">
+            {{ t("home.learnMore") }}
+          </span>
+          <UIcon name="bx:right-arrow-alt" class="size-5 text-primary" />
         </div>
       </div>
     </UCard>

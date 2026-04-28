@@ -11,7 +11,7 @@ export const ADMIN_HOME_BANNER_SELECT =
   "id, title_th, title_en, title_cn, title_jp, subtitle_th, subtitle_en, subtitle_cn, subtitle_jp, cta_label_th, cta_label_en, cta_label_cn, cta_label_jp, image_url, mobile_image_url, link_url, link_target, sort_order, is_active, created_at, updated_at";
 
 export const ADMIN_HOME_LINK_CARD_SELECT =
-  "id, section_key, title_th, title_en, title_cn, title_jp, description_th, description_en, description_cn, description_jp, image_url, link_url, link_target, sort_order, is_active, created_at, updated_at";
+  "id, section_key, content_page_id, title_th, title_en, title_cn, title_jp, description_th, description_en, description_cn, description_jp, image_url, link_url, link_target, sort_order, is_active, created_at, updated_at, content_page:content_pages!content_page_id(id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, is_active)";
 
 export const ADMIN_HOME_FEATURED_PRODUCT_SELECT =
   "id, product_id, sort_order, is_active, created_at, updated_at, product:products(id, slug, name_th, is_hidden)";
@@ -65,8 +65,32 @@ export function buildHomeBannerPayload(body: Record<string, unknown>) {
 }
 
 export function buildHomeLinkCardPayload(body: Record<string, unknown>) {
+  const sectionKey = asHomeSectionKey(body.sectionKey);
+  const contentPageId = asOptionalString(body.contentPageId);
+
+  if (contentPageId) {
+    return {
+      section_key: sectionKey,
+      content_page_id: contentPageId,
+      title_th: null,
+      title_en: null,
+      title_cn: null,
+      title_jp: null,
+      description_th: null,
+      description_en: null,
+      description_cn: null,
+      description_jp: null,
+      image_url: null,
+      link_url: null,
+      link_target: asLinkTarget(body.linkTarget),
+      sort_order: Math.max(0, asNumber(body.sortOrder, 0)),
+      is_active: body.isActive !== false,
+    };
+  }
+
   return {
-    section_key: asHomeSectionKey(body.sectionKey),
+    section_key: sectionKey,
+    content_page_id: null,
     title_th: asNonEmptyString(body.titleTh, "titleTh"),
     title_en: asNonEmptyString(body.titleEn, "titleEn"),
     title_cn: asOptionalString(body.titleCn),

@@ -1,30 +1,34 @@
 <script setup lang="ts">
-withDefaults(
+const props = withDefaults(
   defineProps<{
     items: unknown[];
     emptyLabel: string;
   }>(),
   {},
 );
+
+const carouselItems = computed(() => props.items as never[]);
 </script>
 
 <template>
   <div
     v-if="items.length === 0"
-    class="flex h-[22rem] items-center justify-center rounded-3xl border border-dashed border-[var(--ui-border)] bg-[var(--ui-bg-elevated)]/40 px-6 text-center text-sm text-[var(--ui-text-muted)]"
+    class="flex min-h-56 items-center justify-center rounded-3xl border border-dashed border-default bg-(--ui-bg-elevated)/40 px-6 text-center text-sm text-muted"
   >
     {{ emptyLabel }}
   </div>
 
-  <div v-else class="rounded-3xl px-2 py-2 sm:px-3 lg:px-4">
+  <div v-else class="px-1 rounded-3xl py-2">
     <UCarousel
       v-slot="{ item }"
+      loop
       arrows
       dots
-      :items="items"
+      :autoplay="{ delay: 4500 }"
+      :items="carouselItems"
       :ui="{
-        root: 'relative w-full overflow-visible px-8 lg:px-10',
-        item: 'basis-[88%] py-2 pe-4 sm:basis-[48%] lg:basis-[34%] xl:basis-[26%]',
+        root: 'relative w-full overflow-visible px-1 lg:px-1',
+        item: 'basis-1/2 py-2 pe-4 sm:basis-1/3',
         dots: 'mt-3',
         prev: 'hidden lg:inline-flex left-0 z-10 border border-default bg-white/95 shadow-md',
         next: 'hidden lg:inline-flex right-0 z-10 border border-default bg-white/95 shadow-md',

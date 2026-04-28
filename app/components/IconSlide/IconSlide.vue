@@ -88,16 +88,6 @@ function onMouseLeave() {
 }
 
 /**
- * Mouse wheel → shift the track while paused.
- * ×3 multiplier for noticeably faster scroll.
- */
-function onWheel(e: WheelEvent) {
-  if (!isPaused.value) return;
-  e.preventDefault();
-  pausedX.value -= e.deltaY * 3;
-}
-
-/**
  * Duplicate items to create seamless infinite loop.
  * We render the list twice so when the first set scrolls out,
  * the second set is already visible — creating an endless loop.
@@ -111,7 +101,6 @@ const duplicatedItems = computed(() => [...props.items, ...props.items]);
     :style="{ height }"
     @mouseenter="onMouseEnter"
     @mouseleave="onMouseLeave"
-    @wheel.prevent="onWheel"
   >
     <div
       ref="trackRef"

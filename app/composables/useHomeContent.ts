@@ -70,30 +70,42 @@ function normalizeLinkCardRow(row: unknown): HomeLinkCard | null {
   if (!isRecord(row)) return null;
 
   const id = toString(row.id);
-  const imageUrl = toString(row.image_url);
-  const linkUrl = toString(row.link_url);
   const sectionKey = row.section_key === "service" ? "service" : "promotion";
-  if (!id || !imageUrl || !linkUrl) return null;
+  if (!id) return null;
 
-  const fallback = toString(row.title_en) ?? toString(row.title_th) ?? id;
+  const page = isRecord(row.content_page) ? row.content_page : null;
+  if (page && page.is_active === false) return null;
+
+  const titleTh = page ? page.title_th : row.title_th;
+  const titleEn = page ? page.title_en : row.title_en;
+  const titleCn = page ? page.title_cn : row.title_cn;
+  const titleJp = page ? page.title_jp : row.title_jp;
+  const descTh = page ? page.excerpt_th : row.description_th;
+  const descEn = page ? page.excerpt_en : row.description_en;
+  const descCn = page ? page.excerpt_cn : row.description_cn;
+  const descJp = page ? page.excerpt_jp : row.description_jp;
+
+  const imageUrl = page
+    ? toString(page.cover_image_url)
+    : toString(row.image_url);
+
+  const pageSlug = page ? toString(page.slug) : undefined;
+  const pageBase = sectionKey === "service" ? "/services" : "/promotions";
+  const linkUrl = page
+    ? pageSlug
+      ? `${pageBase}/${pageSlug}`
+      : undefined
+    : toString(row.link_url);
+
+  if (!imageUrl || !linkUrl) return null;
+
+  const fallback = toString(titleEn) ?? toString(titleTh) ?? id;
 
   return {
     id,
     sectionKey,
-    title: localized(
-      row.title_th,
-      row.title_en,
-      row.title_cn,
-      row.title_jp,
-      fallback,
-    ),
-    description: localized(
-      row.description_th,
-      row.description_en,
-      row.description_cn,
-      row.description_jp,
-      fallback,
-    ),
+    title: localized(titleTh, titleEn, titleCn, titleJp, fallback),
+    description: localized(descTh, descEn, descCn, descJp, fallback),
     imageUrl,
     linkUrl,
     linkTarget: row.link_target === "_blank" ? "_blank" : "_self",
@@ -208,7 +220,7 @@ export function useHomeContent() {
           supabase
             .from("home_link_cards")
             .select(
-              "id, section_key, title_th, title_en, title_cn, title_jp, description_th, description_en, description_cn, description_jp, image_url, link_url, link_target, sort_order, is_active",
+              "id, section_key, content_page_id, title_th, title_en, title_cn, title_jp, description_th, description_en, description_cn, description_jp, image_url, link_url, link_target, sort_order, is_active, content_page:content_pages!content_page_id(id, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, is_active)",
             )
             .order("sort_order", { ascending: true })
             .order("created_at", { ascending: false }),

@@ -96,7 +96,7 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    if (existing.image_url !== payload.image_url) {
+    if (existing.image_url && existing.image_url !== payload.image_url) {
       await removeHomeMediaByPublicUrl(adminClient, existing.image_url);
     }
 

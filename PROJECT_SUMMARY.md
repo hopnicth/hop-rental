@@ -54,8 +54,13 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Asset matching to products is live
 - Multi-inventory branch stock management is live
 - Homepage content admin exists and is `super_admin` only, including banners, partner logos, curated product/asset rails, upload, and delete flows
-- Homepage curated product/asset sections use the same card components as product/all-rental listing grids
-- Partner logos are DB-backed, support SVG uploads, and render through a compact 40px marquee
+- Generic content page admin exists for blog, services, and promotions with reusable JSONB content blocks and upload support
+- Homepage curated sections (`promotions`, rentals, products, services) use a shared Nuxt UI `UCarousel`/Embla rail with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin
+- Homepage rental/product sections use the same card components as product/all-rental listing cards
+- Storefront card images are standardized to square `1:1` media frames (`aspect-square` + `object-cover`) so responsive cards preserve consistent image geometry
+- Partner logos are DB-backed, support SVG uploads, and render through a compact 40px marquee with hover-pause only
+- Global Nuxt UI theme tokens are customized in `app/assets/css/main.css` for HOP colors and a unified `0.2rem` radius scale
+- Hero banners are DB-backed, autoplay with loop, and align title/subtitle/CTA to the right with a right-side readability gradient
 
 ### Booking + checkout
 
@@ -84,6 +89,9 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/product-{group}/{slug}`
 - `/product-rental`
 - `/asset/{slug}`
+- `/blog`, `/blog/{slug}`
+- `/services`, `/services/{slug}`
+- `/promotions`, `/promotions/{slug}`
 
 ### Customer
 
@@ -99,6 +107,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/admin/orders`
 - `/admin/orders/[id]`
 - `/admin/rental-bookings/[id]`
+- `/admin/content`
 
 ## Important rules
 

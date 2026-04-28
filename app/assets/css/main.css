@@ -3,6 +3,20 @@
 
 :root {
   --font-sans: "Public Sans", sans-serif;
+  --ui-primary: #f1b323;
+  --ui-secondary: #815a32;
+  --ui-success: #8fb424;
+  --ui-error: #ff3131;
+  --ui-warning: #ff751f;
+  --ui-radius: 0.2rem;
+  --radius-xs: 0.2rem;
+  --radius-sm: 0.2rem;
+  --radius-md: 0.2rem;
+  --radius-lg: 0.2rem;
+  --radius-xl: 0.2rem;
+  --radius-2xl: 0.2rem;
+  --radius-3xl: 0.2rem;
+  --radius-4xl: 0.2rem;
 }
 
 /* Keep dark mode visually identical to light mode for now. */

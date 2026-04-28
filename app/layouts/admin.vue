@@ -5,13 +5,21 @@ import { formatPlatformRole } from "~/utils/role-display";
 const route = useRoute();
 const { profile } = useUserProfile();
 
-const navItems = [
-  { label: "Overview", to: "/admin" },
-  { label: "Products", to: "/admin/products" },
-  { label: "Assets", to: "/admin/assets" },
-  { label: "Branch & Inventory", to: "/admin/branches-inventory" },
-  { label: "Orders", to: "/admin/orders" },
-];
+const navItems = computed(() => {
+  const items = [
+    { label: "Overview", to: "/admin" },
+    { label: "Products", to: "/admin/products" },
+    { label: "Assets", to: "/admin/assets" },
+    { label: "Branch & Inventory", to: "/admin/branches-inventory" },
+    { label: "Orders", to: "/admin/orders" },
+  ];
+
+  if (profile.value?.platformRole === "super_admin") {
+    items.push({ label: "Content", to: "/admin/content" });
+  }
+
+  return items;
+});
 </script>
 
 <template>

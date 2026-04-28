@@ -22,7 +22,7 @@ const detailUrl = computed(() => `/asset/${props.access.slug}`);
         <NuxtImg
           :src="props.access.thumbnail"
           :alt="props.access.name[lang]"
-          class="h-48 w-full object-cover"
+          class="aspect-square w-full object-cover"
           loading="lazy"
         />
 

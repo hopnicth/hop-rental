@@ -39,6 +39,9 @@ type AdminBanner = {
 type AdminLinkCard = {
   id: string;
   sectionKey: "promotion" | "service";
+  contentPageId: string | null;
+  contentPageSlug: string;
+  contentPageActive: boolean | null;
   titleTh: string;
   titleEn: string;
   titleCn: string;
@@ -51,6 +54,14 @@ type AdminLinkCard = {
   linkUrl: string;
   linkTarget: "_blank" | "_self";
   sortOrder: number;
+  isActive: boolean;
+};
+
+type ContentPageOption = {
+  value: string;
+  label: string;
+  contentType: "promotion" | "service";
+  slug: string;
   isActive: boolean;
 };
 
@@ -121,6 +132,9 @@ const emptyBanner = (): Omit<AdminBanner, "id"> => ({
 
 const emptyLinkCard = (): Omit<AdminLinkCard, "id"> => ({
   sectionKey: "promotion",
+  contentPageId: null,
+  contentPageSlug: "",
+  contentPageActive: null,
   titleTh: "",
   titleEn: "",
   titleCn: "",
@@ -171,6 +185,7 @@ const { data, pending, error, refresh } = await useFetch<{
   partnerLogos: AdminPartnerLogo[];
   productOptions: SelectOption[];
   assetOptions: SelectOption[];
+  contentPageOptions: ContentPageOption[];
 }>("/api/admin/home-content", {
   key: "admin-home-content",
   default: () => ({
@@ -181,6 +196,7 @@ const { data, pending, error, refresh } = await useFetch<{
     partnerLogos: [],
     productOptions: [],
     assetOptions: [],
+    contentPageOptions: [],
   }),
 });
 
@@ -219,6 +235,24 @@ const promotionCards = computed(() =>
 );
 const serviceCards = computed(() =>
   linkCards.value.filter((item) => item.sectionKey === "service"),
+);
+const contentPageOptions = computed<ContentPageOption[]>(
+  () => data.value?.contentPageOptions ?? [],
+);
+const promotionPageOptions = computed(() =>
+  contentPageOptions.value
+    .filter((option) => option.contentType === "promotion")
+    .map((option) => ({ label: option.label, value: option.value })),
+);
+const servicePageOptions = computed(() =>
+  contentPageOptions.value
+    .filter((option) => option.contentType === "service")
+    .map((option) => ({ label: option.label, value: option.value })),
+);
+const newLinkCardPageOptions = computed(() =>
+  newLinkCard.sectionKey === "service"
+    ? servicePageOptions.value
+    : promotionPageOptions.value,
 );
 const canAddFeaturedProducts = computed(
   () => featuredProducts.value.length < FEATURED_HOME_LIMIT,
@@ -847,7 +881,8 @@ async function copyText(value: string, successTitle: string) {
             <div>
               <h3 class="text-lg font-semibold">Promotion cards</h3>
               <p class="text-sm text-muted">
-                Horizontal card rail content for section 3.
+                Linked to Content Pages (type: promotion). Title, excerpt and
+                cover image are pulled live from the selected page.
               </p>
             </div>
           </template>
@@ -866,55 +901,30 @@ async function copyText(value: string, successTitle: string) {
               variant="subtle"
             >
               <div class="space-y-4">
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <UFormField label="Title (TH)">
-                    <UInput v-model="item.titleTh" />
-                  </UFormField>
-                  <UFormField label="Title (EN)">
-                    <UInput v-model="item.titleEn" />
-                  </UFormField>
-                </div>
-
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <UFormField label="Description (TH)">
-                    <UTextarea v-model="item.descriptionTh" :rows="2" />
-                  </UFormField>
-                  <UFormField label="Description (EN)">
-                    <UTextarea v-model="item.descriptionEn" :rows="2" />
-                  </UFormField>
+                <div
+                  v-if="!item.contentPageId"
+                  class="rounded-xl border border-warning bg-warning/10 p-3 text-sm text-warning"
+                >
+                  Legacy card — please link a Content Page to keep it in sync.
                 </div>
 
                 <div
-                  class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_120px]"
+                  class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px_120px]"
                 >
-                  <div class="space-y-2">
-                    <UFormField label="Image URL">
-                      <UInput v-model="item.imageUrl" />
-                    </UFormField>
-                    <input
-                      accept="image/jpeg,image/png,image/webp"
-                      class="block w-full text-sm text-muted"
-                      type="file"
-                      :disabled="isUploading(`linkCard:${item.id}:imageUrl`)"
-                      @change="
-                        uploadIntoField(
-                          $event,
-                          item,
-                          'imageUrl',
-                          `linkCard:${item.id}:imageUrl`,
-                          'link-card',
-                        )
-                      "
+                  <UFormField label="Content page" required>
+                    <USelectMenu
+                      v-model="item.contentPageId"
+                      :items="promotionPageOptions"
+                      value-key="value"
+                      placeholder="Select promotion page"
                     />
-                    <img
-                      v-if="item.imageUrl"
-                      :src="item.imageUrl"
-                      alt="Promotion card preview"
-                      class="h-24 w-full rounded-xl border border-default object-cover"
+                  </UFormField>
+                  <UFormField label="Sort order">
+                    <UInput
+                      v-model.number="item.sortOrder"
+                      type="number"
+                      min="0"
                     />
-                  </div>
-                  <UFormField label="Link URL">
-                    <UInput v-model="item.linkUrl" />
                   </UFormField>
                   <UFormField label="Link target">
                     <USelectMenu
@@ -926,13 +936,28 @@ async function copyText(value: string, successTitle: string) {
                       value-key="value"
                     />
                   </UFormField>
-                  <UFormField label="Sort order">
-                    <UInput
-                      v-model.number="item.sortOrder"
-                      type="number"
-                      min="0"
-                    />
-                  </UFormField>
+                </div>
+
+                <div
+                  class="grid gap-4 sm:grid-cols-[160px_minmax(0,1fr)] items-start"
+                >
+                  <img
+                    v-if="item.imageUrl"
+                    :src="item.imageUrl"
+                    alt="Promotion preview"
+                    class="h-24 w-full rounded-xl border border-default object-cover"
+                  />
+                  <div class="space-y-1 text-sm">
+                    <p class="font-semibold">
+                      {{ item.titleTh || item.titleEn || "—" }}
+                    </p>
+                    <p class="text-muted">
+                      {{ item.descriptionTh || item.descriptionEn || "—" }}
+                    </p>
+                    <p v-if="item.linkUrl" class="text-xs text-muted">
+                      → {{ item.linkUrl }}
+                    </p>
+                  </div>
                 </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -976,7 +1001,10 @@ async function copyText(value: string, successTitle: string) {
           <template #header>
             <div>
               <h3 class="text-lg font-semibold">Service cards</h3>
-              <p class="text-sm text-muted">Custom link cards for section 6.</p>
+              <p class="text-sm text-muted">
+                Linked to Content Pages (type: service). Title, excerpt and
+                cover image are pulled live from the selected page.
+              </p>
             </div>
           </template>
 
@@ -987,55 +1015,30 @@ async function copyText(value: string, successTitle: string) {
           <div v-else class="space-y-4">
             <UCard v-for="item in serviceCards" :key="item.id" variant="subtle">
               <div class="space-y-4">
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <UFormField label="Title (TH)">
-                    <UInput v-model="item.titleTh" />
-                  </UFormField>
-                  <UFormField label="Title (EN)">
-                    <UInput v-model="item.titleEn" />
-                  </UFormField>
-                </div>
-
-                <div class="grid gap-4 sm:grid-cols-2">
-                  <UFormField label="Description (TH)">
-                    <UTextarea v-model="item.descriptionTh" :rows="2" />
-                  </UFormField>
-                  <UFormField label="Description (EN)">
-                    <UTextarea v-model="item.descriptionEn" :rows="2" />
-                  </UFormField>
+                <div
+                  v-if="!item.contentPageId"
+                  class="rounded-xl border border-warning bg-warning/10 p-3 text-sm text-warning"
+                >
+                  Legacy card — please link a Content Page to keep it in sync.
                 </div>
 
                 <div
-                  class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_120px]"
+                  class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px_120px]"
                 >
-                  <div class="space-y-2">
-                    <UFormField label="Image URL">
-                      <UInput v-model="item.imageUrl" />
-                    </UFormField>
-                    <input
-                      accept="image/jpeg,image/png,image/webp"
-                      class="block w-full text-sm text-muted"
-                      type="file"
-                      :disabled="isUploading(`linkCard:${item.id}:imageUrl`)"
-                      @change="
-                        uploadIntoField(
-                          $event,
-                          item,
-                          'imageUrl',
-                          `linkCard:${item.id}:imageUrl`,
-                          'link-card',
-                        )
-                      "
+                  <UFormField label="Content page" required>
+                    <USelectMenu
+                      v-model="item.contentPageId"
+                      :items="servicePageOptions"
+                      value-key="value"
+                      placeholder="Select service page"
                     />
-                    <img
-                      v-if="item.imageUrl"
-                      :src="item.imageUrl"
-                      alt="Service card preview"
-                      class="h-24 w-full rounded-xl border border-default object-cover"
+                  </UFormField>
+                  <UFormField label="Sort order">
+                    <UInput
+                      v-model.number="item.sortOrder"
+                      type="number"
+                      min="0"
                     />
-                  </div>
-                  <UFormField label="Link URL">
-                    <UInput v-model="item.linkUrl" />
                   </UFormField>
                   <UFormField label="Link target">
                     <USelectMenu
@@ -1047,13 +1050,28 @@ async function copyText(value: string, successTitle: string) {
                       value-key="value"
                     />
                   </UFormField>
-                  <UFormField label="Sort order">
-                    <UInput
-                      v-model.number="item.sortOrder"
-                      type="number"
-                      min="0"
-                    />
-                  </UFormField>
+                </div>
+
+                <div
+                  class="grid gap-4 sm:grid-cols-[160px_minmax(0,1fr)] items-start"
+                >
+                  <img
+                    v-if="item.imageUrl"
+                    :src="item.imageUrl"
+                    alt="Service preview"
+                    class="h-24 w-full rounded-xl border border-default object-cover"
+                  />
+                  <div class="space-y-1 text-sm">
+                    <p class="font-semibold">
+                      {{ item.titleTh || item.titleEn || "—" }}
+                    </p>
+                    <p class="text-muted">
+                      {{ item.descriptionTh || item.descriptionEn || "—" }}
+                    </p>
+                    <p v-if="item.linkUrl" class="text-xs text-muted">
+                      → {{ item.linkUrl }}
+                    </p>
+                  </div>
                 </div>
 
                 <div class="flex flex-wrap items-center justify-between gap-3">
@@ -1537,10 +1555,11 @@ async function copyText(value: string, successTitle: string) {
           <template #header>
             <div>
               <h3 class="text-lg font-semibold">
-                Create promotion / service card
+                Add promotion / service card
               </h3>
               <p class="text-sm text-muted">
-                Add a new horizontal card for section 3 or 6.
+                Pick an existing Content Page (type: promotion or service) to
+                feature on the homepage.
               </p>
             </div>
           </template>
@@ -1552,65 +1571,34 @@ async function copyText(value: string, successTitle: string) {
               resetLinkCardForm();
             "
           >
-            <UFormField label="Section" required>
-              <USelectMenu
-                v-model="newLinkCard.sectionKey"
-                :items="[
-                  { label: 'Promotion', value: 'promotion' },
-                  { label: 'Service', value: 'service' },
-                ]"
-                value-key="value"
-              />
-            </UFormField>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Title (TH)" required>
-                <UInput v-model="newLinkCard.titleTh" />
+            <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+              <UFormField label="Section" required>
+                <USelectMenu
+                  v-model="newLinkCard.sectionKey"
+                  :items="[
+                    { label: 'Promotion', value: 'promotion' },
+                    { label: 'Service', value: 'service' },
+                  ]"
+                  value-key="value"
+                />
               </UFormField>
-              <UFormField label="Title (EN)" required>
-                <UInput v-model="newLinkCard.titleEn" />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Description (TH)" required>
-                <UTextarea v-model="newLinkCard.descriptionTh" :rows="2" />
-              </UFormField>
-              <UFormField label="Description (EN)" required>
-                <UTextarea v-model="newLinkCard.descriptionEn" :rows="2" />
+              <UFormField label="Content page" required>
+                <USelectMenu
+                  v-model="newLinkCard.contentPageId"
+                  :items="newLinkCardPageOptions"
+                  value-key="value"
+                  placeholder="Select content page"
+                />
               </UFormField>
             </div>
 
-            <div class="space-y-2">
-              <UFormField label="Image URL" required>
-                <UInput v-model="newLinkCard.imageUrl" />
-              </UFormField>
-              <input
-                accept="image/jpeg,image/png,image/webp"
-                class="block w-full text-sm text-muted"
-                type="file"
-                :disabled="isUploading('linkCard:new:imageUrl')"
-                @change="
-                  uploadIntoField(
-                    $event,
-                    newLinkCard,
-                    'imageUrl',
-                    'linkCard:new:imageUrl',
-                    'link-card',
-                  )
-                "
-              />
-              <img
-                v-if="newLinkCard.imageUrl"
-                :src="newLinkCard.imageUrl"
-                alt="New link card preview"
-                class="h-28 w-full rounded-xl border border-default object-cover"
-              />
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_120px]">
-              <UFormField label="Link URL" required>
-                <UInput v-model="newLinkCard.linkUrl" />
+            <div class="grid gap-4 sm:grid-cols-[140px_140px]">
+              <UFormField label="Sort order">
+                <UInput
+                  v-model.number="newLinkCard.sortOrder"
+                  type="number"
+                  min="0"
+                />
               </UFormField>
               <UFormField label="Link target">
                 <USelectMenu
@@ -1622,13 +1610,6 @@ async function copyText(value: string, successTitle: string) {
                   value-key="value"
                 />
               </UFormField>
-              <UFormField label="Sort order">
-                <UInput
-                  v-model.number="newLinkCard.sortOrder"
-                  type="number"
-                  min="0"
-                />
-              </UFormField>
             </div>
 
             <UCheckbox
@@ -1636,8 +1617,25 @@ async function copyText(value: string, successTitle: string) {
               label="Active on homepage"
             />
 
+            <p
+              v-if="newLinkCardPageOptions.length === 0"
+              class="text-sm text-muted"
+            >
+              No
+              {{
+                newLinkCard.sectionKey === "service" ? "service" : "promotion"
+              }}
+              pages yet. Create one in Content first.
+            </p>
+
             <div class="flex gap-2">
-              <UButton type="submit" color="primary">Create link card</UButton>
+              <UButton
+                type="submit"
+                color="primary"
+                :disabled="!newLinkCard.contentPageId"
+              >
+                Create link card
+              </UButton>
               <UButton
                 type="button"
                 variant="soft"

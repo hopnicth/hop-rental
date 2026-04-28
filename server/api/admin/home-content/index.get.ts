@@ -19,6 +19,7 @@ export default defineEventHandler(async (event) => {
     partnerLogosResult,
     productsResult,
     assetsResult,
+    contentPagesResult,
   ] = await Promise.all([
     adminClient
       .from("home_banners")
@@ -55,6 +56,15 @@ export default defineEventHandler(async (event) => {
       .select("id, code, slug, name_th, status, is_hidden")
       .order("sort_order", { ascending: true })
       .order("updated_at", { ascending: false }),
+    adminClient
+      .from("content_pages")
+      .select(
+        "id, content_type, slug, title_th, title_en, excerpt_th, excerpt_en, cover_image_url, is_active",
+      )
+      .in("content_type", ["promotion", "service"])
+      .order("content_type", { ascending: true })
+      .order("sort_order", { ascending: true })
+      .order("updated_at", { ascending: false }),
   ]);
 
   const errors = [
@@ -65,6 +75,7 @@ export default defineEventHandler(async (event) => {
     partnerLogosResult.error,
     productsResult.error,
     assetsResult.error,
+    contentPagesResult.error,
   ].filter(Boolean);
 
   if (errors.length > 0) {
@@ -98,24 +109,35 @@ export default defineEventHandler(async (event) => {
       isActive: row.is_active !== false,
       updatedAt: row.updated_at,
     })),
-    linkCards: (linkCardsResult.data ?? []).map((row) => ({
-      id: row.id,
-      sectionKey: row.section_key === "service" ? "service" : "promotion",
-      titleTh: row.title_th,
-      titleEn: row.title_en,
-      titleCn: row.title_cn ?? "",
-      titleJp: row.title_jp ?? "",
-      descriptionTh: row.description_th,
-      descriptionEn: row.description_en,
-      descriptionCn: row.description_cn ?? "",
-      descriptionJp: row.description_jp ?? "",
-      imageUrl: row.image_url,
-      linkUrl: row.link_url,
-      linkTarget: row.link_target === "_blank" ? "_blank" : "_self",
-      sortOrder: Number(row.sort_order ?? 0),
-      isActive: row.is_active !== false,
-      updatedAt: row.updated_at,
-    })),
+    linkCards: (linkCardsResult.data ?? []).map((row) => {
+      const sectionKey =
+        row.section_key === "service" ? "service" : "promotion";
+      const page = (row as { content_page?: any }).content_page ?? null;
+      const pageBase = sectionKey === "service" ? "/services" : "/promotions";
+      const linkUrlFromPage = page?.slug ? `${pageBase}/${page.slug}` : "";
+
+      return {
+        id: row.id,
+        sectionKey,
+        contentPageId: row.content_page_id ?? null,
+        contentPageSlug: page?.slug ?? "",
+        contentPageActive: page ? page.is_active !== false : null,
+        titleTh: page?.title_th ?? row.title_th ?? "",
+        titleEn: page?.title_en ?? row.title_en ?? "",
+        titleCn: row.title_cn ?? "",
+        titleJp: row.title_jp ?? "",
+        descriptionTh: page?.excerpt_th ?? row.description_th ?? "",
+        descriptionEn: page?.excerpt_en ?? row.description_en ?? "",
+        descriptionCn: row.description_cn ?? "",
+        descriptionJp: row.description_jp ?? "",
+        imageUrl: page?.cover_image_url ?? row.image_url ?? "",
+        linkUrl: page ? linkUrlFromPage : (row.link_url ?? ""),
+        linkTarget: row.link_target === "_blank" ? "_blank" : "_self",
+        sortOrder: Number(row.sort_order ?? 0),
+        isActive: row.is_active !== false,
+        updatedAt: row.updated_at,
+      };
+    }),
     featuredProducts: (featuredProductsResult.data ?? []).map((row) => ({
       id: row.id,
       productId: row.product_id,
@@ -155,6 +177,13 @@ export default defineEventHandler(async (event) => {
       label: `${row.code} · ${row.name_th}`,
       status: row.status,
       isHidden: row.is_hidden === true,
+    })),
+    contentPageOptions: (contentPagesResult.data ?? []).map((row) => ({
+      value: row.id,
+      label: `${row.title_th || row.title_en} · ${row.slug}`,
+      contentType: row.content_type as "promotion" | "service",
+      slug: row.slug,
+      isActive: row.is_active !== false,
     })),
   };
 });

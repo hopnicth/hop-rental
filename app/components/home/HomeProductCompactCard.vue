@@ -32,7 +32,7 @@ const displayPrice = computed(
         <NuxtImg
           :src="props.product.thumbnail"
           :alt="props.product.name[lang]"
-          class="h-48 w-full object-cover"
+          class="aspect-square w-full object-cover"
           loading="lazy"
         />
 
@@ -41,22 +41,20 @@ const displayPrice = computed(
             <UBadge color="neutral" variant="soft" size="sm">
               {{ props.product.brand }}
             </UBadge>
-            <h3
-              class="line-clamp-2 text-base font-semibold text-[var(--ui-text)]"
-            >
+            <h3 class="line-clamp-2 text-base font-semibold text-default">
               {{ props.product.name[lang] }}
             </h3>
-            <p class="line-clamp-3 text-sm text-[var(--ui-text-muted)]">
+            <p class="line-clamp-3 text-sm text-muted">
               {{ props.product.description[lang] }}
             </p>
           </div>
 
           <div class="mt-auto flex items-end justify-between gap-3">
             <div>
-              <p class="text-xs text-[var(--ui-text-muted)]">
+              <p class="text-xs text-muted">
                 {{ t("productPage.sale") }}
               </p>
-              <p class="text-lg font-bold text-[var(--ui-primary)]">
+              <p class="text-lg font-bold text-primary">
                 ฿{{ displayPrice.final.toLocaleString() }}
               </p>
             </div>
@@ -67,8 +65,6 @@ const displayPrice = computed(
           </div>
         </div>
       </div>
-    </UCard>้
-    
+    </UCard>
   </NuxtLink>
 </template>
-

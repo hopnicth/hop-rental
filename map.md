@@ -58,9 +58,12 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `/admin/home-content` is intentionally narrower than general admin and remains `super_admin` only.
 - Homepage partner/logo marquee now comes from `home_partner_logos` with storefront fallback only for older schemas.
 - Homepage curated product/asset rails are capped at 15 items each.
+- Homepage card sections use Nuxt UI `UCarousel`/Embla rails with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin.
+- Storefront card images should preserve square `1:1` frames using `aspect-square` and `object-cover`; avoid reverting card media to fixed `h-48` heights.
 - Homepage image uploads now use Supabase Storage via the shared `catalog-media` bucket.
 - SVG uploads are allowed only for Home partner logos; other Home uploads are converted to WebP.
-- The partner logo marquee is intentionally compact at 40px height.
+- The partner logo marquee is intentionally compact at 40px height and pauses on hover; mouse-wheel manual scrolling is disabled.
+- Global UI colors/radius are overridden in `app/assets/css/main.css`; keep HOP tokens and the unified `0.2rem` radius unless product direction changes.
 - Rental bookings can now be rooted by `asset_id` alone; `product_id` / `sku_id` may be null in newer schemas.
 - Booking cancellation is soft-delete via `status = 'cancelled'`.
 - Booker name + phone are captured on rental submission and should be preferred over account phone when present.
@@ -70,9 +73,9 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 
 ## Key app surfaces
 
-- Storefront: `/`, `/product-{group}`, `/product-{group}/{slug}`, `/product-rental`, `/asset/{slug}`
+- Storefront: `/`, `/product-{group}`, `/product-{group}/{slug}`, `/product-rental`, `/asset/{slug}`, `/blog`, `/blog/[slug]`, `/services`, `/services/[slug]`, `/promotions`, `/promotions/[slug]`
 - Customer: `/user/cart`, `/user/orders`, `/user/rentals`
-- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`
+- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`, `/admin/content`
 
 ## Key server/API areas
 
@@ -81,6 +84,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Admin rental ops: `server/api/admin/rental-bookings/*`, `server/utils/admin-bookings-ops.ts`
 - Admin catalog/assets: `server/api/admin/products/*`, `server/api/admin/assets/*`
 - Admin home content: `server/api/admin/home-content/*`, `server/utils/admin-home.ts`, `server/utils/home-media.ts`
+- Admin content pages: `server/api/admin/content/*`, `server/utils/content-pages.ts`, `server/utils/content-media.ts`
 
 ## Key migrations to know
 
@@ -93,6 +97,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `033_rental_booking_docs_storage.sql`
 - `034_home_partner_logos.sql`
 - `035_catalog_media_svg_mime.sql`
+- `036_content_pages.sql`
 
 ## Recommended maintenance rule
 
