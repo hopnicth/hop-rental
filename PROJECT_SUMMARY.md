@@ -1,6 +1,6 @@
 # HOP-RENTAL Project Summary
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 Audience: developers, operators, future Augment sessions
 
 ## Purpose
@@ -54,7 +54,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Asset matching to products is live
 - Multi-inventory branch stock management is live
 - Homepage content admin exists and is `super_admin` only, including banners, partner logos, curated product/asset rails, upload, and delete flows
-- Generic content page admin exists for blog, services, and promotions with reusable JSONB content blocks and upload support
+- Generic content page admin exists for blog, services, and promotions with localized TipTap (ProseMirror) bodies and shared media upload
+- Homepage promotion/service cards are now live references to `content_pages` rows, so titles, excerpts, cover images, and `/services/{slug}` or `/promotions/{slug}` links stay in sync with the CMS
 - Homepage curated sections (`promotions`, rentals, products, services) use a shared Nuxt UI `UCarousel`/Embla rail with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin
 - Homepage rental/product sections use the same card components as product/all-rental listing cards
 - Storefront card images are standardized to square `1:1` media frames (`aspect-square` + `object-cover`) so responsive cards preserve consistent image geometry
@@ -116,6 +117,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Rental is `asset`-first; product matching is recommended, not always required.
 - Booking cancellation is soft-delete.
 - Booker phone/name should be preferred over account phone/name when present on a booking.
+- Homepage promotion/service cards must reference an existing `content_pages` row; create the page in `/admin/content` first, then link it from `/admin/home-content`.
 - For PostgREST `ILIKE`, use `*term*` instead of `%term%`.
 
 ## Highest-value next priorities

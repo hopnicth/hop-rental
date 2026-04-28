@@ -1,6 +1,6 @@
 # Asset Action Plan
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 Owner: continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -18,33 +18,13 @@ Use this for asset/rental decisions and next steps.
 - [x] An asset may represent a single item, package, or set.
 - [x] Backoffice-ready docs/checklists belong in the schema from the start.
 
-## Implemented state
+## Implemented state (summary)
 
-### Data model
-- [x] `assets`
-- [x] `asset_matches`
-- [x] `asset_documents`
-- [x] `asset_service_events`
-- [x] `asset_checklist_templates`
-- [x] `asset_checklist_template_items`
-- [x] `rental_booking_checklists`
-- [x] `rental_booking_checklist_items`
-- [x] `rental_booking_documents`
+All initial asset/rental scope is shipped; one-line summaries below.
 
-### Storefront flow
-- [x] `/product-rental` uses asset catalog
-- [x] product detail shows matched assets
-- [x] `/asset/[slug]` is the main booking entry
-- [x] asset-only booking is supported
-- [x] tiered rental pricing is supported
-- [x] booking submit captures booker name + phone
-
-### Admin flow
-- [x] `/admin/assets` CRUD
-- [x] inline asset-product matches
-- [x] asset media management
-- [x] asset detail blocks
-- [x] rental booking docs/checklists on `/admin/rental-bookings/[id]`
+- [x] **Data model** — `assets`, `asset_matches`, `asset_documents`, `asset_service_events`, asset checklist templates + items, `rental_booking_checklists` + items, `rental_booking_documents`
+- [x] **Storefront flow** — `/product-rental` asset catalog, matched assets on product detail, `/asset/[slug]` booking entry, asset-only booking, tiered rental pricing, booker name + phone capture
+- [x] **Admin flow** — `/admin/assets` CRUD with inline matches, asset media, asset detail blocks, rental booking docs/checklists on `/admin/rental-bookings/[id]`
 
 ## Business rules to preserve
 
@@ -57,13 +37,16 @@ Use this for asset/rental decisions and next steps.
 ## Remaining backlog
 
 ### Customer-facing rental docs/history
+
 - [ ] Surface relevant customer-visible rental documents in customer history pages
 
 ### Template/ops management polish
+
 - [ ] Add or refine checklist-template management if operations needs direct editing UI
 - [ ] Add more operational document/report views if requested
 
 ### Cleanup
+
 - [ ] Remove legacy schema fallback from booking code once all environments are on current migrations
 - [ ] Continue reducing old terminology or obsolete `rental_access` references if any remain
 

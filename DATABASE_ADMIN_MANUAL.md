@@ -1,6 +1,6 @@
 # Database Admin Manual
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 Audience: internal staff, data-entry, developers
 
 ## Purpose
@@ -46,30 +46,31 @@ Notes:
 
 ## Tables admins usually edit
 
-| Table | Purpose | Admin edits directly? |
-| --- | --- | --- |
-| `main_categories` | primary product category registry | Yes (`super_admin`) |
-| `products` | sale catalog root | Yes |
-| `product_skus` | pricing + SKU metadata | Yes |
-| `store_branches` | hubs / pickup locations | Yes |
-| `inventories` | inventory pools per branch | Yes |
-| `sku_branch_inventory` | stock rows per inventory | Yes |
-| `assets` | public rental offering | Yes |
-| `asset_matches` | asset ↔ product links | Yes |
-| `home_*` tables | homepage curation | Yes (`super_admin`) |
+| Table                  | Purpose                           | Admin edits directly? |
+| ---------------------- | --------------------------------- | --------------------- |
+| `main_categories`      | primary product category registry | Yes (`super_admin`)   |
+| `products`             | sale catalog root                 | Yes                   |
+| `product_skus`         | pricing + SKU metadata            | Yes                   |
+| `store_branches`       | hubs / pickup locations           | Yes                   |
+| `inventories`          | inventory pools per branch        | Yes                   |
+| `sku_branch_inventory` | stock rows per inventory          | Yes                   |
+| `assets`               | public rental offering            | Yes                   |
+| `asset_matches`        | asset ↔ product links             | Yes                   |
+| `home_*` tables        | homepage curation                 | Yes (`super_admin`)   |
 
 ## System-managed tables
 
-| Table | Purpose | Edit manually? |
-| --- | --- | --- |
-| `inventory_change_log` | stock audit trail | No |
-| `rental_bookings` | booking transactions | Usually no |
-| `orders` / `order_items` | sale transactions | Usually no |
-| `addresses` | customer/company addresses | No catalog setup |
+| Table                    | Purpose                    | Edit manually?   |
+| ------------------------ | -------------------------- | ---------------- |
+| `inventory_change_log`   | stock audit trail          | No               |
+| `rental_bookings`        | booking transactions       | Usually no       |
+| `orders` / `order_items` | sale transactions          | Usually no       |
+| `addresses`              | customer/company addresses | No catalog setup |
 
 ## Minimum publish checklist
 
 ### Product
+
 - [ ] `slug` is correct
 - [ ] `main_category_key` is valid
 - [ ] product is public (`is_hidden = false`)
@@ -77,18 +78,31 @@ Notes:
 - [ ] shipping size is set correctly
 
 ### SKU / stock
+
 - [ ] sale price is correct
 - [ ] rental pricing is correct if rentable
 - [ ] at least one `sku_branch_inventory` row exists when stock tracking is needed
 - [ ] target branch is active
 
 ### Asset
+
 - [ ] `code` and `slug` are stable and correct
 - [ ] asset is public (`status = 'active'`, `is_hidden = false`)
 - [ ] daily/deposit pricing is correct
 - [ ] min rental days is correct
 - [ ] description/spec explain what is included
 - [ ] add `asset_matches` if product-detail discoverability is required
+
+## Setup order for a homepage promotion or service card
+
+The home-rail promotion/service cards are pure references to `content_pages`.
+There is no longer a way to type a title/excerpt/image directly on a card.
+
+1. Open `/admin/content` and create a `content_pages` row of type `promotion` or `service`
+2. Fill the localized title/excerpt/cover image and mark it active
+3. Open `/admin/home-content` and use **Add promotion card** or **Add service card**
+4. Pick the content page from the picker; the rail card derives title, excerpt, image, and `/services/{slug}` or `/promotions/{slug}` link from it live
+5. To remove a card from the rail, delete the home-content card (the source page stays); to remove the page everywhere, delete the `content_pages` row (the linked card cascades)
 
 ## Important current rules
 
@@ -97,6 +111,7 @@ Notes:
 - `asset_matches` are recommended for discoverability but are not always required for booking.
 - Stock should be managed through admin endpoints, not direct DB writes, so audit logs remain correct.
 - Booking docs/checklists are stored separately from asset-level docs.
+- Homepage promotion/service rails read live data from `content_pages`; do not edit `home_link_cards` text fields directly.
 
 ## Migration-sensitive notes
 
@@ -105,6 +120,9 @@ Notes:
 - `031` allows asset-only bookings
 - `032` adds sale-order tracking support
 - `033` adds booking-doc storage metadata + booker name/phone
+- `036` introduces `content_pages` for blog/service/promotion CMS
+- `037` switches `content_pages.blocks` to a localized TipTap document
+- `038` adds `home_link_cards.content_page_id` and drops unlinked legacy rows
 
 ## Related docs
 

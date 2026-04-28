@@ -1,6 +1,6 @@
 # HOP-RENTAL
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 
 HOP-RENTAL is a Nuxt-based commerce + rental platform for HOPNIC.
 This single app contains storefront, customer self-service, and internal admin surfaces.
@@ -53,6 +53,7 @@ npm run build
 ## Main routes
 
 ### Storefront
+
 - `/`
 - `/product-{group}`
 - `/product-{group}/{slug}`
@@ -60,11 +61,13 @@ npm run build
 - `/asset/{slug}`
 
 ### Customer
+
 - `/user/cart`
 - `/user/orders`
 - `/user/rentals`
 
 ### Admin
+
 - `/admin`
 - `/admin/products`
 - `/admin/assets`

@@ -1,6 +1,6 @@
 # API Index
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -19,24 +19,24 @@ Read this after `map.md` when debugging or implementing features.
 
 ## Main read paths
 
-| Surface                        | Main code                                              | Source                                                                     |
-| ------------------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------- |
-| Product browse/detail          | `app/composables/useProducts.ts`                       | `products`, `product_skus`                                                 |
-| Asset browse/detail            | `app/composables/useAssets.ts`                         | `assets`, `asset_matches`                                                  |
-| Cart                           | `app/composables/useCart.ts`                           | `carts`, `cart_items`                                                      |
-| Rental booking store           | `app/composables/useBooking.ts`                        | `rental_bookings`                                                          |
-| Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                    |
-| Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                           |
-| Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners`, `home_link_cards`, `home_featured_*`, `home_partner_logos` |
-| Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages`                                                            |
-| Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                              |
+| Surface                        | Main code                                              | Source                                                                                                 |
+| ------------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| Product browse/detail          | `app/composables/useProducts.ts`                       | `products`, `product_skus`                                                                             |
+| Asset browse/detail            | `app/composables/useAssets.ts`                         | `assets`, `asset_matches`                                                                              |
+| Cart                           | `app/composables/useCart.ts`                           | `carts`, `cart_items`                                                                                  |
+| Rental booking store           | `app/composables/useBooking.ts`                        | `rental_bookings`                                                                                      |
+| Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                                                |
+| Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                                                       |
+| Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners`, `home_link_cards` joined with `content_pages`, `home_featured_*`, `home_partner_logos` |
+| Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages` (localized TipTap body)                                                                |
+| Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                          |
 
 ## Storefront UI conventions
 
 - Home content sections render through `app/components/home/HomeHorizontalRail.vue`, a Nuxt UI `UCarousel`/Embla wrapper using loop + timed autoplay, arrows, and dots.
 - Do not use the continuous Auto Scroll plugin for Home section cards unless explicitly requested.
 - Product/asset listing cards share `CatalogCardShell.vue`; card media should stay `aspect-square w-full object-cover`.
-- Home promotion/service cards use `HomeLinkCard.vue` and follow the same square media convention.
+- Home promotion/service cards use `HomeLinkCard.vue` and read title/excerpt/cover/link live from the linked `content_pages` row.
 - Global HOP theme tokens live in `app/assets/css/main.css` (`--ui-primary`, `--ui-secondary`, status colors, and `0.2rem` radius scale).
 
 ## Main write paths
@@ -129,14 +129,26 @@ Read this after `map.md` when debugging or implementing features.
 ### `036_content_pages.sql`
 
 - `content_pages` stores blog, service, and promotion pages
-- Page body uses JSONB blocks: heading, paragraph, image, button, link, file download, callout, gallery, FAQ
 - Admin uploads share `catalog-media` with `content-pages/*` storage prefix
+
+### `037_content_pages_localized_body.sql`
+
+- `content_pages.blocks` accepts a localized TipTap (ProseMirror) document object keyed by `th`, `en`, `cn`, `jp`
+- Legacy array-style blocks remain readable; default is `'{}'::jsonb`
+
+### `038_home_link_cards_content_page_ref.sql`
+
+- `home_link_cards.content_page_id` references `content_pages(id)` with `ON DELETE CASCADE`
+- Legacy text columns (`title_*`, `description_*`, `image_url`, `link_url`) are nullable when `content_page_id` is set
+- Row guard `home_link_cards_source_present`: either `content_page_id` is present, or all legacy text fields are filled
+- Unique `(section_key, content_page_id)` prevents duplicating the same page in one section
+- Migration drops unlinked legacy rows; admin must pick a `content_pages` row to populate the rail
 
 ## Fast debug checklist
 
 1. Is the user authenticated for customer-owned writes?
 2. Does the user have the correct `platform_role` for admin routes?
-3. Is the target DB on migrations `029` through `035`?
+3. Is the target DB on migrations `029` through `038`?
 4. If search fails on PostgREST, are you using `*term*` wildcards?
 5. If asset booking fails, is `asset_id` valid and allowed by the current schema?
 6. If booking docs fail to delete cleanly, are `storage_bucket` and `storage_path` present?
@@ -145,6 +157,7 @@ Read this after `map.md` when debugging or implementing features.
 9. If homepage uploads fail, verify `catalog-media` bucket access and `/api/admin/home-content/upload`.
 10. If SVG partner logo upload fails, verify migration `035` reached the remote storage bucket config.
 11. If Home carousel cards feel wrong, check `HomeHorizontalRail.vue` first for `UCarousel` item basis, arrows, loop, and autoplay options.
+12. If a promotion/service rail is empty, confirm an active `content_pages` row of that type exists and is linked from `/admin/home-content`.
 
 ## Cross refs
 

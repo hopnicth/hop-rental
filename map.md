@@ -1,6 +1,6 @@
 # HOP-RENTAL Doc Map
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 Purpose: lightweight entrypoint for Augment and developers. Read this first before opening other docs.
 
 ## Read order
@@ -58,6 +58,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `/admin/home-content` is intentionally narrower than general admin and remains `super_admin` only.
 - Homepage partner/logo marquee now comes from `home_partner_logos` with storefront fallback only for older schemas.
 - Homepage curated product/asset rails are capped at 15 items each.
+- Homepage promotion/service cards are pure references to `content_pages` rows; admin must create the content page first, then pick it from `/admin/home-content`.
 - Homepage card sections use Nuxt UI `UCarousel`/Embla rails with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin.
 - Storefront card images should preserve square `1:1` frames using `aspect-square` and `object-cover`; avoid reverting card media to fixed `h-48` heights.
 - Homepage image uploads now use Supabase Storage via the shared `catalog-media` bucket.
@@ -98,6 +99,8 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `034_home_partner_logos.sql`
 - `035_catalog_media_svg_mime.sql`
 - `036_content_pages.sql`
+- `037_content_pages_localized_body.sql`
+- `038_home_link_cards_content_page_ref.sql`
 
 ## Recommended maintenance rule
 

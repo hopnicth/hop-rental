@@ -1,6 +1,6 @@
 # Admin MVP Action Plan
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 Owner: continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -19,72 +19,39 @@ Use this as the active admin backlog, not as a historical transcript.
 
 ## Phase status
 
-### Phase 0 — foundation
+Phases 0–5 are complete and shipped. Each line below is a one-shot summary of
+what was delivered; do not re-expand into checklists unless a regression appears.
 
-- [x] Admin shell, guard, landing page
+- [x] **Phase 0 — foundation** — admin shell, guard, landing page
+- [x] **Phase 1 — catalog CRUD** — product/SKU, asset, asset matches, homepage content, blog/service/promotion CMS
+- [x] **Phase 4 — branches + inventory** — branch + inventory pool + stock CRUD with audit log, inline product stock
+- [x] **Phase 5 — order operations** — customer-grouped dashboard, sale + rental detail pages, status transitions, tracking, docs/checklists, booker contact capture
+- [x] **Home content live-reference CMS** — promotion/service cards on the home rail are now `content_pages` references; admin picks a CMS page instead of typing title/excerpt/image (migration `038`)
 
-### Phase 1 — catalog CRUD
+### Phase 2 — media/admin usability (mostly done)
 
-- [x] Product list/detail admin
-- [x] SKU CRUD under product
-- [x] Asset list/detail admin
-- [x] Asset match management
-- [x] Homepage content admin
-- [x] Blog/service/promotion content page admin
-
-### Phase 2 — media/admin usability
-
-- [x] Product/asset media upload to Supabase Storage
-- [x] Thumbnail/gallery sync rules
-- [x] Homepage image upload flow instead of URL-only input
-- [x] Homepage partner logo SVG upload and compact logo rail
-- [x] Homepage storefront sections standardized on shared carousel/card behavior
-- [x] Storefront card image frames standardized to square `1:1`
-- [x] Global HOP UI theme colors and `0.2rem` radius tokens applied
+- [x] Media upload to Supabase Storage (product/asset/home/content), thumbnail sync, SVG partner logos, square-image frames, HOP theme tokens
 - [ ] Required-field validation polish across remaining forms
 - [ ] Quick storefront check links from admin surfaces
 
-### Phase 3 — server/admin security
+### Phase 3 — server/admin security (mostly done)
 
-- [x] Privileged `/api/admin/*` pattern
-- [x] Admin role gates enforced on server routes
+- [x] Privileged `/api/admin/*` pattern with role gates on server routes
 - [ ] Continue removing places that still depend on read-only fallback assumptions
-
-### Phase 4 — branches + inventory
-
-- [x] Branch CRUD
-- [x] Inventory pool CRUD
-- [x] Stock CRUD with audit log
-- [x] Admin branches/inventory page
-- [x] Inline product inventory management
-
-### Phase 5 — order operations
-
-- [x] Customer-grouped admin order dashboard
-- [x] Sale order detail page
-- [x] Rental booking detail page
-- [x] Admin status transitions for sale + rental
-- [x] Sale order tracking support
-- [x] Rental booking docs/checklists UI + APIs
-- [x] Booker name/phone captured and shown in admin flows
 
 ## Current important surfaces
 
-- `/admin/products`
-- `/admin/assets`
-- `/admin/branches-inventory`
-- `/admin/orders`
-- `/admin/orders/[id]`
-- `/admin/rental-bookings/[id]`
+- `/admin/products`, `/admin/assets`, `/admin/branches-inventory`
+- `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`
+- `/admin/home-content` (super_admin only), `/admin/content`
 
 ## Current important server areas
 
-- `server/api/admin/products/*`
-- `server/api/admin/assets/*`
-- `server/api/admin/orders/*`
-- `server/api/admin/rental-bookings/*`
-- `server/utils/admin-orders.ts`
-- `server/utils/admin-bookings-ops.ts`
+- `server/api/admin/products/*`, `server/api/admin/assets/*`
+- `server/api/admin/orders/*`, `server/api/admin/rental-bookings/*`
+- `server/api/admin/home-content/*`, `server/utils/admin-home.ts`
+- `server/api/admin/content/*`, `server/utils/content-pages.ts`
+- `server/utils/admin-orders.ts`, `server/utils/admin-bookings-ops.ts`
 
 ## Highest-value next admin work
 
@@ -99,11 +66,11 @@ Use this as the active admin backlog, not as a historical transcript.
 - Admin order QR payloads are `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
 - Incomplete sale/rental rows in the admin order list should remain visually highlighted.
 - Booker contact on a rental booking should be preferred over account contact when present.
-- Homepage admin now covers banners, partner logos, promotion/service cards, and curated featured rails with upload/delete flows.
-- Content Pages admin covers blog, services, and promotions with reusable blocks: heading, paragraph, image, button, link, file download, callout, gallery, and FAQ.
+- Homepage admin covers banners, partner logos, curated featured rails, and CMS-linked promotion/service cards.
+- Promotion/service rail rule: a `content_pages` row of the matching type must exist before it can be linked from `/admin/home-content`. Empty rails render empty states; do not reintroduce random fallbacks.
+- Content Pages admin uses a localized TipTap editor (`th`/`en`/`cn`/`jp`) and shares the `catalog-media` bucket via the `content-pages/*` prefix.
 - Partner logo uploads may be SVG only for `partner-logo`; other Home image uploads are processed to WebP.
 - Storefront Home sections use shared `HomeHorizontalRail` carousel behavior; product/asset cards use listing components, and promotion/service cards use `HomeLinkCard`.
-- Do not reintroduce random fallback items for admin-curated Home product/asset rails; empty curated rails should show empty states.
 - Storefront card images should remain square `1:1`; card media defaults live in `CatalogCardShell.vue` and `HomeLinkCard.vue`.
 
 ## Cross refs
