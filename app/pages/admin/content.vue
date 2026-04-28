@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import AdminContentEditor from "~/components/admin/AdminContentEditor.vue";
 import {
+  SERVICE_AREA_OPTIONS,
+  type ServiceAreaOption,
+} from "~/data/thaiServiceAreas";
+import {
   emptyLocalizedDoc,
   type ContentType,
   type LocalizedDoc,
@@ -27,6 +31,7 @@ type AdminContentPage = {
   excerptJp: string;
   coverImageUrl: string;
   body: LocalizedDoc;
+  serviceAreas: string[];
   sortOrder: number;
   isActive: boolean;
   publishedAt: string;
@@ -64,10 +69,18 @@ const emptyForm = (): Omit<AdminContentPage, "id"> => ({
   excerptJp: "",
   coverImageUrl: "",
   body: emptyLocalizedDoc(),
+  serviceAreas: [],
   sortOrder: 0,
   isActive: true,
   publishedAt: "",
 });
+
+const serviceAreaItems = SERVICE_AREA_OPTIONS.map(
+  (option: ServiceAreaOption) => ({
+    value: option.value,
+    label: `${option.labelTh} (${option.labelEn})`,
+  }),
+);
 
 const form = reactive(emptyForm());
 
@@ -107,6 +120,7 @@ function editItem(item: AdminContentPage) {
   form.excerptJp = item.excerptJp;
   form.coverImageUrl = item.coverImageUrl;
   form.body = structuredClone(item.body ?? emptyLocalizedDoc());
+  form.serviceAreas = [...(item.serviceAreas ?? [])];
   form.sortOrder = item.sortOrder;
   form.isActive = item.isActive;
   form.publishedAt = item.publishedAt;
@@ -458,6 +472,22 @@ async function uploadCover(event: Event) {
             class="h-20 rounded object-cover"
           />
         </div>
+
+        <UFormField
+          v-if="form.contentType === 'service'"
+          label="พื้นที่ให้บริการ (Service areas)"
+          help="เลือกได้หลายจังหวัด/ภาค หรือเลือก ทั่วประเทศ"
+        >
+          <USelectMenu
+            v-model="form.serviceAreas"
+            :items="serviceAreaItems"
+            value-key="value"
+            multiple
+            searchable
+            placeholder="เลือกพื้นที่ให้บริการ"
+            class="w-full"
+          />
+        </UFormField>
 
         <div class="grid gap-3 sm:grid-cols-3">
           <UFormField label="Sort order"

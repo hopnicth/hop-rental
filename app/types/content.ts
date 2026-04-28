@@ -32,6 +32,7 @@ export interface ContentPage {
   excerpt: LocalizedString;
   coverImageUrl: string;
   body: LocalizedDoc;
+  serviceAreas: string[];
   sortOrder: number;
   isActive: boolean;
   publishedAt: string;

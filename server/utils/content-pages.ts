@@ -4,12 +4,13 @@ import {
   asNumber,
   asOptionalString,
 } from "~~/server/utils/admin-catalog";
+import { isServiceAreaValue } from "~~/app/data/thaiServiceAreas";
 
 export type ContentType = "blog" | "service" | "promotion";
 export type LocaleCode = "th" | "en" | "cn" | "jp";
 
 export const ADMIN_CONTENT_PAGE_SELECT =
-  "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, sort_order, is_active, published_at, created_at, updated_at";
+  "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
 
 const LOCALES: LocaleCode[] = ["th", "en", "cn", "jp"];
 
@@ -79,9 +80,23 @@ export function normalizeLocalizedBody(value: unknown) {
   return result;
 }
 
+function asServiceAreas(value: unknown, contentType: ContentType): string[] {
+  if (contentType !== "service") return [];
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (!isServiceAreaValue(entry)) {
+      fail422("serviceAreas contains an unknown slug");
+    }
+    seen.add(entry);
+  }
+  return Array.from(seen);
+}
+
 export function buildContentPagePayload(body: Record<string, unknown>) {
+  const contentType = asContentType(body.contentType);
   return {
-    content_type: asContentType(body.contentType),
+    content_type: contentType,
     slug: asSlug(body.slug),
     title_th: asNonEmptyString(body.titleTh, "titleTh"),
     title_en: asNonEmptyString(body.titleEn, "titleEn"),
@@ -93,6 +108,7 @@ export function buildContentPagePayload(body: Record<string, unknown>) {
     excerpt_jp: asOptionalString(body.excerptJp),
     cover_image_url: asOptionalString(body.coverImageUrl),
     blocks: normalizeLocalizedBody(body.body),
+    service_areas: asServiceAreas(body.serviceAreas, contentType),
     sort_order: Math.max(0, asNumber(body.sortOrder, 0)),
     is_active: body.isActive !== false,
     published_at: asPublishedAt(body.publishedAt),
@@ -114,6 +130,11 @@ export function mapContentPageRow(row: any) {
     excerptJp: row.excerpt_jp ?? "",
     coverImageUrl: row.cover_image_url ?? "",
     body: normalizeLocalizedBody(row.blocks),
+    serviceAreas: Array.isArray(row.service_areas)
+      ? (row.service_areas as unknown[]).filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [],
     sortOrder: Number(row.sort_order ?? 0),
     isActive: row.is_active !== false,
     publishedAt: row.published_at ?? "",

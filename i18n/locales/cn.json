@@ -151,7 +151,8 @@
     "signUpError": "注册失败"
   },
   "home": {
-    "title": "首页"
+    "title": "首页",
+    "serviceAreasTitle": "服务区域"
   },
   "chatWidget": {
     "fabLabel": "联系我们",

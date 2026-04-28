@@ -87,6 +87,11 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
     ),
     coverImageUrl: toString(row.cover_image_url),
     body: normalizeBody(row.blocks),
+    serviceAreas: Array.isArray(row.service_areas)
+      ? (row.service_areas as unknown[]).filter(
+          (entry): entry is string => typeof entry === "string",
+        )
+      : [],
     sortOrder: Number(row.sort_order ?? 0),
     isActive: row.is_active !== false,
     publishedAt: toString(row.published_at),
@@ -102,7 +107,7 @@ export function useContentPages() {
     const { data, error } = await supabase
       .from("content_pages")
       .select(
-        "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, sort_order, is_active, published_at, created_at, updated_at",
+        "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at",
       )
       .eq("content_type", contentType)
       .order("sort_order", { ascending: true })
@@ -120,7 +125,7 @@ export function useContentPages() {
     const { data, error } = await supabase
       .from("content_pages")
       .select(
-        "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, sort_order, is_active, published_at, created_at, updated_at",
+        "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at",
       )
       .eq("content_type", contentType)
       .eq("slug", slug)
