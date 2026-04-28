@@ -1,4 +1,7 @@
 {
+  "common": {
+    "loading": "加载中..."
+  },
   "search": {
     "placeholder": "搜索产品...",
     "title": "搜索结果",

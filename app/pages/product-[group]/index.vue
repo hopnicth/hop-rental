@@ -10,8 +10,19 @@ import type { Asset } from "~/types/asset";
 
 const route = useRoute();
 const { t } = useI18n();
-const { products, getDisplayPrice, getTotalStock } = useProducts();
-const { assets, getAssetShowPath } = useAssets();
+const {
+  products,
+  getDisplayPrice,
+  getTotalStock,
+  loading: productsLoading,
+} = useProducts();
+const { assets, getAssetShowPath, loading: assetsLoading } = useAssets();
+
+const isListingLoading = computed(() =>
+  listingMode.value === "assets"
+    ? assetsLoading.value || productsLoading.value
+    : productsLoading.value || assetsLoading.value,
+);
 
 type ListingType = CatalogType | "all";
 type SortDir = "high" | "low";
@@ -263,6 +274,15 @@ const recommendedProducts = computed(() => filteredProducts.value.slice(0, 3));
               hide-matches
             />
           </div>
+          <div v-else-if="isListingLoading" class="space-y-4">
+            <CommonLoadingCat />
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <ProductsCatalogCardSkeleton
+                v-for="index in itemsPerPage"
+                :key="`asset-skel-${index}`"
+              />
+            </div>
+          </div>
           <div v-else class="py-20 text-center text-gray-400">
             {{ t("productPage.noProducts") }}
           </div>
@@ -277,6 +297,15 @@ const recommendedProducts = computed(() => filteredProducts.value.slice(0, 3));
               :key="product.id"
               :product-id="product.id"
             />
+          </div>
+          <div v-else-if="isListingLoading" class="space-y-4">
+            <CommonLoadingCat />
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <ProductsCatalogCardSkeleton
+                v-for="index in itemsPerPage"
+                :key="`product-skel-${index}`"
+              />
+            </div>
           </div>
           <div v-else class="py-20 text-center text-gray-400">
             {{ t("productPage.noProducts") }}
@@ -313,25 +342,50 @@ const recommendedProducts = computed(() => filteredProducts.value.slice(0, 3));
           <h3 class="mb-4 text-base font-semibold">
             {{ t("productPage.recommended") }}
           </h3>
-          <div
-            v-if="listingMode === 'assets'"
-            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
-          >
-            <LazyProductsAssetCard
-              v-for="access in recommendedAssets"
-              :key="`rec-asset-${access.id}`"
-              :access="access"
-              :browse-to="getAssetShowPath(access)"
-              hide-matches
-            />
-          </div>
-          <div v-else class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-            <LazyProductsProductCard
-              v-for="product in recommendedProducts"
-              :key="`rec-product-${product.id}`"
-              :product-id="product.id"
-            />
-          </div>
+          <template v-if="listingMode === 'assets'">
+            <div
+              v-if="recommendedAssets.length"
+              class="grid grid-cols-2 gap-4 sm:grid-cols-3"
+            >
+              <LazyProductsAssetCard
+                v-for="access in recommendedAssets"
+                :key="`rec-asset-${access.id}`"
+                :access="access"
+                :browse-to="getAssetShowPath(access)"
+                hide-matches
+              />
+            </div>
+            <div
+              v-else-if="isListingLoading"
+              class="grid grid-cols-2 gap-4 sm:grid-cols-3"
+            >
+              <ProductsCatalogCardSkeleton
+                v-for="index in 3"
+                :key="`rec-asset-skel-${index}`"
+              />
+            </div>
+          </template>
+          <template v-else>
+            <div
+              v-if="recommendedProducts.length"
+              class="grid grid-cols-2 gap-4 sm:grid-cols-3"
+            >
+              <LazyProductsProductCard
+                v-for="product in recommendedProducts"
+                :key="`rec-product-${product.id}`"
+                :product-id="product.id"
+              />
+            </div>
+            <div
+              v-else-if="isListingLoading"
+              class="grid grid-cols-2 gap-4 sm:grid-cols-3"
+            >
+              <ProductsCatalogCardSkeleton
+                v-for="index in 3"
+                :key="`rec-product-skel-${index}`"
+              />
+            </div>
+          </template>
         </div>
       </div>
     </div>

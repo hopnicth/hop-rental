@@ -28,7 +28,7 @@ Read this after `map.md` when debugging or implementing features.
 | Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                                                |
 | Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                                                       |
 | Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners`, `home_link_cards` joined with `content_pages`, `home_featured_*`, `home_partner_logos` |
-| Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages` (localized TipTap body)                                                                |
+| Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages` (localized TipTap body) joined with `content_page_products`, `content_page_assets`     |
 | Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                          |
 
 ## Storefront UI conventions
@@ -38,6 +38,34 @@ Read this after `map.md` when debugging or implementing features.
 - Product/asset listing cards share `CatalogCardShell.vue`; card media should stay `aspect-square w-full object-cover`.
 - Home promotion/service cards use `HomeLinkCard.vue` and read title/excerpt/cover/link live from the linked `content_pages` row.
 - Global HOP theme tokens live in `app/assets/css/main.css` (`--ui-primary`, `--ui-secondary`, status colors, and `0.2rem` radius scale).
+
+## Lazy load loading state standard
+
+Every list/grid/rail that renders card-based data asynchronously must show a progress indicator and shape-matched skeletons while data is loading. Empty space is not an acceptable loading state.
+
+### Building blocks
+
+- `<CommonLoadingCat />` (`app/components/common/LoadingCat.vue`) — sleeping-cat GIF + localized "Loading…" label. Props: `label?`, `size?` (default `72`), `inline?` (default `false`). Reads `/loading-cat.gif` from `public/`.
+- `<ProductsCatalogCardSkeleton />` (`app/components/products/CatalogCardSkeleton.vue`) — skeleton shaped like `CatalogCardShell` (header + square media + description + tags + footer actions). Use for product/asset grids and rails.
+- `<HomeHomeLinkCardSkeleton />` (`app/components/home/HomeLinkCardSkeleton.vue`) — skeleton for promotion/service cards on home rails.
+- `<HomeHorizontalRail :loading>` accepts a `loading` prop and a `#skeleton` slot; while `loading && items.length === 0` it auto-renders inline `<CommonLoadingCat />` plus `skeletonCount` (default 3) shape-matched cards.
+- i18n key: `common.loading` (TH/EN/CN/JP).
+
+### Required pattern for new list/grid views
+
+1. Source `loading` from the data composable (e.g. `useProducts`, `useAssets`, `useHomeContent`, `useContentPages`). If it does not yet expose one, add a `useState`-backed boolean that flips around the fetch call and return it.
+2. While `loading` is true and the list is empty, render `<CommonLoadingCat />` followed by a grid of the matching skeleton component using the same column/gap classes as the real grid.
+3. Once data arrives, swap to the real cards. Keep skeleton dimensions aligned with the real card to prevent layout shift.
+4. Do not introduce per-feature spinners or ad-hoc text like "Loading…" — always use `<CommonLoadingCat />` and `t('common.loading')`.
+5. For rails fed by `HomeHorizontalRail`, just pass `:loading="..."`; do not duplicate the indicator outside the rail.
+6. Asset reference: the GIF must live at `public/loading-cat.gif`. In `LoadingCat.vue` the path is bound via `:src` (not a static literal) so Vite does not resolve it at build time.
+
+### Reference wiring
+
+- `app/pages/index.vue` — passes `linkCardsLoading`, `featuredAssetsLoading`, `featuredProductsLoading` to four rails.
+- `app/pages/product-[group]/index.vue` and `app/pages/product-[group]/[id].vue` — top-level `<CommonLoadingCat />` + grid of `<ProductsCatalogCardSkeleton />` for listing, matched assets, and recommended sections.
+- `app/pages/search.vue` — replaces the old "Searching…" text with the standard pattern, sized to `pageSize`.
+- `app/components/content/ContentCollectionPage.vue` — `<CommonLoadingCat />` above the existing `USkeleton` grid.
 
 ## Main write paths
 
@@ -144,11 +172,21 @@ Read this after `map.md` when debugging or implementing features.
 - Unique `(section_key, content_page_id)` prevents duplicating the same page in one section
 - Migration drops unlinked legacy rows; admin must pick a `content_pages` row to populate the rail
 
+### `040_content_page_links.sql`
+
+- `content_pages.content_type` check constraint extended to include `review`
+- `content_page_products(content_page_id, product_id, sort_order)` junction (PK on the pair) links a review to one or more `products`
+- `content_page_assets(content_page_id, asset_id, sort_order)` junction (PK on the pair) links a review to one or more `assets`
+- RLS: public `SELECT` on both junction tables is gated by `content_pages.is_active = true` for the linked content page; writes are admin-only via the API
+- `useContentPages().fetchReviewsForProduct(productId)` and `fetchReviewsForAsset(assetId)` use distinct select strings (`REVIEWS_FOR_PRODUCT_SELECT` / `REVIEWS_FOR_ASSET_SELECT`) so the `!inner` filter is unambiguous on the targeted junction; both filter `content_type = 'review'` + `is_active = true` and cap at 6 rows
+- `pathForContent` routes review pages to `/reviews/{slug}`; the public listing/detail routes live at `app/pages/reviews/index.vue` and `app/pages/reviews/[slug].vue`
+- `/admin/content` shows multi-select pickers (`USelectMenu multiple searchable`) for `linkedProductIds` and `linkedAssetIds` only when `contentType === 'review'`; `GET /api/admin/content` returns `productOptions` + `assetOptions` for these pickers, and `POST` / `PATCH` sync junction rows via `syncContentPageLinks` in `server/utils/content-pages.ts`
+
 ## Fast debug checklist
 
 1. Is the user authenticated for customer-owned writes?
 2. Does the user have the correct `platform_role` for admin routes?
-3. Is the target DB on migrations `029` through `038`?
+3. Is the target DB on migrations `029` through `040`?
 4. If search fails on PostgREST, are you using `*term*` wildcards?
 5. If asset booking fails, is `asset_id` valid and allowed by the current schema?
 6. If booking docs fail to delete cleanly, are `storage_bucket` and `storage_path` present?
@@ -158,6 +196,7 @@ Read this after `map.md` when debugging or implementing features.
 10. If SVG partner logo upload fails, verify migration `035` reached the remote storage bucket config.
 11. If Home carousel cards feel wrong, check `HomeHorizontalRail.vue` first for `UCarousel` item basis, arrows, loop, and autoplay options.
 12. If a promotion/service rail is empty, confirm an active `content_pages` row of that type exists and is linked from `/admin/home-content`.
+13. If reviews don't appear on a product/asset detail page, confirm the review row is `is_active = true`, has a matching row in `content_page_products` / `content_page_assets`, and that the public select uses `REVIEWS_FOR_PRODUCT_SELECT` or `REVIEWS_FOR_ASSET_SELECT` (a duplicated junction reference will silently return zero rows).
 
 ## Cross refs
 

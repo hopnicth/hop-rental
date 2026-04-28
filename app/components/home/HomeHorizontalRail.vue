@@ -3,16 +3,41 @@ const props = withDefaults(
   defineProps<{
     items: unknown[];
     emptyLabel: string;
+    loading?: boolean;
+    skeletonCount?: number;
   }>(),
-  {},
+  {
+    loading: false,
+    skeletonCount: 3,
+  },
 );
 
 const carouselItems = computed(() => props.items as never[]);
+const skeletonItems = computed(() =>
+  Array.from({ length: props.skeletonCount }, (_, index) => index),
+);
 </script>
 
 <template>
+  <div v-if="loading && items.length === 0" class="space-y-3">
+    <CommonLoadingCat inline />
+    <div class="px-1 py-2">
+      <div class="flex gap-4 overflow-hidden">
+        <div
+          v-for="index in skeletonItems"
+          :key="index"
+          class="basis-1/2 shrink-0 sm:basis-1/3"
+        >
+          <slot name="skeleton">
+            <ProductsCatalogCardSkeleton />
+          </slot>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div
-    v-if="items.length === 0"
+    v-else-if="items.length === 0"
     class="flex min-h-56 items-center justify-center rounded-3xl border border-dashed border-default bg-(--ui-bg-elevated)/40 px-6 text-center text-sm text-muted"
   >
     {{ emptyLabel }}

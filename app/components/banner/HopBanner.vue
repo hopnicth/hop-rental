@@ -1,13 +1,27 @@
 <script setup lang="ts">
 import type { LocaleCode } from "~/types/locale";
 
-const { bannerSlides } = useBanners();
+const { bannerSlides, loading } = useBanners();
 const { locale } = useI18n();
 const lang = computed(() => locale.value as LocaleCode);
+
+const showSkeleton = computed(
+  () => loading.value && bannerSlides.value.length === 0,
+);
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-[0.2rem] bg-neutral-950 shadow-sm">
+  <div
+    v-if="showSkeleton"
+    class="relative h-[33vh] min-h-120 max-h-100 w-full overflow-hidden rounded-[0.2rem] bg-neutral-950 shadow-sm"
+  >
+    <USkeleton class="absolute inset-0 h-full w-full rounded-none" />
+    <div class="absolute inset-0 flex items-center justify-center bg-black/30">
+      <CommonLoadingCat :size="96" class="[&>span]:text-white/90" />
+    </div>
+  </div>
+
+  <div v-else class="overflow-hidden rounded-[0.2rem] bg-neutral-950 shadow-sm">
     <UCarousel
       v-slot="{ item }"
       loop

@@ -1,6 +1,6 @@
 import type { LocaleCode, LocalizedString } from "~/types/locale";
 
-export type ContentType = "blog" | "service" | "promotion";
+export type ContentType = "blog" | "service" | "promotion" | "review";
 
 /**
  * Minimal TipTap / ProseMirror document shape.
@@ -33,6 +33,8 @@ export interface ContentPage {
   coverImageUrl: string;
   body: LocalizedDoc;
   serviceAreas: string[];
+  linkedProductIds: string[];
+  linkedAssetIds: string[];
   sortOrder: number;
   isActive: boolean;
   publishedAt: string;

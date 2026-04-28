@@ -101,7 +101,7 @@ watch(
   { deep: true },
 );
 
-onMounted(() => buildEditor(activeLocale.value));
+onMounted(() => buildEditor(activeLocale.value));   
 onBeforeUnmount(() => editor.value?.destroy());
 
 function isActive(name: string, attrs?: Record<string, unknown>) {

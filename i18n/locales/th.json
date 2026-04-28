@@ -1,4 +1,7 @@
 {
+  "common": {
+    "loading": "กำลังโหลด..."
+  },
   "search": {
     "placeholder": "ค้นหาสินค้า...",
     "title": "ผลการค้นหา",

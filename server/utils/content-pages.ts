@@ -6,11 +6,11 @@ import {
 } from "~~/server/utils/admin-catalog";
 import { isServiceAreaValue } from "~~/app/data/thaiServiceAreas";
 
-export type ContentType = "blog" | "service" | "promotion";
+export type ContentType = "blog" | "service" | "promotion" | "review";
 export type LocaleCode = "th" | "en" | "cn" | "jp";
 
 export const ADMIN_CONTENT_PAGE_SELECT =
-  "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
+  "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order)";
 
 const LOCALES: LocaleCode[] = ["th", "en", "cn", "jp"];
 
@@ -23,10 +23,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function asContentType(value: unknown): ContentType {
-  if (value === "blog" || value === "service" || value === "promotion") {
+  if (
+    value === "blog" ||
+    value === "service" ||
+    value === "promotion" ||
+    value === "review"
+  ) {
     return value;
   }
-  fail422("contentType must be blog, service, or promotion");
+  fail422("contentType must be blog, service, promotion, or review");
 }
 
 function asSlug(value: unknown) {
@@ -93,6 +98,28 @@ function asServiceAreas(value: unknown, contentType: ContentType): string[] {
   return Array.from(seen);
 }
 
+function asLinkedIdArray(value: unknown, contentType: ContentType): string[] {
+  if (contentType !== "review") return [];
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  for (const entry of value) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim();
+    if (trimmed.length > 0) seen.add(trimmed);
+  }
+  return Array.from(seen);
+}
+
+export function extractLinkedIds(
+  body: Record<string, unknown>,
+  contentType: ContentType,
+) {
+  return {
+    productIds: asLinkedIdArray(body.linkedProductIds, contentType),
+    assetIds: asLinkedIdArray(body.linkedAssetIds, contentType),
+  };
+}
+
 export function buildContentPagePayload(body: Record<string, unknown>) {
   const contentType = asContentType(body.contentType);
   return {
@@ -115,6 +142,24 @@ export function buildContentPagePayload(body: Record<string, unknown>) {
   };
 }
 
+function pickLinkedIds(
+  rows: unknown,
+  key: "product_id" | "asset_id",
+): string[] {
+  if (!Array.isArray(rows)) return [];
+  const sorted = [...rows].sort((a: any, b: any) => {
+    const ao = Number(a?.sort_order ?? 0);
+    const bo = Number(b?.sort_order ?? 0);
+    return ao - bo;
+  });
+  const out: string[] = [];
+  for (const entry of sorted) {
+    const value = (entry as Record<string, unknown>)?.[key];
+    if (typeof value === "string" && value.length > 0) out.push(value);
+  }
+  return out;
+}
+
 export function mapContentPageRow(row: any) {
   return {
     id: row.id,
@@ -135,10 +180,81 @@ export function mapContentPageRow(row: any) {
           (entry): entry is string => typeof entry === "string",
         )
       : [],
+    linkedProductIds: pickLinkedIds(row.content_page_products, "product_id"),
+    linkedAssetIds: pickLinkedIds(row.content_page_assets, "asset_id"),
     sortOrder: Number(row.sort_order ?? 0),
     isActive: row.is_active !== false,
     publishedAt: row.published_at ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+type SupabaseAdminClient = {
+  from: (table: string) => any;
+};
+
+export async function syncContentPageLinks(
+  adminClient: SupabaseAdminClient,
+  contentPageId: string,
+  productIds: string[],
+  assetIds: string[],
+) {
+  const { error: deleteProductsError } = await adminClient
+    .from("content_page_products")
+    .delete()
+    .eq("content_page_id", contentPageId);
+  if (deleteProductsError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: deleteProductsError.message,
+    });
+  }
+
+  if (productIds.length > 0) {
+    const { error: insertProductsError } = await adminClient
+      .from("content_page_products")
+      .insert(
+        productIds.map((productId, index) => ({
+          content_page_id: contentPageId,
+          product_id: productId,
+          sort_order: index,
+        })),
+      );
+    if (insertProductsError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: insertProductsError.message,
+      });
+    }
+  }
+
+  const { error: deleteAssetsError } = await adminClient
+    .from("content_page_assets")
+    .delete()
+    .eq("content_page_id", contentPageId);
+  if (deleteAssetsError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: deleteAssetsError.message,
+    });
+  }
+
+  if (assetIds.length > 0) {
+    const { error: insertAssetsError } = await adminClient
+      .from("content_page_assets")
+      .insert(
+        assetIds.map((assetId, index) => ({
+          content_page_id: contentPageId,
+          asset_id: assetId,
+          sort_order: index,
+        })),
+      );
+    if (insertAssetsError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: insertAssetsError.message,
+      });
+    }
+  }
 }

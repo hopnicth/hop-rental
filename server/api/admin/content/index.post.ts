@@ -3,24 +3,41 @@ import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_CONTENT_PAGE_SELECT,
   buildContentPagePayload,
+  extractLinkedIds,
   mapContentPageRow,
+  syncContentPageLinks,
 } from "~~/server/utils/content-pages";
 
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requireSuperAdmin(event);
   const body = (await readBody(event)) as Record<string, unknown>;
 
+  const payload = buildContentPagePayload(body);
+  const { productIds, assetIds } = extractLinkedIds(body, payload.content_type);
+
+  const { data: inserted, error: insertError } = await adminClient
+    .from("content_pages")
+    .insert(payload)
+    .select("id")
+    .single();
+
+  if (insertError) {
+    throw createError({
+      statusCode: insertError.code === "23505" ? 409 : 500,
+      statusMessage: insertError.message,
+    });
+  }
+
+  await syncContentPageLinks(adminClient, inserted.id, productIds, assetIds);
+
   const { data, error } = await adminClient
     .from("content_pages")
-    .insert(buildContentPagePayload(body))
     .select(ADMIN_CONTENT_PAGE_SELECT)
+    .eq("id", inserted.id)
     .single();
 
   if (error) {
-    throw createError({
-      statusCode: error.code === "23505" ? 409 : 500,
-      statusMessage: error.message,
-    });
+    throw createError({ statusCode: 500, statusMessage: error.message });
   }
 
   return { item: mapContentPageRow(data) };

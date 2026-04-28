@@ -56,11 +56,36 @@ function normalizeBody(value: unknown): LocalizedDoc {
   return result;
 }
 
+function pickLinkedIds(
+  value: unknown,
+  key: "product_id" | "asset_id",
+): string[] {
+  if (!Array.isArray(value)) return [];
+  const sorted = [...value].sort((a: any, b: any) => {
+    const ao = Number(a?.sort_order ?? 0);
+    const bo = Number(b?.sort_order ?? 0);
+    return ao - bo;
+  });
+  const out: string[] = [];
+  for (const entry of sorted) {
+    const raw = (entry as Record<string, unknown>)?.[key];
+    if (typeof raw === "string" && raw.length > 0) out.push(raw);
+  }
+  return out;
+}
+
+const VALID_CONTENT_TYPES: ContentType[] = [
+  "blog",
+  "service",
+  "promotion",
+  "review",
+];
+
 function normalizeContentPage(row: ContentPageRow): ContentPage | null {
   const id = toString(row.id);
   const contentType = toString(row.content_type) as ContentType;
   const slug = toString(row.slug);
-  if (!id || !slug || !["blog", "service", "promotion"].includes(contentType)) {
+  if (!id || !slug || !VALID_CONTENT_TYPES.includes(contentType)) {
     return null;
   }
 
@@ -92,6 +117,8 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
           (entry): entry is string => typeof entry === "string",
         )
       : [],
+    linkedProductIds: pickLinkedIds(row.content_page_products, "product_id"),
+    linkedAssetIds: pickLinkedIds(row.content_page_assets, "asset_id"),
     sortOrder: Number(row.sort_order ?? 0),
     isActive: row.is_active !== false,
     publishedAt: toString(row.published_at),
@@ -100,16 +127,24 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
   };
 }
 
+const CONTENT_PAGE_BASE_FIELDS =
+  "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
+
+const PUBLIC_CONTENT_PAGE_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order)`;
+
+const REVIEWS_FOR_PRODUCT_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products!inner(product_id, sort_order), content_page_assets(asset_id, sort_order)`;
+
+const REVIEWS_FOR_ASSET_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets!inner(asset_id, sort_order)`;
+
 export function useContentPages() {
   const supabase = useSupabaseClient();
 
   async function fetchContentPages(contentType: ContentType) {
     const { data, error } = await supabase
       .from("content_pages")
-      .select(
-        "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at",
-      )
+      .select(PUBLIC_CONTENT_PAGE_SELECT)
       .eq("content_type", contentType)
+      .eq("is_active", true)
       .order("sort_order", { ascending: true })
       .order("published_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false });
@@ -124,9 +159,7 @@ export function useContentPages() {
   async function fetchContentPage(contentType: ContentType, slug: string) {
     const { data, error } = await supabase
       .from("content_pages")
-      .select(
-        "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at",
-      )
+      .select(PUBLIC_CONTENT_PAGE_SELECT)
       .eq("content_type", contentType)
       .eq("slug", slug)
       .maybeSingle();
@@ -135,11 +168,58 @@ export function useContentPages() {
     return data ? normalizeContentPage(data as ContentPageRow) : null;
   }
 
+  async function fetchReviewsForProduct(productId: string) {
+    if (!productId) return [];
+    const { data, error } = await supabase
+      .from("content_pages")
+      .select(REVIEWS_FOR_PRODUCT_SELECT)
+      .eq("content_page_products.product_id", productId)
+      .eq("content_type", "review")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(6);
+
+    if (error) throw error;
+
+    return ((data ?? []) as unknown[])
+      .map((row) => normalizeContentPage(row as ContentPageRow))
+      .filter((item): item is ContentPage => !!item);
+  }
+
+  async function fetchReviewsForAsset(assetId: string) {
+    if (!assetId) return [];
+    const { data, error } = await supabase
+      .from("content_pages")
+      .select(REVIEWS_FOR_ASSET_SELECT)
+      .eq("content_page_assets.asset_id", assetId)
+      .eq("content_type", "review")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(6);
+
+    if (error) throw error;
+
+    return ((data ?? []) as unknown[])
+      .map((row) => normalizeContentPage(row as ContentPageRow))
+      .filter((item): item is ContentPage => !!item);
+  }
+
   function pathForContent(contentType: ContentType, slug: string) {
     if (contentType === "service") return `/services/${slug}`;
     if (contentType === "promotion") return `/promotions/${slug}`;
+    if (contentType === "review") return `/reviews/${slug}`;
     return `/blog/${slug}`;
   }
 
-  return { fetchContentPages, fetchContentPage, pathForContent };
+  return {
+    fetchContentPages,
+    fetchContentPage,
+    fetchReviewsForProduct,
+    fetchReviewsForAsset,
+    pathForContent,
+  };
 }

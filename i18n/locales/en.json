@@ -1,4 +1,7 @@
 {
+  "common": {
+    "loading": "Loading..."
+  },
   "search": {
     "placeholder": "Search products...",
     "title": "Search Results",

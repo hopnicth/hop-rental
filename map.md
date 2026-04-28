@@ -59,8 +59,10 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Homepage partner/logo marquee now comes from `home_partner_logos` with storefront fallback only for older schemas.
 - Homepage curated product/asset rails are capped at 15 items each.
 - Homepage promotion/service cards are pure references to `content_pages` rows; admin must create the content page first, then pick it from `/admin/home-content`.
+- `content_pages.content_type` supports `blog`, `service`, `promotion`, and `review`. Reviews can be linked to one or more `products` and/or `assets` from `/admin/content`, and render as a "Product reviews" section on `/product-{group}/{slug}` and `/asset/{slug}`.
 - Homepage card sections use Nuxt UI `UCarousel`/Embla rails with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin.
 - Storefront card images should preserve square `1:1` frames using `aspect-square` and `object-cover`; avoid reverting card media to fixed `h-48` heights.
+- Card-based async lists/grids/rails must show `<CommonLoadingCat />` plus shape-matched skeleton cards while loading; never leave empty space or use ad-hoc spinners. See "Lazy load loading state standard" in `API_INDEX.md`.
 - Homepage image uploads now use Supabase Storage via the shared `catalog-media` bucket.
 - SVG uploads are allowed only for Home partner logos; other Home uploads are converted to WebP.
 - The partner logo marquee is intentionally compact at 40px height and pauses on hover; mouse-wheel manual scrolling is disabled.
@@ -74,7 +76,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 
 ## Key app surfaces
 
-- Storefront: `/`, `/product-{group}`, `/product-{group}/{slug}`, `/product-rental`, `/asset/{slug}`, `/blog`, `/blog/[slug]`, `/services`, `/services/[slug]`, `/promotions`, `/promotions/[slug]`
+- Storefront: `/`, `/product-{group}`, `/product-{group}/{slug}`, `/product-rental`, `/asset/{slug}`, `/blog`, `/blog/[slug]`, `/services`, `/services/[slug]`, `/promotions`, `/promotions/[slug]`, `/reviews`, `/reviews/[slug]`
 - Customer: `/user/cart`, `/user/orders`, `/user/rentals`
 - Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`, `/admin/content`
 
@@ -101,6 +103,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `036_content_pages.sql`
 - `037_content_pages_localized_body.sql`
 - `038_home_link_cards_content_page_ref.sql`
+- `040_content_page_links.sql`
 
 ## Recommended maintenance rule
 

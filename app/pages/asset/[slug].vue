@@ -182,6 +182,16 @@ watch(
   },
   { immediate: true },
 );
+
+// ── Linked reviews ──
+const { fetchReviewsForAsset } = useContentPages();
+const assetId = computed(() => access.value?.id ?? "");
+const { data: reviews } = await useAsyncData(
+  `asset-reviews:${slug.value}`,
+  () =>
+    assetId.value ? fetchReviewsForAsset(assetId.value) : Promise.resolve([]),
+  { default: () => [], watch: [assetId] },
+);
 </script>
 
 <template>
@@ -373,6 +383,19 @@ watch(
 
         <ProductsProductSpecTable :spec="specSummary" />
       </UCard>
+
+      <section v-if="reviews.length" class="mt-10 space-y-4">
+        <h3 class="text-lg font-semibold">
+          {{ t("productDetail.reviews") }}
+        </h3>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <LazyContentPageCard
+            v-for="review in reviews"
+            :key="review.id"
+            :page="review"
+          />
+        </div>
+      </section>
     </template>
   </UContainer>
 </template>

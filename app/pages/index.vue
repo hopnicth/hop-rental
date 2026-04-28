@@ -13,9 +13,23 @@ import type { Product } from "~/types/product";
 
 const { t } = useI18n();
 const isCategoryPanelOpen = ref(false);
-const { getAssetShowPath } = useAssets();
-const { promotionCards, featuredAssets, featuredProducts, serviceCards } =
-  useHomeContent();
+const { getAssetShowPath, loading: assetsLoading } = useAssets();
+const { loading: productsLoading } = useProducts();
+const {
+  promotionCards,
+  featuredAssets,
+  featuredProducts,
+  serviceCards,
+  loading: homeContentLoading,
+} = useHomeContent();
+
+const linkCardsLoading = computed(() => homeContentLoading.value);
+const featuredAssetsLoading = computed(
+  () => homeContentLoading.value || assetsLoading.value,
+);
+const featuredProductsLoading = computed(
+  () => homeContentLoading.value || productsLoading.value,
+);
 
 function asHomeLinkCard(item: unknown) {
   return item as HomeLinkCardType;
@@ -57,9 +71,16 @@ function asProduct(item: unknown) {
             <HomeHorizontalRail
               :items="promotionCards"
               :empty-label="t('home.emptyPromotions')"
+              :loading="linkCardsLoading"
             >
+              <template #skeleton>
+                <HomeLinkCardSkeleton />
+              </template>
               <template #item="{ item }">
-                <HomeLinkCard :card="asHomeLinkCard(item)" class="lg:mx-0.5 sm:mx-0" />
+                <HomeLinkCard
+                  :card="asHomeLinkCard(item)"
+                  class="lg:mx-0.5 sm:mx-0"
+                />
               </template>
             </HomeHorizontalRail>
           </HomeSectionShell>
@@ -82,6 +103,7 @@ function asProduct(item: unknown) {
             <HomeHorizontalRail
               :items="featuredAssets"
               :empty-label="t('home.emptyRentals')"
+              :loading="featuredAssetsLoading"
             >
               <template #item="{ item }">
                 <LazyProductsAssetCard
@@ -112,6 +134,7 @@ function asProduct(item: unknown) {
             <HomeHorizontalRail
               :items="featuredProducts"
               :empty-label="t('home.emptyProducts')"
+              :loading="featuredProductsLoading"
             >
               <template #item="{ item }">
                 <LazyProductsProductCard
@@ -129,7 +152,11 @@ function asProduct(item: unknown) {
             <HomeHorizontalRail
               :items="serviceCards"
               :empty-label="t('home.emptyServices')"
+              :loading="linkCardsLoading"
             >
+              <template #skeleton>
+                <HomeLinkCardSkeleton />
+              </template>
               <template #item="{ item }">
                 <HomeLinkCard :card="asHomeLinkCard(item)" class="lg:mx-0.5" />
               </template>

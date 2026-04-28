@@ -32,11 +32,15 @@ type AdminContentPage = {
   coverImageUrl: string;
   body: LocalizedDoc;
   serviceAreas: string[];
+  linkedProductIds: string[];
+  linkedAssetIds: string[];
   sortOrder: number;
   isActive: boolean;
   publishedAt: string;
   updatedAt?: string;
 };
+
+type LinkOption = { value: string; label: string; isHidden: boolean };
 
 const toast = useToast();
 const formRef = ref<HTMLElement | null>(null);
@@ -54,6 +58,7 @@ const contentTypeOptions: Array<{
   { value: "blog", label: "Blog", path: "/blog" },
   { value: "service", label: "บริการของเรา", path: "/services" },
   { value: "promotion", label: "Promotions", path: "/promotions" },
+  { value: "review", label: "Reviews", path: "/reviews" },
 ];
 
 const emptyForm = (): Omit<AdminContentPage, "id"> => ({
@@ -70,6 +75,8 @@ const emptyForm = (): Omit<AdminContentPage, "id"> => ({
   coverImageUrl: "",
   body: emptyLocalizedDoc(),
   serviceAreas: [],
+  linkedProductIds: [],
+  linkedAssetIds: [],
   sortOrder: 0,
   isActive: true,
   publishedAt: "",
@@ -86,12 +93,16 @@ const form = reactive(emptyForm());
 
 const { data, pending, error, refresh } = await useFetch<{
   items: AdminContentPage[];
+  productOptions: LinkOption[];
+  assetOptions: LinkOption[];
 }>("/api/admin/content", {
   key: "admin-content-pages",
-  default: () => ({ items: [] }),
+  default: () => ({ items: [], productOptions: [], assetOptions: [] }),
 });
 
 const items = computed(() => data.value?.items ?? []);
+const productOptions = computed(() => data.value?.productOptions ?? []);
+const assetOptions = computed(() => data.value?.assetOptions ?? []);
 const filteredItems = computed(() =>
   selectedType.value === "all"
     ? items.value
@@ -121,6 +132,8 @@ function editItem(item: AdminContentPage) {
   form.coverImageUrl = item.coverImageUrl;
   form.body = structuredClone(item.body ?? emptyLocalizedDoc());
   form.serviceAreas = [...(item.serviceAreas ?? [])];
+  form.linkedProductIds = [...(item.linkedProductIds ?? [])];
+  form.linkedAssetIds = [...(item.linkedAssetIds ?? [])];
   form.sortOrder = item.sortOrder;
   form.isActive = item.isActive;
   form.publishedAt = item.publishedAt;
@@ -488,6 +501,37 @@ async function uploadCover(event: Event) {
             class="w-full"
           />
         </UFormField>
+
+        <template v-if="form.contentType === 'review'">
+          <UFormField
+            label="Linked products"
+            help="รีวิวนี้จะไปแสดงที่หน้ารายละเอียดของสินค้าที่เลือก"
+          >
+            <USelectMenu
+              v-model="form.linkedProductIds"
+              :items="productOptions"
+              value-key="value"
+              multiple
+              searchable
+              placeholder="เลือกสินค้า"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField
+            label="Linked assets"
+            help="รีวิวนี้จะไปแสดงที่หน้ารายละเอียดของ asset ที่เลือก"
+          >
+            <USelectMenu
+              v-model="form.linkedAssetIds"
+              :items="assetOptions"
+              value-key="value"
+              multiple
+              searchable
+              placeholder="เลือก asset"
+              class="w-full"
+            />
+          </UFormField>
+        </template>
 
         <div class="grid gap-3 sm:grid-cols-3">
           <UFormField label="Sort order"

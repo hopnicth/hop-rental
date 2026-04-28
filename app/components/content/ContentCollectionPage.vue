@@ -8,7 +8,11 @@ const props = defineProps<{
 }>();
 
 const { fetchContentPages } = useContentPages();
-const { data: pages, pending, error } = await useAsyncData(
+const {
+  data: pages,
+  pending,
+  error,
+} = await useAsyncData(
   `content-list:${props.contentType}`,
   () => fetchContentPages(props.contentType),
   { default: () => [] },
@@ -41,11 +45,17 @@ useSeoMeta({
         :description="String(error?.message || 'Unknown error')"
       />
 
-      <div v-else-if="pending" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <USkeleton v-for="index in 6" :key="index" class="h-72 rounded-lg" />
+      <div v-else-if="pending" class="space-y-4">
+        <CommonLoadingCat />
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <USkeleton v-for="index in 6" :key="index" class="h-72 rounded-lg" />
+        </div>
       </div>
 
-      <div v-else-if="pages.length" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div
+        v-else-if="pages.length"
+        class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      >
         <ContentPageCard v-for="page in pages" :key="page.id" :page="page" />
       </div>
 

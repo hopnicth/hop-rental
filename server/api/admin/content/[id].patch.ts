@@ -1,15 +1,21 @@
 import { createError, defineEventHandler, getRouterParam, readBody } from "h3";
 import { requireSuperAdmin } from "~~/server/utils/admin";
-import { buildContentPagePayload } from "~~/server/utils/content-pages";
+import {
+  buildContentPagePayload,
+  extractLinkedIds,
+  syncContentPageLinks,
+} from "~~/server/utils/content-pages";
 import { removeContentMediaByPublicUrl } from "~~/server/utils/content-media";
 
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requireSuperAdmin(event);
   const id = getRouterParam(event, "id");
-  if (!id) throw createError({ statusCode: 400, statusMessage: "id is required" });
+  if (!id)
+    throw createError({ statusCode: 400, statusMessage: "id is required" });
 
   const body = (await readBody(event)) as Record<string, unknown>;
   const payload = buildContentPagePayload(body);
+  const { productIds, assetIds } = extractLinkedIds(body, payload.content_type);
 
   const { data: existing, error: fetchError } = await adminClient
     .from("content_pages")
@@ -21,7 +27,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: fetchError.message });
   }
   if (!existing) {
-    throw createError({ statusCode: 404, statusMessage: "Content page not found" });
+    throw createError({
+      statusCode: 404,
+      statusMessage: "Content page not found",
+    });
   }
 
   const { error } = await adminClient
@@ -37,6 +46,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: error.message,
     });
   }
+
+  await syncContentPageLinks(adminClient, id, productIds, assetIds);
 
   if (existing.cover_image_url !== payload.cover_image_url) {
     await removeContentMediaByPublicUrl(adminClient, existing.cover_image_url);

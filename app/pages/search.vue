@@ -235,7 +235,17 @@ function resetFilters() {
           />
         </div>
 
-        <UCard v-else-if="!loading">
+        <div v-else-if="loading" class="space-y-4">
+          <CommonLoadingCat />
+          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <ProductsCatalogCardSkeleton
+              v-for="index in pageSize"
+              :key="`search-skel-${index}`"
+            />
+          </div>
+        </div>
+
+        <UCard v-else>
           <div class="py-10 text-center">
             <UIcon
               name="bx:search-alt"

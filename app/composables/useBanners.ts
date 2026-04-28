@@ -1,4 +1,4 @@
-import { mockBannerSlides } from "~/mock/banners";
+import type { BannerSlide } from "~/types/banner";
 
 const HOME_BANNERS_ONCE_KEY = "home:banners";
 
@@ -98,19 +98,21 @@ function isMissingHomeBannerSchemaError(error: unknown): boolean {
 }
 
 /**
- * Composable for loading banner slides.
- * Currently uses mock data — replace with useFetch() when Admin dashboard / API is ready.
+ * Composable for loading banner slides from `home_banners`.
+ * Initial state is empty so the storefront never ships placeholder mock images.
  */
 export function useBanners() {
   const supabase = useSupabaseClient();
   const router = useRouter();
-  const allSlides = useState("home:banners:slides", () => mockBannerSlides);
+  const allSlides = useState<BannerSlide[]>("home:banners:slides", () => []);
   const hasRemoteSlides = useState("home:banners:remote", () => false);
+  const loading = useState<boolean>("home:banners:loading", () => false);
   const availablePaths = computed(
     () => new Set(router.getRoutes().map((route) => route.path)),
   );
 
   async function fetchBanners(): Promise<void> {
+    loading.value = true;
     try {
       const { data, error } = await supabase
         .from("home_banners")
@@ -136,6 +138,8 @@ export function useBanners() {
       }
 
       console.warn("[useBanners] Failed to fetch home banners:", fetchError);
+    } finally {
+      loading.value = false;
     }
   }
 
@@ -167,5 +171,6 @@ export function useBanners() {
 
   return {
     bannerSlides,
+    loading,
   };
 }

@@ -54,7 +54,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Asset matching to products is live
 - Multi-inventory branch stock management is live
 - Homepage content admin exists and is `super_admin` only, including banners, partner logos, curated product/asset rails, upload, and delete flows
-- Generic content page admin exists for blog, services, and promotions with localized TipTap (ProseMirror) bodies and shared media upload
+- Generic content page admin exists for blog, services, promotions, and product reviews with localized TipTap (ProseMirror) bodies and shared media upload
+- Product reviews are a `content_pages` row of type `review` and can be linked to one or more products and/or assets from `/admin/content`; linked reviews render as a "Product reviews" section on `/product-{group}/{slug}` and `/asset/{slug}`, and have their own public routes at `/reviews` and `/reviews/{slug}`
 - Homepage promotion/service cards are now live references to `content_pages` rows, so titles, excerpts, cover images, and `/services/{slug}` or `/promotions/{slug}` links stay in sync with the CMS
 - Homepage curated sections (`promotions`, rentals, products, services) use a shared Nuxt UI `UCarousel`/Embla rail with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin
 - Homepage rental/product sections use the same card components as product/all-rental listing cards
@@ -62,6 +63,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Partner logos are DB-backed, support SVG uploads, and render through a compact 40px marquee with hover-pause only
 - Global Nuxt UI theme tokens are customized in `app/assets/css/main.css` for HOP colors and a unified `0.2rem` radius scale
 - Hero banners are DB-backed, autoplay with loop, and align title/subtitle/CTA to the right with a right-side readability gradient
+- Card-based lists/grids/rails share a standard loading state: `<CommonLoadingCat />` (sleeping-cat GIF at `public/loading-cat.gif`) plus shape-matched `<ProductsCatalogCardSkeleton />` / `<HomeHomeLinkCardSkeleton />` while async data is loading; see `API_INDEX.md` for the required pattern
 
 ### Booking + checkout
 
@@ -93,6 +95,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/blog`, `/blog/{slug}`
 - `/services`, `/services/{slug}`
 - `/promotions`, `/promotions/{slug}`
+- `/reviews`, `/reviews/{slug}`
 
 ### Customer
 

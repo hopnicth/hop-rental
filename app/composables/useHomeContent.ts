@@ -1,4 +1,3 @@
-import { mockPromotionCards, mockServiceCards } from "~/mock/home-content";
 import type {
   HomeFeaturedProduct,
   HomeFeaturedAsset,
@@ -188,10 +187,7 @@ export function useHomeContent() {
     new Date().toISOString().slice(0, 10),
   );
 
-  const allLinkCards = useState<HomeLinkCard[]>("home:link-cards", () => [
-    ...mockPromotionCards,
-    ...mockServiceCards,
-  ]);
+  const allLinkCards = useState<HomeLinkCard[]>("home:link-cards", () => []);
   const allFeaturedProducts = useState<HomeFeaturedProduct[]>(
     "home:featured-products",
     () => [],
@@ -212,8 +208,10 @@ export function useHomeContent() {
     "home:featured-assets:remote",
     () => false,
   );
+  const loading = useState<boolean>("home:content:loading", () => false);
 
   async function fetchHomeContent(): Promise<void> {
+    loading.value = true;
     try {
       const [linkCardsResult, featuredProductsResult, featuredRentalsResult] =
         await Promise.all([
@@ -269,6 +267,8 @@ export function useHomeContent() {
         "[useHomeContent] Failed to fetch home content:",
         fetchError,
       );
+    } finally {
+      loading.value = false;
     }
   }
 
@@ -341,5 +341,6 @@ export function useHomeContent() {
     serviceCards,
     featuredProducts,
     featuredAssets,
+    loading,
   };
 }

@@ -9,10 +9,18 @@ const lang = computed(() => locale.value as LocaleCode);
 
 // ── Fetch product by slug from route param ──
 const slug = computed(() => route.params.id as string);
-const { getProductBySlug, products } = useProducts();
-const { getAssetsByProductId, getAssetShowPath } = useAssets();
+const { getProductBySlug, products, loading: productsLoading } = useProducts();
+const {
+  getAssetsByProductId,
+  getAssetShowPath,
+  loading: assetsLoading,
+} = useAssets();
 
 const product = getProductBySlug(slug.value);
+
+const isCatalogLoading = computed(
+  () => productsLoading.value || assetsLoading.value,
+);
 
 // ── Selected SKU (default = first) ──
 const selectedSkuIndex = ref(0);
@@ -124,13 +132,41 @@ const recommended = computed(() => {
     .filter((p) => p.id !== product.value!.id && p.categories.includes(cat))
     .slice(0, 4);
 });
+
+// ── Linked reviews ──
+const { fetchReviewsForProduct } = useContentPages();
+const productId = computed(() => product.value?.id ?? "");
+const { data: reviews } = await useAsyncData(
+  `product-reviews:${slug.value}`,
+  () =>
+    productId.value
+      ? fetchReviewsForProduct(productId.value)
+      : Promise.resolve([]),
+  { default: () => [], watch: [productId] },
+);
 </script>
 
 <template>
   <UContainer class="py-6">
     <HopFeatureBar class="mb-8" />
+    <!-- ── Loading (catalog still resolving) ── -->
+    <div v-if="!product && isCatalogLoading" class="py-12">
+      <CommonLoadingCat />
+      <div class="mt-6 grid grid-cols-12 gap-6">
+        <div class="col-span-12 lg:col-span-5">
+          <USkeleton class="aspect-square w-full rounded-lg" />
+        </div>
+        <div class="col-span-12 space-y-3 lg:col-span-7">
+          <USkeleton class="h-6 w-3/4 rounded" />
+          <USkeleton class="h-4 w-1/2 rounded" />
+          <USkeleton class="mt-4 h-24 w-full rounded" />
+          <USkeleton class="h-10 w-40 rounded" />
+        </div>
+      </div>
+    </div>
+
     <!-- ── Not Found ── -->
-    <div v-if="!product" class="py-20 text-center">
+    <div v-else-if="!product" class="py-20 text-center">
       <UIcon name="bx:error-circle" class="mb-4 size-16 text-gray-400" />
       <p class="text-lg text-gray-500">{{ t("productDetail.notFound") }}</p>
       <UButton
@@ -168,7 +204,10 @@ const recommended = computed(() => {
       </div>
 
       <!-- ── Rental availability (matched assets) — placed before detail/spec ── -->
-      <section v-if="assetOptions.length" class="mt-8 space-y-4">
+      <section
+        v-if="assetOptions.length || assetsLoading"
+        class="mt-8 space-y-4"
+      >
         <div>
           <h3 class="text-lg font-semibold">
             {{ t("productDetail.rentalAvailableTitle") }}
@@ -178,7 +217,10 @@ const recommended = computed(() => {
           </p>
         </div>
 
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div
+          v-if="assetOptions.length"
+          class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"
+        >
           <LazyProductsAssetCard
             v-for="access in assetOptions"
             :key="access.id"
@@ -186,6 +228,15 @@ const recommended = computed(() => {
             :browse-to="getAssetShowPath(access)"
             hide-matches
           />
+        </div>
+        <div v-else-if="assetsLoading" class="space-y-4">
+          <CommonLoadingCat inline />
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <ProductsCatalogCardSkeleton
+              v-for="index in 3"
+              :key="`detail-asset-skel-${index}`"
+            />
+          </div>
         </div>
       </section>
 
@@ -223,16 +274,42 @@ const recommended = computed(() => {
         />
       </section>
 
+      <!-- ── Linked reviews ── -->
+      <section v-if="reviews.length" class="mt-10 space-y-4">
+        <h3 class="text-lg font-semibold">
+          {{ t("productDetail.reviews") }}
+        </h3>
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <LazyContentPageCard
+            v-for="review in reviews"
+            :key="review.id"
+            :page="review"
+          />
+        </div>
+      </section>
+
       <!-- ── Recommended Products ── -->
-      <div v-if="recommended.length" class="mt-10">
+      <div v-if="recommended.length || productsLoading" class="mt-10">
         <h3 class="mb-4 text-lg font-semibold">
           {{ t("productDetail.recommended") }}
         </h3>
-        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div
+          v-if="recommended.length"
+          class="grid grid-cols-2 gap-4 sm:grid-cols-4"
+        >
           <LazyProductsProductCard
             v-for="p in recommended"
             :key="p.id"
             :product-id="p.id"
+          />
+        </div>
+        <div
+          v-else-if="productsLoading"
+          class="grid grid-cols-2 gap-4 sm:grid-cols-4"
+        >
+          <ProductsCatalogCardSkeleton
+            v-for="index in 4"
+            :key="`detail-rec-skel-${index}`"
           />
         </div>
       </div>
