@@ -194,6 +194,7 @@ const { data: mainCategoriesData } = await useFetch<{
   options: Array<{ value: string; label: string }>;
 }>("/api/admin/main-categories", {
   key: "admin-assets-main-categories",
+  query: { entityType: "asset" },
   default: () => ({ items: [], options: [] }),
 });
 

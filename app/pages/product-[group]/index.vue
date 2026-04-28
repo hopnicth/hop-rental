@@ -1,15 +1,48 @@
 <script setup lang="ts">
 import { useProducts } from "~/composables/useProducts";
 import { useAssets } from "~/composables/useAssets";
+import { useMainCategories } from "~/composables/useMainCategories";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import SearchFilters from "~/components/search/SearchFilters.vue";
 import type { CatalogType } from "~/composables/useProductSearch";
+import {
+  useFilterGroups,
+  type DynamicFilterValue,
+  type FilterGroup,
+} from "~/composables/useFilterGroups";
+import { productMatchesDynamicFilters } from "~/utils/dynamic-filters";
+import {
+  queryObjectsEqual,
+  readDynamicFilters,
+  readQueryBoolean,
+  readQueryList,
+  readQueryNumber,
+  readQueryString,
+  writeDynamicFilters,
+} from "~/utils/filter-query";
+import { mainCategories, mockSubCategories } from "~/mock/categories";
 import type { Product } from "~/types/product";
 import type { Asset } from "~/types/asset";
+import type {
+  CategorySelectOption,
+  MainCategoryEntityType,
+  StorefrontMainCategory,
+} from "~/types/category";
+
+const RESERVED_GROUPS = new Set(["all", "sale", "rental"]);
+
+// Lookup tables used to map a user-selected category back to its owning
+// main_category (so dynamic filter groups can light up on /product-all and
+// /product-sale). Built once at module-load — both maps are static.
+const MAIN_CATEGORY_KEYS = new Set(mainCategories.map((m) => m.key));
+const SUB_TO_MAIN = new Map(
+  mockSubCategories.map((s) => [s.id, s.mainCategoryKey] as const),
+);
 
 const route = useRoute();
-const { t } = useI18n();
+const router = useRouter();
+const { t, locale } = useI18n();
 const {
   products,
   getDisplayPrice,
@@ -28,10 +61,15 @@ type ListingType = CatalogType | "all";
 type SortDir = "high" | "low";
 type ListingMode = "products" | "assets";
 
-const RESERVED_GROUPS = new Set(["all", "sale", "rental"]);
 const group = computed(() => String(route.params.group ?? "all"));
 const listingMode = computed<ListingMode>(() =>
   group.value === "rental" ? "assets" : "products",
+);
+const mainCategoryEntityType = computed<MainCategoryEntityType>(() =>
+  listingMode.value === "assets" ? "asset" : "product",
+);
+const { categories: storefrontMainCategories } = useMainCategories(
+  mainCategoryEntityType,
 );
 const defaultCategory = computed(() =>
   RESERVED_GROUPS.has(group.value) ? "all" : group.value,
@@ -42,12 +80,94 @@ const defaultType = computed<ListingType>(() => {
   return "all";
 });
 
-const selectedCategory = ref<string>(defaultCategory.value);
-const selectedType = ref<ListingType>(defaultType.value);
-const selectedBrands = ref<string[]>([]);
-const minPrice = ref<number | null>(null);
-const maxPrice = ref<number | null>(null);
-const inStockOnly = ref(false);
+function readListingType(value: unknown): ListingType {
+  const raw = readQueryString(value);
+  return raw === "sale" || raw === "rental" || raw === "hybrid"
+    ? raw
+    : defaultType.value;
+}
+
+const selectedCategory = ref<string>(
+  readQueryString(route.query.category) || defaultCategory.value,
+);
+const selectedType = ref<ListingType>(readListingType(route.query.type));
+const selectedBrands = ref<string[]>(readQueryList(route.query.brands));
+const minPrice = ref<number | null>(readQueryNumber(route.query.min));
+const maxPrice = ref<number | null>(readQueryNumber(route.query.max));
+const inStockOnly = ref(readQueryBoolean(route.query.stock));
+const selectedDynamicFilters = ref<Record<string, DynamicFilterValue>>(
+  readDynamicFilters(route.query.df),
+);
+const selectedAddedDynamicGroupIds = ref<string[]>(
+  Object.keys(selectedDynamicFilters.value),
+);
+const isApplyingRouteQuery = ref(false);
+const isSyncingToQuery = ref(false);
+
+const storefrontMainCategoryKeySet = computed(
+  () => new Set(storefrontMainCategories.value.map((item) => item.key)),
+);
+
+const allMainCategoryKeySet = computed(
+  () => new Set([...MAIN_CATEGORY_KEYS, ...storefrontMainCategoryKeySet.value]),
+);
+
+function localizedMainCategoryLabel(item: StorefrontMainCategory): string {
+  if (locale.value === "th") return item.labelTh || item.labelEn || item.key;
+  return item.labelEn || item.labelTh || item.key;
+}
+
+const rentalCategoryOptions = computed<CategorySelectOption[] | undefined>(
+  () => {
+    if (listingMode.value !== "assets") return undefined;
+    const optionsByValue = new Map<string, CategorySelectOption>();
+
+    for (const item of storefrontMainCategories.value) {
+      optionsByValue.set(item.key, {
+        value: item.key,
+        label: localizedMainCategoryLabel(item),
+      });
+    }
+
+    for (const asset of assets.value) {
+      const key = asset.mainCategoryKey;
+      if (key && !optionsByValue.has(key)) {
+        optionsByValue.set(key, { value: key, label: key });
+      }
+    }
+
+    return [...optionsByValue.values()];
+  },
+);
+
+const rentalCategoryLabels = computed<Record<string, string> | undefined>(
+  () => {
+    if (listingMode.value !== "assets") return undefined;
+    return Object.fromEntries(
+      (rentalCategoryOptions.value ?? []).map((option) => [
+        option.value,
+        option.label,
+      ]),
+    );
+  },
+);
+
+// Main-category context for dynamic filter groups.
+//   • Category-scoped routes (/product-power_tools, …) → use the route group.
+//   • Reserved routes (/product-all, /product-sale, /product-rental) → derive
+//     from the user-selected category so dynamic filters light up once they
+//     pick a main- or sub-category from the dropdown. Assets carry their own
+//     filter_keys (migration 043), so this path now applies to rentals too.
+const mainCategoryKey = computed<string | null>(() => {
+  if (!RESERVED_GROUPS.has(group.value)) return group.value;
+  const sel = selectedCategory.value;
+  if (!sel || sel === "all") return null;
+  if (allMainCategoryKeySet.value.has(sel)) return sel;
+  return SUB_TO_MAIN.get(sel) ?? null;
+});
+
+const { groups: filterGroups, pending: filterGroupsPending } =
+  useFilterGroups(mainCategoryKey);
 
 // Product is "rentable" only when at least one asset matches it with
 // match_type === 'compatible' (per business rule for /product-all).
@@ -75,7 +195,71 @@ function resetFilters() {
   minPrice.value = null;
   maxPrice.value = null;
   inStockOnly.value = false;
+  selectedDynamicFilters.value = {};
+  selectedAddedDynamicGroupIds.value = [];
 }
+
+function applyRouteQuery() {
+  if (isSyncingToQuery.value) return;
+  isApplyingRouteQuery.value = true;
+  const nextDynamicFilters = readDynamicFilters(route.query.df);
+
+  selectedCategory.value =
+    readQueryString(route.query.category) || defaultCategory.value;
+  selectedType.value = readListingType(route.query.type);
+  selectedBrands.value = readQueryList(route.query.brands);
+  minPrice.value = readQueryNumber(route.query.min);
+  maxPrice.value = readQueryNumber(route.query.max);
+  inStockOnly.value = readQueryBoolean(route.query.stock);
+  selectedDynamicFilters.value = nextDynamicFilters;
+  selectedAddedDynamicGroupIds.value = Object.keys(nextDynamicFilters);
+
+  nextTick(() => {
+    isApplyingRouteQuery.value = false;
+  });
+}
+
+function syncFiltersToQuery() {
+  if (!import.meta.client || isApplyingRouteQuery.value) return;
+  const next = { ...route.query };
+
+  selectedCategory.value !== defaultCategory.value &&
+  selectedCategory.value !== "all"
+    ? (next.category = selectedCategory.value)
+    : delete next.category;
+  selectedType.value !== defaultType.value && selectedType.value !== "all"
+    ? (next.type = selectedType.value)
+    : delete next.type;
+  selectedBrands.value.length > 0
+    ? (next.brands = selectedBrands.value.join(","))
+    : delete next.brands;
+  minPrice.value !== null && minPrice.value > 0
+    ? (next.min = String(minPrice.value))
+    : delete next.min;
+  maxPrice.value !== null && maxPrice.value > 0
+    ? (next.max = String(maxPrice.value))
+    : delete next.max;
+  inStockOnly.value ? (next.stock = "1") : delete next.stock;
+
+  const dynamic = writeDynamicFilters(selectedDynamicFilters.value);
+  dynamic ? (next.df = dynamic) : delete next.df;
+
+  if (!queryObjectsEqual(route.query, next)) {
+    isSyncingToQuery.value = true;
+    void router.replace({ query: next }).finally(() => {
+      nextTick(() => {
+        isSyncingToQuery.value = false;
+      });
+    });
+  }
+}
+
+// Index added groups by id for fast lookup inside the filter loop.
+const filterGroupById = computed(() => {
+  const map = new Map<string, FilterGroup>();
+  for (const g of filterGroups.value) map.set(g.id, g);
+  return map;
+});
 
 const sortDir = ref<SortDir>("high");
 
@@ -93,17 +277,30 @@ const itemsOptions = [9, 15, 21] as const;
 const itemsPerPage = ref<(typeof itemsOptions)[number]>(9);
 const currentPage = ref(1);
 
-const filteredProducts = computed<Product[]>(() => {
-  const effectiveMax =
-    maxPrice.value !== null && maxPrice.value > 0 ? maxPrice.value : null;
+// Single source-of-truth predicate used by both the listing and the
+// facet-count pipeline. Pass `exclude` to skip a dimension so we can compute
+// "products matching all OTHER active filters" (Logic B / Lazada-style).
+type ProductFilterExclude = {
+  brand?: boolean;
+  category?: boolean;
+  type?: boolean;
+  price?: boolean;
+  stock?: boolean;
+  dynamicGroupId?: string;
+};
 
-  return products.value.filter((product) => {
-    if (
-      selectedCategory.value !== "all" &&
-      !product.categories.includes(selectedCategory.value)
-    ) {
-      return false;
-    }
+function productMatchesAllFilters(
+  product: Product,
+  exclude: ProductFilterExclude = {},
+): boolean {
+  if (
+    !exclude.category &&
+    selectedCategory.value !== "all" &&
+    !product.categories.includes(selectedCategory.value)
+  ) {
+    return false;
+  }
+  if (!exclude.type) {
     if (selectedType.value === "sale" && !product.isForSale) return false;
     if (
       selectedType.value === "rental" &&
@@ -111,28 +308,43 @@ const filteredProducts = computed<Product[]>(() => {
     ) {
       return false;
     }
-    if (selectedBrands.value.length > 0) {
-      if (!product.brand || !selectedBrands.value.includes(product.brand)) {
-        return false;
-      }
+  }
+  if (!exclude.brand && selectedBrands.value.length > 0) {
+    if (!product.brand || !selectedBrands.value.includes(product.brand)) {
+      return false;
     }
-
+  }
+  if (!exclude.price) {
+    const effectiveMax =
+      maxPrice.value !== null && maxPrice.value > 0 ? maxPrice.value : null;
     const price = getDisplayPrice(product).final;
     if (minPrice.value !== null && price < minPrice.value) return false;
     if (effectiveMax !== null && price > effectiveMax) return false;
-
-    if (inStockOnly.value) {
-      const stock = getTotalStock(product);
-      if (selectedType.value === "rental") {
-        if (stock.available <= 0 && stock.inStock <= 0) return false;
-      } else if (stock.inStock <= 0) {
-        return false;
-      }
+  }
+  if (!exclude.stock && inStockOnly.value) {
+    const stock = getTotalStock(product);
+    if (selectedType.value === "rental") {
+      if (stock.available <= 0 && stock.inStock <= 0) return false;
+    } else if (stock.inStock <= 0) {
+      return false;
     }
+  }
+  if (
+    !productMatchesDynamicFilters(
+      product,
+      selectedDynamicFilters.value,
+      filterGroupById.value,
+      { excludeGroupId: exclude.dynamicGroupId },
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
 
-    return true;
-  });
-});
+const filteredProducts = computed<Product[]>(() =>
+  products.value.filter((p) => productMatchesAllFilters(p)),
+);
 
 const sortedProducts = computed(() => {
   const list = [...filteredProducts.value];
@@ -142,28 +354,128 @@ const sortedProducts = computed(() => {
 });
 
 // ── Asset listing pipeline (used when listingMode === "assets") ──
-const filteredAssets = computed<Asset[]>(() => {
-  const effectiveMax =
-    maxPrice.value !== null && maxPrice.value > 0 ? maxPrice.value : null;
+type AssetFilterExclude = {
+  brand?: boolean;
+  category?: boolean;
+  price?: boolean;
+  dynamicGroupId?: string;
+};
 
-  return assets.value.filter((access) => {
-    if (
-      selectedCategory.value !== "all" &&
-      !access.categories.includes(selectedCategory.value)
-    ) {
+// Coerce specSummary (Record<string, unknown>) into the string-valued shape
+// expected by the dynamic-filter matcher's number_range branch.
+function assetSpecForMatcher(
+  access: Asset,
+): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(access.specSummary)) {
+    if (typeof v === "string") out[k] = v;
+    else if (typeof v === "number" || typeof v === "boolean")
+      out[k] = String(v);
+  }
+  return out;
+}
+
+function assetMatchesAllFilters(
+  access: Asset,
+  exclude: AssetFilterExclude = {},
+): boolean {
+  if (
+    !exclude.category &&
+    selectedCategory.value !== "all" &&
+    !access.categories.includes(selectedCategory.value)
+  ) {
+    return false;
+  }
+  if (!exclude.brand && selectedBrands.value.length > 0) {
+    if (!access.brand || !selectedBrands.value.includes(access.brand)) {
       return false;
     }
-    if (selectedBrands.value.length > 0) {
-      if (!access.brand || !selectedBrands.value.includes(access.brand)) {
-        return false;
-      }
-    }
+  }
+  if (!exclude.price) {
+    const effectiveMax =
+      maxPrice.value !== null && maxPrice.value > 0 ? maxPrice.value : null;
     const price = access.pricing.daily;
     if (minPrice.value !== null && price < minPrice.value) return false;
     if (effectiveMax !== null && price > effectiveMax) return false;
-    return true;
-  });
+  }
+  if (
+    !productMatchesDynamicFilters(
+      { filterKeys: access.filterKeys, spec: assetSpecForMatcher(access) },
+      selectedDynamicFilters.value,
+      filterGroupById.value,
+      { excludeGroupId: exclude.dynamicGroupId },
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
+const filteredAssets = computed<Asset[]>(() =>
+  assets.value.filter((a) => assetMatchesAllFilters(a)),
+);
+
+// ── Facet counts (Logic B — match-all-OTHER-filters) ──
+const productBrandFacetCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {};
+  for (const p of products.value) {
+    if (!productMatchesAllFilters(p, { brand: true })) continue;
+    if (!p.brand) continue;
+    counts[p.brand] = (counts[p.brand] ?? 0) + 1;
+  }
+  return counts;
 });
+
+const assetBrandFacetCounts = computed<Record<string, number>>(() => {
+  const counts: Record<string, number> = {};
+  for (const a of assets.value) {
+    if (!assetMatchesAllFilters(a, { brand: true })) continue;
+    if (!a.brand) continue;
+    counts[a.brand] = (counts[a.brand] ?? 0) + 1;
+  }
+  return counts;
+});
+
+const brandFacetCounts = computed<Record<string, number>>(() =>
+  listingMode.value === "assets"
+    ? assetBrandFacetCounts.value
+    : productBrandFacetCounts.value,
+);
+
+const dynamicFacetCounts = computed<Record<string, Record<string, number>>>(
+  () => {
+    const result: Record<string, Record<string, number>> = {};
+    const useAssetsSource = listingMode.value === "assets";
+    for (const group of filterGroups.value) {
+      if (!(group.id in selectedDynamicFilters.value)) continue;
+      const optionCounts: Record<string, number> = {};
+      for (const opt of group.options) optionCounts[opt.id] = 0;
+      if (useAssetsSource) {
+        for (const a of assets.value) {
+          if (!assetMatchesAllFilters(a, { dynamicGroupId: group.id })) {
+            continue;
+          }
+          for (const opt of group.options) {
+            const key = `${group.key}__${opt.key}`;
+            if (a.filterKeys.includes(key)) optionCounts[opt.id]++;
+          }
+        }
+      } else {
+        for (const p of products.value) {
+          if (!productMatchesAllFilters(p, { dynamicGroupId: group.id })) {
+            continue;
+          }
+          for (const opt of group.options) {
+            const key = `${group.key}__${opt.key}`;
+            if (p.filterKeys.includes(key)) optionCounts[opt.id]++;
+          }
+        }
+      }
+      result[group.id] = optionCounts;
+    }
+    return result;
+  },
+);
 
 const sortedAssets = computed(() => {
   const list = [...filteredAssets.value];
@@ -197,7 +509,8 @@ const hasActiveFilters = computed(() => {
     selectedBrands.value.length > 0 ||
     (minPrice.value ?? 0) > 0 ||
     (maxPrice.value ?? 0) > 0 ||
-    inStockOnly.value
+    inStockOnly.value ||
+    Object.keys(selectedDynamicFilters.value).length > 0
   );
 });
 
@@ -205,13 +518,54 @@ watch(itemsPerPage, () => {
   currentPage.value = 1;
 });
 
+watch(group, (next, previous) => {
+  if (next === previous) return;
+  currentPage.value = 1;
+  resetFilters();
+  syncFiltersToQuery();
+});
+
+watch(() => route.query, applyRouteQuery, { deep: true });
+
+// Filter groups are scoped per main_category, so any time the effective
+// main_category swaps (user picks a different category on /product-all)
+// we must drop selections that belong to the old group.
+watch(mainCategoryKey, (next, prev) => {
+  if (next === prev || isApplyingRouteQuery.value) return;
+
+  // On refresh, DB-backed asset categories can load after the route query is
+  // restored, causing mainCategoryKey to change from null → selected category.
+  // Preserve df in that hydration case; clear only on actual category changes.
+  const routeCategory = readQueryString(route.query.category);
+  const routeDynamicFilters = readDynamicFilters(route.query.df);
+  if (
+    !prev &&
+    routeCategory === selectedCategory.value &&
+    Object.keys(routeDynamicFilters).length > 0
+  ) {
+    return;
+  }
+
+  selectedDynamicFilters.value = {};
+  selectedAddedDynamicGroupIds.value = [];
+});
+
 watch(
-  group,
+  [
+    selectedCategory,
+    selectedType,
+    selectedBrands,
+    minPrice,
+    maxPrice,
+    inStockOnly,
+    selectedDynamicFilters,
+  ],
   () => {
+    if (isApplyingRouteQuery.value) return;
     currentPage.value = 1;
-    resetFilters();
+    scrollToTop();
   },
-  { immediate: true },
+  { deep: true },
 );
 
 watch(
@@ -222,11 +576,9 @@ watch(
     minPrice,
     maxPrice,
     inStockOnly,
+    selectedDynamicFilters,
   ],
-  () => {
-    currentPage.value = 1;
-    scrollToTop();
-  },
+  syncFiltersToQuery,
   { deep: true },
 );
 
@@ -244,6 +596,14 @@ const recommendedProducts = computed(() => filteredProducts.value.slice(0, 3));
           v-model:min-price="minPrice"
           v-model:max-price="maxPrice"
           v-model:in-stock="inStockOnly"
+          v-model:dynamic-filters="selectedDynamicFilters"
+          v-model:added-dynamic-group-ids="selectedAddedDynamicGroupIds"
+          :main-category-key="mainCategoryKey"
+          :brand-counts="brandFacetCounts"
+          :dynamic-option-counts="dynamicFacetCounts"
+          :filter-groups-loading="filterGroupsPending"
+          :category-options="rentalCategoryOptions"
+          :category-labels="rentalCategoryLabels"
           @reset="resetFilters"
         />
       </div>
@@ -403,6 +763,14 @@ const recommendedProducts = computed(() => filteredProducts.value.slice(0, 3));
         v-model:min-price="minPrice"
         v-model:max-price="maxPrice"
         v-model:in-stock="inStockOnly"
+        v-model:dynamic-filters="selectedDynamicFilters"
+        v-model:added-dynamic-group-ids="selectedAddedDynamicGroupIds"
+        :main-category-key="mainCategoryKey"
+        :brand-counts="brandFacetCounts"
+        :dynamic-option-counts="dynamicFacetCounts"
+        :filter-groups-loading="filterGroupsPending"
+        :category-options="rentalCategoryOptions"
+        :category-labels="rentalCategoryLabels"
         @reset="resetFilters"
       />
     </MobileFloatingPanel>

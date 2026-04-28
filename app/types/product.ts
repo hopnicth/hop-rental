@@ -199,6 +199,8 @@ export interface Product {
   slug: string;
   /** Category keys — includes both main category keys and sub-category IDs */
   categories: string[];
+  /** Dynamic-filter keys synced by trigger as `${groupKey}__${optionKey}` */
+  filterKeys: string[];
   /** Product name — localized */
   name: LocalizedString;
   /** Brand name (universal, not localized) */

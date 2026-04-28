@@ -5,12 +5,13 @@ import {
   asOptionalString,
 } from "~~/server/utils/admin-catalog";
 import { isServiceAreaValue } from "~~/app/data/thaiServiceAreas";
+import { asCategoryKey } from "~~/server/utils/admin-main-categories";
 
 export type ContentType = "blog" | "service" | "promotion" | "review";
 export type LocaleCode = "th" | "en" | "cn" | "jp";
 
 export const ADMIN_CONTENT_PAGE_SELECT =
-  "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order)";
+  "id, content_type, slug, main_category_key, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order)";
 
 const LOCALES: LocaleCode[] = ["th", "en", "cn", "jp"];
 
@@ -53,6 +54,11 @@ function asPublishedAt(value: unknown) {
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) fail422("publishedAt must be a valid date");
   return date.toISOString();
+}
+
+function asOptionalCategoryKey(value: unknown) {
+  const raw = asOptionalString(value);
+  return raw ? asCategoryKey(raw, "mainCategoryKey") : null;
 }
 
 const EMPTY_DOC = { type: "doc", content: [] } as const;
@@ -125,6 +131,7 @@ export function buildContentPagePayload(body: Record<string, unknown>) {
   return {
     content_type: contentType,
     slug: asSlug(body.slug),
+    main_category_key: asOptionalCategoryKey(body.mainCategoryKey),
     title_th: asNonEmptyString(body.titleTh, "titleTh"),
     title_en: asNonEmptyString(body.titleEn, "titleEn"),
     title_cn: asOptionalString(body.titleCn),
@@ -165,6 +172,7 @@ export function mapContentPageRow(row: any) {
     id: row.id,
     contentType: row.content_type as ContentType,
     slug: row.slug,
+    mainCategoryKey: row.main_category_key ?? "",
     titleTh: row.title_th,
     titleEn: row.title_en,
     titleCn: row.title_cn ?? "",

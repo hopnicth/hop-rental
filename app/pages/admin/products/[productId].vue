@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AdminMediaGalleryManager from "~/components/admin/AdminMediaGalleryManager.vue";
+import AdminProductFilterAssignments from "~/components/admin/AdminProductFilterAssignments.vue";
 
 definePageMeta({
   layout: "admin",
@@ -119,6 +120,11 @@ const shippingSizeOptions = [
   { label: "XL (200 ฿)", value: "xl" },
 ];
 
+const ADMIN_FORM_GRID_CLASS = "grid gap-4 md:grid-cols-6";
+const ADMIN_FIELD_CLASS = "min-w-0 md:col-span-2";
+const ADMIN_TEXTAREA_FIELD_CLASS = "min-w-0 md:col-span-3";
+const ADMIN_CONTROL_CLASS = "w-full min-w-0";
+
 const productForm = reactive({
   slug: "",
   type: "sale" as AdminProductDetail["type"],
@@ -195,18 +201,27 @@ const branchOptions = computed(() =>
 );
 
 // ── Inventories list per selected branch (for inventory picker) ──
-const inventoriesApiPath = computed(() =>
+const inventoriesApiPath = computed<string | null>(() =>
   stockForm.branchId
     ? `/api/admin/branches/${encodeURIComponent(stockForm.branchId)}/inventories`
     : null,
 );
-const { data: inventoriesData, pending: inventoriesPending } = await useFetch<{
-  items: InventoryOption[];
-}>(inventoriesApiPath, {
-  key: "admin-product-detail-inventories",
-  watch: [inventoriesApiPath],
-  immediate: false,
-});
+const { data: inventoriesData, pending: inventoriesPending } =
+  await useAsyncData<{
+    items: InventoryOption[];
+  }>(
+    "admin-product-detail-inventories",
+    async () => {
+      const path = inventoriesApiPath.value;
+      if (!path) return { items: [] };
+      return await $fetch<{ items: InventoryOption[] }>(path as string);
+    },
+    {
+      watch: [inventoriesApiPath],
+      immediate: false,
+      default: () => ({ items: [] }),
+    },
+  );
 const inventoryOptions = computed(() => inventoriesData.value?.items ?? []);
 
 watch(
@@ -263,8 +278,7 @@ function mapMediaCards(mediaGallery: AdminMediaItem[]): ExistingImageCard[] {
   return (Array.isArray(mediaGallery) ? mediaGallery : []).map(
     (entry, index) => {
       const item = asRecord(entry);
-      const status = item.status;
-
+      const status = asText(item.status);
       return {
         id: String(item.id ?? `media-${index}`),
         imageUrl: mediaItemUrl(item),
@@ -556,6 +570,15 @@ onBeforeUnmount(() => {
 
 async function saveProduct() {
   if (!product.value) return;
+
+  if (
+    productForm.mainCategoryKey !== product.value.mainCategoryKey &&
+    !window.confirm(
+      "Confirm category change? Existing filter assignments will be cleared.",
+    )
+  ) {
+    return;
+  }
 
   savingProduct.value = true;
 
@@ -909,97 +932,147 @@ async function deleteActiveSkuImage(imageId: string) {
             </div>
           </template>
 
-          <form class="space-y-4" @submit.prevent="saveProduct">
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Product ID">
-                <UInput :model-value="product.id" disabled />
-              </UFormField>
-              <UFormField label="Slug" required>
-                <UInput v-model="productForm.slug" />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Type" required>
-                <USelectMenu
-                  v-model="productForm.type"
-                  :items="typeOptions"
-                  value-key="value"
-                />
-              </UFormField>
-              <UFormField label="Brand">
-                <UInput v-model="productForm.brand" placeholder="DCA" />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Name (TH)" required>
-                <UInput v-model="productForm.nameTh" />
-              </UFormField>
-              <UFormField label="Name (EN)" required>
-                <UInput v-model="productForm.nameEn" />
-              </UFormField>
-            </div>
-
-            <UFormField label="Description (TH)" required>
-              <UTextarea v-model="productForm.descriptionTh" :rows="3" />
+          <form :class="ADMIN_FORM_GRID_CLASS" @submit.prevent="saveProduct">
+            <UFormField label="Product ID" :class="ADMIN_FIELD_CLASS">
+              <UInput
+                :model-value="product.id"
+                disabled
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+            <UFormField label="Slug" required :class="ADMIN_FIELD_CLASS">
+              <UInput v-model="productForm.slug" :class="ADMIN_CONTROL_CLASS" />
+            </UFormField>
+            <UFormField label="Type" required :class="ADMIN_FIELD_CLASS">
+              <USelectMenu
+                v-model="productForm.type"
+                :items="typeOptions"
+                value-key="value"
+                :class="ADMIN_CONTROL_CLASS"
+              />
             </UFormField>
 
-            <UFormField label="Description (EN)" required>
-              <UTextarea v-model="productForm.descriptionEn" :rows="3" />
+            <UFormField label="Brand" :class="ADMIN_FIELD_CLASS">
+              <UInput
+                v-model="productForm.brand"
+                placeholder="DCA"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+            <UFormField label="Name (TH)" required :class="ADMIN_FIELD_CLASS">
+              <UInput
+                v-model="productForm.nameTh"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+            <UFormField label="Name (EN)" required :class="ADMIN_FIELD_CLASS">
+              <UInput
+                v-model="productForm.nameEn"
+                :class="ADMIN_CONTROL_CLASS"
+              />
             </UFormField>
 
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Main category key" required>
-                <UInput
-                  v-model="productForm.mainCategoryKey"
-                  placeholder="impact_drivers"
-                />
-              </UFormField>
-              <UFormField label="Hidden from storefront">
-                <div class="flex h-10 items-center">
-                  <UCheckbox v-model="productForm.isHidden" />
-                </div>
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField
-                label="Shipping size"
-                hint="Used to compute the cart shipping fee via free-unit bin packing."
-              >
-                <USelectMenu
-                  v-model="productForm.shippingSize"
-                  :items="shippingSizeOptions"
-                  value-key="value"
-                />
-              </UFormField>
-            </div>
-
-            <div class="grid gap-4 sm:grid-cols-2">
-              <UFormField label="Tags (comma separated)">
-                <UInput
-                  v-model="productForm.tagKeysText"
-                  placeholder="impact_driver, brushless"
-                />
-              </UFormField>
-              <UFormField label="Search keywords (comma separated)">
-                <UInput
-                  v-model="productForm.searchKeywordsText"
-                  placeholder="cordless drill, one key"
-                />
-              </UFormField>
-            </div>
-
-            <UFormField label="Shared spec JSONB">
-              <UTextarea v-model="specText" :rows="6" />
+            <UFormField
+              label="Main category key"
+              required
+              :class="ADMIN_FIELD_CLASS"
+            >
+              <UInput
+                v-model="productForm.mainCategoryKey"
+                placeholder="impact_drivers"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+            <UFormField
+              label="Shipping size"
+              hint="Used to compute the cart shipping fee via free-unit bin packing."
+              :class="ADMIN_FIELD_CLASS"
+            >
+              <USelectMenu
+                v-model="productForm.shippingSize"
+                :items="shippingSizeOptions"
+                value-key="value"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+            <UFormField
+              label="Hidden from storefront"
+              :class="ADMIN_FIELD_CLASS"
+            >
+              <div class="flex h-10 items-center">
+                <UCheckbox v-model="productForm.isHidden" />
+              </div>
             </UFormField>
 
-            <UFormField label="Detail blocks JSONB">
-              <UTextarea v-model="detailBlocksText" :rows="6" />
+            <UFormField
+              label="Description (TH)"
+              required
+              :class="ADMIN_TEXTAREA_FIELD_CLASS"
+            >
+              <UTextarea
+                v-model="productForm.descriptionTh"
+                :rows="3"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+            <UFormField
+              label="Description (EN)"
+              required
+              :class="ADMIN_TEXTAREA_FIELD_CLASS"
+            >
+              <UTextarea
+                v-model="productForm.descriptionEn"
+                :rows="3"
+                :class="ADMIN_CONTROL_CLASS"
+              />
             </UFormField>
 
-            <div class="flex gap-2">
+            <UFormField
+              label="Tags (comma separated)"
+              :class="ADMIN_TEXTAREA_FIELD_CLASS"
+            >
+              <UTextarea
+                v-model="productForm.tagKeysText"
+                :rows="3"
+                placeholder="impact_driver, brushless"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+            <UFormField
+              label="Search keywords (comma separated)"
+              :class="ADMIN_TEXTAREA_FIELD_CLASS"
+            >
+              <UTextarea
+                v-model="productForm.searchKeywordsText"
+                :rows="3"
+                placeholder="cordless drill, one key"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+
+            <UFormField
+              label="Shared spec JSONB"
+              :class="ADMIN_TEXTAREA_FIELD_CLASS"
+            >
+              <UTextarea
+                v-model="specText"
+                :rows="6"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+
+            <UFormField
+              label="Detail blocks JSONB"
+              :class="ADMIN_TEXTAREA_FIELD_CLASS"
+            >
+              <UTextarea
+                v-model="detailBlocksText"
+                :rows="6"
+                :class="ADMIN_CONTROL_CLASS"
+              />
+            </UFormField>
+
+            <div class="flex gap-2 md:col-span-6">
               <UButton type="submit" color="primary" :loading="savingProduct">
                 Save product
               </UButton>
@@ -1027,6 +1100,24 @@ async function deleteActiveSkuImage(imageId: string) {
           @set-cover-existing="setProductCoverImage"
           @remove-existing="deleteProductImage"
         />
+
+        <UCard>
+          <template #header>
+            <div>
+              <h3 class="text-lg font-semibold">Filter options</h3>
+              <p class="text-sm text-muted">
+                Read-only preview. Filter assignments are auto-derived from the
+                product's tags; number-range filters are auto-derived from spec
+                values.
+              </p>
+            </div>
+          </template>
+
+          <AdminProductFilterAssignments
+            :product-id="product.id"
+            :main-category-key="product.mainCategoryKey"
+          />
+        </UCard>
       </div>
 
       <div
@@ -1047,7 +1138,7 @@ async function deleteActiveSkuImage(imageId: string) {
                 variant="soft"
                 size="sm"
                 icon="bx:refresh"
-                @click="refresh"
+                @click="() => refresh()"
               >
                 Refresh
               </UButton>
@@ -1273,48 +1364,61 @@ async function deleteActiveSkuImage(imageId: string) {
 
                 <!-- Add / edit form -->
                 <form
-                  class="space-y-3 border-t border-default pt-3"
+                  class="grid gap-3 border-t border-default pt-3 md:grid-cols-6"
                   @submit.prevent="saveStock(sku)"
                 >
-                  <p class="text-sm font-medium">
+                  <p class="text-sm font-medium md:col-span-6">
                     {{ editingStockId ? "Edit stock row" : "Add to inventory" }}
                   </p>
-                  <div class="grid gap-3 sm:grid-cols-3">
-                    <UFormField label="Branch" required>
-                      <USelectMenu
-                        v-model="stockForm.branchId"
-                        :items="branchOptions"
-                        value-key="id"
-                        label-key="nameTh"
-                        placeholder="Select branch"
-                        :disabled="!!editingStockId"
-                      />
-                    </UFormField>
-                    <UFormField label="Inventory" required>
-                      <USelectMenu
-                        v-model="stockForm.inventoryId"
-                        :items="inventoryOptions"
-                        value-key="id"
-                        label-key="name"
-                        :placeholder="
-                          stockForm.branchId
-                            ? inventoriesPending
-                              ? 'Loading...'
-                              : 'Select inventory'
-                            : 'Select branch first'
-                        "
-                        :disabled="!stockForm.branchId || !!editingStockId"
-                      />
-                    </UFormField>
-                    <UFormField label="On hand" required>
-                      <UInput
-                        v-model.number="stockForm.onHand"
-                        type="number"
-                        min="0"
-                      />
-                    </UFormField>
-                  </div>
-                  <div class="flex gap-2">
+                  <UFormField
+                    label="Branch"
+                    required
+                    :class="ADMIN_FIELD_CLASS"
+                  >
+                    <USelectMenu
+                      v-model="stockForm.branchId"
+                      :items="branchOptions"
+                      value-key="id"
+                      label-key="nameTh"
+                      placeholder="Select branch"
+                      :disabled="!!editingStockId"
+                      :class="ADMIN_CONTROL_CLASS"
+                    />
+                  </UFormField>
+                  <UFormField
+                    label="Inventory"
+                    required
+                    :class="ADMIN_FIELD_CLASS"
+                  >
+                    <USelectMenu
+                      v-model="stockForm.inventoryId"
+                      :items="inventoryOptions"
+                      value-key="id"
+                      label-key="name"
+                      :placeholder="
+                        stockForm.branchId
+                          ? inventoriesPending
+                            ? 'Loading...'
+                            : 'Select inventory'
+                          : 'Select branch first'
+                      "
+                      :disabled="!stockForm.branchId || !!editingStockId"
+                      :class="ADMIN_CONTROL_CLASS"
+                    />
+                  </UFormField>
+                  <UFormField
+                    label="On hand"
+                    required
+                    :class="ADMIN_FIELD_CLASS"
+                  >
+                    <UInput
+                      v-model.number="stockForm.onHand"
+                      type="number"
+                      min="0"
+                      :class="ADMIN_CONTROL_CLASS"
+                    />
+                  </UFormField>
+                  <div class="flex gap-2 md:col-span-6">
                     <UButton
                       type="submit"
                       color="primary"
@@ -1355,68 +1459,99 @@ async function deleteActiveSkuImage(imageId: string) {
               </div>
             </template>
 
-            <form class="space-y-4" @submit.prevent="saveSku">
-              <div class="grid gap-4 sm:grid-cols-2">
-                <UFormField label="SKU code" required>
-                  <UInput
-                    v-model="skuForm.skuCode"
-                    placeholder="SKU-DRILL-01"
-                  />
-                </UFormField>
-                <UFormField label="Currency code">
-                  <UInput v-model="skuForm.currencyCode" placeholder="THB" />
-                </UFormField>
-              </div>
-
-              <div class="grid gap-4 sm:grid-cols-2">
-                <UFormField label="Label (TH)" required>
-                  <UInput v-model="skuForm.labelTh" />
-                </UFormField>
-                <UFormField label="Label (EN)" required>
-                  <UInput v-model="skuForm.labelEn" />
-                </UFormField>
-              </div>
-
-              <div class="grid gap-4 sm:grid-cols-3">
-                <UFormField label="Price" required>
-                  <UInput
-                    v-model.number="skuForm.price"
-                    type="number"
-                    min="0"
-                  />
-                </UFormField>
-                <UFormField label="Original price">
-                  <UInput
-                    v-model="skuForm.originalPriceText"
-                    type="text"
-                    inputmode="decimal"
-                    placeholder="optional"
-                  />
-                </UFormField>
-                <UFormField label="Discount %">
-                  <UInput
-                    v-model.number="skuForm.discountPercent"
-                    type="number"
-                    min="0"
-                    max="100"
-                  />
-                </UFormField>
-              </div>
-
-              <UCheckbox
-                v-model="skuForm.useProductImages"
-                label="Use product images when this SKU has no custom gallery"
-              />
-
-              <UFormField label="SKU attributes JSONB">
-                <UTextarea v-model="skuAttributesText" :rows="5" />
+            <form :class="ADMIN_FORM_GRID_CLASS" @submit.prevent="saveSku">
+              <UFormField label="SKU code" required :class="ADMIN_FIELD_CLASS">
+                <UInput
+                  v-model="skuForm.skuCode"
+                  placeholder="SKU-DRILL-01"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
+              </UFormField>
+              <UFormField label="Currency code" :class="ADMIN_FIELD_CLASS">
+                <UInput
+                  v-model="skuForm.currencyCode"
+                  placeholder="THB"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
+              </UFormField>
+              <UFormField
+                label="Label (TH)"
+                required
+                :class="ADMIN_FIELD_CLASS"
+              >
+                <UInput
+                  v-model="skuForm.labelTh"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
               </UFormField>
 
-              <UFormField label="Pricing tiers JSONB">
-                <UTextarea v-model="skuPricingTiersText" :rows="5" />
+              <UFormField
+                label="Label (EN)"
+                required
+                :class="ADMIN_FIELD_CLASS"
+              >
+                <UInput
+                  v-model="skuForm.labelEn"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
+              </UFormField>
+              <UFormField label="Price" required :class="ADMIN_FIELD_CLASS">
+                <UInput
+                  v-model.number="skuForm.price"
+                  type="number"
+                  min="0"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
+              </UFormField>
+              <UFormField label="Original price" :class="ADMIN_FIELD_CLASS">
+                <UInput
+                  v-model="skuForm.originalPriceText"
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="optional"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
               </UFormField>
 
-              <div class="flex gap-2">
+              <UFormField label="Discount %" :class="ADMIN_FIELD_CLASS">
+                <UInput
+                  v-model.number="skuForm.discountPercent"
+                  type="number"
+                  min="0"
+                  max="100"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
+              </UFormField>
+              <div class="flex items-center md:col-span-4">
+                <UCheckbox
+                  v-model="skuForm.useProductImages"
+                  label="Use product images when this SKU has no custom gallery"
+                />
+              </div>
+
+              <UFormField
+                label="SKU attributes JSONB"
+                :class="ADMIN_TEXTAREA_FIELD_CLASS"
+              >
+                <UTextarea
+                  v-model="skuAttributesText"
+                  :rows="5"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
+              </UFormField>
+
+              <UFormField
+                label="Pricing tiers JSONB"
+                :class="ADMIN_TEXTAREA_FIELD_CLASS"
+              >
+                <UTextarea
+                  v-model="skuPricingTiersText"
+                  :rows="5"
+                  :class="ADMIN_CONTROL_CLASS"
+                />
+              </UFormField>
+
+              <div class="flex gap-2 md:col-span-6">
                 <UButton type="submit" color="primary" :loading="savingSku">
                   {{ editingSkuId ? "Update SKU" : "Create SKU" }}
                 </UButton>

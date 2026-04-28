@@ -43,10 +43,22 @@ const sections = computed(() => {
         to: "/admin/main-categories",
       },
       {
+        title: "Filter Groups",
+        description:
+          "Define dynamic product filters per main category (checkbox, dropdown, number range).",
+        to: "/admin/filter-groups",
+      },
+      {
         title: "Home Content",
         description:
           "Manage homepage banners, link cards, and curated featured rails.",
         to: "/admin/home-content",
+      },
+      {
+        title: "Home Categories",
+        description:
+          "Manage the editable category card groups and dropdown options shown on the homepage.",
+        to: "/admin/home-categories",
       },
       {
         title: "Content Pages",

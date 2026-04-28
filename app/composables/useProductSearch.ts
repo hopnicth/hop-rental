@@ -1,4 +1,5 @@
 import type { LocalizedString } from "~/types/locale";
+import type { DynamicFilterValue } from "~/composables/useFilterGroups";
 
 /**
  * Product search composable — calls Supabase RPCs `search_products` and
@@ -17,6 +18,7 @@ export interface ProductSearchParams {
   minPrice?: number;
   maxPrice?: number;
   inStock?: boolean;
+  dynamicFilters?: Record<string, DynamicFilterValue>;
   limit?: number;
   offset?: number;
 }
@@ -183,11 +185,22 @@ function mapSuggestionRow(
 export function useProductSearch() {
   const supabase = useSupabaseClient();
 
+  function activeDynamicFilters(
+    value: Record<string, DynamicFilterValue> | undefined,
+  ): Record<string, DynamicFilterValue> | null {
+    if (!value) return null;
+    const entries = Object.entries(value).filter(([, filter]) => {
+      if (Array.isArray(filter)) return filter.length > 0;
+      return filter.min !== null || filter.max !== null;
+    });
+    return entries.length > 0 ? Object.fromEntries(entries) : null;
+  }
+
   async function search(params: ProductSearchParams = {}): Promise<{
     items: ProductSearchResult[];
     totalCount: number;
   }> {
-    const { data, error } = await (supabase as any).rpc("search_products", {
+    const rpcArgs = {
       q: params.q ?? "",
       p_categories:
         params.categories && params.categories.length > 0
@@ -201,7 +214,31 @@ export function useProductSearch() {
       p_in_stock: params.inStock ?? false,
       p_limit: params.limit ?? 24,
       p_offset: params.offset ?? 0,
-    });
+      p_dynamic_filters: activeDynamicFilters(params.dynamicFilters),
+    };
+
+    let { data, error } = await (supabase as any).rpc(
+      "search_products",
+      rpcArgs,
+    );
+
+    // Backward-compatible fallback while migration 045 is not yet applied.
+    // The page still client-side filters visible rows, but DB-level dynamic
+    // filtering is required for fully correct pagination/total_count.
+    if (error) {
+      const { p_dynamic_filters: _dynamicFilters, ...legacyArgs } = rpcArgs;
+      const fallback = await (supabase as any).rpc(
+        "search_products",
+        legacyArgs,
+      );
+      if (!fallback.error) {
+        console.warn(
+          "[useProductSearch] search_products dynamic filters unavailable; using legacy RPC fallback.",
+        );
+        data = fallback.data;
+        error = null;
+      }
+    }
 
     if (error) {
       console.warn("[useProductSearch] search_products failed:", error.message);

@@ -48,7 +48,7 @@ Notes:
 
 | Table                  | Purpose                           | Admin edits directly? |
 | ---------------------- | --------------------------------- | --------------------- |
-| `main_categories`      | primary product category registry | Yes (`super_admin`)   |
+| `main_categories`      | typed category registry           | Yes (`super_admin`)   |
 | `products`             | sale catalog root                 | Yes                   |
 | `product_skus`         | pricing + SKU metadata            | Yes                   |
 | `store_branches`       | hubs / pickup locations           | Yes                   |
@@ -57,6 +57,7 @@ Notes:
 | `assets`               | public rental offering            | Yes                   |
 | `asset_matches`        | asset ↔ product links             | Yes                   |
 | `home_*` tables        | homepage curation                 | Yes (`super_admin`)   |
+| `content_pages`        | blog/service/promotion/review CMS | Yes                   |
 
 ## System-managed tables
 
@@ -104,14 +105,31 @@ There is no longer a way to type a title/excerpt/image directly on a card.
 4. Pick the content page from the picker; the rail card derives title, excerpt, image, and `/services/{slug}` or `/promotions/{slug}` link from it live
 5. To remove a card from the rail, delete the home-content card (the source page stays); to remove the page everywhere, delete the `content_pages` row (the linked card cascades)
 
+## Setup order for content listing filters
+
+Use this for `/services`, `/reviews`, `/blog`, and `/promotions`.
+
+1. Open `/admin/main-categories`
+2. Create or edit a category with the matching entity type enabled (`service`, `review`, `blog`, or `promotion`)
+3. Open `/admin/content`
+4. Set the page Type first, then choose **Main category** from the type-scoped dropdown
+5. Save the page and verify the public listing with `?category=<main_category_key>`
+
+Notes:
+
+- Migration `047_content_pages_main_category.sql` is applied on remote.
+- Category matching is exact by `main_category_key`; unassigned content appears only under All.
+- Admin labels should remain English even when public labels are localized.
+
 ## Important current rules
 
-- `main_categories` is the source of truth for primary product category.
+- `main_categories` is the typed category source of truth. Use `entity_types` to scope categories to product, asset, service, promotion, blog, and/or review.
 - Assets can be booked with `asset_id` alone in newer schemas.
 - `asset_matches` are recommended for discoverability but are not always required for booking.
 - Stock should be managed through admin endpoints, not direct DB writes, so audit logs remain correct.
 - Booking docs/checklists are stored separately from asset-level docs.
 - Homepage promotion/service rails read live data from `content_pages`; do not edit `home_link_cards` text fields directly.
+- Home category-card options are managed separately from content pages in `/admin/home-categories`; storefront selection sends only `/search?q=...`.
 
 ## Migration-sensitive notes
 
@@ -123,6 +141,9 @@ There is no longer a way to type a title/excerpt/image directly on a card.
 - `036` introduces `content_pages` for blog/service/promotion CMS
 - `037` switches `content_pages.blocks` to a localized TipTap document
 - `038` adds `home_link_cards.content_page_id` and drops unlinked legacy rows
+- `044` adds DB-backed Home category-card groups/options
+- `046` adds typed `main_categories.entity_types`
+- `047` adds `content_pages.main_category_key` for content listing filters
 
 ## Related docs
 

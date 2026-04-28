@@ -169,6 +169,7 @@ export function mapCatalogProductToProduct(
     id: record.id,
     slug: record.slug,
     categories: record.category_keys ?? [],
+    filterKeys: record.filter_keys ?? [],
     name: toLocalizedString({
       th: record.name_th,
       en: record.name_en,

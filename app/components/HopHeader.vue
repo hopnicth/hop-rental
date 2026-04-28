@@ -21,13 +21,27 @@ watch(
 const navItems = computed<NavigationMenuItem[]>(() => [
   {
     label: t("nav.product"),
-    icon: "bxs-package",
     to: "/product-all",
   },
   {
     label: t("nav.rental"),
-    icon: "bxs-package",
     to: "/product-rental",
+  },
+  {
+    label: t("nav.services"),
+    to: "/services",
+  },
+  {
+    label: t("nav.reviews"),
+    to: "/reviews",
+  },
+  {
+    label: t("nav.blog"),
+    to: "/blog",
+  },
+  {
+    label: t("nav.promotions"),
+    to: "/promotions",
   },
 ]);
 </script>
@@ -48,7 +62,7 @@ const navItems = computed<NavigationMenuItem[]>(() => [
           <span class="hidden text-lg font-bold sm:inline">HOPNIC</span>
         </NuxtLink>
 
-        <HopSearch class="ml-1 hidden w-72 lg:block" />
+        <HopSearch class="ml-1 hidden w-64 xl:block" />
       </div>
     </template>
 

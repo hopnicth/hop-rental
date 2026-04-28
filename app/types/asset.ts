@@ -86,6 +86,9 @@ export interface Asset {
   name: LocalizedString;
   description: LocalizedString;
   categories: string[];
+  mainCategoryKey?: string;
+  tagKeys: string[];
+  filterKeys: string[];
   brand?: string;
   thumbnail: string;
   images: string[];

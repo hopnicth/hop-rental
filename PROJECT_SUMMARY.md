@@ -64,6 +64,9 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Global Nuxt UI theme tokens are customized in `app/assets/css/main.css` for HOP colors and a unified `0.2rem` radius scale
 - Hero banners are DB-backed, autoplay with loop, and align title/subtitle/CTA to the right with a right-side readability gradient
 - Card-based lists/grids/rails share a standard loading state: `<CommonLoadingCat />` (sleeping-cat GIF at `public/loading-cat.gif`) plus shape-matched `<ProductsCatalogCardSkeleton />` / `<HomeHomeLinkCardSkeleton />` while async data is loading; see `API_INDEX.md` for the required pattern
+- Dynamic filter groups/options are super-admin managed and auto-assigned from exact `tag_keys` matches for both products and assets. Product/asset `filter_keys` are trigger-generated for fast public filtering; admin product assignment UI is read-only.
+- Homepage category cards are DB-backed and super-admin editable, with mock fallback only for older/empty schemas. Selecting an option sends `/search?q=...` only; it must not set the product `category` query.
+- Main categories are typed through `main_categories.entity_types` for `product`, `asset`, `service`, `promotion`, `blog`, and `review`. Content pages can store `main_category_key`, and `/services`, `/reviews`, `/blog`, and `/promotions` expose URL-persistent category filters.
 
 ### Booking + checkout
 
@@ -112,6 +115,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/admin/orders/[id]`
 - `/admin/rental-bookings/[id]`
 - `/admin/content`
+- `/admin/home-categories`
 
 ## Important rules
 
@@ -122,14 +126,18 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Booker phone/name should be preferred over account phone/name when present on a booking.
 - Homepage promotion/service cards must reference an existing `content_pages` row; create the page in `/admin/content` first, then link it from `/admin/home-content`.
 - For PostgREST `ILIKE`, use `*term*` instead of `%term%`.
+- For dynamic filters, put machine keys in `tag_keys`, not only `search_keywords`. Matching is exact/case-sensitive against `filter_options.key`.
+- `category_keys` includes tags by design, so UI category lists must whitelist real main categories before rendering.
+- Content listing filters require both migration `047` and admin data assignment: create/enable a typed main category, then assign `Main category` on each `/admin/content` page.
 
 ## Highest-value next priorities
 
-1. Customer-facing rental documents/history polish
-2. Backoffice checklist-template management polish
-3. Quotation/document workflows not yet implemented end-to-end
-4. Payment/ops follow-through after order submit
-5. Remove old schema fallbacks once all environments are migrated
+1. Decide/apply migration `045` when ready to enable DB-level `/search` dynamic filtering
+2. Backfill `main_category_key` on existing `content_pages` rows so public content filters show useful results
+3. Extend global `/search` beyond products to rental assets, services, blogs, reviews, and promotions
+4. Customer-facing rental documents/history polish
+5. Backoffice checklist-template management polish
+6. Quotation/document/payment follow-through not yet implemented end-to-end
 
 ## Read next
 

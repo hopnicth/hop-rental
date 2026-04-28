@@ -8,10 +8,11 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 1. `map.md` — this file
 2. `PROJECT_SUMMARY.md` — current system snapshot
 3. `API_INDEX.md` — routes, composables, endpoints, debug rules
-4. `ADMIN_MVP_ACTION_PLAN.md` / `ASSET_ACTION_PLAN.md` — active backlog + decisions
-5. `DATABASE_ADMIN_MANUAL.md` — admin data setup rules
-6. `ROLE_MATRIX.md` — permission model
-7. `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
+4. `SEARCH_AND_FILTER_GUIDELINE.md` — search/filter state, URL persistence, multi-type search direction
+5. `ADMIN_MVP_ACTION_PLAN.md` / `ASSET_ACTION_PLAN.md` — active backlog + decisions
+6. `DATABASE_ADMIN_MANUAL.md` — admin data setup rules
+7. `ROLE_MATRIX.md` — permission model
+8. `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
 
 ## Current product state
 
@@ -31,6 +32,10 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 ### If you need routes, APIs, composables, or migration-sensitive behavior
 
 - Read `API_INDEX.md`
+
+### If you need search/filter behavior or future global search direction
+
+- Read `SEARCH_AND_FILTER_GUIDELINE.md`
 
 ### If you need internal admin/backoffice scope
 
@@ -59,6 +64,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Homepage partner/logo marquee now comes from `home_partner_logos` with storefront fallback only for older schemas.
 - Homepage curated product/asset rails are capped at 15 items each.
 - Homepage promotion/service cards are pure references to `content_pages` rows; admin must create the content page first, then pick it from `/admin/home-content`.
+- Homepage category card is DB-backed through `/api/home-category-cards` with mock fallback only. It routes selections to `/search?q=...` only; do not add `category` for Home-card shortcuts.
 - `content_pages.content_type` supports `blog`, `service`, `promotion`, and `review`. Reviews can be linked to one or more `products` and/or `assets` from `/admin/content`, and render as a "Product reviews" section on `/product-{group}/{slug}` and `/asset/{slug}`.
 - Homepage card sections use Nuxt UI `UCarousel`/Embla rails with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin.
 - Storefront card images should preserve square `1:1` frames using `aspect-square` and `object-cover`; avoid reverting card media to fixed `h-48` heights.
@@ -72,20 +78,30 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Booker name + phone are captured on rental submission and should be preferred over account phone when present.
 - Order tracking info belongs on sale orders and is customer-visible after admin update.
 - For PostgREST `ILIKE` filters, use `*term*`, not `%term%`.
+- Dynamic filters are tag-driven: `filter_options.key` must exactly equal a `tag_keys` entry; `filter_keys` are trigger-generated tokens like `sub_category__impact_drill`.
+- `category_keys` contains `[main_category_key] + tag_keys`; do not render it directly as a public category list without whitelisting real main categories.
+- Home category-card selections should route to `/search?q=...` only; `/search` should open dynamic filters after the user selects a real main category in the filter sidebar.
+- Main categories are typed by `entity_types`; always scope category pickers by the current domain (`product`, `asset`, `service`, `promotion`, `blog`, `review`).
+- Content listing pages (`/services`, `/reviews`, `/blog`, `/promotions`) use `content_pages.main_category_key` and persist filters in `?category=...`. Migration `047` is applied; existing content still needs category assignment in `/admin/content`.
+- Future global search should support products, rental assets, services, blogs, reviews, and promotions. Migration `045` for DB-level product dynamic filters is prepared but still pending remote apply.
 - Admin order QR payloads: `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
 
 ## Key app surfaces
 
 - Storefront: `/`, `/product-{group}`, `/product-{group}/{slug}`, `/product-rental`, `/asset/{slug}`, `/blog`, `/blog/[slug]`, `/services`, `/services/[slug]`, `/promotions`, `/promotions/[slug]`, `/reviews`, `/reviews/[slug]`
 - Customer: `/user/cart`, `/user/orders`, `/user/rentals`
-- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`, `/admin/content`
+- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/filter-groups`, `/admin/main-categories`, `/admin/home-categories`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`, `/admin/home-content`, `/admin/content`
 
 ## Key server/API areas
 
 - Public: `server/api/branches.get.ts`
+- Public dynamic filters: `server/api/filter-groups.get.ts`
 - Admin orders: `server/api/admin/orders/*`, `server/utils/admin-orders.ts`
 - Admin rental ops: `server/api/admin/rental-bookings/*`, `server/utils/admin-bookings-ops.ts`
 - Admin catalog/assets: `server/api/admin/products/*`, `server/api/admin/assets/*`
+- Admin dynamic filters: `server/api/admin/filter-groups/*`, `server/utils/admin-filter-groups.ts`
+- Public typed categories: `server/api/main-categories.get.ts`, `app/composables/useMainCategories.ts`
+- Admin Home category cards: `server/api/admin/home-categories/*`, `server/utils/home-categories.ts`
 - Admin home content: `server/api/admin/home-content/*`, `server/utils/admin-home.ts`, `server/utils/home-media.ts`
 - Admin content pages: `server/api/admin/content/*`, `server/utils/content-pages.ts`, `server/utils/content-media.ts`
 
@@ -104,6 +120,13 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `037_content_pages_localized_body.sql`
 - `038_home_link_cards_content_page_ref.sql`
 - `040_content_page_links.sql`
+- `041_dynamic_product_filters.sql`
+- `042_allow_filter_key_updates.sql`
+- `043_auto_sync_filter_options_from_tags.sql`
+- `044_home_category_cards.sql`
+- `045_search_products_dynamic_filters.sql` (prepared; apply status must be checked per environment)
+- `046_main_category_entity_types.sql` (applied; typed `main_categories.entity_types`)
+- `047_content_pages_main_category.sql` (applied; content listing category filters)
 
 ## Recommended maintenance rule
 

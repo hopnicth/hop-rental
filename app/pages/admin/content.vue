@@ -9,6 +9,7 @@ import {
   type ContentType,
   type LocalizedDoc,
 } from "~/types/content";
+import type { MainCategoryEntityType } from "~/types/category";
 import { getAdminApiErrorMessage } from "~/utils/admin-api";
 
 definePageMeta({
@@ -21,6 +22,7 @@ type AdminContentPage = {
   id: string;
   contentType: ContentType;
   slug: string;
+  mainCategoryKey: string;
   titleTh: string;
   titleEn: string;
   titleCn: string;
@@ -56,7 +58,7 @@ const contentTypeOptions: Array<{
   path: string;
 }> = [
   { value: "blog", label: "Blog", path: "/blog" },
-  { value: "service", label: "บริการของเรา", path: "/services" },
+  { value: "service", label: "Services", path: "/services" },
   { value: "promotion", label: "Promotions", path: "/promotions" },
   { value: "review", label: "Reviews", path: "/reviews" },
 ];
@@ -64,6 +66,7 @@ const contentTypeOptions: Array<{
 const emptyForm = (): Omit<AdminContentPage, "id"> => ({
   contentType: "blog",
   slug: "",
+  mainCategoryKey: "",
   titleTh: "",
   titleEn: "",
   titleCn: "",
@@ -90,6 +93,30 @@ const serviceAreaItems = SERVICE_AREA_OPTIONS.map(
 );
 
 const form = reactive(emptyForm());
+const formCategoryEntityType = computed<MainCategoryEntityType>(
+  () => form.contentType,
+);
+const { categories: formMainCategories } = useMainCategories(
+  formCategoryEntityType,
+);
+const formMainCategoryOptions = computed(() =>
+  formMainCategories.value.map((item) => ({
+    value: item.key,
+    label: item.labelEn || item.labelTh || item.key,
+  })),
+);
+const categoryLabelMap = computed(() => {
+  const map = new Map<string, string>();
+  for (const option of formMainCategoryOptions.value) {
+    map.set(option.value, option.label);
+  }
+  for (const item of items.value) {
+    if (item.mainCategoryKey && !map.has(item.mainCategoryKey)) {
+      map.set(item.mainCategoryKey, item.mainCategoryKey);
+    }
+  }
+  return map;
+});
 
 const { data, pending, error, refresh } = await useFetch<{
   items: AdminContentPage[];
@@ -121,6 +148,7 @@ function editItem(item: AdminContentPage) {
   editingId.value = item.id;
   form.contentType = item.contentType;
   form.slug = item.slug;
+  form.mainCategoryKey = item.mainCategoryKey ?? "";
   form.titleTh = item.titleTh;
   form.titleEn = item.titleEn;
   form.titleCn = item.titleCn;
@@ -155,6 +183,17 @@ function contentTypeLabel(type: ContentType) {
     contentTypeOptions.find((option) => option.value === type)?.label ?? type
   );
 }
+
+function categoryLabel(key: string) {
+  return categoryLabelMap.value.get(key) ?? key;
+}
+
+watch(formMainCategoryOptions, (options) => {
+  if (!form.mainCategoryKey || options.length === 0) return;
+  if (!options.some((option) => option.value === form.mainCategoryKey)) {
+    form.mainCategoryKey = "";
+  }
+});
 
 async function savePage() {
   saving.value = true;
@@ -330,6 +369,13 @@ async function uploadCover(event: Event) {
                   contentTypeLabel(item.contentType)
                 }}</UBadge>
                 <UBadge
+                  v-if="item.mainCategoryKey"
+                  color="neutral"
+                  variant="soft"
+                >
+                  {{ categoryLabel(item.mainCategoryKey) }}
+                </UBadge>
+                <UBadge
                   :color="item.isActive ? 'success' : 'neutral'"
                   variant="soft"
                 >
@@ -427,6 +473,25 @@ async function uploadCover(event: Event) {
             <UInput v-model="form.slug" placeholder="my-content-slug" />
           </UFormField>
         </div>
+
+        <UFormField
+          label="Main category"
+          help="Optional. Used by the public category filter for this content type."
+        >
+          <select
+            v-model="form.mainCategoryKey"
+            class="h-9 w-full rounded border border-default bg-white px-3 text-sm"
+          >
+            <option value="">No category</option>
+            <option
+              v-for="option in formMainCategoryOptions"
+              :key="option.value"
+              :value="option.value"
+            >
+              {{ option.label }}
+            </option>
+          </select>
+        </UFormField>
 
         <div class="grid gap-3 sm:grid-cols-2">
           <UFormField label="Title TH"

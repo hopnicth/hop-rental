@@ -38,6 +38,25 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const { count: assetCount, error: assetUsageError } = await adminClient
+    .from("assets")
+    .select("id", { count: "exact", head: true })
+    .eq("main_category_key", categoryKey);
+
+  if (assetUsageError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: assetUsageError.message,
+    });
+  }
+
+  if ((assetCount ?? 0) > 0) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: `Cannot delete category '${categoryKey}' because it is used by ${assetCount} asset(s). Reassign those assets first.`,
+    });
+  }
+
   const { data, error } = await adminClient
     .from("main_categories")
     .delete()

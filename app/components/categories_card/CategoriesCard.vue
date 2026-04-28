@@ -1,15 +1,37 @@
 <script setup lang="ts">
 const { t } = useI18n();
-const { mainCategories, getSubCategories } = useCategories();
+const { categoryGroups, pending, error } = useCategories();
 const emit = defineEmits<{ selected: [subId: string] }>();
 const router = useRouter();
 
-// Track selected sub-category per main category (single active selection at a time)
-const selectedValues = ref<Record<string, string | undefined>>({});
+// Track selected sub-category per main category (single active selection at a time).
+// Each group is explicitly initialized to "" so native <select> renders the
+// placeholder instead of letting the browser auto-select the first option during
+// async category hydration.
+const selectedValues = ref<Record<string, string>>({});
+
+watch(
+  categoryGroups,
+  (groups) => {
+    const next: Record<string, string> = {};
+    for (const group of groups) {
+      const current = selectedValues.value[group.mainCategoryKey] ?? "";
+      next[group.mainCategoryKey] = group.options.some(
+        (option) => option.optionKey === current,
+      )
+        ? current
+        : "";
+    }
+    selectedValues.value = next;
+  },
+  { immediate: true },
+);
 
 /**
  * Picking a sub-category clears sibling selections and jumps straight to
- * `/search` with synced query/category params.
+ * `/search` with only a keyword query. The search page category filter should
+ * remain "all categories" because these option keys are Home-card shortcuts,
+ * not main-category filter keys.
  */
 async function onSelect(mainKey: string, subId: unknown) {
   const id = typeof subId === "string" && subId.length > 0 ? subId : null;
@@ -17,14 +39,16 @@ async function onSelect(mainKey: string, subId: unknown) {
 
   selectedValues.value = { [mainKey]: id };
 
-  const sub = getSubCategories(mainKey).value.find((s) => s.id === id);
-  if (!sub) return;
+  const group = categoryGroups.value.find(
+    (item) => item.mainCategoryKey === mainKey,
+  );
+  const option = group?.options.find((item) => item.optionKey === id);
+  if (!option) return;
 
   emit("selected", id);
 
   const params = new URLSearchParams({
-    q: t(sub.labelKey),
-    category: id,
+    q: option.searchQuery || option.label,
   });
 
   await router.push(`/search?${params.toString()}`);
@@ -41,29 +65,37 @@ async function onSelect(mainKey: string, subId: unknown) {
     </template>
 
     <div class="space-y-4">
-      <div v-for="main in mainCategories" :key="main.key" class="space-y-1.5">
+      <p v-if="pending" class="text-xs text-muted">Loading categories...</p>
+      <p v-else-if="error" class="text-xs text-warning">
+        Using fallback categories.
+      </p>
+
+      <div v-for="main in categoryGroups" :key="main.id" class="space-y-1.5">
         <!-- Main category label -->
         <div class="flex items-center gap-2">
           <UIcon v-if="main.icon" :name="main.icon" class="size-4 text-muted" />
-          <span class="text-sm font-medium">{{ t(main.labelKey) }}</span>
+          <span class="text-sm font-medium">{{ main.label }}</span>
         </div>
 
         <select
-          :value="selectedValues[main.key] ?? ''"
+          v-model="selectedValues[main.mainCategoryKey]"
           class="w-full rounded-xl border border-default bg-white px-3 py-2 text-sm text-default outline-none transition focus:border-primary"
           @change="
-            onSelect(main.key, ($event.target as HTMLSelectElement).value)
+            onSelect(
+              main.mainCategoryKey,
+              ($event.target as HTMLSelectElement).value,
+            )
           "
         >
           <option value="" disabled>
             {{ t("categories.selectPlaceholder") }}
           </option>
           <option
-            v-for="sub in getSubCategories(main.key).value"
+            v-for="sub in main.options"
             :key="sub.id"
-            :value="sub.id"
+            :value="sub.optionKey"
           >
-            {{ t(sub.labelKey) }}
+            {{ sub.label }}
           </option>
         </select>
       </div>

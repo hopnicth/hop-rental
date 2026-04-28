@@ -882,6 +882,13 @@ async function createProduct() {
             description="The product starts hidden from storefront by default. After publish, continue on the detail page to add SKU rows before making it visible."
           />
 
+          <UAlert
+            color="info"
+            variant="soft"
+            title="Filter options are assigned after publish"
+            description="Dynamic filter options for this main category can be assigned on the detail page after the draft is published."
+          />
+
           <UFormField label="Draft images">
             <div class="space-y-4">
               <UFileUpload

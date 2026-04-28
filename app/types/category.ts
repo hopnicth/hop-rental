@@ -11,6 +11,29 @@ export interface MainCategory {
   icon?: string;
 }
 
+export type MainCategoryEntityType =
+  | "product"
+  | "asset"
+  | "service"
+  | "promotion"
+  | "blog"
+  | "review";
+
+export interface StorefrontMainCategory {
+  key: string;
+  labelTh: string;
+  labelEn: string;
+  icon?: string;
+  entityTypes: MainCategoryEntityType[];
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface CategorySelectOption {
+  label: string;
+  value: string;
+}
+
 /**
  * Sub-category — will come from database in the future.
  * Currently served from mock data.
@@ -22,6 +45,26 @@ export interface SubCategory {
   mainCategoryKey: string;
   /** i18n translation key, e.g. "categories.sub.highWork" */
   labelKey: string;
+}
+
+export interface HomeCategoryCardOption {
+  id: string;
+  groupId: string;
+  optionKey: string;
+  label: string;
+  searchQuery: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface HomeCategoryCardGroup {
+  id: string;
+  mainCategoryKey: string;
+  label: string;
+  icon?: string;
+  sortOrder: number;
+  isActive: boolean;
+  options: HomeCategoryCardOption[];
 }
 
 /**

@@ -16,6 +16,8 @@ Read this after `map.md` when debugging or implementing features.
 - `/admin/home-content` is narrower and remains `super_admin` only.
 - Some older environments may still rely on schema fallback in `useBooking()`.
 - For PostgREST `ILIKE`, use `*term*`, not `%term%`.
+- Dynamic filter option matching is **case-sensitive exact**: `filter_options.key` must equal one item in `products.tag_keys` / `assets.tag_keys`.
+- `products.category_keys` and `assets.category_keys` are derived compatibility/search arrays. They contain `[main_category_key] + tag_keys`, so do not treat every `category_keys` entry as a public category.
 
 ## Main read paths
 
@@ -29,7 +31,49 @@ Read this after `map.md` when debugging or implementing features.
 | Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                                                       |
 | Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners`, `home_link_cards` joined with `content_pages`, `home_featured_*`, `home_partner_logos` |
 | Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages` (localized TipTap body) joined with `content_page_products`, `content_page_assets`     |
+| Dynamic filter groups          | `app/composables/useFilterGroups.ts`                   | `/api/filter-groups?main_category=...` → `filter_groups`, `filter_options`                             |
+| Typed main categories          | `app/composables/useMainCategories.ts`                 | `/api/main-categories?entityType=...` → `main_categories.entity_types`                                 |
 | Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                          |
+| Search/filter guideline        | `SEARCH_AND_FILTER_GUIDELINE.md`                       | Current `/search` rules + future multi-type search direction                                           |
+
+## Catalog / category / dynamic-filter schema map
+
+| Concept                  | Source of truth                                           | Public runtime field                                            | Notes                                                                                                  |
+| ------------------------ | --------------------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Main category            | `main_categories.key` + `entity_types`                    | `mainCategoryKey` / `main_category_key` per entity              | Category pickers must filter by `entityType`; one key may belong to multiple domains.                  |
+| Tags / sub-category keys | `products.tag_keys`, `assets.tag_keys`                    | included inside `category_keys` for legacy/search compatibility | Tags are machine keys. Put human/SEO phrases in `search_keywords`, not tags.                           |
+| Derived category array   | trigger-maintained `category_keys`                        | `Product.categories`, `Asset.categories`                        | Equals `[main_category_key] + tag_keys`; never display raw values as all categories without filtering. |
+| Filter assignment        | `product_filter_options`, `asset_filter_options`          | `filter_keys`                                                   | Junction rows are auto-synced from tags by migration `043`. Admin assignment UI is read-only.          |
+| Fast filter token        | trigger-maintained `filter_keys`                          | `Product.filterKeys`, `Asset.filterKeys`                        | Token format: `<filter_group.key>__<filter_option.key>` (for example `sub_category__impact_drill`).    |
+| Numeric dynamic filter   | `filter_groups.filter_type = 'number_range'` + `spec_key` | `product.spec[spec_key]`, `asset.specSummary[spec_key]`         | Not tag-based; no filter options required.                                                             |
+
+### Dynamic-filter API map
+
+| Route / function                                     | Role                | Purpose                                                                                |
+| ---------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------- |
+| `GET /api/filter-groups?main_category=:key`          | public/RLS          | Active groups + active options for storefront sidebar.                                 |
+| `GET /api/admin/filter-groups`                       | staff + super_admin | Admin list/filter groups, optionally by `mainCategory`.                                |
+| `POST /api/admin/filter-groups`                      | super_admin         | Create group (`key`, labels, `main_category_key`, `filter_type`, `match_logic`, etc.). |
+| `PATCH/DELETE /api/admin/filter-groups/[groupId]`    | super_admin         | Update/delete group.                                                                   |
+| `POST /api/admin/filter-groups/[groupId]/options`    | super_admin         | Create option. Option `key` is what tags must match exactly.                           |
+| `PATCH/DELETE .../options/[optionId]`                | super_admin         | Update/delete option; migration `043` cascades resync for affected category.           |
+| `GET /api/admin/products/[productId]/filter-options` | staff + super_admin | Read-only preview of current product assignments.                                      |
+| `PUT /api/admin/products/[productId]/filter-options` | legacy/admin        | Legacy manual endpoint; UI should not use for normal edits after auto-sync from tags.  |
+
+### Home category-card map
+
+Current storefront implementation:
+
+- `app/components/categories_card/CategoriesCard.vue` renders the Home category card.
+- It reads DB-backed rows from `/api/home-category-cards` via `useCategories()`, with mock data only as a safe fallback.
+- Selecting a sub-category routes to `/search?q=<localized label>` only.
+- Do **not** send Home shortcut keys as `category`; `/search` should stay on All Categories until the user selects a real main category in the sidebar.
+
+Persistence direction:
+
+- Home category-card groups/options are super-admin editable.
+- Keep `main_category_key` / `sub_category_key` values aligned with the dynamic-filter/tag convention.
+- Store localized labels/icons/sort/is_active on the card config; route target should remain explicit (`/search?...`) or derive from selected sub-category key.
 
 ## Storefront UI conventions
 
@@ -80,6 +124,7 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 | Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables           |
 | Admin homepage content CRUD/upload | `/api/admin/home-content/*`                                      | `home_*` tables + `catalog-media` bucket |
 | Admin content pages CRUD/upload    | `/api/admin/content/*`                                           | `content_pages` + `catalog-media` bucket |
+| Admin Home category-card CRUD      | `/api/admin/home-categories/*`                                   | `home_category_card_groups/options`      |
 
 ## Important customer routes
 
@@ -97,6 +142,7 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `/admin/orders/[id]`
 - `/admin/rental-bookings/[id]`
 - `/admin/home-content`
+- `/admin/home-categories`
 - `/admin/content`
 
 ## Important admin server areas
@@ -108,7 +154,9 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `server/api/admin/assets/*`
 - `server/api/admin/products/*`
 - `server/api/admin/home-content/*`
+- `server/api/admin/home-categories/*`
 - `server/utils/admin-home.ts`
+- `server/utils/home-categories.ts`
 - `server/utils/home-media.ts`
 - `server/api/admin/content/*`
 - `server/utils/content-pages.ts`
@@ -182,11 +230,65 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `pathForContent` routes review pages to `/reviews/{slug}`; the public listing/detail routes live at `app/pages/reviews/index.vue` and `app/pages/reviews/[slug].vue`
 - `/admin/content` shows multi-select pickers (`USelectMenu multiple searchable`) for `linkedProductIds` and `linkedAssetIds` only when `contentType === 'review'`; `GET /api/admin/content` returns `productOptions` + `assetOptions` for these pickers, and `POST` / `PATCH` sync junction rows via `syncContentPageLinks` in `server/utils/content-pages.ts`
 
+### `041_dynamic_product_filters.sql` through `043_auto_sync_filter_options_from_tags.sql`
+
+- `041` creates dynamic filter source-of-truth tables: `filter_groups`, `filter_options`, `product_filter_options`, plus product-side `filter_keys` denormalization.
+- `042` allows safe filter key updates and keeps denormalized tokens aligned when keys are renamed.
+- `043` extends parity to rentals with `asset_filter_options` + `assets.filter_keys`, then auto-syncs product/asset assignments from `tag_keys`.
+- Matching rule is exact and case-sensitive: option key `impact_drill` only matches tag `impact_drill`.
+- Number-range groups do not use tags/options; they read `spec_key` from product `spec` or asset `spec_summary`.
+- Public listing dynamic filters use `app/utils/dynamic-filters.ts`; it accepts any object shaped like `{ filterKeys, spec }`.
+
+### `044_home_category_cards.sql`
+
+- Adds DB-backed Home category-card groups/options.
+- Public endpoint: `GET /api/home-category-cards`.
+- Admin surface: `/admin/home-categories` with server routes under `/api/admin/home-categories/*`.
+- Storefront click-through sends only `q` to `/search`; it must not set `category`.
+
+### `045_search_products_dynamic_filters.sql`
+
+- Prepared but intentionally not applied on the current remote at the time of this update.
+- Extends `search_products` with `p_dynamic_filters jsonb` for DB-level `/search` dynamic filtering.
+- `/search` has a legacy fallback for environments where `045` is not applied.
+
+### `046_main_category_entity_types.sql`
+
+- Adds typed taxonomy support through `main_categories.entity_types`.
+- `/api/main-categories?entityType=...` and `useMainCategories()` must be used instead of showing all categories.
+
+### `047_content_pages_main_category.sql`
+
+- Applied to remote.
+- Adds `content_pages.main_category_key` for public content listing filters.
+- `/admin/content` lets admins assign a type-scoped Main Category.
+- `/services`, `/reviews`, `/blog`, and `/promotions` filter content cards by `?category=...`.
+
+## Search roadmap against current schema
+
+Detailed guideline: read `SEARCH_AND_FILTER_GUIDELINE.md` before changing search/filter behavior.
+
+Current state:
+
+- `/product-{group}` / `/product-all` / `/product-rental` use in-memory composable data (`useProducts`, `useAssets`) plus `SearchFilters.vue` for category, brand, price, stock, and dynamic filters.
+- `/search` uses `useProductSearch()` and Supabase RPC `search_products`; migration `045` prepares DB-level dynamic filter support, with a legacy fallback in older environments. Current remote still has `045` pending.
+- Home `CategoriesCard` jumps to `/search?q=<label>` only. Do not send Home shortcut keys as product categories.
+- In `/search`, dynamic filters should appear after the user selects a real main category from the filter sidebar.
+- Content listing pages (`/services`, `/reviews`, `/blog`, `/promotions`) use typed `main_categories` and `content_pages.main_category_key`; refresh/share state is `?category=...`.
+
+Planned alignment:
+
+1. Stabilize current search/listing filter state: separate selected dynamic values from UI-added groups, avoid URL sync loops, and keep cards visible during transitions.
+2. Apply/complete DB-level product dynamic filtering so `/search` pagination and total counts match selected filters (`045`).
+3. Evolve `/search` into a multi-type endpoint returning a unified result shape for products, rental assets, services, blogs, reviews, and promotions.
+4. Backfill `content_pages.main_category_key` values so content listing filters are useful.
+5. Do not make `category_keys` the UI category list source without whitelisting; it contains tags.
+
 ## Fast debug checklist
 
 1. Is the user authenticated for customer-owned writes?
 2. Does the user have the correct `platform_role` for admin routes?
-3. Is the target DB on migrations `029` through `040`?
+3. Is the target DB on migrations `029` through `047`? Note: `045` may intentionally remain pending if DB-level `/search` dynamic filtering has not been enabled yet.
 4. If search fails on PostgREST, are you using `*term*` wildcards?
 5. If asset booking fails, is `asset_id` valid and allowed by the current schema?
 6. If booking docs fail to delete cleanly, are `storage_bucket` and `storage_path` present?
@@ -197,6 +299,9 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 11. If Home carousel cards feel wrong, check `HomeHorizontalRail.vue` first for `UCarousel` item basis, arrows, loop, and autoplay options.
 12. If a promotion/service rail is empty, confirm an active `content_pages` row of that type exists and is linked from `/admin/home-content`.
 13. If reviews don't appear on a product/asset detail page, confirm the review row is `is_active = true`, has a matching row in `content_page_products` / `content_page_assets`, and that the public select uses `REVIEWS_FOR_PRODUCT_SELECT` or `REVIEWS_FOR_ASSET_SELECT` (a duplicated junction reference will silently return zero rows).
+14. If dynamic filter auto-assignment does not appear, confirm the value is in `tag_keys` (not only `search_keywords`), the matching `filter_options.key` is exact/case-sensitive, and the row's `main_category_key` matches the option's group.
+15. If tags appear as public categories, check code that reads `category_keys`; whitelist against `main_categories` or static `mainCategories` before rendering category UI.
+16. If `/search` filters flicker or disappear after clearing an option, check whether UI-added dynamic groups are being stored only inside active filter values; see `SEARCH_AND_FILTER_GUIDELINE.md`.
 
 ## Cross refs
 

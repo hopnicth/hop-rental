@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem, NavigationMenuItem } from "@nuxt/ui";
 
-const { t } = useI18n();
-
 const props = defineProps<{
   items: NavigationMenuItem[];
 }>();

@@ -121,6 +121,7 @@ export interface CatalogProductSKURecord extends CatalogProductSKU {
  */
 export interface CatalogProductRecord extends CatalogProduct {
   category_keys?: string[];
+  filter_keys?: string[];
   brand?: string;
   media_gallery?: CatalogMediaGalleryItemRecord[];
   media_links?: CatalogMediaLinkRecord[];

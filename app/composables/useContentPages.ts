@@ -96,6 +96,7 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
     id,
     contentType,
     slug,
+    mainCategoryKey: toString(row.main_category_key),
     title: localized(
       row.title_th,
       row.title_en,
@@ -128,7 +129,7 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
 }
 
 const CONTENT_PAGE_BASE_FIELDS =
-  "id, content_type, slug, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
+  "id, content_type, slug, main_category_key, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
 
 const PUBLIC_CONTENT_PAGE_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order)`;
 

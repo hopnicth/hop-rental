@@ -15,7 +15,13 @@ const navItems = computed(() => {
   ];
 
   if (profile.value?.platformRole === "super_admin") {
-    items.push({ label: "Content", to: "/admin/content" });
+    items.push(
+      { label: "Content", to: "/admin/content" },
+      { label: "Home Content", to: "/admin/home-content" },
+      { label: "Home Categories", to: "/admin/home-categories" },
+      { label: "Main Categories", to: "/admin/main-categories" },
+      { label: "Filter Groups", to: "/admin/filter-groups" },
+    );
   }
 
   return items;

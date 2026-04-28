@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import type { ContentType } from "~/types/content";
+import type {
+  MainCategoryEntityType,
+  StorefrontMainCategory,
+} from "~/types/category";
+import { queryObjectsEqual, readQueryString } from "~/utils/filter-query";
 
 const props = defineProps<{
   contentType: ContentType;
@@ -7,6 +12,14 @@ const props = defineProps<{
   description: string;
 }>();
 
+const route = useRoute();
+const router = useRouter();
+const { locale, t } = useI18n();
+const selectedCategory = ref(readQueryString(route.query.category));
+const mainCategoryEntityType = computed<MainCategoryEntityType>(
+  () => props.contentType,
+);
+const { categories } = useMainCategories(mainCategoryEntityType);
 const { fetchContentPages } = useContentPages();
 const {
   data: pages,
@@ -22,6 +35,49 @@ useSeoMeta({
   title: props.title,
   description: props.description,
 });
+
+function categoryLabel(item: StorefrontMainCategory): string {
+  if (locale.value === "th") return item.labelTh || item.labelEn || item.key;
+  return item.labelEn || item.labelTh || item.key;
+}
+
+const categoryOptions = computed(() =>
+  categories.value.map((item) => ({
+    value: item.key,
+    label: categoryLabel(item),
+  })),
+);
+
+const selectedCategoryLabel = computed(() => {
+  if (!selectedCategory.value) return t("search.categoryAll");
+  return (
+    categoryOptions.value.find((item) => item.value === selectedCategory.value)
+      ?.label ?? selectedCategory.value
+  );
+});
+
+const filteredPages = computed(() => {
+  if (!selectedCategory.value) return pages.value;
+  return pages.value.filter(
+    (page) => page.mainCategoryKey === selectedCategory.value,
+  );
+});
+
+watch(
+  () => route.query.category,
+  (value) => {
+    selectedCategory.value = readQueryString(value);
+  },
+);
+
+watch(selectedCategory, (value) => {
+  if (!import.meta.client) return;
+  const next = { ...route.query };
+  value ? (next.category = value) : delete next.category;
+  if (!queryObjectsEqual(route.query, next)) {
+    void router.replace({ query: next });
+  }
+});
 </script>
 
 <template>
@@ -35,6 +91,31 @@ useSeoMeta({
         <p class="text-base leading-7 text-muted">
           {{ description }}
         </p>
+      </div>
+
+      <div v-if="categoryOptions.length" class="space-y-3">
+        <div class="flex items-center gap-2 text-sm font-medium text-muted">
+          <UIcon name="bx:filter-alt" class="size-4" />
+          <span>{{ t("search.category") }}: {{ selectedCategoryLabel }}</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            :variant="!selectedCategory ? 'solid' : 'soft'"
+            size="sm"
+            @click="selectedCategory = ''"
+          >
+            {{ t("search.categoryAll") }}
+          </UButton>
+          <UButton
+            v-for="option in categoryOptions"
+            :key="option.value"
+            :variant="selectedCategory === option.value ? 'solid' : 'soft'"
+            size="sm"
+            @click="selectedCategory = option.value"
+          >
+            {{ option.label }}
+          </UButton>
+        </div>
       </div>
 
       <UAlert
@@ -53,10 +134,14 @@ useSeoMeta({
       </div>
 
       <div
-        v-else-if="pages.length"
+        v-else-if="filteredPages.length"
         class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
       >
-        <ContentPageCard v-for="page in pages" :key="page.id" :page="page" />
+        <ContentPageCard
+          v-for="page in filteredPages"
+          :key="page.id"
+          :page="page"
+        />
       </div>
 
       <UAlert

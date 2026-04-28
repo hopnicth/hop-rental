@@ -285,6 +285,9 @@ function normalizeAssetRow(row: unknown): Asset | null {
       code,
     ),
     categories: toStringArray(row.category_keys),
+    mainCategoryKey: toString(row.main_category_key),
+    tagKeys: toStringArray(row.tag_keys),
+    filterKeys: toStringArray(row.filter_keys),
     brand: toString(row.brand),
     thumbnail: toString(row.thumbnail_url) ?? RENTAL_PLACEHOLDER_IMAGE,
     images: toStringArray(row.image_urls),
@@ -351,7 +354,7 @@ export function useAssets() {
       const { data, error: fetchError } = await supabase
         .from("assets")
         .select(
-          `id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, category_keys, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at, matches:asset_matches(product_id, match_type, sort_order)`,
+          `id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, category_keys, main_category_key, tag_keys, filter_keys, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at, matches:asset_matches(product_id, match_type, sort_order)`,
         )
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false });

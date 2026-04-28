@@ -28,6 +28,7 @@ export interface ContentPage {
   id: string;
   contentType: ContentType;
   slug: string;
+  mainCategoryKey: string;
   title: LocalizedString;
   excerpt: LocalizedString;
   coverImageUrl: string;
