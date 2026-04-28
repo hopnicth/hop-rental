@@ -82,6 +82,25 @@ watch(
   (value) => editor.value?.setEditable(!value),
 );
 
+// Resync editor content when the parent swaps modelValue (e.g. clicking
+// "Edit" on an existing content row). onUpdate echoes typing back through
+// modelValue, so we compare against the editor's current JSON to avoid
+// caret loss on every keystroke.
+watch(
+  () => props.modelValue,
+  (next) => {
+    if (!editor.value) return;
+    const incoming = next?.[activeLocale.value] ?? {
+      type: "doc",
+      content: [],
+    };
+    const current = editor.value.getJSON();
+    if (JSON.stringify(current) === JSON.stringify(incoming)) return;
+    editor.value.commands.setContent(incoming as never, { emitUpdate: false });
+  },
+  { deep: true },
+);
+
 onMounted(() => buildEditor(activeLocale.value));
 onBeforeUnmount(() => editor.value?.destroy());
 
