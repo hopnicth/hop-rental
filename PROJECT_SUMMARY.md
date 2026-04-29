@@ -1,6 +1,6 @@
 # HOP-RENTAL Project Summary
 
-Last updated: 2026-04-29
+Last updated: 2026-04-30
 Audience: developers, operators, future Augment sessions
 
 ## Purpose
@@ -88,6 +88,23 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Rental booking detail supports checklists + documents
 - Booking docs store storage metadata for clean delete
 
+### Chat/support
+
+- User support FAB on every storefront layout (left-bottom) with unread badge; cached snapshot via `localStorage` so the badge paints instantly before the realtime channel comes up.
+- Admin inbox at `/admin/messages` with a thread list and `/admin/messages/[id]` detail view; staff/admin can read and reply.
+- Backend in migration `048` with `chat_conversations`, `chat_participants`, `chat_messages`, `chat_attachments` plus a private `chat-attachments` bucket; RLS restricts reads to participants or platform staff and mutations go through server APIs so `sender_id` is derived from the session.
+- Realtime via Supabase `postgres_changes` requires the WebSocket to be authenticated (`supabase.realtime.setAuth(accessToken)`); without it, RLS filters every event before it reaches the client. `useChat` re-applies the token on `onAuthStateChange`.
+- Supabase v2 `useSupabaseUser()` returns decoded JWT claims, so user id must be resolved as `user.id ?? user.sub`.
+- Unread badge clears whenever the panel opens (idempotent `markRead`) and auto-clears for messages that arrive while the panel is open and viewing the same conversation.
+
+### Privacy & cookie consent
+
+- Storefront and admin layouts mount `<CookieConsentBanner />` for PDPA/GDPR-style consent capture
+- Consent state is stored in the `hop-rental-cookie-consent` cookie (180-day TTL, `sameSite=lax`, `secure=true`) and is versioned via `CONSENT_VERSION` so policy changes can re-prompt
+- Categories: `necessary` (always on, covers Supabase auth, cart, language, color mode), `analytics`, `preferences`, `marketing`; non-essential default off (opt-in)
+- `useCookieConsent()` exposes `hasResponded`, `categories`, `isAllowed(category)`, `acceptAll()`, `rejectNonEssential()`, `savePreferences()`, `openPreferences()` — analytics/marketing scripts must be gated behind `isAllowed(...)` before loading
+- `ChatFab` is hidden while the consent banner or preferences modal is open; FAB z-index lowered to `z-40` so Nuxt UI modal overlays sit above it
+
 ## Key routes
 
 ### Storefront
@@ -119,6 +136,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/admin/rental-bookings/[id]`
 - `/admin/content`
 - `/admin/home-categories`
+- `/admin/messages`, `/admin/messages/[id]`
 
 ## Important rules
 
@@ -136,13 +154,12 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 
 ## Highest-value next priorities
 
-1. Chat/support experience
-2. Decide/apply migration `045` when ready to enable DB-level `/search` dynamic filtering
-3. Backfill `main_category_key` on existing `content_pages` rows so public content filters show useful results
-4. Search schema alignment: consolidate current hybrid Universal Search into a server-owned global endpoint/RPC for ranking and facets
-5. Customer-facing rental documents/history polish
-6. Backoffice checklist-template management polish
-7. Quotation/document/payment follow-through not yet implemented end-to-end
+1. Decide/apply migration `045` when ready to enable DB-level `/search` dynamic filtering
+2. Backfill `main_category_key` on existing `content_pages` rows so public content filters show useful results
+3. Search schema alignment: consolidate current hybrid Universal Search into a server-owned global endpoint/RPC for ranking and facets
+4. Customer-facing rental documents/history polish
+5. Backoffice checklist-template management polish
+6. Quotation/document/payment follow-through not yet implemented end-to-end
 
 ## Read next
 

@@ -1,6 +1,6 @@
 # API Index
 
-Last updated: 2026-04-28
+Last updated: 2026-04-30
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -34,6 +34,7 @@ Read this after `map.md` when debugging or implementing features.
 | Dynamic filter groups          | `app/composables/useFilterGroups.ts`                   | `/api/filter-groups?main_category=...` → `filter_groups`, `filter_options`                             |
 | Typed main categories          | `app/composables/useMainCategories.ts`                 | `/api/main-categories?entityType=...` → `main_categories.entity_types`                                 |
 | Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                          |
+| Cookie consent                 | `app/composables/useCookieConsent.ts`                  | `hop-rental-cookie-consent` cookie (versioned, 180-day TTL)                                            |
 | Search/filter guideline        | `SEARCH_AND_FILTER_GUIDELINE.md`                       | Current `/search` rules + future multi-type search direction                                           |
 
 ## Catalog / category / dynamic-filter schema map
@@ -83,6 +84,29 @@ Persistence direction:
 - Home promotion/service cards use `HomeLinkCard.vue` and read title/excerpt/cover/link live from the linked `content_pages` row.
 - Global HOP theme tokens live in `app/assets/css/main.css` (`--ui-primary`, `--ui-secondary`, status colors, and `0.2rem` radius scale).
 
+## Cookie consent
+
+- `<CookieConsentBanner />` (`app/components/cookie/CookieConsentBanner.vue`) is mounted in `app/layouts/default.vue` and `app/layouts/admin.vue`. Consent state is owned by `useCookieConsent()` (`app/composables/useCookieConsent.ts`) and persisted in the `hop-rental-cookie-consent` cookie with `maxAge = 180 days`, `sameSite=lax`, `secure=true`.
+- Record shape: `{ v: <CONSENT_VERSION>, ts: <ISO>, categories: { necessary, analytics, preferences, marketing } }`. Bumping `CONSENT_VERSION` invalidates older records and re-prompts.
+- Categories:
+  - `necessary` — always `true`; covers Supabase auth (`sb-*`), cart (`hop-rental-cart-*`), i18n locale, color mode, and the consent cookie itself. Cannot be turned off.
+  - `analytics`, `preferences`, `marketing` — opt-in (default `false`). Currently no scripts depend on these; reject is a no-op until tracking is added.
+- Required pattern when adding analytics / marketing scripts (e.g. GA4, Meta Pixel, Hotjar): gate loading inside a client plugin and watch the consent state. Never load tracking before consent.
+
+```ts
+// app/plugins/analytics.client.ts
+export default defineNuxtPlugin(() => {
+  const consent = useCookieConsent();
+  watchEffect(() => {
+    if (consent.isAllowed("analytics")) loadAnalytics();
+  });
+});
+```
+
+- Public API: `hasResponded`, `categories`, `isAllowed(category)`, `acceptAll()`, `rejectNonEssential()`, `savePreferences(partial)`, `openPreferences()`, `closePreferences()`. Use `openPreferences()` from a future footer/settings link to let users withdraw consent at any time.
+- i18n: keys live under `cookieConsent.*` in all four locales (`th`, `en`, `cn`, `jp`).
+- `ChatFab` reads `useCookieConsent()` and hides itself while the banner or preferences modal is open. ChatFab z-index is `z-40`; consent banner is `z-60`; consent preferences modal overlay/content is `z-70`. Do not reintroduce `z-999` on floating UI — it shadows Nuxt UI modal overlays.
+
 ## Lazy load loading state standard
 
 Every list/grid/rail that renders card-based data asynchronously must show a progress indicator and shape-matched skeletons while data is loading. Empty space is not an acceptable loading state.
@@ -119,6 +143,10 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 | Create booking draft               | `useBooking().addBooking()`                                      | `rental_bookings`                        |
 | Confirm booking                    | `useBooking().updateBookingStatus()`                             | `rental_bookings`                        |
 | Submit sale order                  | `useOrders().submitOrder()`                                      | `orders`, `order_items`                  |
+| Chat messages/read state           | `/api/chat/conversations/*`, `/api/chat/messages/*`              | `chat_messages`, `chat_participants`     |
+| Chat unread counts (badge init)    | `/api/chat/unread-counts.get.ts`                                 | reads `chat_participants` only           |
+| Chat attachment upload/access      | `/api/chat/messages/*/attachments`, `/api/chat/attachments/*`    | `chat_attachments` + private storage     |
+| Chat client state + realtime       | `useChat()` (`app/composables/useChat.ts`)                       | shared `useState`, Supabase realtime     |
 | Admin order update                 | `/api/admin/orders/[id].patch.ts`                                | `orders`                                 |
 | Admin booking update               | `/api/admin/rental-bookings/[id].patch.ts`                       | `rental_bookings`                        |
 | Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables           |
@@ -144,6 +172,7 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `/admin/home-content`
 - `/admin/home-categories`
 - `/admin/content`
+- `/admin/messages`, `/admin/messages/[id]`
 
 ## Important admin server areas
 
@@ -263,6 +292,25 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - Adds `content_pages.main_category_key` for public content listing filters.
 - `/admin/content` lets admins assign a type-scoped Main Category.
 - `/services`, `/reviews`, `/blog`, and `/promotions` filter content cards by `?category=...`.
+
+### `048_chat_constraints.sql`
+
+- Adds `chat_conversations`, `chat_participants`, `chat_messages`, `chat_attachments` and private `chat-attachments` bucket.
+- Message rows stay minimal and are capped at 4,000 characters; longer content must be an attachment.
+- Attachment metadata only: JPEG/PNG/WebP <= 5MB, PDF <= 10MB, no base64/inline storage paths.
+- Pagination API caps message reads at 50 rows; default initial page is 30 rows.
+- No per-message read receipt table; unread state is conversation-level via `chat_participants.last_read_at`.
+- DB trigger rate-limits inserts to 10 messages/second per sender; server API also applies the same burst guard.
+- RLS allows reads only for conversation participants or platform staff; mutations are intended to go through server APIs so `sender_id` is derived from the authenticated session.
+
+### Chat realtime + client conventions
+
+- Supabase Realtime `postgres_changes` are RLS-filtered server-side; the client must call `supabase.realtime.setAuth(accessToken)` before/while subscribing or no events are delivered. `useChat` does this in `subscribe()` and re-applies on `onAuthStateChange`.
+- `@nuxtjs/supabase` v2 `useSupabaseUser()` returns decoded JWT claims, so user id must be resolved as `user.id ?? user.sub` everywhere it is compared with `sender_id`/`customer_id`.
+- `useChat` keeps its state in shared `useState` keys so the FAB badge and `/admin/messages` views see the same `conversations`, `messages`, and `unreadEntries` across routes.
+- `loadConversations` / `loadMessages` / `loadUnreadCounts` accept a `silent` flag so realtime-driven refreshes do not toggle the full-page loading spinners; only initial loads should run non-silent.
+- INSERT events on the channel that is subscribed to a specific conversation auto-call `markRead` (the user is viewing it), so the badge does not bump for messages already on screen. Other conversations bump via `bumpUnreadFor`.
+- The user FAB always calls `markRead` on open (idempotent) and pre-positions `scrollTop = scrollHeight` synchronously when `isOpen` flips so the panel paints its first frame at the latest message instead of scrolling visibly.
 
 ## Search roadmap against current schema
 
