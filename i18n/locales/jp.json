@@ -462,6 +462,17 @@
     "validationFailedDesc": "お支払い可能な商品が見つかりません。カートを確認して再度お試しください。",
     "stockLimitTitle": "在庫上限に達しました",
     "stockLimitDesc": "現在の在庫数を超えて数量を増やすことはできません。",
+    "noSaleItemsTitle": "注文可能な商品がありません",
+    "noSaleItemsDesc": "オンライン注文の前に、カートに購入商品を1点以上追加してください。",
+    "pickupBranchRequiredTitle": "受け取り店舗を選択してください",
+    "pickupBranchRequiredDesc": "ご注文前に受け取り店舗を選択してください。",
+    "deliveryAddressRequiredTitle": "配送先住所を選択してください",
+    "deliveryAddressRequiredDesc": "ご注文を確定する前に配送先住所を選択してください。",
+    "companyCreditUnavailableTitle": "会社クレジットを利用できません",
+    "companyCreditUnavailableDesc": "ご注文の前に会社のKYCが承認済みで、利用可能なクレジット残高が十分であることをご確認ください。",
+    "minimumChargeTitle": "注文金額が少なすぎます",
+    "minimumChargeDesc": "オンライン決済には最低 {min} THB のご注文が必要です。商品を追加してください。",
+    "minimumChargeNotice": "オンライン決済の最低金額は {min} THB です。クレジットカード / PromptPay をご利用いただくには商品を追加してください。",
     "proceedToPayment": "お支払いへ進む",
     "continueShopping": "買い物を続ける",
     "orderSummary": "注文概要",
@@ -577,34 +588,6 @@
       "draft": "下書き",
       "confirmed": "確定済み",
       "cancelled": "キャンセル済み"
-    }
-  },
-  "cookieConsent": {
-    "title": "当サイトでは Cookie を使用しています",
-    "description": "サイトの動作に必要な Cookie に加え、利用状況の分析や体験向上のための Cookie も使用します。すべて許可、必須以外を拒否、または個別に設定することができ、設定はいつでも変更可能です。",
-    "acceptAll": "すべて許可",
-    "rejectNonEssential": "必須以外を拒否",
-    "customize": "設定する",
-    "savePreferences": "設定を保存",
-    "preferencesTitle": "Cookie 設定",
-    "preferencesDescription": "ご利用を許可する Cookie の種類を選択してください。必須 Cookie はサービス提供に必要なため無効化できません。",
-    "categories": {
-      "necessary": {
-        "label": "必須 Cookie(常に有効)",
-        "description": "ログイン、カート、セキュリティ、サイトの基本機能に必要であり、無効化できません。"
-      },
-      "analytics": {
-        "label": "分析 Cookie",
-        "description": "サイトの利用状況を把握し、体験を改善するために使用します。"
-      },
-      "preferences": {
-        "label": "環境設定 Cookie",
-        "description": "言語や表示などの個別設定を記憶し、次回以降の利用を快適にします。"
-      },
-      "marketing": {
-        "label": "マーケティング Cookie",
-        "description": "ご興味に合ったコンテンツや広告の表示、キャンペーン効果の測定に使用します。"
-      }
     }
   }
 }

@@ -1,12 +1,7 @@
-import {
-  createError,
-  defineEventHandler,
-  getHeader,
-  readRawBody,
-} from "h3";
+import { createError, defineEventHandler, getHeader, readRawBody } from "h3";
 import { serverSupabaseServiceRole } from "#supabase/server";
 import {
-  asNonEmptyString,
+  asPaymentNonEmptyString,
   extractOmiseCharge,
   verifyOmiseWebhookSignature,
 } from "~~/server/utils/payment-core";
@@ -24,10 +19,13 @@ export default defineEventHandler(async (event) => {
   const timestampHeader = getHeader(event, "omise-signature-timestamp");
   const config = useRuntimeConfig(event);
   const webhookSecret =
-    asNonEmptyString(config.omiseWebhookSecret) ??
-    asNonEmptyString(process.env.OMISE_WEBHOOK_SECRET);
+    asPaymentNonEmptyString(config.omiseWebhookSecret) ??
+    asPaymentNonEmptyString(process.env.OMISE_WEBHOOK_SECRET);
   if (!webhookSecret) {
-    throw createError({ statusCode: 500, statusMessage: "OMISE_WEBHOOK_SECRET is not configured" });
+    throw createError({
+      statusCode: 500,
+      statusMessage: "OMISE_WEBHOOK_SECRET is not configured",
+    });
   }
   if (
     !verifyOmiseWebhookSignature({
@@ -37,14 +35,17 @@ export default defineEventHandler(async (event) => {
       webhookSecret,
     })
   ) {
-    throw createError({ statusCode: 401, statusMessage: "Invalid Omise webhook signature" });
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Invalid Omise webhook signature",
+    });
   }
 
   const payload = JSON.parse(rawBody) as Record<string, unknown>;
-  const gatewayEventId = asNonEmptyString(payload.id);
-  const eventType = asNonEmptyString(payload.key) ?? "unknown";
+  const gatewayEventId = asPaymentNonEmptyString(payload.id);
+  const eventType = asPaymentNonEmptyString(payload.key) ?? "unknown";
   const charge = extractOmiseCharge(payload);
-  const gatewayChargeId = asNonEmptyString(charge?.id);
+  const gatewayChargeId = asPaymentNonEmptyString(charge?.id);
   const adminClient = serverSupabaseServiceRole(event);
 
   const { data: paymentEvent, error: eventError } = await adminClient
@@ -88,7 +89,10 @@ export default defineEventHandler(async (event) => {
     });
     await adminClient
       .from("payment_events")
-      .update({ status: "failed", processing_error: "PAYMENT_ATTEMPT_NOT_FOUND" })
+      .update({
+        status: "failed",
+        processing_error: "PAYMENT_ATTEMPT_NOT_FOUND",
+      })
       .eq("id", paymentEvent.id);
     return { ok: true, missingAttempt: true };
   }
@@ -120,7 +124,11 @@ export default defineEventHandler(async (event) => {
     });
     await adminClient
       .from("payment_events")
-      .update({ status: "failed", processing_error: err instanceof Error ? err.message : "AMOUNT_MISMATCH" })
+      .update({
+        status: "failed",
+        processing_error:
+          err instanceof Error ? err.message : "AMOUNT_MISMATCH",
+      })
       .eq("id", paymentEvent.id);
     return { ok: true, amountMismatch: true };
   }

@@ -442,6 +442,17 @@
     "validationFailedDesc": "未找到可结算商品，请检查购物车后重试。",
     "stockLimitTitle": "库存不足",
     "stockLimitDesc": "商品数量不能增加到超过当前库存。",
+    "noSaleItemsTitle": "没有可下单的商品",
+    "noSaleItemsDesc": "请至少添加一件可购买商品到购物车后再进行在线下单。",
+    "pickupBranchRequiredTitle": "请选择自提门店",
+    "pickupBranchRequiredDesc": "请选择您要自提的门店后再下单。",
+    "deliveryAddressRequiredTitle": "请选择配送地址",
+    "deliveryAddressRequiredDesc": "请选择配送地址后再确认订单。",
+    "companyCreditUnavailableTitle": "无法使用公司信用额度",
+    "companyCreditUnavailableDesc": "请确认公司 KYC 已通过,并确保信用额度充足后再下单。",
+    "minimumChargeTitle": "订单金额过低",
+    "minimumChargeDesc": "在线支付要求订单金额至少为 {min} 泰铢,请添加更多商品后继续。",
+    "minimumChargeNotice": "在线支付最低 {min} 泰铢,添加更多商品以使用信用卡 / PromptPay。",
     "proceedToPayment": "去付款",
     "continueShopping": "继续购物",
     "orderSummary": "订单摘要",
@@ -557,34 +568,6 @@
       "draft": "草稿",
       "confirmed": "已确认",
       "cancelled": "已取消"
-    }
-  },
-  "cookieConsent": {
-    "title": "本网站使用 Cookie",
-    "description": "我们使用必要的 Cookie 以确保网站正常运行,同时使用其他 Cookie 来分析使用情况并改善您的体验。您可以选择全部接受、拒绝非必要 Cookie 或自定义同意范围,并可随时更改设置。",
-    "acceptAll": "全部接受",
-    "rejectNonEssential": "拒绝非必要",
-    "customize": "自定义",
-    "savePreferences": "保存设置",
-    "preferencesTitle": "Cookie 偏好设置",
-    "preferencesDescription": "请选择您允许我们使用的 Cookie 类别。必要 Cookie 不能关闭,因为它们是提供服务所必需的。",
-    "categories": {
-      "necessary": {
-        "label": "必要 Cookie(始终启用)",
-        "description": "用于登录、购物车、安全以及网站核心功能,无法关闭。"
-      },
-      "analytics": {
-        "label": "分析 Cookie",
-        "description": "帮助我们了解网站的使用情况,从而改进用户体验。"
-      },
-      "preferences": {
-        "label": "偏好 Cookie",
-        "description": "记住语言或显示等非必要个人设置,方便您下次使用。"
-      },
-      "marketing": {
-        "label": "营销 Cookie",
-        "description": "用于向您展示与兴趣相关的内容和广告,并衡量推广效果。"
-      }
     }
   }
 }

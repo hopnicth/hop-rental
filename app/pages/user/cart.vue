@@ -305,6 +305,14 @@ const hasShippingBoxes = computed(
 // paid at the branch and never charged online.
 const orderGrandTotal = computed(() => cartSubtotal.value + shippingCost.value);
 
+// Omise enforces a 20.00 THB minimum per charge. Block the online payment flow
+// (credit card / PromptPay) when the order total falls below this threshold.
+const MIN_ONLINE_PAYMENT_THB = 20;
+const isBelowOnlineMin = computed(
+  () =>
+    hasPurchaseItems.value && orderGrandTotal.value < MIN_ONLINE_PAYMENT_THB,
+);
+
 const hasRentalBookings = computed(() => activeBookings.value.length > 0);
 const hasPurchaseItems = computed(() => cartItems.value.length > 0);
 const bookingsMissingHub = computed(() =>
@@ -424,23 +432,20 @@ function showInlineOrderError(title: string, description: string) {
 
 async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
   if (!hasPurchaseItems.value) {
-    showInlineOrderError(
-      "No sale items to submit",
-      "Add at least one purchase item to the cart before placing an online order.",
-    );
+    showInlineOrderError(t("cart.noSaleItemsTitle"), t("cart.noSaleItemsDesc"));
     return;
   }
 
   if (!selectedAddress.value) {
     if (isPickupSelected.value) {
       showInlineOrderError(
-        "Pickup branch required",
-        "Please choose a branch to pick up the order.",
+        t("cart.pickupBranchRequiredTitle"),
+        t("cart.pickupBranchRequiredDesc"),
       );
     } else {
       showInlineOrderError(
-        "Delivery address required",
-        "Please select a delivery address before submitting the order.",
+        t("cart.deliveryAddressRequiredTitle"),
+        t("cart.deliveryAddressRequiredDesc"),
       );
     }
     return;
@@ -453,8 +458,22 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
       creditRemaining.value < orderGrandTotal.value)
   ) {
     showInlineOrderError(
-      "Company credit is not available",
-      "Please verify company KYC and make sure enough credit remains before submitting.",
+      t("cart.companyCreditUnavailableTitle"),
+      t("cart.companyCreditUnavailableDesc"),
+    );
+    return;
+  }
+
+  // Block online payment flow when total is below the gateway minimum (20 THB).
+  if (
+    checkoutMode === "payment" &&
+    (paymentMethod.value === "credit_card" ||
+      paymentMethod.value === "promptpay") &&
+    isBelowOnlineMin.value
+  ) {
+    showInlineOrderError(
+      t("cart.minimumChargeTitle"),
+      t("cart.minimumChargeDesc", { min: MIN_ONLINE_PAYMENT_THB }),
     );
     return;
   }
@@ -473,6 +492,61 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
     const resolvedCompanyId = isB2B.value
       ? (currentCompany.value?.id ?? selectedAddress.value.companyId ?? null)
       : null;
+
+    const useOnlinePaymentFlow =
+      checkoutMode === "payment" &&
+      (paymentMethod.value === "credit_card" ||
+        paymentMethod.value === "promptpay");
+
+    if (useOnlinePaymentFlow) {
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `order_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+      const response = await $fetch<{
+        order?: { id: string };
+        orderId?: string;
+        idempotent?: boolean;
+      }>("/api/orders", {
+        method: "POST",
+        body: {
+          idempotencyKey,
+          checkoutMode: "payment",
+          paymentMethod: paymentMethod.value,
+          companyId: resolvedCompanyId,
+          cartId: cartId.value || null,
+          shippingMode: isPickupSelected.value ? "pickup" : "delivery",
+          address: {
+            id: selectedAddress.value.id || null,
+            title: selectedAddress.value.title,
+            contactName: selectedAddress.value.contactName,
+            contactPhone: selectedAddress.value.contactPhone,
+            fullAddress: selectedAddress.value.fullAddress,
+            subDistrict: selectedAddress.value.subDistrict,
+            district: selectedAddress.value.district,
+            province: selectedAddress.value.province,
+            postalCode: selectedAddress.value.postalCode,
+            note: selectedAddress.value.note,
+          },
+          items: cartItems.value.map((item) => ({
+            skuId: item.skuId,
+            quantity: item.quantity,
+          })),
+        },
+      });
+
+      const newOrderId = response.order?.id ?? response.orderId;
+      if (!newOrderId) {
+        throw new Error("Order created but no order ID was returned.");
+      }
+
+      // Cart is intentionally NOT cleared here — it is cleared only after the
+      // payment is confirmed paid (in /payment/[orderId] or /payment/result).
+      // This preserves the cart if the user fails or abandons the payment.
+      await navigateTo(`/payment/${encodeURIComponent(newOrderId)}`);
+      return;
+    }
 
     const order = await submitOrder({
       checkoutMode,
@@ -1265,6 +1339,17 @@ async function handlePay() {
                   ฿{{ orderGrandTotal.toLocaleString() }}
                 </span>
               </div>
+
+              <!-- Minimum-charge notice for online payment (Omise: 20 THB) -->
+              <p
+                v-if="isBelowOnlineMin && !isB2BUser"
+                class="rounded-md bg-warning/10 p-2 text-xs text-warning"
+              >
+                <UIcon name="bx:info-circle" class="mr-1 align-text-bottom" />
+                {{
+                  t("cart.minimumChargeNotice", { min: MIN_ONLINE_PAYMENT_THB })
+                }}
+              </p>
             </div>
 
             <UDivider />
@@ -1429,7 +1514,13 @@ async function handlePay() {
                   icon="bx:check-circle"
                   size="lg"
                   :loading="isSubmittingOrder"
-                  :disabled="isSubmittingOrder || !hasPurchaseItems"
+                  :disabled="
+                    isSubmittingOrder ||
+                    !hasPurchaseItems ||
+                    (isBelowOnlineMin &&
+                      (paymentMethod === 'credit_card' ||
+                        paymentMethod === 'promptpay'))
+                  "
                   @click="handlePay"
                 />
               </div>

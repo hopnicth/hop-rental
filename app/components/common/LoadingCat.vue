@@ -1,5 +1,5 @@
 <script setup lang="ts">
-withDefaults(
+const props = withDefaults(
   defineProps<{
     label?: string | null;
     size?: number;
@@ -13,7 +13,8 @@ withDefaults(
 );
 
 const { t } = useI18n();
-const gifSrc = "/loading-cat.gif";
+
+const loaderHeight = computed(() => `${Math.round(props.size * 0.55)}px`);
 </script>
 
 <template>
@@ -26,17 +27,45 @@ const gifSrc = "/loading-cat.gif";
     role="status"
     aria-live="polite"
   >
-    <img
-      :src="gifSrc"
-      :alt="label ?? t('common.loading')"
-      :width="size"
-      :height="size"
-      :style="{ width: `${size}px`, height: `${size}px` }"
-      class="select-none"
-      draggable="false"
+    <div
+      class="loader"
+      :style="{ height: loaderHeight }"
+      :aria-label="label ?? t('common.loading')"
     />
     <span class="text-sm text-muted">
       {{ label ?? t("common.loading") }}
     </span>
   </div>
 </template>
+
+<style scoped>
+.loader {
+  aspect-ratio: 1.5;
+  display: grid;
+  color: currentColor;
+}
+.loader::before,
+.loader::after {
+  content: "";
+  background: currentColor;
+  border-radius: 80px 80px 0 0;
+  animation: hop-loader 1s infinite alternate both;
+}
+.loader::after {
+  transform: scale(-1);
+  animation-delay: 0.2s;
+}
+@keyframes hop-loader {
+  0%,
+  10% {
+    margin-inline: 0 33%;
+  }
+  50% {
+    margin-inline: 0 0;
+  }
+  90%,
+  100% {
+    margin-inline: 33% 0;
+  }
+}
+</style>

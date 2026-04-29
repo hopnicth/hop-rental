@@ -1,6 +1,6 @@
 import { createError } from "h3";
 import {
-  asNonEmptyString,
+  asPaymentNonEmptyString,
   isPayableOrderPaymentStatus,
   normalizeCurrency,
   toGatewayAmount,
@@ -8,7 +8,10 @@ import {
 } from "~~/server/utils/payment-core";
 import type { NormalizedGatewayCharge } from "~~/server/utils/omise";
 
-type AnyClient = { from: (table: string) => any };
+type AnyClient = {
+  from: (table: string) => any;
+  rpc?: (fn: string, args?: Record<string, unknown>) => any;
+};
 type AnyRecord = Record<string, unknown>;
 
 export const PAYMENT_ATTEMPT_SELECT =
@@ -23,9 +26,13 @@ export function assertOrderPayable(order: AnyRecord): void {
   }
 }
 
-export function buildPaymentReturnUri(event: { node: { req: { headers: any } } }, orderId: string): string {
+export function buildPaymentReturnUri(
+  event: { node: { req: { headers: any } } },
+  orderId: string,
+): string {
   const proto = event.node.req.headers["x-forwarded-proto"] ?? "http";
-  const host = event.node.req.headers["x-forwarded-host"] ?? event.node.req.headers.host;
+  const host =
+    event.node.req.headers["x-forwarded-host"] ?? event.node.req.headers.host;
   return `${proto}://${host}/payment/result?orderId=${encodeURIComponent(orderId)}`;
 }
 
@@ -94,7 +101,8 @@ export async function applyGatewayResult(
     .eq("id", attempt.id)
     .select(PAYMENT_ATTEMPT_SELECT)
     .single();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
 
   if (status === "paid" && order.payment_status !== "paid") {
     await client
@@ -110,6 +118,8 @@ export async function applyGatewayResult(
       severity: "info",
       message: "Payment completed successfully.",
     });
+    await applyOrderInventory(client, String(order.id), String(attempt.id));
+    await clearUserCartAfterPayment(client, order);
   }
 
   if (status === "failed" || status === "expired") {
@@ -126,27 +136,115 @@ export async function applyGatewayResult(
   return updated as AnyRecord;
 }
 
-export function assertGatewayAmountMatches(order: AnyRecord, charge: AnyRecord): void {
+/**
+ * Idempotent inventory deduction triggered after a paid transition.
+ * Failures are surfaced as admin alerts but never block the payment flow.
+ */
+async function applyOrderInventory(
+  client: AnyClient,
+  orderId: string,
+  paymentAttemptId: string,
+): Promise<void> {
+  try {
+    if (typeof client.rpc !== "function") return;
+    const { error } = await client.rpc("f_apply_order_inventory", {
+      p_order_id: orderId,
+    });
+    if (error) {
+      await recordPaymentAlert(client, {
+        orderId,
+        paymentAttemptId,
+        kind: "inventory_apply_failed",
+        audience: "admin",
+        severity: "critical",
+        message: `Inventory hook failed: ${error.message ?? "unknown error"}`,
+        metadata: { code: error.code, details: error.details },
+      });
+    }
+  } catch (err) {
+    await recordPaymentAlert(client, {
+      orderId,
+      paymentAttemptId,
+      kind: "inventory_apply_failed",
+      audience: "admin",
+      severity: "critical",
+      message: `Inventory hook threw: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Empty the buyer's persistent cart after a paid transition. The cart row
+ * itself is preserved and updated_at is bumped so client hydration trusts the
+ * cleared DB state over any stale localStorage snapshot.
+ */
+async function clearUserCartAfterPayment(
+  client: AnyClient,
+  order: AnyRecord,
+): Promise<void> {
+  const userId = order.user_id ? String(order.user_id) : null;
+  if (!userId) return;
+  try {
+    const { data: cartRow } = await client
+      .from("carts")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const cartId = cartRow?.id ? String(cartRow.id) : null;
+    if (!cartId) return;
+
+    await client.from("cart_items").delete().eq("cart_id", cartId);
+    await client
+      .from("carts")
+      .update({ updated_at: new Date().toISOString() })
+      .eq("id", cartId);
+  } catch {
+    // Cart clearing is best-effort; the client polling loop will reconcile.
+  }
+}
+
+export function assertGatewayAmountMatches(
+  order: AnyRecord,
+  charge: AnyRecord,
+): void {
   const expectedAmount = toGatewayAmount(order.grand_total);
   const actualAmount = Number(charge.amount);
   const expectedCurrency = normalizeCurrency(order.currency_code);
   const actualCurrency = normalizeCurrency(charge.currency);
   if (actualAmount !== expectedAmount || actualCurrency !== expectedCurrency) {
-    throw createError({ statusCode: 409, statusMessage: "PAYMENT_AMOUNT_MISMATCH" });
+    throw createError({
+      statusCode: 409,
+      statusMessage: "PAYMENT_AMOUNT_MISMATCH",
+    });
   }
 }
 
-export function shouldExpireAttempt(attempt: AnyRecord, now = new Date()): boolean {
+export function shouldExpireAttempt(
+  attempt: AnyRecord,
+  now = new Date(),
+): boolean {
   const status = String(attempt.status ?? "");
-  const expiresAt = asNonEmptyString(attempt.expires_at);
+  const expiresAt = asPaymentNonEmptyString(attempt.expires_at);
   return (
     attempt.method === "promptpay" &&
-    (status === "pending" || status === "requires_action" || status === "created") &&
+    (status === "pending" ||
+      status === "requires_action" ||
+      status === "created") &&
     !!expiresAt &&
     new Date(expiresAt).getTime() <= now.getTime()
   );
 }
 
-export function terminalPaymentStatus(status: unknown): status is PaymentAttemptStatus {
-  return status === "paid" || status === "failed" || status === "expired" || status === "cancelled" || status === "refunded";
+export function terminalPaymentStatus(
+  status: unknown,
+): status is PaymentAttemptStatus {
+  return (
+    status === "paid" ||
+    status === "failed" ||
+    status === "expired" ||
+    status === "cancelled" ||
+    status === "refunded"
+  );
 }

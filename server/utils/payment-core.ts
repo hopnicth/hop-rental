@@ -17,7 +17,7 @@ export function isRecord(value: unknown): value is AnyRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function asNonEmptyString(value: unknown): string | null {
+export function asPaymentNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : null;
@@ -28,7 +28,7 @@ export function asPaymentMethod(value: unknown): PaymentMethod | null {
 }
 
 export function normalizeCurrency(value: unknown): string {
-  const code = asNonEmptyString(value)?.toUpperCase() ?? "THB";
+  const code = asPaymentNonEmptyString(value)?.toUpperCase() ?? "THB";
   return code.length === 3 ? code : "THB";
 }
 
@@ -52,14 +52,14 @@ export function extractOmiseCharge(payload: unknown): AnyRecord | null {
 
 export function mapOmiseChargeStatus(charge: unknown): PaymentAttemptStatus {
   if (!isRecord(charge)) return "pending";
-  const status = asNonEmptyString(charge.status)?.toLowerCase() ?? "";
+  const status = asPaymentNonEmptyString(charge.status)?.toLowerCase() ?? "";
   if (charge.refunded === true || status === "refunded") return "refunded";
   if (charge.successful === true || status === "successful") return "paid";
   if (status === "expired") return "expired";
   if (status === "failed" || charge.failure_code || charge.failure_message) {
     return "failed";
   }
-  if (asNonEmptyString(charge.authorize_uri)) return "requires_action";
+  if (asPaymentNonEmptyString(charge.authorize_uri)) return "requires_action";
   return "pending";
 }
 
@@ -67,7 +67,7 @@ export function extractPromptPayQrUrl(charge: unknown): string | null {
   if (!isRecord(charge) || !isRecord(charge.source)) return null;
   const code = charge.source.scannable_code;
   if (!isRecord(code) || !isRecord(code.image)) return null;
-  return asNonEmptyString(code.image.download_uri);
+  return asPaymentNonEmptyString(code.image.download_uri);
 }
 
 export function verifyOmiseWebhookSignature(input: {
@@ -78,9 +78,10 @@ export function verifyOmiseWebhookSignature(input: {
   nowMs?: number;
   toleranceSeconds?: number;
 }): boolean {
-  const signatureHeader = asNonEmptyString(input.signatureHeader);
-  const timestampHeader = asNonEmptyString(input.timestampHeader);
-  if (!signatureHeader || !timestampHeader || !input.webhookSecret) return false;
+  const signatureHeader = asPaymentNonEmptyString(input.signatureHeader);
+  const timestampHeader = asPaymentNonEmptyString(input.timestampHeader);
+  if (!signatureHeader || !timestampHeader || !input.webhookSecret)
+    return false;
 
   const timestampMs = Number(timestampHeader) * 1000;
   const toleranceMs = (input.toleranceSeconds ?? 300) * 1000;
@@ -101,6 +102,8 @@ export function verifyOmiseWebhookSignature(input: {
     const trimmed = signature.trim();
     if (!/^[a-f0-9]{64}$/i.test(trimmed)) return false;
     const actual = Buffer.from(trimmed, "hex");
-    return actual.length === expected.length && timingSafeEqual(actual, expected);
+    return (
+      actual.length === expected.length && timingSafeEqual(actual, expected)
+    );
   });
 }

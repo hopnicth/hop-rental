@@ -559,14 +559,17 @@ export function useCart() {
     if (currentUserId.value !== userId) return;
 
     // 3. Reconcile local vs DB
+    //
+    // The DB is the canonical source whenever its updated_at is at least as
+    // recent as the local snapshot — including the case where the DB was just
+    // emptied server-side (e.g. on a paid order). Trusting timestamp alone
+    // (instead of "DB has items") prevents stale localStorage from re-uploading
+    // cleared items back into the DB on the next page load.
     if (dbData) {
+      const dbTime = new Date(dbData.updatedAt).getTime();
+      const localTime = new Date(localCart.updatedAt).getTime();
       const hasLocalItems = localCart.items.length > 0;
-      const hasDbItems = dbData.items.length > 0;
-      const shouldUseDb =
-        !hasLocalItems ||
-        (hasDbItems &&
-          new Date(dbData.updatedAt).getTime() >=
-            new Date(localCart.updatedAt).getTime());
+      const shouldUseDb = !hasLocalItems || dbTime >= localTime;
 
       if (shouldUseDb) {
         cart.value.items = dbData.items;

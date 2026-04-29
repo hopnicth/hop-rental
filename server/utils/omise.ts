@@ -1,6 +1,6 @@
 import { createError, type H3Event } from "h3";
 import {
-  asNonEmptyString,
+  asPaymentNonEmptyString,
   extractPromptPayQrUrl,
   mapOmiseChargeStatus,
   toGatewayAmount,
@@ -33,8 +33,8 @@ export interface NormalizedGatewayCharge {
 function getOmiseSecretKey(event: H3Event): string {
   const config = useRuntimeConfig(event);
   const secretKey =
-    asNonEmptyString(config.omiseSecretKey) ??
-    asNonEmptyString(process.env.OMISE_SECRET_KEY);
+    asPaymentNonEmptyString(config.omiseSecretKey) ??
+    asPaymentNonEmptyString(process.env.OMISE_SECRET_KEY);
   if (!secretKey) {
     throw createError({
       statusCode: 500,
@@ -62,7 +62,9 @@ async function omiseRequest<T>(
     method: init?.method ?? "GET",
     headers: {
       Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString("base64")}`,
-      ...(init?.body ? { "Content-Type": "application/x-www-form-urlencoded" } : {}),
+      ...(init?.body
+        ? { "Content-Type": "application/x-www-form-urlencoded" }
+        : {}),
     },
     body: init?.body,
   });
@@ -74,7 +76,8 @@ async function omiseRequest<T>(
     throw createError({
       statusCode: 502,
       statusMessage:
-        asNonEmptyString(payload.message) ?? "Payment gateway request failed",
+        asPaymentNonEmptyString(payload.message) ??
+        "Payment gateway request failed",
       data: payload,
     });
   }
@@ -89,14 +92,14 @@ export function normalizeOmiseCharge(
       ? (charge.source as Record<string, unknown>)
       : null;
   return {
-    gatewayChargeId: asNonEmptyString(charge.id),
-    gatewaySourceId: asNonEmptyString(source?.id),
+    gatewayChargeId: asPaymentNonEmptyString(charge.id),
+    gatewaySourceId: asPaymentNonEmptyString(source?.id),
     status: mapOmiseChargeStatus(charge),
-    authorizeUri: asNonEmptyString(charge.authorize_uri),
+    authorizeUri: asPaymentNonEmptyString(charge.authorize_uri),
     qrImageUrl: extractPromptPayQrUrl(charge),
-    expiresAt: asNonEmptyString(charge.expires_at),
-    failureCode: asNonEmptyString(charge.failure_code),
-    failureMessage: asNonEmptyString(charge.failure_message),
+    expiresAt: asPaymentNonEmptyString(charge.expires_at),
+    failureCode: asPaymentNonEmptyString(charge.failure_code),
+    failureMessage: asPaymentNonEmptyString(charge.failure_message),
     raw: charge,
   };
 }
@@ -134,19 +137,27 @@ export async function createOmisePromptPayCharge(
     amount: number;
     currency: string;
     returnUri: string;
+    expiresAt?: string | null;
   },
 ): Promise<NormalizedGatewayCharge> {
-  const source = await omiseRequest<Record<string, unknown>>(event, "/sources", {
-    method: "POST",
-    body: formBody({
-      type: "promptpay",
-      amount: toGatewayAmount(input.amount),
-      currency: input.currency.toLowerCase(),
-    }),
-  });
-  const sourceId = asNonEmptyString(source.id);
+  const source = await omiseRequest<Record<string, unknown>>(
+    event,
+    "/sources",
+    {
+      method: "POST",
+      body: formBody({
+        type: "promptpay",
+        amount: toGatewayAmount(input.amount),
+        currency: input.currency.toLowerCase(),
+      }),
+    },
+  );
+  const sourceId = asPaymentNonEmptyString(source.id);
   if (!sourceId) {
-    throw createError({ statusCode: 502, statusMessage: "PromptPay source missing id" });
+    throw createError({
+      statusCode: 502,
+      statusMessage: "PromptPay source missing id",
+    });
   }
   const charge = await omiseRequest<OmiseChargeResponse>(event, "/charges", {
     method: "POST",
@@ -155,6 +166,7 @@ export async function createOmisePromptPayCharge(
       currency: input.currency.toLowerCase(),
       source: sourceId,
       return_uri: input.returnUri,
+      expires_at: input.expiresAt ?? undefined,
       "metadata[order_id]": input.orderId,
       "metadata[payment_attempt_id]": input.paymentAttemptId,
     }),
@@ -169,6 +181,18 @@ export async function retrieveOmiseCharge(
   const charge = await omiseRequest<OmiseChargeResponse>(
     event,
     `/charges/${encodeURIComponent(gatewayChargeId)}`,
+  );
+  return normalizeOmiseCharge(charge);
+}
+
+export async function expireOmiseCharge(
+  event: H3Event,
+  gatewayChargeId: string,
+): Promise<NormalizedGatewayCharge> {
+  const charge = await omiseRequest<OmiseChargeResponse>(
+    event,
+    `/charges/${encodeURIComponent(gatewayChargeId)}/expire`,
+    { method: "POST" },
   );
   return normalizeOmiseCharge(charge);
 }

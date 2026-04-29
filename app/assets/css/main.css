@@ -38,3 +38,79 @@
   --ui-border-accented: var(--ui-color-neutral-300);
   --ui-border-inverted: var(--ui-color-neutral-900);
 }
+
+/* Payment processing overlay + animated loader.
+   Shared by /payment/[orderId] (submit-in-flight) and /payment/result
+   (initial status fetch). Backdrop is white per product spec; loader strokes
+   use the theme primary. */
+.payment-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(2px);
+}
+.payment-overlay__label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #1f2937;
+}
+.payment-fade-enter-active,
+.payment-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.payment-fade-enter-from,
+.payment-fade-leave-to {
+  opacity: 0;
+}
+.payment-loader {
+  width: 65px;
+  aspect-ratio: 1;
+  position: relative;
+}
+.payment-loader::before,
+.payment-loader::after {
+  content: "";
+  position: absolute;
+  border-radius: 50px;
+  box-shadow: 0 0 0 3px inset var(--ui-primary, #f1b323);
+  animation: payment-loader 2.5s infinite;
+}
+.payment-loader::after {
+  animation-delay: -1.25s;
+  border-radius: 0;
+}
+@keyframes payment-loader {
+  0% {
+    inset: 0 35px 35px 0;
+  }
+  12.5% {
+    inset: 0 35px 0 0;
+  }
+  25% {
+    inset: 35px 35px 0 0;
+  }
+  37.5% {
+    inset: 35px 0 0 0;
+  }
+  50% {
+    inset: 35px 0 0 35px;
+  }
+  62.5% {
+    inset: 0 0 0 35px;
+  }
+  75% {
+    inset: 0 0 35px 35px;
+  }
+  87.5% {
+    inset: 0 0 35px 0;
+  }
+  100% {
+    inset: 0 35px 35px 0;
+  }
+}

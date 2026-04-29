@@ -463,6 +463,17 @@
     "validationFailedDesc": "No payable items were found. Please review your cart and try again.",
     "stockLimitTitle": "Stock limit reached",
     "stockLimitDesc": "You cannot increase quantity beyond the available stock.",
+    "noSaleItemsTitle": "No sale items to submit",
+    "noSaleItemsDesc": "Add at least one purchase item to the cart before placing an online order.",
+    "pickupBranchRequiredTitle": "Pickup branch required",
+    "pickupBranchRequiredDesc": "Please choose a branch to pick up the order.",
+    "deliveryAddressRequiredTitle": "Delivery address required",
+    "deliveryAddressRequiredDesc": "Please select a delivery address before submitting the order.",
+    "companyCreditUnavailableTitle": "Company credit is not available",
+    "companyCreditUnavailableDesc": "Please verify company KYC and make sure enough credit remains before submitting.",
+    "minimumChargeTitle": "Order total too low",
+    "minimumChargeDesc": "Online payment requires a minimum order of {min} THB. Please add more items to continue.",
+    "minimumChargeNotice": "Online payment requires a minimum of {min} THB. Add more items to enable Credit Card / PromptPay.",
     "proceedToPayment": "Proceed to Payment",
     "continueShopping": "Continue Shopping",
     "orderSummary": "Order Summary",
@@ -578,34 +589,6 @@
       "draft": "Draft",
       "confirmed": "Confirmed",
       "cancelled": "Cancelled"
-    }
-  },
-  "cookieConsent": {
-    "title": "We use cookies on this website",
-    "description": "We use strictly necessary cookies to make the site work, and other cookies to analyse usage and improve your experience. You can accept all, reject non-essential cookies, or manage your consent. You can change your choice at any time.",
-    "acceptAll": "Accept all",
-    "rejectNonEssential": "Reject non-essential",
-    "customize": "Customize",
-    "savePreferences": "Save preferences",
-    "preferencesTitle": "Cookie preferences",
-    "preferencesDescription": "Choose which categories of cookies you allow us to use. Strictly necessary cookies cannot be turned off because they are required to deliver the service.",
-    "categories": {
-      "necessary": {
-        "label": "Strictly necessary (always on)",
-        "description": "Required for sign-in, cart, security, and core site functionality. Cannot be disabled."
-      },
-      "analytics": {
-        "label": "Analytics",
-        "description": "Help us understand how the site is used so we can improve the experience."
-      },
-      "preferences": {
-        "label": "Preferences",
-        "description": "Remember non-essential personal settings such as language or display options for next time."
-      },
-      "marketing": {
-        "label": "Marketing",
-        "description": "Used to deliver content and ads relevant to your interests and to measure campaign performance."
-      }
     }
   }
 }

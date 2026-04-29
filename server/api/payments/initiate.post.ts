@@ -4,8 +4,8 @@ import {
   serverSupabaseUser,
 } from "#supabase/server";
 import {
-  asNonEmptyString,
   asPaymentMethod,
+  asPaymentNonEmptyString,
 } from "~~/server/utils/payment-core";
 import {
   applyGatewayResult,
@@ -31,9 +31,9 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = (await readBody(event)) as Record<string, unknown>;
-  const orderId = asNonEmptyString(body.orderId);
+  const orderId = asPaymentNonEmptyString(body.orderId);
   const method = asPaymentMethod(body.method);
-  const idempotencyKey = asNonEmptyString(body.idempotencyKey);
+  const idempotencyKey = asPaymentNonEmptyString(body.idempotencyKey);
   if (!orderId || !method || !idempotencyKey) {
     throw createError({
       statusCode: 400,
@@ -73,11 +73,23 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Order is not an online payment order",
     });
   }
-  const cardToken = asNonEmptyString(body.cardToken);
+  const cardToken = asPaymentNonEmptyString(body.cardToken);
   if (method === "credit_card" && !cardToken) {
     throw createError({
       statusCode: 400,
       statusMessage: "cardToken is required",
+    });
+  }
+  // Omise enforces a per-currency minimum charge amount. For THB it is 20.00.
+  // Reject early so the user gets a clear, localizable error instead of a
+  // 502 from the gateway.
+  const orderCurrency = String(order.currency_code ?? "THB").toUpperCase();
+  const orderAmount = Number(order.grand_total);
+  if (orderCurrency === "THB" && orderAmount < 20) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "AMOUNT_BELOW_MINIMUM",
+      message: "Minimum charge amount is 20 THB.",
     });
   }
   assertOrderPayable(order as Record<string, unknown>);
@@ -99,9 +111,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 409, statusMessage: "ORDER_ALREADY_PAID" });
   }
 
+  // PromptPay QR validity window. Kept short (3 minutes) so the user is
+  // nudged to retry with a fresh charge instead of staring at a stale QR.
   const expiresAt =
     method === "promptpay"
-      ? new Date(Date.now() + 15 * 60 * 1000).toISOString()
+      ? new Date(Date.now() + 3 * 60 * 1000).toISOString()
       : null;
   const { data: attempt, error: attemptError } = await adminClient
     .from("payment_attempts")
@@ -142,13 +156,16 @@ export default defineEventHandler(async (event) => {
             amount: Number(order.grand_total),
             currency: String(order.currency_code ?? "THB"),
             returnUri,
+            expiresAt,
           });
     const updated = await applyGatewayResult(adminClient, {
       order: order as Record<string, unknown>,
       attempt: attempt as Record<string, unknown>,
       result: {
         ...gatewayResult,
-        expiresAt: gatewayResult.expiresAt ?? expiresAt,
+        // Prefer the locally enforced PromptPay deadline so the UI countdown
+        // and server-side expiry both honour the 3-minute window.
+        expiresAt: expiresAt ?? gatewayResult.expiresAt,
       },
     });
     await adminClient
