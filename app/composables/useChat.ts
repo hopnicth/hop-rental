@@ -436,7 +436,12 @@ export function useChat() {
           userId &&
           String(newRow.sender_id ?? "") !== userId
         ) {
-          bumpUnreadFor(targetConversationId);
+          if (conversationId && conversationId === targetConversationId) {
+            // Panel is open and viewing this conversation — clear badge instead.
+            void markRead(targetConversationId).catch(() => {});
+          } else {
+            bumpUnreadFor(targetConversationId);
+          }
         }
         scheduleRefresh(conversationId ?? null);
       },

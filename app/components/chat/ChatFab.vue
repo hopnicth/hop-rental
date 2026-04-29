@@ -3,6 +3,11 @@ const CHAT_MAX_CHARS = 4000;
 
 const { t, locale } = useI18n();
 const user = useSupabaseUser();
+const cookieConsent = useCookieConsent();
+const isFabVisible = computed(
+  () =>
+    cookieConsent.hasResponded.value && !cookieConsent.isPreferencesOpen.value,
+);
 const currentUserId = computed(
   () =>
     ((user.value as any)?.id as string | undefined) ??
@@ -149,7 +154,7 @@ async function ensureSupportConversation() {
       chat.messages.value.length > 0;
     chat.activeConversation.value = conversation;
     await chat.loadMessages(conversation.id, { silent: isReopeningCached });
-    if (!isReopeningCached) await chat.markRead(conversation.id);
+    await chat.markRead(conversation.id);
     chat.subscribe(conversation.id);
     scrollToBottom();
     return conversation;
@@ -160,6 +165,11 @@ async function ensureSupportConversation() {
 
 async function openChat() {
   isOpen.value = true;
+  // Position scroll at bottom before the panel paints its first frame —
+  // chat.messages.value is already populated from shared useState on reopen,
+  // so without this the browser paints at scrollTop=0 and the later async
+  // scrollToBottom in ensureSupportConversation looks like a visible jump.
+  scrollToBottom();
   if (!user.value) return;
   try {
     await ensureSupportConversation();
@@ -315,7 +325,8 @@ watch(
 <template>
   <Teleport to="body">
     <div
-      class="fixed bottom-4 left-4 z-999 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-3 sm:bottom-5 sm:left-5"
+      v-if="isFabVisible"
+      class="fixed bottom-4 left-4 z-40 flex max-w-[calc(100vw-1rem)] flex-col items-start gap-3 sm:bottom-5 sm:left-5"
     >
       <Transition
         enter-active-class="transition duration-200 ease-out"
@@ -359,7 +370,8 @@ watch(
           <div v-else class="space-y-4">
             <div
               ref="listRef"
-              class="max-h-80 min-h-56 space-y-3 overflow-y-auto rounded-2xl bg-neutral-50 p-3"
+              class="flex max-h-80 min-h-56 flex-col overflow-y-auto rounded-2xl bg-neutral-50 p-3"
+              style="scroll-behavior: auto"
             >
               <div
                 v-if="bootstrapping || chat.loadingMessages.value"
@@ -371,113 +383,122 @@ watch(
                   />
                 </div>
               </div>
-              <div
-                v-if="
-                  chat.messages.value.length === 0 &&
-                  !bootstrapping &&
-                  !chat.loadingMessages.value
-                "
-                class="space-y-2 text-sm text-muted"
-              >
-                <p>{{ t("chatWidget.welcome") }}</p>
-                <p>{{ t("chatWidget.empty") }}</p>
-              </div>
-              <div
-                v-for="message in chat.messages.value"
-                :key="message.id"
-                class="flex"
-                :class="
-                  isCustomerMessage(message) ? 'justify-end' : 'justify-start'
-                "
-              >
+              <div class="mt-auto space-y-3">
                 <div
-                  class="flex max-w-[85%] flex-col gap-1"
+                  v-if="
+                    chat.messages.value.length === 0 &&
+                    !bootstrapping &&
+                    !chat.loadingMessages.value
+                  "
+                  class="space-y-2 text-sm text-muted"
+                >
+                  <p>{{ t("chatWidget.welcome") }}</p>
+                  <p>{{ t("chatWidget.empty") }}</p>
+                </div>
+                <div
+                  v-for="message in chat.messages.value"
+                  :key="message.id"
+                  class="flex"
                   :class="
-                    isCustomerMessage(message) ? 'items-end' : 'items-start'
+                    isCustomerMessage(message) ? 'justify-end' : 'justify-start'
                   "
                 >
-                  <p
-                    class="text-[10px] font-semibold uppercase tracking-wide"
-                    :class="
-                      isCustomerMessage(message) ? 'text-primary' : 'text-muted'
-                    "
-                  >
-                    {{ messageSenderLabel(message) }}
-                  </p>
                   <div
-                    class="rounded-2xl px-3 py-2 text-sm shadow-sm"
+                    class="flex max-w-[85%] flex-col gap-1"
                     :class="
-                      isCustomerMessage(message)
-                        ? 'bg-primary text-default ring-1 ring-primary/30'
-                        : 'border border-default bg-white text-default'
+                      isCustomerMessage(message) ? 'items-end' : 'items-start'
                     "
                   >
                     <p
-                      v-if="message.body || message.deletedAt"
-                      class="whitespace-pre-wrap wrap-anywhere"
+                      class="text-[10px] font-semibold uppercase tracking-wide"
+                      :class="
+                        isCustomerMessage(message)
+                          ? 'text-primary'
+                          : 'text-muted'
+                      "
                     >
-                      {{ message.deletedAt ? "Message deleted" : message.body }}
+                      {{ messageSenderLabel(message) }}
                     </p>
                     <div
-                      v-if="message.attachments.length"
-                      class="mt-2 space-y-2"
+                      class="rounded-2xl px-3 py-2 text-sm shadow-sm"
+                      :class="
+                        isCustomerMessage(message)
+                          ? 'bg-primary text-default ring-1 ring-primary/30'
+                          : 'border border-default bg-white text-default'
+                      "
                     >
-                      <div
-                        v-for="attachment in message.attachments"
-                        :key="attachment.id"
+                      <p
+                        v-if="message.body || message.deletedAt"
+                        class="whitespace-pre-wrap wrap-anywhere"
                       >
-                        <button
-                          v-if="attachment.kind === 'image'"
-                          type="button"
-                          class="group block size-28 overflow-hidden rounded-xl bg-white/70 ring-1 ring-black/10 transition hover:opacity-90"
-                          :title="attachmentDisplayName(attachment)"
-                          @click="openMessageAttachment(attachment.id)"
-                        >
-                          <img
-                            v-if="attachmentPreviewUrls[attachment.id]"
-                            :src="attachmentPreviewUrls[attachment.id]"
-                            :alt="attachmentDisplayName(attachment)"
-                            class="size-full object-cover"
-                            loading="lazy"
-                          />
-                          <span
-                            v-else
-                            class="flex size-full items-center justify-center text-muted"
-                          >
-                            <UIcon name="bx:image" class="size-6" />
-                          </span>
-                        </button>
+                        {{
+                          message.deletedAt ? "Message deleted" : message.body
+                        }}
+                      </p>
+                      <div
+                        v-if="message.attachments.length"
+                        class="mt-2 space-y-2"
+                      >
                         <div
-                          v-else
-                          class="flex items-center gap-2 rounded-xl bg-white/80 px-2 py-2 text-xs text-default ring-1 ring-black/5"
+                          v-for="attachment in message.attachments"
+                          :key="attachment.id"
                         >
-                          <UIcon
-                            name="bx:file"
-                            class="size-4 shrink-0 text-muted"
-                          />
-                          <span class="flex min-w-0 flex-1 items-baseline">
-                            <span class="min-w-0 truncate">
-                              {{ attachmentDisplayNameParts(attachment).name }}
-                            </span>
-                            <span class="shrink-0">
-                              {{
-                                attachmentDisplayNameParts(attachment).extension
-                              }}
-                            </span>
-                          </span>
                           <button
+                            v-if="attachment.kind === 'image'"
                             type="button"
-                            class="shrink-0 rounded-full bg-primary px-2 py-1 text-[10px] font-semibold text-default transition hover:opacity-90"
+                            class="group block size-28 overflow-hidden rounded-xl bg-white/70 ring-1 ring-black/10 transition hover:opacity-90"
+                            :title="attachmentDisplayName(attachment)"
                             @click="openMessageAttachment(attachment.id)"
                           >
-                            {{ t("chatWidget.downloadButton") }}
+                            <img
+                              v-if="attachmentPreviewUrls[attachment.id]"
+                              :src="attachmentPreviewUrls[attachment.id]"
+                              :alt="attachmentDisplayName(attachment)"
+                              class="size-full object-cover"
+                              loading="lazy"
+                            />
+                            <span
+                              v-else
+                              class="flex size-full items-center justify-center text-muted"
+                            >
+                              <UIcon name="bx:image" class="size-6" />
+                            </span>
                           </button>
+                          <div
+                            v-else
+                            class="flex items-center gap-2 rounded-xl bg-white/80 px-2 py-2 text-xs text-default ring-1 ring-black/5"
+                          >
+                            <UIcon
+                              name="bx:file"
+                              class="size-4 shrink-0 text-muted"
+                            />
+                            <span class="flex min-w-0 flex-1 items-baseline">
+                              <span class="min-w-0 truncate">
+                                {{
+                                  attachmentDisplayNameParts(attachment).name
+                                }}
+                              </span>
+                              <span class="shrink-0">
+                                {{
+                                  attachmentDisplayNameParts(attachment)
+                                    .extension
+                                }}
+                              </span>
+                            </span>
+                            <button
+                              type="button"
+                              class="shrink-0 rounded-full bg-primary px-2 py-1 text-[10px] font-semibold text-default transition hover:opacity-90"
+                              @click="openMessageAttachment(attachment.id)"
+                            >
+                              {{ t("chatWidget.downloadButton") }}
+                            </button>
+                          </div>
                         </div>
                       </div>
+                      <p class="mt-1 text-[10px] opacity-70">
+                        {{ formatTime(message.createdAt) }}
+                      </p>
                     </div>
-                    <p class="mt-1 text-[10px] opacity-70">
-                      {{ formatTime(message.createdAt) }}
-                    </p>
                   </div>
                 </div>
               </div>
