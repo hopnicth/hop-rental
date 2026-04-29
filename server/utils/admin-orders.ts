@@ -2,6 +2,7 @@ import { getQuery, type H3Event } from "h3";
 import type {
   AdminCustomerCard,
   AdminCustomerSummary,
+  AdminOrderQueueView,
   AdminOrderFilterParams,
   AdminRentalBookingRow,
   AdminSaleOrderRow,
@@ -63,6 +64,10 @@ export function parseAdminOrderFilters(event: H3Event): {
 
   const filters: AdminOrderFilterParams = {
     search: asString(q.search),
+    view:
+      asString(q.view) === "action_required"
+        ? "action_required"
+        : ("all" satisfies AdminOrderQueueView),
     type: (asString(q.type) as "all" | "sale" | "rental" | undefined) ?? "all",
     orderStatus: asArray(q.orderStatus),
     paymentStatus: asArray(q.paymentStatus),
@@ -300,6 +305,47 @@ export async function fetchAdminRentalBookings(
     return rows.filter((r) => r.storageBranchId === filters.branchId);
   }
   return rows;
+}
+
+export function isAdminSaleOrderActionRequired(
+  order: Pick<
+    AdminSaleOrderRow,
+    "status" | "paymentStatus" | "fulfillmentStatus"
+  >,
+): boolean {
+  return (
+    order.status !== "completed" &&
+    order.status !== "cancelled" &&
+    (order.paymentStatus === "paid" || order.paymentStatus === "deferred") &&
+    (order.fulfillmentStatus === "unfulfilled" ||
+      order.fulfillmentStatus === "preparing")
+  );
+}
+
+export function isAdminRentalBookingActionRequired(
+  booking: Pick<AdminRentalBookingRow, "status">,
+): boolean {
+  return booking.status === "confirmed";
+}
+
+export function countAdminActionRequiredItems(
+  saleOrders: AdminSaleOrderRow[],
+  rentalBookings: AdminRentalBookingRow[],
+): number {
+  return (
+    saleOrders.filter(isAdminSaleOrderActionRequired).length +
+    rentalBookings.filter(isAdminRentalBookingActionRequired).length
+  );
+}
+
+export function filterAdminActionRequiredRows(
+  saleOrders: AdminSaleOrderRow[],
+  rentalBookings: AdminRentalBookingRow[],
+) {
+  return {
+    saleOrders: saleOrders.filter(isAdminSaleOrderActionRequired),
+    rentalBookings: rentalBookings.filter(isAdminRentalBookingActionRequired),
+  };
 }
 
 export async function fetchAdminUserProfiles(

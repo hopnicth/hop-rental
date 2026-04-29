@@ -27,11 +27,7 @@
     "inStockOnly": "In stock only",
     "searching": "Searching...",
     "resultCount": "{n} result(s) found",
-    "browseCount": "Showing {n} item(s) to browse",
     "noResults": "No results match your search",
-    "browseTitle": "Browse everything",
-    "browseDescription": "Type a search term or choose filters to find products, rental equipment, services, reviews, articles, and promotions.",
-    "browseEmpty": "Type a search term or choose filters to get started.",
     "seeAllResults": "See all results for \"{q}\"",
     "rentalBadge": "Rental",
     "searchIn": "Search in",
@@ -206,11 +202,23 @@
   "chatWidget": {
     "fabLabel": "Chat with us",
     "panelTitle": "HOPNIC Chat",
-    "panelSubtitle": "Mockup UI for quick customer support",
-    "welcome": "Hi! This is a mock chat widget. You can use the quick actions below to preview the UI flow.",
-    "inputPlaceholder": "Type a message for UI preview...",
-    "mockReply": "Thanks! This is a mock response only. Real chat logic can be connected later.",
-    "disclaimer": "Mockup only — no real message is being sent yet.",
+    "panelSubtitle": "Customer support chat",
+    "welcome": "Hi! Send us a message and our team will reply here.",
+    "empty": "Start with a quick action or type your question below.",
+    "inputPlaceholder": "Type your message...",
+    "loading": "Loading chat...",
+    "sendError": "Could not send message",
+    "youLabel": "You",
+    "supportLabel": "HOPNIC",
+    "uploadError": "Could not upload file",
+    "openAttachmentError": "Could not open attachment",
+    "uploadButton": "Upload file",
+    "attachment": "Attachment",
+    "attachmentRules": "Allowed: JPG, PNG, WebP images up to 5 MB; PDF up to 10 MB",
+    "downloadButton": "Download",
+    "loginPrompt": "Please sign in before starting support chat.",
+    "loginButton": "Sign in to chat",
+    "disclaimer": "In-app support only. Attach long content as files when needed.",
     "actions": {
       "products": "Ask about products",
       "rental": "Ask about rentals",
@@ -570,6 +578,34 @@
       "draft": "Draft",
       "confirmed": "Confirmed",
       "cancelled": "Cancelled"
+    }
+  },
+  "cookieConsent": {
+    "title": "We use cookies on this website",
+    "description": "We use strictly necessary cookies to make the site work, and other cookies to analyse usage and improve your experience. You can accept all, reject non-essential cookies, or manage your consent. You can change your choice at any time.",
+    "acceptAll": "Accept all",
+    "rejectNonEssential": "Reject non-essential",
+    "customize": "Customize",
+    "savePreferences": "Save preferences",
+    "preferencesTitle": "Cookie preferences",
+    "preferencesDescription": "Choose which categories of cookies you allow us to use. Strictly necessary cookies cannot be turned off because they are required to deliver the service.",
+    "categories": {
+      "necessary": {
+        "label": "Strictly necessary (always on)",
+        "description": "Required for sign-in, cart, security, and core site functionality. Cannot be disabled."
+      },
+      "analytics": {
+        "label": "Analytics",
+        "description": "Help us understand how the site is used so we can improve the experience."
+      },
+      "preferences": {
+        "label": "Preferences",
+        "description": "Remember non-essential personal settings such as language or display options for next time."
+      },
+      "marketing": {
+        "label": "Marketing",
+        "description": "Used to deliver content and ads relevant to your interests and to measure campaign performance."
+      }
     }
   }
 }

@@ -28,6 +28,7 @@ const {
   filters,
   items,
   total,
+  actionRequiredCount,
   hasMore,
   loading,
   loadingMore,
@@ -105,6 +106,20 @@ const rentalStatusOptions: Array<{
   { value: "cancelled", label: "Cancelled" },
 ];
 
+const orderQueueTabs = [
+  { value: "all", label: "All" },
+  { value: "action_required", label: "ต้องจัดการ" },
+] as const;
+
+const actionRequiredBadgeLabel = computed(() =>
+  actionRequiredCount.value > 99 ? "99+" : String(actionRequiredCount.value),
+);
+
+function setOrderQueueView(view: "all" | "action_required") {
+  if (filters.view === view) return;
+  filters.view = view;
+}
+
 // ── Auto-refetch on filter change (debounced for search) ──
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 watch(
@@ -118,6 +133,7 @@ watch(
 watch(
   [
     () => filters.type,
+    () => filters.view,
     () => filters.orderStatus,
     () => filters.paymentStatus,
     () => filters.fulfillmentStatus,
@@ -198,6 +214,12 @@ function formatDate(value: string): string {
   });
 }
 
+function emptyStateMessage(): string {
+  return filters.view === "action_required"
+    ? "No orders currently need preparation."
+    : "No customers match the current filters.";
+}
+
 function orderStatusColor(status: OrderStatus): BadgeColor {
   if (status === "submitted") return "info";
   if (status === "confirmed") return "primary";
@@ -266,6 +288,27 @@ function isRentalBookingIncomplete(booking: {
           @click="resetFilters()"
         />
       </div>
+    </div>
+
+    <div class="flex flex-wrap gap-2">
+      <UButton
+        v-for="tab in orderQueueTabs"
+        :key="tab.value"
+        color="primary"
+        size="sm"
+        :variant="filters.view === tab.value ? 'solid' : 'soft'"
+        @click="setOrderQueueView(tab.value)"
+      >
+        <span class="inline-flex items-center gap-1.5">
+          <span>{{ tab.label }}</span>
+          <span
+            v-if="tab.value === 'action_required' && actionRequiredCount > 0"
+            class="inline-flex min-w-5 items-center justify-center rounded-full bg-error px-1.5 text-[10px] font-bold leading-5 text-white"
+          >
+            {{ actionRequiredBadgeLabel }}
+          </span>
+        </span>
+      </UButton>
     </div>
 
     <UCard>
@@ -362,7 +405,7 @@ function isRentalBookingIncomplete(booking: {
       v-else-if="items.length === 0"
       class="rounded-2xl border border-dashed border-default p-10 text-center text-sm text-muted"
     >
-      No customers match the current filters.
+      {{ emptyStateMessage() }}
     </div>
 
     <div v-else class="space-y-3">

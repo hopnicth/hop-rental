@@ -18,6 +18,7 @@ import type {
 import type { RentalBookingStatus } from "~/types/rental-booking";
 
 export type AdminOrderType = "sale" | "rental";
+export type AdminOrderQueueView = "all" | "action_required";
 
 export interface AdminCustomerSummary {
   userId: string;
@@ -77,6 +78,7 @@ export interface AdminCustomerCard {
 
 export interface AdminOrderFilterParams {
   search?: string;
+  view?: AdminOrderQueueView;
   type?: "all" | "sale" | "rental";
   orderStatus?: OrderStatus[];
   paymentStatus?: OrderPaymentStatus[];
@@ -90,6 +92,7 @@ export interface AdminOrderFilterParams {
 export interface AdminCustomerListResponse {
   items: AdminCustomerCard[];
   total: number;
+  actionRequiredCount: number;
   page: number;
   pageSize: number;
   hasMore: boolean;

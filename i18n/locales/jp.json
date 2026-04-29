@@ -206,11 +206,23 @@
   "chatWidget": {
     "fabLabel": "チャット相談",
     "panelTitle": "HOPNIC Chat",
-    "panelSubtitle": "カスタマーサポート用チャットUIモック",
-    "welcome": "こんにちは。これはチャットウィジェットのモックです。下のクイックアクションでUIフローを試せます。",
-    "inputPlaceholder": "UI確認用のメッセージを入力...",
-    "mockReply": "ありがとうございます。これはモック応答です。実際のチャット機能は後から接続できます。",
-    "disclaimer": "モックアップのみです — 実際のメッセージ送信はまだ行われません。",
+    "panelSubtitle": "カスタマーサポートチャット",
+    "welcome": "こんにちは。メッセージを送ると、スタッフがこちらで返信します。",
+    "empty": "クイック操作を選ぶか、下に質問を入力してください。",
+    "inputPlaceholder": "メッセージを入力...",
+    "loading": "チャットを読み込み中...",
+    "sendError": "メッセージを送信できませんでした",
+    "youLabel": "あなた",
+    "supportLabel": "HOPNIC",
+    "uploadError": "ファイルをアップロードできませんでした",
+    "openAttachmentError": "添付ファイルを開けませんでした",
+    "uploadButton": "ファイルをアップロード",
+    "attachment": "添付ファイル",
+    "attachmentRules": "アップロード: JPG、PNG、WebP は 5 MB まで、PDF は 10 MB まで。",
+    "downloadButton": "ダウンロード",
+    "loginPrompt": "サポートチャットを開始するにはログインしてください。",
+    "loginButton": "ログインしてチャット",
+    "disclaimer": "アプリ内サポートです。長い内容は添付ファイルをご利用ください。",
     "actions": {
       "products": "商品について相談",
       "rental": "レンタルについて相談",
@@ -565,6 +577,34 @@
       "draft": "下書き",
       "confirmed": "確定済み",
       "cancelled": "キャンセル済み"
+    }
+  },
+  "cookieConsent": {
+    "title": "当サイトでは Cookie を使用しています",
+    "description": "サイトの動作に必要な Cookie に加え、利用状況の分析や体験向上のための Cookie も使用します。すべて許可、必須以外を拒否、または個別に設定することができ、設定はいつでも変更可能です。",
+    "acceptAll": "すべて許可",
+    "rejectNonEssential": "必須以外を拒否",
+    "customize": "設定する",
+    "savePreferences": "設定を保存",
+    "preferencesTitle": "Cookie 設定",
+    "preferencesDescription": "ご利用を許可する Cookie の種類を選択してください。必須 Cookie はサービス提供に必要なため無効化できません。",
+    "categories": {
+      "necessary": {
+        "label": "必須 Cookie(常に有効)",
+        "description": "ログイン、カート、セキュリティ、サイトの基本機能に必要であり、無効化できません。"
+      },
+      "analytics": {
+        "label": "分析 Cookie",
+        "description": "サイトの利用状況を把握し、体験を改善するために使用します。"
+      },
+      "preferences": {
+        "label": "環境設定 Cookie",
+        "description": "言語や表示などの個別設定を記憶し、次回以降の利用を快適にします。"
+      },
+      "marketing": {
+        "label": "マーケティング Cookie",
+        "description": "ご興味に合ったコンテンツや広告の表示、キャンペーン効果の測定に使用します。"
+      }
     }
   }
 }

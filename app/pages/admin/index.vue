@@ -32,6 +32,12 @@ const sections = computed(() => {
         "Customer-grouped view of sale orders and rental bookings with QR scan, filters, and lazy load.",
       to: "/admin/orders",
     },
+    {
+      title: "Messages",
+      description:
+        "Support inbox for customer conversations, unread indicators, and admin replies.",
+      to: "/admin/messages",
+    },
   ];
 
   if (profile.value?.platformRole === "super_admin") {

@@ -17,6 +17,7 @@ const PAGE_SIZE = 20;
 function emptyFilters(): AdminOrderFilterParams {
   return {
     search: "",
+    view: "all",
     type: "all",
     orderStatus: [],
     paymentStatus: [],
@@ -39,6 +40,7 @@ function buildQuery(
   };
 
   if (filters.search) q.search = filters.search;
+  if (filters.view && filters.view !== "all") q.view = filters.view;
   if (filters.type && filters.type !== "all") q.type = filters.type;
   if (filters.orderStatus?.length)
     q.orderStatus = filters.orderStatus.join(",");
@@ -60,6 +62,10 @@ export function useAdminOrders() {
 
   const items = ref<AdminCustomerCard[]>([]);
   const total = ref(0);
+  const actionRequiredCount = useState<number>(
+    "admin-orders:action-required-count",
+    () => 0,
+  );
   const page = ref(0);
   const pageSize = ref(PAGE_SIZE);
   const hasMore = ref(false);
@@ -93,6 +99,7 @@ export function useAdminOrders() {
         items.value = data.items;
       }
       total.value = data.total;
+      actionRequiredCount.value = data.actionRequiredCount;
       page.value = data.page;
       pageSize.value = data.pageSize;
       hasMore.value = data.hasMore;
@@ -117,6 +124,14 @@ export function useAdminOrders() {
     await fetchPage(page.value + 1, true);
   }
 
+  async function refreshActionRequiredCount(): Promise<void> {
+    const data = await $fetch<AdminCustomerListResponse>(
+      "/api/admin/orders/customers",
+      { query: { page: "0", pageSize: "1" } },
+    );
+    actionRequiredCount.value = data.actionRequiredCount;
+  }
+
   function applyFilters(patch: Partial<AdminOrderFilterParams>): void {
     Object.assign(filters, patch);
   }
@@ -129,6 +144,7 @@ export function useAdminOrders() {
     filters,
     items,
     total,
+    actionRequiredCount,
     page,
     pageSize,
     hasMore,
@@ -137,6 +153,7 @@ export function useAdminOrders() {
     error,
     refresh,
     loadMore,
+    refreshActionRequiredCount,
     applyFilters,
     resetFilters,
   };

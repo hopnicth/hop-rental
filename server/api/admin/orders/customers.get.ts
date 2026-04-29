@@ -5,6 +5,8 @@ import {
   fetchAdminRentalBookings,
   fetchAdminSaleOrders,
   fetchAdminUserProfiles,
+  countAdminActionRequiredItems,
+  filterAdminActionRequiredRows,
   groupCustomerCards,
   parseAdminOrderFilters,
   resolveSearchUserIds,
@@ -33,10 +35,19 @@ export default defineEventHandler(
           : Promise.resolve([]),
       ]);
 
+      const actionRequiredCount = countAdminActionRequiredItems(
+        saleOrders,
+        rentalBookings,
+      );
+      const displayRows =
+        filters.view === "action_required"
+          ? filterAdminActionRequiredRows(saleOrders, rentalBookings)
+          : { saleOrders, rentalBookings };
+
       const userIds = Array.from(
         new Set([
-          ...saleOrders.map((o) => o.userId),
-          ...rentalBookings.map((b) => b.userId),
+          ...displayRows.saleOrders.map((o) => o.userId),
+          ...displayRows.rentalBookings.map((b) => b.userId),
         ]),
       );
 
@@ -46,8 +57,8 @@ export default defineEventHandler(
       ]);
 
       const allCards = groupCustomerCards(
-        saleOrders,
-        rentalBookings,
+        displayRows.saleOrders,
+        displayRows.rentalBookings,
         profiles,
         emails,
       );
@@ -60,6 +71,7 @@ export default defineEventHandler(
       return {
         items,
         total,
+        actionRequiredCount,
         page,
         pageSize,
         hasMore: end < total,

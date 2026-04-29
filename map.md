@@ -1,6 +1,6 @@
 # HOP-RENTAL Doc Map
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 Purpose: lightweight entrypoint for Augment and developers. Read this first before opening other docs.
 
 ## Read order
@@ -85,6 +85,8 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Content listing pages (`/services`, `/reviews`, `/blog`, `/promotions`) use `content_pages.main_category_key` and persist filters in `?category=...`. Migration `047` is applied; existing content still needs category assignment in `/admin/content`.
 - Future global search should support products, rental assets, services, blogs, reviews, and promotions. Migration `045` for DB-level product dynamic filters is prepared but still pending remote apply.
 - Admin order QR payloads: `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
+- Cookie consent is captured by `<CookieConsentBanner />` mounted in both `default` and `admin` layouts. Consent state lives in the `hop-rental-cookie-consent` cookie (180-day TTL, versioned). Categories: `necessary` (always on), `analytics`, `preferences`, `marketing`. Non-essential default off — never load analytics/marketing scripts before checking `useCookieConsent().isAllowed(...)`.
+- Floating UI z-index ladder: ChatFab / MobileFloatingPanel `z-40` → generic Nuxt UI modals `z-50` → cookie consent banner `z-60` → cookie preferences modal `z-70`. Keep ChatFab below modal overlays; do not raise it back to `z-999`.
 
 ## Key app surfaces
 

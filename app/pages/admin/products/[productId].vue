@@ -1482,7 +1482,7 @@ async function deleteActiveSkuImage(imageId: string) {
                 <UInput
                   v-model="skuForm.labelTh"
                   :class="ADMIN_CONTROL_CLASS"
-                />
+                />สกุลก็ได้ถ้ายาว
               </UFormField>
 
               <UFormField

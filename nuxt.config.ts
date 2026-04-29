@@ -19,6 +19,17 @@ export default defineNuxtConfig({
 
   css: ["~/assets/css/main.css"],
 
+  runtimeConfig: {
+    omiseSecretKey: process.env.OMISE_SECRET_KEY ?? "",
+    omiseWebhookSecret: process.env.OMISE_WEBHOOK_SECRET ?? "",
+    public: {
+      omisePublicKey:
+        process.env.NUXT_PUBLIC_OMISE_PUBLIC_KEY ??
+        process.env.OMISE_PUBLIC_KEY ??
+        "",
+    },
+  },
+
   modules: [
     "@nuxt/a11y",
     "@nuxt/eslint",

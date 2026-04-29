@@ -28,10 +28,14 @@ Minimum variables:
 - `SUPABASE_URL`
 - `SUPABASE_KEY`
 - `SUPABASE_SECRET_KEY`
+- `NUXT_PUBLIC_OMISE_PUBLIC_KEY`
+- `OMISE_SECRET_KEY`
+- `OMISE_WEBHOOK_SECRET`
 
 Important notes:
 
 - `SUPABASE_SECRET_KEY` must remain server-only.
+- `OMISE_SECRET_KEY` and `OMISE_WEBHOOK_SECRET` must remain server-only.
 - Most `/api/admin/*` write routes require that server key.
 - Restart the dev server after env changes.
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import HopHeader from "~/components/HopHeader.vue";
+import CookieConsentBanner from "~/components/cookie/CookieConsentBanner.vue";
 import { formatPlatformRole } from "~/utils/role-display";
 
 const route = useRoute();
@@ -12,6 +13,7 @@ const navItems = computed(() => {
     { label: "Assets", to: "/admin/assets" },
     { label: "Branch & Inventory", to: "/admin/branches-inventory" },
     { label: "Orders", to: "/admin/orders" },
+    { label: "Messages", to: "/admin/messages" },
   ];
 
   if (profile.value?.platformRole === "super_admin") {
@@ -74,4 +76,5 @@ const navItems = computed(() => {
       <slot />
     </UContainer>
   </UMain>
+  <CookieConsentBanner />
 </template>
