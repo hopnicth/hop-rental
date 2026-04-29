@@ -8,18 +8,6 @@ const { isLoggedIn, displayName, avatarUrl, userEmail, logout } =
 const { profile } = useUserProfile();
 const { activeContext, currentCompany, memberships } = useCompanyContext();
 
-const currentRoleLabel = computed(() => {
-  if (activeContext.value.role) {
-    return formatCompanyRole(activeContext.value.role);
-  }
-
-  if (memberships.value.length > 0) {
-    return formatCompanyRole(memberships.value[0]!.member.role);
-  }
-
-  return formatPlatformRole(profile.value?.platformRole);
-});
-
 const currentRoleIcon = computed(() => {
   if (activeContext.value.role === "b2b_admin") return "bx:shield";
   if (activeContext.value.role === "b2b_user") return "bx:briefcase";
@@ -138,9 +126,6 @@ const guestItems = computed<DropdownMenuItem[][]>(() => [
         size="2xs"
       />
       <UIcon v-else name="bx:user" class="size-5" />
-      <span v-if="isLoggedIn" class="hidden text-sm font-medium lg:inline">
-        {{ currentRoleLabel }}
-      </span>
     </UButton>
   </UDropdownMenu>
 </template>

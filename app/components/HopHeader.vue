@@ -83,7 +83,7 @@ const navItems = computed<NavigationMenuItem[]>(() => [
           icon="bx:search"
           color="neutral"
           variant="soft"
-          class="lg:hidden"
+          class="xl:hidden"
         />
 
         <template #body>

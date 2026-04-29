@@ -6,7 +6,11 @@
  * current tab via Nuxt router.
  */
 import type { LocaleCode } from "~/types/locale";
-import type { AutocompleteSuggestion } from "~/composables/useProductSearch";
+import type {
+  GlobalSearchResultScope,
+  GlobalSearchScope,
+  GlobalSearchSuggestion,
+} from "~/composables/useGlobalSearch";
 
 withDefaults(
   defineProps<{
@@ -18,18 +22,94 @@ withDefaults(
 );
 
 const { t, locale } = useI18n();
-const { autocomplete } = useProductSearch();
+const { searchGlobalSuggestions } = useGlobalSearch();
 
 const lang = computed(() => locale.value as LocaleCode);
 
+const scopes: GlobalSearchScope[] = [
+  "all",
+  "product",
+  "rental",
+  "service",
+  "review",
+  "blog",
+  "promotion",
+];
+
 const query = ref("");
-const suggestions = ref<AutocompleteSuggestion[]>([]);
+const suggestions = ref<GlobalSearchSuggestion[]>([]);
+const activeScope = ref<GlobalSearchScope>("all");
 const loading = ref(false);
 const open = ref(false);
 const highlighted = ref(-1);
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let latestRequestId = 0;
+
+function isResultScope(
+  scope: GlobalSearchScope,
+): scope is GlobalSearchResultScope {
+  return scope !== "all";
+}
+
+const visibleSuggestions = computed(() => {
+  const scope = activeScope.value;
+  const filtered =
+    scope === "all"
+      ? suggestions.value
+      : suggestions.value.filter(
+          (suggestion) =>
+            isResultScope(scope) && suggestion.scopes.includes(scope),
+        );
+
+  return filtered.slice(0, scope === "all" ? 10 : 6);
+});
+
+function scopeCount(scope: GlobalSearchScope) {
+  if (scope === "all") return suggestions.value.length;
+  return suggestions.value.filter((suggestion) =>
+    suggestion.scopes.includes(scope),
+  ).length;
+}
+
+function scopeLabelKey(scope: GlobalSearchScope) {
+  return `search.scope.${scope}`;
+}
+
+function scopeIcon(scope: GlobalSearchResultScope) {
+  const icons: Record<GlobalSearchResultScope, string> = {
+    product: "bx:package",
+    rental: "bx:calendar-check",
+    service: "bx:briefcase-alt-2",
+    review: "bx:star",
+    blog: "bx:news",
+    promotion: "bx:purchase-tag",
+  };
+  return icons[scope];
+}
+
+function scopeColor(scope: GlobalSearchResultScope) {
+  const colors = {
+    product: "primary",
+    rental: "info",
+    service: "success",
+    review: "warning",
+    blog: "neutral",
+    promotion: "error",
+  } as const satisfies Record<GlobalSearchResultScope, string>;
+  return colors[scope];
+}
+
+function suggestionScope(suggestion: GlobalSearchSuggestion) {
+  if (
+    activeScope.value !== "all" &&
+    isResultScope(activeScope.value) &&
+    suggestion.scopes.includes(activeScope.value)
+  ) {
+    return activeScope.value;
+  }
+  return suggestion.scope;
+}
 
 function scheduleSuggest() {
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -45,7 +125,7 @@ function scheduleSuggest() {
   debounceTimer = setTimeout(async () => {
     const requestId = ++latestRequestId;
     loading.value = true;
-    const results = await autocomplete(value, 8);
+    const results = await searchGlobalSuggestions(value);
     if (requestId !== latestRequestId) return;
     suggestions.value = results;
     highlighted.value = -1;
@@ -59,11 +139,6 @@ function searchUrl(q: string) {
   return `/search?${params.toString()}`;
 }
 
-function productUrl(s: AutocompleteSuggestion) {
-  const group = s.categoryKeys[0] ?? "all";
-  return `/product-${group}/${s.slug}`;
-}
-
 function submitQuery() {
   const value = query.value.trim();
   if (value.length === 0) return;
@@ -71,28 +146,40 @@ function submitQuery() {
   void navigateTo(searchUrl(value));
 }
 
-function chooseSuggestion(s: AutocompleteSuggestion) {
+function suggestionUrl(suggestion: GlobalSearchSuggestion) {
+  if (activeScope.value === "rental" && suggestion.rentalUrl) {
+    return suggestion.rentalUrl;
+  }
+  return suggestion.url;
+}
+
+function chooseSuggestion(s: GlobalSearchSuggestion) {
   open.value = false;
-  void navigateTo(productUrl(s));
+  void navigateTo(suggestionUrl(s));
+}
+
+function setScope(scope: GlobalSearchScope) {
+  activeScope.value = scope;
+  highlighted.value = -1;
+  open.value = true;
 }
 
 function onKeydown(event: KeyboardEvent) {
+  const items = visibleSuggestions.value;
   if (event.key === "ArrowDown") {
-    if (suggestions.value.length === 0) return;
+    if (items.length === 0) return;
     event.preventDefault();
-    highlighted.value = (highlighted.value + 1) % suggestions.value.length;
+    highlighted.value = (highlighted.value + 1) % items.length;
     open.value = true;
   } else if (event.key === "ArrowUp") {
-    if (suggestions.value.length === 0) return;
+    if (items.length === 0) return;
     event.preventDefault();
     highlighted.value =
-      highlighted.value <= 0
-        ? suggestions.value.length - 1
-        : highlighted.value - 1;
+      highlighted.value <= 0 ? items.length - 1 : highlighted.value - 1;
     open.value = true;
   } else if (event.key === "Enter") {
     event.preventDefault();
-    const chosen = suggestions.value[highlighted.value];
+    const chosen = items[highlighted.value];
     if (chosen) {
       chooseSuggestion(chosen);
     } else {
@@ -111,7 +198,7 @@ function onBlur() {
 }
 
 function onFocus() {
-  if (suggestions.value.length > 0) open.value = true;
+  if (query.value.trim().length > 0) open.value = true;
 }
 </script>
 
@@ -134,13 +221,41 @@ function onFocus() {
     />
 
     <div
-      v-if="open && (suggestions.length > 0 || loading)"
-      class="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-md border border-default bg-default shadow-lg"
+      v-if="open && query.trim()"
+      class="absolute left-0 top-full z-50 mt-1 w-[min(92vw,34rem)] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-default bg-default shadow-lg"
     >
-      <ul class="max-h-80 overflow-y-auto py-1">
+      <div class="border-b border-default px-3 py-2">
+        <p class="mb-1 text-[11px] font-medium text-muted">
+          {{ t("search.searchIn") }}
+        </p>
+        <div class="flex gap-1 overflow-x-auto pb-0.5">
+          <button
+            v-for="scope in scopes"
+            :key="scope"
+            type="button"
+            class="shrink-0 rounded-full px-2.5 py-1 text-xs transition"
+            :class="
+              activeScope === scope
+                ? 'bg-primary text-inverted'
+                : 'bg-elevated text-muted hover:text-highlighted'
+            "
+            @mousedown.prevent="setScope(scope)"
+          >
+            {{ t(scopeLabelKey(scope)) }}
+            <span v-if="scopeCount(scope) > 0" class="ml-1 opacity-75">
+              {{ scopeCount(scope) }}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <ul
+        v-if="visibleSuggestions.length > 0"
+        class="max-h-80 overflow-y-auto py-1"
+      >
         <li
-          v-for="(s, i) in suggestions"
-          :key="s.id"
+          v-for="(s, i) in visibleSuggestions"
+          :key="s.key"
           class="flex cursor-pointer items-center gap-3 px-3 py-2 text-sm"
           :class="{ 'bg-elevated': i === highlighted }"
           @mousedown.prevent="chooseSuggestion(s)"
@@ -153,17 +268,45 @@ function onFocus() {
             class="size-8 shrink-0 rounded object-cover"
             loading="lazy"
           />
-          <span class="truncate">{{ s.name[lang] || s.name.en }}</span>
+          <div
+            v-else
+            class="flex size-8 shrink-0 items-center justify-center rounded bg-elevated text-muted"
+          >
+            <UIcon :name="scopeIcon(suggestionScope(s))" class="text-base" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="flex items-center gap-2">
+              <span class="truncate font-medium">
+                {{ s.title[lang] || s.title.en }}
+              </span>
+              <UBadge
+                :label="t(scopeLabelKey(suggestionScope(s)))"
+                :color="scopeColor(suggestionScope(s))"
+                size="xs"
+                variant="subtle"
+                class="shrink-0"
+              />
+            </div>
+            <p v-if="s.excerpt" class="truncate text-xs text-muted">
+              {{ s.excerpt[lang] || s.excerpt.en }}
+            </p>
+          </div>
           <UBadge
-            v-if="s.type === 'rental' || s.type === 'hybrid'"
+            v-if="
+              s.productType === 'hybrid' && suggestionScope(s) === 'product'
+            "
             :label="t('search.rentalBadge')"
             color="info"
             size="xs"
             variant="subtle"
-            class="ml-auto"
+            class="shrink-0"
           />
         </li>
       </ul>
+
+      <div v-else class="px-3 py-6 text-center text-sm text-muted">
+        {{ loading ? t("search.searching") : t("search.noQuickResults") }}
+      </div>
 
       <div
         v-if="query.trim()"

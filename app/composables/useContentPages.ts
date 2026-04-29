@@ -137,6 +137,22 @@ const REVIEWS_FOR_PRODUCT_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_pr
 
 const REVIEWS_FOR_ASSET_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets!inner(asset_id, sort_order)`;
 
+export interface ContentPageSearchParams {
+  q: string;
+  contentTypes?: ContentType[];
+  limit?: number;
+}
+
+function toIlikePattern(value: string) {
+  const tokens = value
+    .trim()
+    .replace(/[%,()*]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return tokens.length > 0 ? `%${tokens.join("%")}%` : "";
+}
+
 export function useContentPages() {
   const supabase = useSupabaseClient();
 
@@ -167,6 +183,50 @@ export function useContentPages() {
 
     if (error) throw error;
     return data ? normalizeContentPage(data as ContentPageRow) : null;
+  }
+
+  async function searchContentPages(params: ContentPageSearchParams) {
+    const pattern = toIlikePattern(params.q);
+    if (!pattern) return [];
+
+    const contentTypes =
+      params.contentTypes && params.contentTypes.length > 0
+        ? params.contentTypes
+        : VALID_CONTENT_TYPES;
+
+    const { data, error } = await supabase
+      .from("content_pages")
+      .select(PUBLIC_CONTENT_PAGE_SELECT)
+      .eq("is_active", true)
+      .in("content_type", contentTypes)
+      .or(
+        [
+          `title_th.ilike.${pattern}`,
+          `title_en.ilike.${pattern}`,
+          `title_cn.ilike.${pattern}`,
+          `title_jp.ilike.${pattern}`,
+          `excerpt_th.ilike.${pattern}`,
+          `excerpt_en.ilike.${pattern}`,
+          `excerpt_cn.ilike.${pattern}`,
+          `excerpt_jp.ilike.${pattern}`,
+        ].join(","),
+      )
+      .order("sort_order", { ascending: true })
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .limit(params.limit ?? 12);
+
+    if (error) {
+      console.warn(
+        "[useContentPages] searchContentPages failed:",
+        error.message,
+      );
+      return [];
+    }
+
+    return ((data ?? []) as unknown[])
+      .map((row) => normalizeContentPage(row as ContentPageRow))
+      .filter((item): item is ContentPage => !!item);
   }
 
   async function fetchReviewsForProduct(productId: string) {
@@ -219,6 +279,7 @@ export function useContentPages() {
   return {
     fetchContentPages,
     fetchContentPage,
+    searchContentPages,
     fetchReviewsForProduct,
     fetchReviewsForAsset,
     pathForContent,

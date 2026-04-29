@@ -3,7 +3,7 @@
     "loading": "Loading..."
   },
   "search": {
-    "placeholder": "Search products...",
+    "placeholder": "Search products, services, articles...",
     "title": "Search Results",
     "filters": "Filters",
     "reset": "Reset",
@@ -27,9 +27,25 @@
     "inStockOnly": "In stock only",
     "searching": "Searching...",
     "resultCount": "{n} result(s) found",
-    "noResults": "No products match your search",
+    "browseCount": "Showing {n} item(s) to browse",
+    "noResults": "No results match your search",
+    "browseTitle": "Browse everything",
+    "browseDescription": "Type a search term or choose filters to find products, rental equipment, services, reviews, articles, and promotions.",
+    "browseEmpty": "Type a search term or choose filters to get started.",
     "seeAllResults": "See all results for \"{q}\"",
-    "rentalBadge": "Rental"
+    "rentalBadge": "Rental",
+    "searchIn": "Search in",
+    "noQuickResults": "No quick results found",
+    "viewAll": "View all",
+    "scope": {
+      "all": "All",
+      "product": "Products",
+      "rental": "Equipment rental",
+      "service": "Services",
+      "review": "Reviews",
+      "blog": "Articles",
+      "promotion": "Promotions"
+    }
   },
   "nav": {
     "product": "Product",

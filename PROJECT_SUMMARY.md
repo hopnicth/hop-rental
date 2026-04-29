@@ -1,6 +1,6 @@
 # HOP-RENTAL Project Summary
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 Audience: developers, operators, future Augment sessions
 
 ## Purpose
@@ -65,6 +65,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Hero banners are DB-backed, autoplay with loop, and align title/subtitle/CTA to the right with a right-side readability gradient
 - Card-based lists/grids/rails share a standard loading state: `<CommonLoadingCat />` (sleeping-cat GIF at `public/loading-cat.gif`) plus shape-matched `<ProductsCatalogCardSkeleton />` / `<HomeHomeLinkCardSkeleton />` while async data is loading; see `API_INDEX.md` for the required pattern
 - Dynamic filter groups/options are super-admin managed and auto-assigned from exact `tag_keys` matches for both products and assets. Product/asset `filter_keys` are trigger-generated for fast public filtering; admin product assignment UI is read-only.
+- Header quick search and `/search` are now Universal Search surfaces covering products, rental assets, services, reviews, blog articles, and promotions. Results are grouped/scoped with `all`, `product`, `rental`, `service`, `review`, `blog`, and `promotion` tabs.
+- `/search` persists `?scope=...`, keeps filters visible across scopes, and uses Browse Mode when there is no `q` or active filter so empty tabs do not show a false no-results state.
 - Homepage category cards are DB-backed and super-admin editable, with mock fallback only for older/empty schemas. Selecting an option sends `/search?q=...` only; it must not set the product `category` query.
 - Main categories are typed through `main_categories.entity_types` for `product`, `asset`, `service`, `promotion`, `blog`, and `review`. Content pages can store `main_category_key`, and `/services`, `/reviews`, `/blog`, and `/promotions` expose URL-persistent category filters.
 
@@ -99,6 +101,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/services`, `/services/{slug}`
 - `/promotions`, `/promotions/{slug}`
 - `/reviews`, `/reviews/{slug}`
+- `/search`, `/search?scope=...`
 
 ### Customer
 
@@ -129,15 +132,17 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - For dynamic filters, put machine keys in `tag_keys`, not only `search_keywords`. Matching is exact/case-sensitive against `filter_options.key`.
 - `category_keys` includes tags by design, so UI category lists must whitelist real main categories before rendering.
 - Content listing filters require both migration `047` and admin data assignment: create/enable a typed main category, then assign `Main category` on each `/admin/content` page.
+- `/search` should distinguish Browse Mode from Search Mode: no `q` and no active filters means browse/default content, not a no-results state.
 
 ## Highest-value next priorities
 
-1. Decide/apply migration `045` when ready to enable DB-level `/search` dynamic filtering
-2. Backfill `main_category_key` on existing `content_pages` rows so public content filters show useful results
-3. Extend global `/search` beyond products to rental assets, services, blogs, reviews, and promotions
-4. Customer-facing rental documents/history polish
-5. Backoffice checklist-template management polish
-6. Quotation/document/payment follow-through not yet implemented end-to-end
+1. Chat/support experience
+2. Decide/apply migration `045` when ready to enable DB-level `/search` dynamic filtering
+3. Backfill `main_category_key` on existing `content_pages` rows so public content filters show useful results
+4. Search schema alignment: consolidate current hybrid Universal Search into a server-owned global endpoint/RPC for ranking and facets
+5. Customer-facing rental documents/history polish
+6. Backoffice checklist-template management polish
+7. Quotation/document/payment follow-through not yet implemented end-to-end
 
 ## Read next
 

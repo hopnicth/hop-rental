@@ -1,6 +1,6 @@
 # Search & Filter Guideline
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -19,9 +19,37 @@ category/filter management.
 - Selecting a main category in `/search` may update URL query state, but it must
   not cause a full page remount/flicker.
 
-## Searchable types roadmap
+## Current Universal Search implementation
 
-The global search experience should eventually search these types:
+The public search experience now has two surfaces:
+
+1. Header quick search dropdown (`SearchBar.vue`) with a `Search in` tab bar.
+2. Full search page (`/search`) with scope tabs and persistent filters.
+
+Both surfaces support these scopes:
+
+- `all`
+- `product`
+- `rental`
+- `service`
+- `review`
+- `blog`
+- `promotion`
+
+`/search` stores the selected scope in `?scope=...`. When no text query or
+active filter is present, `/search` behaves as **Browse Mode** instead of a
+failed search state: it shows browsable/default items and helper copy. Once a
+text query or filter is active, it switches to **Search Mode** and may show the
+normal no-results empty state.
+
+Product filters remain visible for every `/search?scope=...` view because the
+current UX decision is to keep filters discoverable across scopes. Be careful
+when adding non-product facets later: the current filter component still applies
+product-oriented filters to product result counts and product search RPC calls.
+
+## Searchable types
+
+The global search experience searches or browses these types:
 
 | Type                | Source                                     | Public target             | Category model                                    |
 | ------------------- | ------------------------------------------ | ------------------------- | ------------------------------------------------- |
@@ -37,7 +65,7 @@ Current implementation uses a single typed `main_categories` registry with
 everywhere: public/admin category pickers must filter by the current type
 (`product`, `asset`, `service`, `promotion`, `blog`, or `review`).
 
-## Recommended search contract
+## Recommended future search contract
 
 Future search should return a unified result shape:
 
@@ -86,15 +114,16 @@ Clear and remove must behave differently:
 
 URL is the refresh/back/share source of truth for active filters:
 
-| Query        | Meaning                                                    |
-| ------------ | ---------------------------------------------------------- |
-| `q`          | Text search                                                |
-| `category`   | Real selected category for the current result type/context |
-| `type`       | Optional result/catalog type filter                        |
-| `brands`     | Repeated or comma-separated brand values                   |
-| `min`, `max` | Price bounds                                               |
-| `stock`      | `1` for in-stock only                                      |
-| `df`         | JSON-encoded active dynamic filter values                  |
+| Query        | Meaning                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------- |
+| `q`          | Text search                                                                                  |
+| `scope`      | Active result scope: `all`, `product`, `rental`, `service`, `review`, `blog`, or `promotion` |
+| `category`   | Real selected category for the current result type/context                                   |
+| `type`       | Optional result/catalog type filter                                                          |
+| `brands`     | Repeated or comma-separated brand values                                                     |
+| `min`, `max` | Price bounds                                                                                 |
+| `stock`      | `1` for in-stock only                                                                        |
+| `df`         | JSON-encoded active dynamic filter values                                                    |
 
 When code updates the URL itself, route watchers must not immediately re-apply
 the same query and trigger duplicate loading. Guard query sync with explicit
@@ -108,6 +137,18 @@ the same query and trigger duplicate loading. Guard query sync with explicit
 - If a loading indicator is shown, keep it visible for at least 0.5 seconds.
 - For very fast operations, prefer a short show delay before displaying loading
   to avoid unnecessary flicker.
+
+## Browse Mode rules
+
+- Empty `/search` and `/search?scope=...` should not say "no results".
+- Show browse/helper copy until the customer types a query or chooses a filter.
+- Product scope may show the product catalog/default RPC results.
+- Rental scope may show available assets filtered client-side from `useAssets()`.
+- Content scopes fetch active rows from `content_pages` through
+  `fetchContentPages()` when there is no query, and use `searchContentPages()`
+  when `q` is present.
+- Only show the true no-results state after there is search intent
+  (`q` or an active filter).
 
 ## Admin implications
 
@@ -129,12 +170,14 @@ Do not treat `main_categories` as product-only. Always pass the relevant
 ## Implementation phases
 
 1. Stabilize current product/search filters: separate UI-added groups from
-   selected values, fix URL sync loops, and avoid flicker.
+   selected values, fix URL sync loops, and avoid flicker. **Done for current UI.**
 2. Apply/complete DB-level product dynamic filtering for `/search` so pagination
    and total counts are correct. Migration `045` is prepared but still pending
    remote apply.
-3. Add assets/rental results to search using a unified result shape.
-4. Add `content_pages` search for services, blogs, reviews, and promotions.
+3. Add assets/rental results to search using a unified result shape. **Partially done client-side.**
+4. Add `content_pages` search for services, blogs, reviews, and promotions. **Done client-side.**
 5. Content listing filters are already wired through migration `047`:
    `/services`, `/reviews`, `/blog`, and `/promotions` read typed
    `main_categories` and persist `?category=...` in the URL.
+6. Future improvement: replace the hybrid client/RPC implementation with one
+   server-owned global search endpoint/RPC for ranking, pagination, and facets.

@@ -10,6 +10,8 @@ import type {
   CatalogType,
   ProductSearchResult,
 } from "~/composables/useProductSearch";
+import type { ContentPage, ContentType } from "~/types/content";
+import type { Asset } from "~/types/asset";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import { mainCategories, mockSubCategories } from "~/mock/categories";
 import {
@@ -34,8 +36,23 @@ const router = useRouter();
 const { t } = useI18n();
 const { search } = useProductSearch();
 const { products, getDisplayPrice, getTotalStock } = useProducts();
+const { assets, getAssetShowPath, loading: assetsLoading } = useAssets();
+const { fetchContentPages, searchContentPages } = useContentPages();
 
 const SEARCH_FACET_LIMIT = 1000;
+type SearchScope = "all" | "product" | "rental" | ContentType;
+
+const searchScopes: SearchScope[] = [
+  "all",
+  "product",
+  "rental",
+  "service",
+  "review",
+  "blog",
+  "promotion",
+];
+
+const contentScopes: ContentType[] = ["service", "review", "blog", "promotion"];
 
 const mainCategoryKeySet = new Set(mainCategories.map((item) => item.key));
 const subToMainCategory = new Map(
@@ -52,8 +69,16 @@ function readTypeQuery(value: unknown): CatalogType | "all" {
   return raw === "sale" || raw === "rental" ? raw : "all";
 }
 
+function readScopeQuery(value: unknown): SearchScope {
+  const raw = readQueryString(value);
+  return searchScopes.includes(raw as SearchScope)
+    ? (raw as SearchScope)
+    : "all";
+}
+
 // ── Query state ──
 const q = ref(readQueryString(route.query.q));
+const activeScope = ref<SearchScope>(readScopeQuery(route.query.scope));
 const selectedCategory = ref<string>(readCategoryQuery(route.query.category));
 const selectedType = ref<CatalogType | "all">(readTypeQuery(route.query.type));
 const selectedBrands = ref<string[]>(readQueryList(route.query.brands));
@@ -123,9 +148,92 @@ const page = ref(1);
 // ── Results ──
 const results = ref<ProductSearchResult[]>([]);
 const rpcFacetResults = ref<ProductSearchResult[]>([]);
+const contentResults = ref<ContentPage[]>([]);
 const totalCount = ref(0);
 const loading = ref(false);
+const contentLoading = ref(false);
 let searchRunSeq = 0;
+let contentSearchRunSeq = 0;
+
+function scopeLabelKey(scope: SearchScope) {
+  return `search.scope.${scope}`;
+}
+
+function contentResultsFor(scope: ContentType) {
+  return contentResults.value.filter((item) => item.contentType === scope);
+}
+
+function assetMatchesSearchText(asset: Asset): boolean {
+  const query = q.value.trim().toLowerCase();
+  if (!query) return true;
+  const haystack = [
+    asset.code,
+    asset.name.th,
+    asset.name.en,
+    asset.name.cn,
+    asset.name.jp,
+    asset.description.th,
+    asset.description.en,
+    asset.description.cn,
+    asset.description.jp,
+    asset.brand,
+    ...asset.categories,
+    ...asset.tagKeys,
+    ...asset.filterKeys,
+    ...Object.values(asset.specSummary ?? {}),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    haystack.includes(query) ||
+    haystack.replaceAll(" ", "").includes(query.replaceAll(" ", ""))
+  );
+}
+
+const rentalResults = computed(() =>
+  assets.value.filter((asset) => assetMatchesSearchText(asset)),
+);
+
+const visibleContentResults = computed(() => {
+  if (activeScope.value === "all") return contentResults.value;
+  if (contentScopes.includes(activeScope.value as ContentType)) {
+    return contentResultsFor(activeScope.value as ContentType);
+  }
+  return [];
+});
+
+function scopeCount(scope: SearchScope) {
+  if (scope === "all") {
+    return (
+      totalCount.value +
+      rentalResults.value.length +
+      contentResults.value.length
+    );
+  }
+  if (scope === "product") return totalCount.value;
+  if (scope === "rental") return rentalResults.value.length;
+  return contentResultsFor(scope).length;
+}
+
+const currentTotalCount = computed(() => scopeCount(activeScope.value));
+const isCurrentScopeLoading = computed(() => {
+  if (activeScope.value === "all") {
+    return loading.value || contentLoading.value || assetsLoading.value;
+  }
+  if (activeScope.value === "product") return loading.value;
+  if (activeScope.value === "rental") return assetsLoading.value;
+  return contentLoading.value;
+});
+
+const showProductFilters = computed(() => true);
+
+function setScope(scope: SearchScope) {
+  activeScope.value = scope;
+  page.value = 1;
+  scrollToTop();
+}
 
 function scrollToTop() {
   if (import.meta.client) {
@@ -138,6 +246,7 @@ function applyRouteQuery() {
   isApplyingRouteQuery.value = true;
   const nextDynamicFilters = readDynamicFilters(route.query.df);
   q.value = readQueryString(route.query.q);
+  activeScope.value = readScopeQuery(route.query.scope);
   selectedCategory.value = readCategoryQuery(route.query.category);
   selectedType.value = readTypeQuery(route.query.type);
   selectedBrands.value = readQueryList(route.query.brands);
@@ -148,6 +257,7 @@ function applyRouteQuery() {
   selectedAddedDynamicGroupIds.value = Object.keys(nextDynamicFilters);
   nextTick(() => {
     isApplyingRouteQuery.value = false;
+    void runContentSearch();
     syncFiltersToQuery();
   });
 }
@@ -157,6 +267,9 @@ function syncFiltersToQuery() {
   const next = { ...route.query };
 
   q.value.trim() ? (next.q = q.value.trim()) : delete next.q;
+  activeScope.value !== "all"
+    ? (next.scope = activeScope.value)
+    : delete next.scope;
   selectedCategory.value !== "all"
     ? (next.category = selectedCategory.value)
     : delete next.category;
@@ -246,6 +359,31 @@ async function runSearch() {
   totalCount.value = res.totalCount;
   loading.value = false;
   setSearchProgress(false);
+}
+
+async function runContentSearch() {
+  const query = q.value.trim();
+  const seq = ++contentSearchRunSeq;
+
+  contentLoading.value = true;
+  try {
+    const items = query
+      ? await searchContentPages({ q: query, limit: 48 })
+      : (
+          await Promise.all(
+            contentScopes.map((scope) => fetchContentPages(scope)),
+          )
+        )
+          .flat()
+          .slice(0, 48);
+    if (seq !== contentSearchRunSeq) return;
+    contentResults.value = items;
+  } catch (error) {
+    console.warn("[search] browse content failed:", error);
+    if (seq === contentSearchRunSeq) contentResults.value = [];
+  } finally {
+    if (seq === contentSearchRunSeq) contentLoading.value = false;
+  }
 }
 
 const rpcFacetResultIds = computed(() => {
@@ -394,7 +532,17 @@ const hasActiveDynamicFilters = computed(() =>
 );
 
 // Reset to page 1 when the text query changes
-watch(q, () => {
+watch(
+  q,
+  () => {
+    if (isApplyingRouteQuery.value) return;
+    page.value = 1;
+    void runContentSearch();
+  },
+  { immediate: true },
+);
+
+watch(activeScope, () => {
   if (isApplyingRouteQuery.value) return;
   page.value = 1;
 });
@@ -422,6 +570,7 @@ watch(
 watch(
   [
     q,
+    activeScope,
     selectedCategory,
     selectedType,
     selectedBrands,
@@ -447,6 +596,7 @@ watch(
 watch(
   [
     q,
+    activeScope,
     selectedCategory,
     selectedType,
     selectedBrands,
@@ -474,6 +624,23 @@ const hasActiveFilters = computed(() => {
     hasActiveDynamicFilters.value
   );
 });
+
+const hasTextQuery = computed(() => q.value.trim().length > 0);
+const hasSearchIntent = computed(
+  () => hasTextQuery.value || hasActiveFilters.value,
+);
+const resultSummary = computed(() => {
+  if (isCurrentScopeLoading.value) return t("search.searching");
+  return t(
+    hasSearchIntent.value ? "search.resultCount" : "search.browseCount",
+    {
+      n: currentTotalCount.value,
+    },
+  );
+});
+const emptyStateMessageKey = computed(() =>
+  hasSearchIntent.value ? "search.noResults" : "search.browseEmpty",
+);
 
 function resetFilters() {
   selectedCategory.value = "all";
@@ -512,9 +679,29 @@ watch(mainCategoryKey, (next, previous) => {
       />
     </div>
 
+    <div class="mb-5 flex gap-2 overflow-x-auto pb-1">
+      <button
+        v-for="scope in searchScopes"
+        :key="scope"
+        type="button"
+        class="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition"
+        :class="
+          activeScope === scope
+            ? 'bg-primary text-inverted'
+            : 'bg-elevated text-muted hover:text-highlighted'
+        "
+        @click="setScope(scope)"
+      >
+        <span>{{ t(scopeLabelKey(scope)) }}</span>
+        <span v-if="scopeCount(scope) > 0" class="text-xs opacity-75">
+          {{ scopeCount(scope) }}
+        </span>
+      </button>
+    </div>
+
     <div class="grid grid-cols-12 gap-4 lg:gap-6">
       <!-- ── Filter sidebar (4 cols on lg+) ── -->
-      <aside class="hidden lg:block lg:col-span-3">
+      <aside v-if="showProductFilters" class="hidden lg:block lg:col-span-3">
         <SearchFilters
           v-model:category="selectedCategory"
           v-model:type="selectedType"
@@ -533,35 +720,40 @@ watch(mainCategoryKey, (next, previous) => {
       </aside>
 
       <!-- ── Results (9 cols on lg+) ── -->
-      <main class="col-span-12 lg:col-span-9">
+      <main
+        class="col-span-12"
+        :class="showProductFilters ? 'lg:col-span-9' : ''"
+      >
         <div class="mb-3 flex items-center justify-between">
           <p class="text-sm text-muted">
-            {{
-              loading
-                ? t("search.searching")
-                : t("search.resultCount", { n: totalCount })
-            }}
+            {{ resultSummary }}
           </p>
         </div>
         <div
-          v-if="showSearchProgress"
+          v-if="showSearchProgress || isCurrentScopeLoading"
           class="mb-3 h-1 overflow-hidden rounded-full bg-muted"
         >
           <div class="h-full w-1/2 animate-pulse rounded-full bg-primary" />
         </div>
 
-        <div
-          v-if="results.length > 0"
-          class="grid grid-cols-2 gap-4 sm:grid-cols-3"
-        >
-          <LazyProductsProductCard
-            v-for="item in results"
-            :key="item.id"
-            :product-id="item.id"
-          />
-        </div>
+        <UCard v-if="!hasSearchIntent" class="mb-4">
+          <div class="flex gap-3">
+            <UIcon name="bx:compass" class="mt-0.5 text-2xl text-primary" />
+            <div>
+              <h2 class="text-base font-semibold">
+                {{ t("search.browseTitle") }}
+              </h2>
+              <p class="mt-1 text-sm text-muted">
+                {{ t("search.browseDescription") }}
+              </p>
+            </div>
+          </div>
+        </UCard>
 
-        <div v-else-if="loading" class="space-y-4">
+        <div
+          v-if="isCurrentScopeLoading && currentTotalCount === 0"
+          class="space-y-4"
+        >
           <CommonLoadingCat />
           <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <ProductsCatalogCardSkeleton
@@ -571,30 +763,180 @@ watch(mainCategoryKey, (next, previous) => {
           </div>
         </div>
 
-        <UCard v-else>
-          <div class="py-10 text-center">
-            <UIcon
-              name="bx:search-alt"
-              class="mx-auto mb-2 text-3xl text-muted"
-            />
-            <p class="text-sm text-muted">
-              {{ t("search.noResults") }}
-            </p>
-          </div>
-        </UCard>
+        <div v-else-if="activeScope === 'all'" class="space-y-8">
+          <section v-if="results.length > 0" class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-base font-semibold">
+                {{ t("search.scope.product") }}
+              </h2>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                :label="t('search.viewAll')"
+                @click="setScope('product')"
+              />
+            </div>
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+              <LazyProductsProductCard
+                v-for="item in results.slice(0, 8)"
+                :key="item.id"
+                :product-id="item.id"
+              />
+            </div>
+          </section>
 
-        <!-- Pagination -->
-        <div v-if="totalPages > 1" class="mt-6 flex justify-center">
-          <UPagination
-            v-model:page="page"
-            :total="totalCount"
-            :items-per-page="pageSize"
-          />
+          <section v-if="rentalResults.length > 0" class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <h2 class="text-base font-semibold">
+                {{ t("search.scope.rental") }}
+              </h2>
+              <UButton
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                :label="t('search.viewAll')"
+                @click="setScope('rental')"
+              />
+            </div>
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <ProductsAssetCard
+                v-for="asset in rentalResults.slice(0, 6)"
+                :key="asset.id"
+                :access="asset"
+                :browse-to="getAssetShowPath(asset)"
+                hide-matches
+              />
+            </div>
+          </section>
+
+          <template v-for="scope in contentScopes" :key="scope">
+            <section
+              v-if="contentResultsFor(scope).length > 0"
+              class="space-y-3"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <h2 class="text-base font-semibold">
+                  {{ t(scopeLabelKey(scope)) }}
+                </h2>
+                <UButton
+                  variant="ghost"
+                  color="neutral"
+                  size="xs"
+                  :label="t('search.viewAll')"
+                  @click="setScope(scope)"
+                />
+              </div>
+              <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <ContentPageCard
+                  v-for="pageItem in contentResultsFor(scope).slice(0, 3)"
+                  :key="pageItem.id"
+                  :page="pageItem"
+                />
+              </div>
+            </section>
+          </template>
+
+          <UCard v-if="currentTotalCount === 0">
+            <div class="py-10 text-center">
+              <UIcon
+                name="bx:search-alt"
+                class="mx-auto mb-2 text-3xl text-muted"
+              />
+              <p class="text-sm text-muted">
+                {{ t(emptyStateMessageKey) }}
+              </p>
+            </div>
+          </UCard>
+        </div>
+
+        <template v-else-if="activeScope === 'product'">
+          <div
+            v-if="results.length > 0"
+            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
+          >
+            <LazyProductsProductCard
+              v-for="item in results"
+              :key="item.id"
+              :product-id="item.id"
+            />
+          </div>
+
+          <UCard v-else>
+            <div class="py-10 text-center">
+              <UIcon
+                name="bx:search-alt"
+                class="mx-auto mb-2 text-3xl text-muted"
+              />
+              <p class="text-sm text-muted">
+                {{ t(emptyStateMessageKey) }}
+              </p>
+            </div>
+          </UCard>
+
+          <div v-if="totalPages > 1" class="mt-6 flex justify-center">
+            <UPagination
+              v-model:page="page"
+              :total="totalCount"
+              :items-per-page="pageSize"
+            />
+          </div>
+        </template>
+
+        <div v-else-if="activeScope === 'rental'" class="space-y-4">
+          <div
+            v-if="rentalResults.length > 0"
+            class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            <ProductsAssetCard
+              v-for="asset in rentalResults"
+              :key="asset.id"
+              :access="asset"
+              :browse-to="getAssetShowPath(asset)"
+              hide-matches
+            />
+          </div>
+          <UCard v-else>
+            <div class="py-10 text-center">
+              <UIcon
+                name="bx:search-alt"
+                class="mx-auto mb-2 text-3xl text-muted"
+              />
+              <p class="text-sm text-muted">
+                {{ t(emptyStateMessageKey) }}
+              </p>
+            </div>
+          </UCard>
+        </div>
+
+        <div v-else class="space-y-4">
+          <div
+            v-if="visibleContentResults.length > 0"
+            class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            <ContentPageCard
+              v-for="pageItem in visibleContentResults"
+              :key="pageItem.id"
+              :page="pageItem"
+            />
+          </div>
+          <UCard v-else>
+            <div class="py-10 text-center">
+              <UIcon
+                name="bx:search-alt"
+                class="mx-auto mb-2 text-3xl text-muted"
+              />
+              <p class="text-sm text-muted">
+                {{ t(emptyStateMessageKey) }}
+              </p>
+            </div>
+          </UCard>
         </div>
       </main>
     </div>
 
     <MobileFloatingPanel
+      v-if="showProductFilters"
       :title="t('search.filters')"
       icon="bx:filter-alt"
       :button-label="t('search.filters')"

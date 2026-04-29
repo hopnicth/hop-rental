@@ -3,7 +3,7 @@
     "loading": "読み込み中..."
   },
   "search": {
-    "placeholder": "製品を検索...",
+    "placeholder": "製品・サービス・記事を検索...",
     "title": "検索結果",
     "filters": "絞り込み",
     "reset": "リセット",
@@ -27,9 +27,25 @@
     "inStockOnly": "在庫ありのみ",
     "searching": "検索中...",
     "resultCount": "{n} 件見つかりました",
-    "noResults": "該当する製品がありません",
+    "browseCount": "{n} 件を表示中",
+    "noResults": "該当する結果がありません",
+    "browseTitle": "すべてを閲覧",
+    "browseDescription": "キーワードを入力するか絞り込みを選択して、製品・レンタル機材・サービス・レビュー・記事・プロモーションを探せます。",
+    "browseEmpty": "キーワードを入力するか絞り込みを選択して開始してください。",
     "seeAllResults": "「{q}」のすべての結果を表示",
-    "rentalBadge": "レンタル可"
+    "rentalBadge": "レンタル可",
+    "searchIn": "検索対象",
+    "noQuickResults": "クイック結果が見つかりません",
+    "viewAll": "すべて表示",
+    "scope": {
+      "all": "すべて",
+      "product": "製品",
+      "rental": "機材レンタル",
+      "service": "サービス",
+      "review": "レビュー",
+      "blog": "記事",
+      "promotion": "プロモーション"
+    }
   },
   "nav": {
     "product": "製品",
