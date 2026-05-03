@@ -91,6 +91,41 @@ preserve.
   decrement. Re-running the migration is safe (uses `IF NOT EXISTS` /
   `CREATE OR REPLACE`).
 
+### Admin payment alerts UI
+
+- **Audience split.** `payment_alerts.audience = 'user'` is shown in the
+  user payment screens; `audience = 'admin'` is the admin queue. Server
+  policies in `supabase/migrations/051_payment_alerts_resolution.sql` add
+  SELECT/UPDATE for platform admins (`staff` + `super_admin`); the existing
+  user policy is untouched.
+- **Lifecycle.** New columns `payment_alerts.resolved_at` and `resolved_by`
+  define the open → resolved transition. NULL `resolved_at` = open.
+- **Realtime.** The admin alerts feed subscribes to Supabase realtime
+  (`postgres_changes` on `public.payment_alerts`). Migration 051 adds the
+  table to `supabase_realtime` publication idempotently. Both the admin
+  layout (badge) and the alerts page share one channel via the singleton
+  composable `useAdminPaymentAlerts`.
+- **Endpoints.**
+  - `GET /api/admin/payment-alerts` — list with `resolved`/`severity`/`kind`
+    filters and `unresolvedTotal` for badge counts.
+  - `POST /api/admin/payment-alerts/:id/resolve` — manual resolve.
+  - `POST /api/admin/orders/:id/apply-inventory` — staff/super_admin only,
+    re-runs `f_apply_order_inventory` then auto-resolves
+    `inventory_apply_failed` alerts on the order.
+- **Auto-resolve on tracking save.** When the admin order PATCH receives
+  any of `trackingCarrier` / `trackingNumber` / `trackingNote`, every open
+  admin alert on the order is marked resolved (`resolved_by = current
+admin`). Rationale: a tracked shipment implies the underlying issue was
+  handled out-of-band (manual stock adjustment, refund, etc.).
+- **Order detail page.** `/admin/orders/[id]` renders an "Action required"
+  card above the customer/address grid. The card shows
+  `Apply inventory now` whenever an `inventory_apply_failed` alert is open,
+  and per-row `Mark resolved`. For paid-but-unshipped orders without
+  alerts, a softer "Inventory" card still exposes the manual retry button.
+- **Permissions.** Both the page-level `platformRoles` middleware and the
+  server-side `requirePlatformAdmin` enforce staff/super_admin access on
+  every alert endpoint and the apply-inventory endpoint.
+
 ### Localized cart alerts (4 languages: en / th / cn / jp)
 
 - `noSaleItemsTitle/Desc`

@@ -9,6 +9,7 @@ import type {
 } from "~~/app/types/admin-order";
 import type {
   AdminCustomerProfile,
+  AdminPaymentAlert,
   AdminRentalBookingDetail,
   AdminSaleOrderDetail,
   AdminSaleOrderItem,
@@ -500,6 +501,7 @@ export function mapAdminSaleOrderDetail(
   row: unknown,
   items: AdminSaleOrderItem[],
   customer: AdminCustomerProfile,
+  alerts: AdminPaymentAlert[] = [],
 ): AdminSaleOrderDetail {
   const r = asRow(row);
   const snapshot =
@@ -547,6 +549,7 @@ export function mapAdminSaleOrderDetail(
     updatedAt: String(r.updated_at ?? ""),
     items,
     customer,
+    alerts,
   };
 }
 

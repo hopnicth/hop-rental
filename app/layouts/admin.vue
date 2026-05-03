@@ -1,18 +1,37 @@
 <script setup lang="ts">
 import HopHeader from "~/components/HopHeader.vue";
-import CookieConsentBanner from "~/components/cookie/CookieConsentBanner.vue";
 import { formatPlatformRole } from "~/utils/role-display";
+
+interface AdminNavItem {
+  label: string;
+  to: string;
+  badge?: string | null;
+}
 
 const route = useRoute();
 const { profile } = useUserProfile();
+const { unresolvedTotal, refreshUnresolvedCount, subscribe, unsubscribe } =
+  useAdminPaymentAlerts();
 
-const navItems = computed(() => {
-  const items = [
+onMounted(() => {
+  subscribe();
+  void refreshUnresolvedCount();
+});
+onBeforeUnmount(() => unsubscribe());
+
+const alertsBadge = computed(() => {
+  if (!unresolvedTotal.value) return null;
+  return unresolvedTotal.value > 99 ? "99+" : String(unresolvedTotal.value);
+});
+
+const navItems = computed<AdminNavItem[]>(() => {
+  const items: AdminNavItem[] = [
     { label: "Overview", to: "/admin" },
     { label: "Products", to: "/admin/products" },
     { label: "Assets", to: "/admin/assets" },
     { label: "Branch & Inventory", to: "/admin/branches-inventory" },
     { label: "Orders", to: "/admin/orders" },
+    { label: "Alerts", to: "/admin/alerts", badge: alertsBadge.value },
     { label: "Messages", to: "/admin/messages" },
   ];
 
@@ -69,6 +88,15 @@ const navItems = computed(() => {
             size="sm"
           >
             {{ item.label }}
+            <UBadge
+              v-if="item.badge"
+              color="error"
+              variant="solid"
+              size="xs"
+              class="ml-1"
+            >
+              {{ item.badge }}
+            </UBadge>
           </UButton>
         </div>
       </div>
@@ -76,5 +104,4 @@ const navItems = computed(() => {
       <slot />
     </UContainer>
   </UMain>
-  <CookieConsentBanner />
 </template>

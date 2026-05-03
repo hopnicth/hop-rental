@@ -10,6 +10,10 @@ import {
   mapAdminSaleOrderDetail,
   mapAdminSaleOrderItem,
 } from "~~/server/utils/admin-orders";
+import {
+  autoResolveOrderAlerts,
+  fetchAlertsForOrder,
+} from "~~/server/utils/admin-alerts";
 import type {
   AdminSaleOrderDetail,
   AdminSaleOrderPatchPayload,
@@ -38,7 +42,7 @@ function validateTransition<T extends string>(
 
 export default defineEventHandler(
   async (event): Promise<AdminSaleOrderDetail> => {
-    const { adminClient } = await requirePlatformAdmin(event);
+    const { adminClient, userId } = await requirePlatformAdmin(event);
     const id = getRouterParam(event, "id");
 
     if (!id) {
@@ -152,6 +156,18 @@ export default defineEventHandler(
       String((updated as Record<string, unknown>).user_id ?? ""),
     );
 
-    return mapAdminSaleOrderDetail(updated, items, customer);
+    // Auto-resolve admin alerts when tracking is recorded: a saved tracking
+    // number signals fulfilment is in motion, which implicitly handles any
+    // outstanding inventory/payment alerts on the order.
+    const trackingTouched =
+      body.trackingCarrier !== undefined ||
+      body.trackingNumber !== undefined ||
+      body.trackingNote !== undefined;
+    if (trackingTouched) {
+      await autoResolveOrderAlerts(adminClient, id, userId);
+    }
+    const alerts = await fetchAlertsForOrder(adminClient, id);
+
+    return mapAdminSaleOrderDetail(updated, items, customer, alerts);
   },
 );

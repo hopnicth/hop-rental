@@ -7,6 +7,7 @@ import {
   mapAdminSaleOrderDetail,
   mapAdminSaleOrderItem,
 } from "~~/server/utils/admin-orders";
+import { fetchAlertsForOrder } from "~~/server/utils/admin-alerts";
 import type { AdminSaleOrderDetail } from "~~/app/types/admin-order-detail";
 
 export default defineEventHandler(
@@ -58,6 +59,7 @@ export default defineEventHandler(
       String((orderRow as Record<string, unknown>).user_id ?? ""),
     );
 
-    return mapAdminSaleOrderDetail(orderRow, items, customer);
+    const alerts = await fetchAlertsForOrder(adminClient, id);
+    return mapAdminSaleOrderDetail(orderRow, items, customer, alerts);
   },
 );

@@ -67,6 +67,33 @@ export interface AdminSaleOrderDetail {
   updatedAt: string;
   items: AdminSaleOrderItem[];
   customer: AdminCustomerProfile;
+  alerts: AdminPaymentAlert[];
+}
+
+export type AdminPaymentAlertSeverity =
+  | "info"
+  | "warning"
+  | "error"
+  | "critical";
+
+export interface AdminPaymentAlert {
+  id: string;
+  orderId: string | null;
+  orderNumber: string | null;
+  paymentAttemptId: string | null;
+  kind: string;
+  severity: AdminPaymentAlertSeverity;
+  message: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  resolvedAt: string | null;
+  resolvedBy: string | null;
+}
+
+export interface AdminPaymentAlertListResponse {
+  items: AdminPaymentAlert[];
+  total: number;
+  unresolvedTotal: number;
 }
 
 export interface AdminRentalBookingDetail {

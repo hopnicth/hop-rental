@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  AdminPaymentAlertSeverity,
   AdminSaleOrderDetail,
   AdminSaleOrderPatchPayload,
 } from "~/types/admin-order-detail";
@@ -215,6 +216,66 @@ function formatShippedAt(): string {
   if (!order.value?.shippedAt) return "—";
   return formatDate(order.value.shippedAt);
 }
+
+// ── Alerts ──
+const applyingInventory = ref(false);
+const resolvingAlertId = ref<string | null>(null);
+
+const alertSeverityColor: Record<AdminPaymentAlertSeverity, BadgeColor> = {
+  info: "neutral",
+  warning: "warning",
+  error: "error",
+  critical: "error",
+};
+
+const openAlerts = computed(() =>
+  (order.value?.alerts ?? []).filter((a) => !a.resolvedAt),
+);
+const resolvedAlerts = computed(() =>
+  (order.value?.alerts ?? []).filter((a) => a.resolvedAt),
+);
+const hasInventoryFailure = computed(() =>
+  openAlerts.value.some((a) => a.kind === "inventory_apply_failed"),
+);
+
+async function handleApplyInventory(): Promise<void> {
+  if (!orderId.value) return;
+  applyingInventory.value = true;
+  try {
+    order.value = await $fetch<AdminSaleOrderDetail>(
+      `/api/admin/orders/${orderId.value}/apply-inventory`,
+      { method: "POST" },
+    );
+    toast.add({ title: "Inventory applied", color: "success" });
+  } catch (e) {
+    toast.add({
+      title: "Apply inventory failed",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    applyingInventory.value = false;
+  }
+}
+
+async function handleResolveAlert(id: string): Promise<void> {
+  resolvingAlertId.value = id;
+  try {
+    await $fetch(`/api/admin/payment-alerts/${id}/resolve`, {
+      method: "POST",
+    });
+    await load();
+    toast.add({ title: "Alert resolved", color: "success" });
+  } catch (e) {
+    toast.add({
+      title: "Failed to resolve alert",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    resolvingAlertId.value = null;
+  }
+}
 </script>
 
 <template>
@@ -342,6 +403,96 @@ function formatShippedAt(): string {
               </p>
             </div>
           </div>
+        </div>
+      </UCard>
+
+      <!-- Admin alerts -->
+      <UCard
+        v-if="openAlerts.length > 0 || hasInventoryFailure"
+        :ui="{ base: 'border-error-300' }"
+      >
+        <template #header>
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-error">
+              Action required ({{ openAlerts.length }})
+            </h3>
+            <UButton
+              v-if="hasInventoryFailure"
+              color="primary"
+              size="sm"
+              :loading="applyingInventory"
+              icon="bx:refresh"
+              @click="handleApplyInventory"
+            >
+              Apply inventory now
+            </UButton>
+          </div>
+        </template>
+        <ul class="space-y-2">
+          <li
+            v-for="alert in openAlerts"
+            :key="alert.id"
+            class="flex flex-wrap items-start justify-between gap-2 rounded-lg border border-default bg-elevated/40 p-3"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <UBadge
+                  :color="alertSeverityColor[alert.severity]"
+                  variant="soft"
+                  size="sm"
+                >
+                  {{ alert.severity }}
+                </UBadge>
+                <UBadge color="neutral" variant="outline" size="sm">
+                  {{ alert.kind }}
+                </UBadge>
+              </div>
+              <p class="mt-1 text-sm">{{ alert.message }}</p>
+              <p class="text-xs text-muted">
+                {{ formatDate(alert.createdAt) }}
+              </p>
+            </div>
+            <UButton
+              color="success"
+              variant="soft"
+              size="xs"
+              :loading="resolvingAlertId === alert.id"
+              @click="handleResolveAlert(alert.id)"
+            >
+              Mark resolved
+            </UButton>
+          </li>
+        </ul>
+        <p v-if="resolvedAlerts.length > 0" class="mt-3 text-xs text-muted">
+          {{ resolvedAlerts.length }} resolved alert(s) on this order.
+        </p>
+      </UCard>
+
+      <!-- Manual apply-inventory shortcut for paid orders without alerts -->
+      <UCard
+        v-else-if="
+          order.paymentStatus === 'paid' &&
+          order.fulfillmentStatus !== 'shipped'
+        "
+        class="border-primary-200"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="font-semibold">Inventory</h3>
+            <p class="text-xs text-muted">
+              Re-run the deduction RPC if you suspect stock was missed.
+            </p>
+          </div>
+          <UButton
+            color="primary"
+            variant="soft"
+            size="sm"
+            :loading="applyingInventory"
+            icon="bx:refresh"
+            @click="handleApplyInventory"
+          >
+            Apply inventory
+          </UButton>
         </div>
       </UCard>
 
