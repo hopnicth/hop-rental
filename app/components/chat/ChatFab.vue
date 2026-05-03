@@ -154,7 +154,9 @@ async function ensureSupportConversation() {
       chat.messages.value.length > 0;
     chat.activeConversation.value = conversation;
     await chat.loadMessages(conversation.id, { silent: isReopeningCached });
-    await chat.markRead(conversation.id);
+    if ((conversation.unreadCount ?? 0) > 0) {
+      await chat.markRead(conversation.id);
+    }
     chat.subscribe(conversation.id);
     scrollToBottom();
     return conversation;
@@ -205,7 +207,6 @@ async function sendMessage(text = draftMessage.value) {
   try {
     draftMessage.value = "";
     await chat.sendMessage(conversation.id, body);
-    await chat.markRead(conversation.id);
     scrollToBottom();
   } catch (e) {
     draftMessage.value = body;
@@ -250,7 +251,6 @@ async function handleFileSelected(event: Event) {
   try {
     await chat.uploadAttachment(conversation.id, file, draftMessage.value);
     draftMessage.value = "";
-    await chat.markRead(conversation.id);
     await ensureAttachmentPreviews();
     scrollToBottom();
   } catch (e) {

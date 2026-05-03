@@ -1,13 +1,17 @@
 import { createError, defineEventHandler } from "h3";
-import { serverSupabaseServiceRole } from "#supabase/server";
+import { serverSupabaseClient } from "#supabase/server";
 import {
   HOME_CATEGORY_GROUP_SELECT,
   mapHomeCategoryGroup,
 } from "~~/server/utils/home-categories";
 
 export default defineEventHandler(async (event) => {
-  const adminClient = serverSupabaseServiceRole(event);
-  const { data, error } = await adminClient
+  // Public home data should go through the anon/RLS client, not service-role.
+  // This avoids Home rendering the fallback categories on deployments where the
+  // server-only service key is missing, while still respecting the public
+  // `is_active = true` RLS policies from migration 044.
+  const client = await serverSupabaseClient(event);
+  const { data, error } = await client
     .from("home_category_groups")
     .select(HOME_CATEGORY_GROUP_SELECT)
     .eq("is_active", true)

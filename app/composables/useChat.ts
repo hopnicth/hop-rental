@@ -83,17 +83,12 @@ export function useChat() {
   const supabaseUser = useSupabaseUser();
   const supabaseSession = useSupabaseSession();
   const nuxtApp = useNuxtApp();
-  if (
-    import.meta.client &&
-    !(nuxtApp as any).__chatRealtimeAuthSynced
-  ) {
+  if (import.meta.client && !(nuxtApp as any).__chatRealtimeAuthSynced) {
     (nuxtApp as any).__chatRealtimeAuthSynced = true;
     try {
       supabase.auth.onAuthStateChange((_event, session) => {
         try {
-          (supabase as any).realtime?.setAuth?.(
-            session?.access_token ?? null,
-          );
+          (supabase as any).realtime?.setAuth?.(session?.access_token ?? null);
         } catch {}
       });
     } catch {}
@@ -248,7 +243,6 @@ export function useChat() {
         { method: "POST", body: { messageType: "text", body: text } },
       );
       messages.value = [...messages.value, response.item];
-      void loadConversations({ silent: true });
       return response.item;
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Failed to send message";
@@ -286,7 +280,6 @@ export function useChat() {
         { method: "POST", body: formData },
       );
       await loadMessages(conversationId, { silent: true });
-      void loadConversations({ silent: true });
       return messageResponse.item;
     } catch (e) {
       error.value =
@@ -430,6 +423,16 @@ export function useChat() {
         const newRow = payload?.new ?? null;
         const targetConversationId =
           (newRow && String(newRow.conversation_id ?? "")) || null;
+        const isOwnInsert =
+          eventType === "INSERT" &&
+          userId &&
+          String(newRow?.sender_id ?? "") === userId;
+
+        // The sender already appended its own message optimistically in
+        // sendMessage()/uploadAttachment(). Let the chat_conversations realtime
+        // event refresh list metadata later; do not refetch messages/list here.
+        if (isOwnInsert) return;
+
         if (
           eventType === "INSERT" &&
           targetConversationId &&
@@ -449,7 +452,12 @@ export function useChat() {
     realtimeChannel.on(
       "postgres_changes",
       { event: "*", schema: "public", table: "chat_conversations" },
-      () => scheduleRefresh(conversationId ?? null),
+      () => {
+        // Conversation updates are list metadata only (last_message_id,
+        // updated_at, status). Message INSERT events above are responsible for
+        // refreshing the active message thread when needed.
+        scheduleRefresh(null);
+      },
     );
     realtimeChannel.subscribe((status: string) => {
       channelStatus.value = status;

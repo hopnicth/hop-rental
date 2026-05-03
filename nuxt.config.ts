@@ -57,13 +57,16 @@ export default defineNuxtConfig({
 
   i18n: {
     locales: [
-      { code: "th", name: "TH", file: "th.json" },
-      { code: "en", name: "EN", file: "en.json" },
-      { code: "cn", name: "CN", file: "cn.json" },
-      { code: "jp", name: "JP", file: "jp.json" },
+      { code: "th", name: "TH", language: "th-TH", file: "th.json" },
+      { code: "en", name: "EN", language: "en-US", file: "en.json" },
+      { code: "cn", name: "CN", language: "zh-CN", file: "cn.json" },
+      { code: "jp", name: "JP", language: "ja-JP", file: "jp.json" },
     ],
     defaultLocale: "th",
     langDir: "locales",
     strategy: "no_prefix",
+    // Do not let Accept-Language override the product default. Locale is
+    // restored explicitly from `hop_locale` by app/plugins/i18n-cookie.ts.
+    detectBrowserLanguage: false,
   },
 });
