@@ -1,10 +1,40 @@
 import { createError } from "h3";
 
 export const ADMIN_ASSET_LIST_SELECT =
+  "id, code, slug, status, name_th, name_en, name_cn, name_jp, brand, thumbnail_url, main_category_key, tag_keys, category_keys, search_keywords, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, currency_code, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_branch_id, storage_inventory_id, is_hidden, sort_order, updated_at, matches:asset_matches(product_id)";
+
+export const ADMIN_ASSET_LIST_SELECT_LEGACY =
   "id, code, slug, status, name_th, name_en, name_cn, name_jp, brand, thumbnail_url, main_category_key, tag_keys, category_keys, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, currency_code, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_branch_id, storage_inventory_id, is_hidden, sort_order, updated_at, matches:asset_matches(product_id)";
 
 export const ADMIN_ASSET_DETAIL_SELECT =
+  "id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, main_category_key, tag_keys, category_keys, search_keywords, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, storage_branch_id, storage_inventory_id, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at";
+
+export const ADMIN_ASSET_DETAIL_SELECT_LEGACY =
   "id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, main_category_key, tag_keys, category_keys, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, storage_branch_id, storage_inventory_id, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at";
+
+export function isMissingAssetSearchKeywordsColumn(
+  error:
+    | {
+        code?: string | null;
+        message?: string | null;
+      }
+    | null
+    | undefined,
+) {
+  return (
+    error?.code === "42703" ||
+    error?.message?.includes("assets.search_keywords") === true ||
+    error?.message?.includes("search_keywords") === true
+  );
+}
+
+export function stripAssetSearchKeywords(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...payload };
+  delete next.search_keywords;
+  return next;
+}
 
 const DOCUMENT_KINDS = new Set([
   "manual",
@@ -290,6 +320,8 @@ export function buildAssetPayload(
     payload.tag_keys = asStringArray(body.tagKeys);
   if (body.categoryKeys !== undefined)
     payload.category_keys = asStringArray(body.categoryKeys);
+  if (body.searchKeywords !== undefined)
+    payload.search_keywords = asStringArray(body.searchKeywords);
   if (body.imageUrls !== undefined)
     payload.image_urls = asStringArray(body.imageUrls);
   if (body.specSummary !== undefined)
@@ -380,6 +412,9 @@ export function mapAssetListItem(row: Record<string, unknown>) {
     categoryKeys: Array.isArray(row.category_keys)
       ? (row.category_keys as string[])
       : [],
+    searchKeywords: Array.isArray(row.search_keywords)
+      ? (row.search_keywords as string[])
+      : [],
     dailyRate: Number(row.daily_rate ?? 0),
     weeklyRate: Number(row.weekly_rate ?? 0),
     monthlyRate: Number(row.monthly_rate ?? 0),
@@ -419,6 +454,9 @@ export function mapAssetDetail(row: Record<string, unknown>) {
     tagKeys: Array.isArray(row.tag_keys) ? (row.tag_keys as string[]) : [],
     categoryKeys: Array.isArray(row.category_keys)
       ? (row.category_keys as string[])
+      : [],
+    searchKeywords: Array.isArray(row.search_keywords)
+      ? (row.search_keywords as string[])
       : [],
     brand: (row.brand as string) ?? "",
     thumbnailUrl: (row.thumbnail_url as string) ?? "",

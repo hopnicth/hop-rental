@@ -71,6 +71,7 @@
     "account": "マイアカウント",
     "activeRentals": "レンタル中",
     "orders": "注文履歴",
+    "wishlist": "ウィッシュリスト",
     "settings": "設定",
     "accountMenu": "アカウントメニュー",
     "personalInfo": "個人情報",
@@ -222,6 +223,9 @@
     "downloadButton": "ダウンロード",
     "loginPrompt": "サポートチャットを開始するにはログインしてください。",
     "loginButton": "ログインしてチャット",
+    "otherContactOptions": "または以下の方法でお問い合わせください",
+    "lineButton": "Line Official",
+    "callButton": "電話する",
     "disclaimer": "アプリ内サポートです。長い内容は添付ファイルをご利用ください。",
     "actions": {
       "products": "商品について相談",
@@ -316,6 +320,26 @@
     "addedToCartDesc": "カートに追加しました",
     "stockLimitTitle": "在庫上限に達しました",
     "stockLimitDesc": "在庫数を超えて追加することはできません。"
+  },
+  "productCard": {
+    "addToCart": "カートに追加",
+    "addWishlist": "ウィッシュリストに追加",
+    "removeWishlist": "ウィッシュリストから削除",
+    "wishlistAdded": "ウィッシュリストに追加しました",
+    "wishlistRemoved": "ウィッシュリストから削除しました",
+    "wishlistError": "ウィッシュリストを更新できませんでした",
+    "wishlistLoginTitle": "ログインしてください",
+    "wishlistLoginDesc": "商品を保存するにはログインが必要です。",
+    "chooseOptions": "オプションを選択",
+    "chooseRentalOptions": "レンタルオプションを選択"
+  },
+  "wishlistPage": {
+    "eyebrow": "Wishlist",
+    "title": "ウィッシュリスト",
+    "description": "ハートを押した商品を保存し、あとで確認・購入できます。",
+    "browseProducts": "商品を見る",
+    "emptyTitle": "保存した商品はまだありません",
+    "emptyDescription": "商品カードのハートアイコンを押すとここに保存されます。"
   },
   "productDetail": {
     "home": "ホーム",
@@ -588,6 +612,34 @@
       "draft": "下書き",
       "confirmed": "確定済み",
       "cancelled": "キャンセル済み"
+    }
+  },
+  "cookieConsent": {
+    "title": "より良い利用体験のために Cookie を使用しています",
+    "description": "当サイトでは、サイトの動作に必要な Cookie に加えて、分析・設定保存・マーケティングのための任意 Cookie を使用します。すべて許可、必須以外を拒否、または個別に設定できます。",
+    "customize": "Cookie を設定",
+    "rejectNonEssential": "必須以外を拒否",
+    "acceptAll": "すべて許可",
+    "preferencesTitle": "Cookie 設定",
+    "preferencesDescription": "当サイトで使用を許可する Cookie の種類を選択してください。必須 Cookie は常に有効です。",
+    "savePreferences": "設定を保存",
+    "categories": {
+      "necessary": {
+        "label": "必須 Cookie",
+        "description": "ログイン、セキュリティ、カート状態、言語設定など、サイトの基本機能に必要です。"
+      },
+      "analytics": {
+        "label": "分析 Cookie",
+        "description": "サイトの利用状況を把握し、性能・コンテンツ・体験の改善に役立てます。"
+      },
+      "preferences": {
+        "label": "設定保存 Cookie",
+        "description": "表示設定などのお好みを記憶し、より便利に利用できるようにします。"
+      },
+      "marketing": {
+        "label": "マーケティング Cookie",
+        "description": "マーケティング施策や表示内容の効果測定・最適化に使用します。"
+      }
     }
   }
 }

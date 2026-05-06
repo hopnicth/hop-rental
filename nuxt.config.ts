@@ -27,6 +27,11 @@ export default defineNuxtConfig({
         process.env.NUXT_PUBLIC_OMISE_PUBLIC_KEY ??
         process.env.OMISE_PUBLIC_KEY ??
         "",
+      chatSupportLineUrl:
+        process.env.NUXT_PUBLIC_CHAT_SUPPORT_LINE_URL ??
+        "https://line.me/R/ti/p/@832vmicv?ts=03031436&oat_content=url",
+      chatSupportPhone:
+        process.env.NUXT_PUBLIC_CHAT_SUPPORT_PHONE ?? "+66 95-479-2333",
     },
   },
 

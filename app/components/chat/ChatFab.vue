@@ -1,7 +1,17 @@
 <script setup lang="ts">
 const CHAT_MAX_CHARS = 4000;
+const DEFAULT_SUPPORT_PHONE = "+66 95-479-2333";
+const DEFAULT_SUPPORT_LINE_URL =
+  "https://line.me/R/ti/p/@832vmicv?ts=03031436&oat_content=url";
+
+type ContactSettingsDto = {
+  supportPhone: string;
+  lineUrl: string;
+  updatedAt: string | null;
+};
 
 const { t, locale } = useI18n();
+const config = useRuntimeConfig();
 const user = useSupabaseUser();
 const cookieConsent = useCookieConsent();
 const isFabVisible = computed(
@@ -30,6 +40,42 @@ const quickActions = computed(() => [
   t("chatWidget.actions.rental"),
   t("chatWidget.actions.quote"),
 ]);
+
+const { data: contactSettings } = useFetch<ContactSettingsDto>(
+  "/api/contact-settings",
+  {
+    key: "public-contact-settings",
+    default: () => ({
+      supportPhone: DEFAULT_SUPPORT_PHONE,
+      lineUrl: DEFAULT_SUPPORT_LINE_URL,
+      updatedAt: null,
+    }),
+  },
+);
+
+const supportLineUrl = computed(() => {
+  const value = String(
+    contactSettings.value?.lineUrl || config.public.chatSupportLineUrl || "",
+  ).trim();
+  return value.length > 0 ? value : null;
+});
+
+const supportPhone = computed(() => {
+  const value = String(
+    contactSettings.value?.supportPhone ||
+      config.public.chatSupportPhone ||
+      DEFAULT_SUPPORT_PHONE,
+  ).trim();
+  return value.length > 0 ? value : DEFAULT_SUPPORT_PHONE;
+});
+
+const supportPhoneHref = computed(() =>
+  supportPhone.value ? `tel:${supportPhone.value.replace(/\s+/g, "")}` : null,
+);
+
+const hasGuestSupportOptions = computed(
+  () => Boolean(supportLineUrl.value) || Boolean(supportPhoneHref.value),
+);
 
 const activeId = computed(() => chat.activeConversation.value?.id ?? null);
 const unreadCount = computed(() => {
@@ -362,9 +408,46 @@ watch(
             <p class="text-sm text-default">
               {{ t("chatWidget.loginPrompt") }}
             </p>
-            <UButton to="/user/login" color="primary" icon="bx:log-in-circle">
+            <UButton
+              to="/user/login"
+              color="primary"
+              icon="bx:log-in-circle"
+              block
+            >
               {{ t("chatWidget.loginButton") }}
             </UButton>
+
+            <div v-if="hasGuestSupportOptions" class="space-y-3">
+              <p class="text-xs font-medium text-muted">
+                {{ t("chatWidget.otherContactOptions") }}
+              </p>
+
+              <div class="grid gap-2 sm:grid-cols-2">
+                <UButton
+                  v-if="supportLineUrl"
+                  :href="supportLineUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  color="success"
+                  variant="soft"
+                  icon="ri:line-fill"
+                  block
+                >
+                  {{ t("chatWidget.lineButton") }}
+                </UButton>
+
+                <UButton
+                  v-if="supportPhoneHref"
+                  :href="supportPhoneHref"
+                  color="neutral"
+                  variant="soft"
+                  icon="bx:phone-call"
+                  block
+                >
+                  {{ t("chatWidget.callButton") }}
+                </UButton>
+              </div>
+            </div>
           </div>
 
           <div v-else class="space-y-4">

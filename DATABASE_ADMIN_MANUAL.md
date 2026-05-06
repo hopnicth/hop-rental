@@ -74,6 +74,8 @@ Notes:
 
 - [ ] `slug` is correct
 - [ ] `main_category_key` is valid
+- [ ] `tag_keys` describe filterable facets, not duplicate the main category
+- [ ] `search_keywords` contain only synonyms/aliases not already in name/brand/tags
 - [ ] product is public (`is_hidden = false`)
 - [ ] at least one usable SKU exists
 - [ ] shipping size is set correctly
@@ -88,6 +90,7 @@ Notes:
 ### Asset
 
 - [ ] `code` and `slug` are stable and correct
+- [ ] `main_category_key`, `tag_keys`, and `search_keywords` follow catalog search rules
 - [ ] asset is public (`status = 'active'`, `is_hidden = false`)
 - [ ] daily/deposit pricing is correct
 - [ ] min rental days is correct
@@ -124,6 +127,8 @@ Notes:
 ## Important current rules
 
 - `main_categories` is the typed category source of truth. Use `entity_types` to scope categories to product, asset, service, promotion, blog, and/or review.
+- `category_keys` is derived/catalog-facing. Admin/AI should fill `main_category_key`, `tag_keys`, and `search_keywords` instead of manually mixing meanings into `category_keys`.
+- Use `search_keywords` only for natural-language aliases, spelling variants, Thai/English synonyms, and customer wording. Do not duplicate code, slug, exact name, brand, main category, or tag values.
 - Assets can be booked with `asset_id` alone in newer schemas.
 - `asset_matches` are recommended for discoverability but are not always required for booking.
 - Stock should be managed through admin endpoints, not direct DB writes, so audit logs remain correct.

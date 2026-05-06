@@ -25,6 +25,10 @@ function normalizeTagValue(value: string) {
     .replace(/^_+|_+$/g, "");
 }
 
+function normalizeKeywordValue(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function dedupeSuggestions(
   items: SuggestionItem[],
   normalizeValue: (value: string) => string,
@@ -60,6 +64,7 @@ type ListItem = {
   mainCategoryKey: string;
   tagKeys: string[];
   categoryKeys: string[];
+  searchKeywords: string[];
   dailyRate: number;
   weeklyRate: number;
   monthlyRate: number;
@@ -148,6 +153,7 @@ type FormState = {
   descriptionJp: string;
   mainCategoryKey: string;
   tagKeys: string[];
+  searchKeywords: string[];
   brand: string;
   thumbnailUrl: string;
   dailyRate: number;
@@ -175,6 +181,10 @@ type FormState = {
 
 const toast = useToast();
 const formatter = new Intl.NumberFormat("th-TH");
+const searchQuery = ref("");
+const selectedCategory = ref("all");
+const visibilityFilter = ref("all");
+const statusFilter = ref("all");
 
 const { data, pending, error, refresh } = await useFetch<{
   items: ListItem[];
@@ -202,6 +212,23 @@ const mainCategoryOptions = computed(
   () => mainCategoriesData.value?.options ?? [],
 );
 
+const categoryLabelMap = computed(() => {
+  return Object.fromEntries(
+    (mainCategoriesData.value?.items ?? []).map((item) => [
+      item.key,
+      item.labelTh || item.labelEn || item.key,
+    ]),
+  );
+});
+
+const categoryOptions = computed(() => [
+  { label: "All main categories", value: "all" },
+  ...((mainCategoriesData.value?.options ?? []) as Array<{
+    label: string;
+    value: string;
+  }>),
+]);
+
 const { data: suggestionData } = await useFetch<{
   tagSuggestions: SuggestionItem[];
   searchKeywordSuggestions: SuggestionItem[];
@@ -228,6 +255,13 @@ const tagSuggestions = computed(() =>
   ),
 );
 
+const searchKeywordSuggestions = computed(() =>
+  dedupeSuggestions(
+    suggestionData.value?.searchKeywordSuggestions ?? [],
+    normalizeKeywordValue,
+  ),
+);
+
 const items = computed(() => data.value?.items ?? []);
 const adminMeta = computed(() => data.value?.meta ?? null);
 const adminWarning = computed(() => adminMeta.value?.warning ?? null);
@@ -237,6 +271,60 @@ const isReadOnlyAdminMode = computed(
 const loadErrorMessage = computed(() =>
   getAdminApiErrorMessage(error.value, "Unknown admin asset error"),
 );
+
+const visibilityOptions = [
+  { label: "All visibility", value: "all" },
+  { label: "Visible only", value: "visible" },
+  { label: "Hidden only", value: "hidden" },
+];
+
+const statusFilterOptions = [
+  { label: "All status", value: "all" },
+  { label: "Draft", value: "draft" },
+  { label: "Active", value: "active" },
+  { label: "Archived", value: "archived" },
+];
+
+const filteredItems = computed(() => {
+  const keyword = searchQuery.value.trim().toLowerCase();
+
+  return items.value.filter((item) => {
+    const matchesSearch =
+      keyword.length === 0 ||
+      [
+        item.id,
+        item.code,
+        item.slug,
+        item.nameTh,
+        item.nameEn,
+        item.nameCn,
+        item.nameJp,
+        item.brand,
+        item.mainCategoryKey,
+        ...item.tagKeys,
+        ...item.searchKeywords,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(keyword);
+
+    const matchesCategory =
+      selectedCategory.value === "all" ||
+      item.mainCategoryKey === selectedCategory.value;
+
+    const matchesVisibility =
+      visibilityFilter.value === "all" ||
+      (visibilityFilter.value === "hidden" && item.isHidden) ||
+      (visibilityFilter.value === "visible" && !item.isHidden);
+
+    const matchesStatus =
+      statusFilter.value === "all" || item.status === statusFilter.value;
+
+    return (
+      matchesSearch && matchesCategory && matchesVisibility && matchesStatus
+    );
+  });
+});
 
 const statusOptions = [
   { label: "Draft", value: "draft" },
@@ -300,6 +388,7 @@ function emptyForm(): FormState {
     descriptionJp: "",
     mainCategoryKey: "others",
     tagKeys: [],
+    searchKeywords: [],
     brand: "",
     thumbnailUrl: "",
     dailyRate: 0,
@@ -546,6 +635,10 @@ function formatCurrency(value: number): string {
   return formatter.format(value);
 }
 
+function categoryLabel(key: string): string {
+  return categoryLabelMap.value[key] ?? key;
+}
+
 function patchListItem(id: string, patch: Partial<ListItem>) {
   const list = data.value?.items;
   if (!list) return;
@@ -579,6 +672,7 @@ function fillFormFromDetail(d: Detail) {
   form.descriptionJp = d.descriptionJp;
   form.mainCategoryKey = d.mainCategoryKey || "others";
   form.tagKeys = [...d.tagKeys];
+  form.searchKeywords = [...d.searchKeywords];
   form.brand = d.brand;
   form.thumbnailUrl = d.thumbnailUrl;
   form.dailyRate = d.dailyRate;
@@ -741,6 +835,7 @@ function buildPayload(): Record<string, unknown> {
     descriptionJp: form.descriptionJp || null,
     mainCategoryKey: form.mainCategoryKey || "others",
     tagKeys: form.tagKeys,
+    searchKeywords: form.searchKeywords,
     brand: form.brand || null,
     thumbnailUrl: form.thumbnailUrl || null,
     dailyRate: form.dailyRate,
@@ -1387,6 +1482,42 @@ async function deleteStockRow(id: string) {
         :description="loadErrorMessage"
       />
 
+      <div
+        class="mb-4 grid gap-4 md:grid-cols-[minmax(0,1.5fr)_220px_180px_180px]"
+      >
+        <UFormField label="Search">
+          <UInput
+            v-model="searchQuery"
+            icon="bx:search"
+            placeholder="Search by code, slug, name, brand, tags, keywords"
+          />
+        </UFormField>
+
+        <UFormField label="Main category">
+          <USelectMenu
+            v-model="selectedCategory"
+            :items="categoryOptions"
+            value-key="value"
+          />
+        </UFormField>
+
+        <UFormField label="Status">
+          <USelectMenu
+            v-model="statusFilter"
+            :items="statusFilterOptions"
+            value-key="value"
+          />
+        </UFormField>
+
+        <UFormField label="Visibility">
+          <USelectMenu
+            v-model="visibilityFilter"
+            :items="visibilityOptions"
+            value-key="value"
+          />
+        </UFormField>
+      </div>
+
       <div v-if="pending" class="py-8 text-sm text-muted">
         Loading assets...
       </div>
@@ -1395,9 +1526,19 @@ async function deleteStockRow(id: string) {
         No asset rows yet. Use the form to create the first package.
       </div>
 
+      <div
+        v-else-if="filteredItems.length === 0"
+        class="py-8 text-sm text-muted"
+      >
+        No assets matched the current filters.
+      </div>
+
       <div v-else class="space-y-2">
+        <p class="text-sm text-muted">
+          {{ filteredItems.length }} of {{ items.length }} assets
+        </p>
         <button
-          v-for="item in items"
+          v-for="item in filteredItems"
           :key="item.id"
           type="button"
           class="block w-full rounded-xl border border-default p-3 text-left transition hover:border-primary/60 hover:bg-(--ui-bg-elevated)/40"
@@ -1444,9 +1585,41 @@ async function deleteStockRow(id: string) {
                 >
                   hidden
                 </UBadge>
+                <UBadge color="neutral" variant="soft" size="sm">
+                  {{ categoryLabel(item.mainCategoryKey) }}
+                </UBadge>
               </div>
               <p class="truncate text-xs text-muted">
                 {{ item.code }} · {{ item.slug }}
+                <span v-if="item.brand">· {{ item.brand }}</span>
+              </p>
+              <div
+                v-if="item.tagKeys.length > 0"
+                class="mt-1 flex flex-wrap gap-1.5"
+              >
+                <UBadge
+                  v-for="tag in item.tagKeys.slice(0, 4)"
+                  :key="tag"
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                >
+                  {{ tag }}
+                </UBadge>
+                <UBadge
+                  v-if="item.tagKeys.length > 4"
+                  color="neutral"
+                  variant="subtle"
+                  size="sm"
+                >
+                  +{{ item.tagKeys.length - 4 }} more
+                </UBadge>
+              </div>
+              <p
+                v-if="item.searchKeywords.length > 0"
+                class="mt-1 truncate text-xs text-muted"
+              >
+                Keywords: {{ item.searchKeywords.join(", ") }}
               </p>
               <div class="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
                 <span class="text-muted"
@@ -1557,9 +1730,9 @@ async function deleteStockRow(id: string) {
           class="space-y-4"
           @submit.prevent="mode === 'create' ? createAsset() : saveAsset()"
         >
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Code" required>
-              <div class="flex gap-2">
+              <div class="flex flex-col gap-2 md:flex-row">
                 <UInput
                   v-model="form.code"
                   class="flex-1"
@@ -1579,7 +1752,7 @@ async function deleteStockRow(id: string) {
               <template #hint>Auto format: R-{8 hex}</template>
             </UFormField>
             <UFormField label="Slug" required>
-              <div class="flex gap-2">
+              <div class="flex flex-col gap-2 md:flex-row">
                 <UInput
                   :model-value="form.slug"
                   class="flex-1"
@@ -1601,7 +1774,7 @@ async function deleteStockRow(id: string) {
             </UFormField>
           </div>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Status">
               <USelectMenu
                 v-model="form.status"
@@ -1614,7 +1787,7 @@ async function deleteStockRow(id: string) {
             </UFormField>
           </div>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Name (TH)" required>
               <UInput v-model="form.nameTh" />
             </UFormField>
@@ -1642,7 +1815,7 @@ async function deleteStockRow(id: string) {
             <UTextarea v-model="form.descriptionJp" :rows="3" />
           </UFormField>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Main category" required>
               <USelectMenu
                 v-model="form.mainCategoryKey"
@@ -1663,6 +1836,26 @@ async function deleteStockRow(id: string) {
                 helper-text="Comma-separated tags with autocomplete from main categories and existing catalog tags."
               />
             </UFormField>
+            <div class="md:col-span-2">
+              <UFormField label="Search keywords">
+                <AdminCommaSuggestInput
+                  v-model="form.searchKeywords"
+                  mode="keyword"
+                  :suggestions="searchKeywordSuggestions"
+                  :excluded-values="[
+                    form.code,
+                    form.slug,
+                    form.nameTh,
+                    form.nameEn,
+                    form.brand,
+                    form.mainCategoryKey,
+                    ...form.tagKeys,
+                  ]"
+                  placeholder="เครื่องมือเช่า, scaffold rental"
+                  helper-text="AI/admin aliases only. Use synonyms, customer wording, or TH/EN variants. Avoid duplicating code, names, brand, main category, or tags."
+                />
+              </UFormField>
+            </div>
           </div>
 
           <p v-if="mode === 'create'" class="text-xs text-muted">
@@ -1675,7 +1868,7 @@ async function deleteStockRow(id: string) {
               Tick each tier you want to expose to customers. Untick to hide
               that pricing option from the public storefront.
             </p>
-            <div class="grid gap-3 sm:grid-cols-3">
+            <div class="grid gap-3 md:grid-cols-2">
               <div class="rounded-lg border border-default p-3">
                 <UCheckbox v-model="form.dailyEnabled" label="Daily" />
                 <UInput
@@ -1716,7 +1909,7 @@ async function deleteStockRow(id: string) {
             <UInput v-model.number="form.depositAmount" type="number" min="0" />
           </UFormField>
 
-          <div class="grid gap-4 sm:grid-cols-3">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Min rental days">
               <UInput
                 v-model.number="form.minRentalDays"
@@ -1736,7 +1929,7 @@ async function deleteStockRow(id: string) {
             </UFormField>
           </div>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Storage branch">
               <USelectMenu
                 v-model="form.storageBranchId"
@@ -1764,7 +1957,7 @@ async function deleteStockRow(id: string) {
             </UFormField>
           </div>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Storage location code (optional)">
               <UInput v-model="form.storageLocationCode" placeholder="HQ-A1" />
             </UFormField>
@@ -1781,7 +1974,7 @@ async function deleteStockRow(id: string) {
             />
           </UFormField>
 
-          <div class="grid gap-4 sm:grid-cols-2">
+          <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Service cycle value">
               <UInput
                 v-model.number="form.serviceCycleValue"
@@ -2005,7 +2198,7 @@ async function deleteStockRow(id: string) {
 
           <div class="rounded border border-default p-3">
             <p class="mb-2 text-sm font-medium">Add product match</p>
-            <div class="grid gap-2 sm:grid-cols-2">
+            <div class="grid gap-2 md:grid-cols-2">
               <UFormField label="Product">
                 <USelectMenu
                   v-model="newMatch.productId"
@@ -2157,7 +2350,7 @@ async function deleteStockRow(id: string) {
 
               <div
                 v-if="stockEditRows[row.id]"
-                class="mt-3 grid gap-2 sm:grid-cols-5"
+                class="mt-3 grid gap-2 md:grid-cols-2"
               >
                 <UFormField label="On hand">
                   <UInput
@@ -2194,7 +2387,7 @@ async function deleteStockRow(id: string) {
                     :min="0"
                   />
                 </UFormField>
-                <UFormField class="sm:col-span-5" label="Notes">
+                <UFormField class="md:col-span-2" label="Notes">
                   <UTextarea v-model="stockEditRows[row.id].notes" :rows="2" />
                 </UFormField>
               </div>
@@ -2228,7 +2421,7 @@ async function deleteStockRow(id: string) {
 
           <div class="rounded border border-default p-3">
             <p class="mb-2 text-sm font-medium">Add inventory row</p>
-            <div class="grid gap-2 sm:grid-cols-2">
+            <div class="grid gap-2 md:grid-cols-2">
               <UFormField label="Branch">
                 <USelectMenu
                   v-model="newStock.branchId"
@@ -2255,7 +2448,7 @@ async function deleteStockRow(id: string) {
                 />
               </UFormField>
             </div>
-            <div class="mt-2 grid gap-2 sm:grid-cols-5">
+            <div class="mt-2 grid gap-2 md:grid-cols-2">
               <UFormField label="On hand">
                 <UInput
                   v-model.number="newStock.onHand"

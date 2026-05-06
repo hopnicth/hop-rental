@@ -40,6 +40,7 @@ const navItems = computed<AdminNavItem[]>(() => {
       { label: "Content", to: "/admin/content" },
       { label: "Home Content", to: "/admin/home-content" },
       { label: "Home Categories", to: "/admin/home-categories" },
+      { label: "Settings", to: "/admin/settings" },
       { label: "Main Categories", to: "/admin/main-categories" },
       { label: "Filter Groups", to: "/admin/filter-groups" },
     );

@@ -2,8 +2,11 @@ import { createError, defineEventHandler, readBody } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_ASSET_DETAIL_SELECT,
+  ADMIN_ASSET_DETAIL_SELECT_LEGACY,
   buildAssetPayload,
+  isMissingAssetSearchKeywordsColumn,
   mapAssetDetail,
+  stripAssetSearchKeywords,
 } from "~~/server/utils/admin-asset";
 
 function asOptionalString(value: unknown): string | null {
@@ -59,11 +62,22 @@ export default defineEventHandler(async (event) => {
 
   const payload = buildAssetPayload({ ...body, code, slug }, "create");
 
-  const { data, error } = await adminClient
+  let { data, error } = await adminClient
     .from("assets")
     .insert(payload)
     .select(ADMIN_ASSET_DETAIL_SELECT)
     .single();
+
+  if (isMissingAssetSearchKeywordsColumn(error)) {
+    const fallback = await adminClient
+      .from("assets")
+      .insert(stripAssetSearchKeywords(payload))
+      .select(ADMIN_ASSET_DETAIL_SELECT_LEGACY)
+      .single();
+
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) {
     const statusCode = error.code === "23505" ? 409 : 500;

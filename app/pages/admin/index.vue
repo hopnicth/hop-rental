@@ -67,6 +67,12 @@ const sections = computed(() => {
         to: "/admin/home-categories",
       },
       {
+        title: "Settings",
+        description:
+          "Manage public contact options used by guest chat support actions.",
+        to: "/admin/settings",
+      },
+      {
         title: "Content Pages",
         description:
           "Manage blog, services, and promotions with reusable content blocks.",

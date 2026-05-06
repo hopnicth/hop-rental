@@ -13,6 +13,8 @@ const { locale, t } = useI18n();
 const { getProductById, getDefaultSKU, getTotalStock } = useProducts();
 const { assets } = useAssets();
 const { addToCart } = useCart();
+const user = useSupabaseUser();
+const { isWishlisted, isToggling, toggleWishlist } = useWishlist();
 
 const product = getProductById(props.productId);
 const lang = computed(() => locale.value as LocaleCode);
@@ -62,6 +64,14 @@ const saleActionTooltipLabel = computed(() =>
     : t("productCard.chooseOptions"),
 );
 
+const wishlisted = isWishlisted(props.productId);
+const wishlistLoading = isToggling(props.productId);
+const wishlistLabel = computed(() =>
+  wishlisted.value
+    ? t("productCard.removeWishlist")
+    : t("productCard.addWishlist"),
+);
+
 const productUrl = computed(() =>
   product.value
     ? `/product-${product.value.categories[0]}/${product.value.slug}`
@@ -104,6 +114,41 @@ function handleAddToCart() {
     color: "primary",
     duration: 3000,
   });
+}
+
+async function handleWishlistToggle() {
+  if (!product.value) return;
+  if (!user.value) {
+    toast.add({
+      title: t("productCard.wishlistLoginTitle"),
+      description: t("productCard.wishlistLoginDesc"),
+      icon: "bx:log-in-circle",
+      color: "warning",
+      duration: 3000,
+    });
+    await navigateTo("/user/login");
+    return;
+  }
+
+  try {
+    const next = await toggleWishlist(product.value.id);
+    toast.add({
+      title: next
+        ? t("productCard.wishlistAdded")
+        : t("productCard.wishlistRemoved"),
+      icon: next ? "bx:heart" : "bx:check-circle",
+      color: next ? "error" : "neutral",
+      duration: 2200,
+    });
+  } catch (error) {
+    toast.add({
+      title: t("productCard.wishlistError"),
+      description: error instanceof Error ? error.message : "Unknown error",
+      icon: "bx:error-circle",
+      color: "error",
+      duration: 3000,
+    });
+  }
 }
 </script>
 
@@ -165,6 +210,20 @@ function handleAddToCart() {
       </template>
 
       <template #actions>
+        <UTooltip :text="wishlistLabel" :popper="{ placement: 'top' }">
+          <UButton
+            icon="bx:heart"
+            :color="wishlisted ? 'error' : 'neutral'"
+            :variant="wishlisted ? 'solid' : 'soft'"
+            size="sm"
+            square
+            :loading="wishlistLoading"
+            class="transition-all duration-200 hover:scale-110 hover:shadow-md"
+            :aria-label="wishlistLabel"
+            @click.prevent.stop="handleWishlistToggle()"
+          />
+        </UTooltip>
+
         <UTooltip :text="saleActionTooltipLabel" :popper="{ placement: 'top' }">
           <UButton
             v-if="canQuickAddToCart"

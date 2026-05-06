@@ -71,6 +71,7 @@
     "account": "我的账户",
     "activeRentals": "当前租赁",
     "orders": "订单历史",
+    "wishlist": "心愿单",
     "settings": "设置",
     "accountMenu": "账户菜单",
     "personalInfo": "个人信息",
@@ -202,6 +203,9 @@
     "downloadButton": "下载",
     "loginPrompt": "请先登录再开始支持聊天。",
     "loginButton": "登录并开始聊天",
+    "otherContactOptions": "或通过以下方式联系我们",
+    "lineButton": "Line Official",
+    "callButton": "电话联系",
     "disclaimer": "仅限站内支持；长内容请使用附件。",
     "actions": {
       "products": "咨询商品",
@@ -296,6 +300,26 @@
     "addedToCartDesc": "已加入您的购物车",
     "stockLimitTitle": "库存不足",
     "stockLimitDesc": "加入数量不能超过当前可用库存。"
+  },
+  "productCard": {
+    "addToCart": "加入购物车",
+    "addWishlist": "加入心愿单",
+    "removeWishlist": "从心愿单移除",
+    "wishlistAdded": "已加入心愿单",
+    "wishlistRemoved": "已从心愿单移除",
+    "wishlistError": "无法更新心愿单",
+    "wishlistLoginTitle": "请先登录",
+    "wishlistLoginDesc": "登录后即可保存感兴趣的商品。",
+    "chooseOptions": "选择规格",
+    "chooseRentalOptions": "选择租赁选项"
+  },
+  "wishlistPage": {
+    "eyebrow": "Wishlist",
+    "title": "心愿单",
+    "description": "这里保存您点击爱心标记的商品，方便之后查看或购买。",
+    "browseProducts": "浏览商品",
+    "emptyTitle": "暂无心愿单商品",
+    "emptyDescription": "点击商品卡片上的爱心图标即可保存到这里。"
   },
   "productDetail": {
     "home": "首页",
@@ -568,6 +592,34 @@
       "draft": "草稿",
       "confirmed": "已确认",
       "cancelled": "已取消"
+    }
+  },
+  "cookieConsent": {
+    "title": "我们使用 Cookie 以改善您的使用体验",
+    "description": "我们会使用维持网站正常运行所必需的 Cookie，以及用于分析、偏好设置和营销的可选 Cookie。您可以全部接受、拒绝非必要 Cookie，或自行调整设置。",
+    "customize": "设置 Cookie",
+    "rejectNonEssential": "拒绝非必要 Cookie",
+    "acceptAll": "全部接受",
+    "preferencesTitle": "Cookie 设置",
+    "preferencesDescription": "请选择您允许我们使用的 Cookie 类型。必要 Cookie 将始终启用。",
+    "savePreferences": "保存设置",
+    "categories": {
+      "necessary": {
+        "label": "必要 Cookie",
+        "description": "用于登录、安全、购物车状态与语言偏好等网站核心功能，无法关闭。"
+      },
+      "analytics": {
+        "label": "分析 Cookie",
+        "description": "帮助我们了解网站的使用情况，以改进性能、内容和整体体验。"
+      },
+      "preferences": {
+        "label": "偏好 Cookie",
+        "description": "用于记住您的显示设置和其他偏好，提升使用便利性。"
+      },
+      "marketing": {
+        "label": "营销 Cookie",
+        "description": "用于衡量并优化营销内容或活动，使其更符合您的兴趣。"
+      }
     }
   }
 }

@@ -71,6 +71,7 @@
     "account": "บัญชีของฉัน",
     "activeRentals": "สินทรัพย์ที่เช่าอยู่",
     "orders": "ประวัติคำสั่งซื้อ",
+    "wishlist": "สินค้าที่สนใจ",
     "settings": "ตั้งค่า",
     "accountMenu": "เมนูบัญชี",
     "personalInfo": "ข้อมูลส่วนตัว",
@@ -222,6 +223,9 @@
     "downloadButton": "ดาวน์โหลด",
     "loginPrompt": "กรุณาเข้าสู่ระบบก่อนเริ่มแชท support",
     "loginButton": "เข้าสู่ระบบเพื่อแชท",
+    "otherContactOptions": "หรือติดต่อเราได้ผ่านช่องทางด้านล่าง",
+    "lineButton": "Line Official",
+    "callButton": "โทรหาเรา",
     "disclaimer": "เป็นแชท support ในระบบ หากเนื้อหายาวให้แนบเป็นไฟล์แทน",
     "actions": {
       "products": "สอบถามสินค้า",
@@ -319,8 +323,23 @@
   },
   "productCard": {
     "addToCart": "เพิ่มลงตะกร้า",
+    "addWishlist": "เพิ่มในสินค้าที่สนใจ",
+    "removeWishlist": "ลบออกจากสินค้าที่สนใจ",
+    "wishlistAdded": "เพิ่มในสินค้าที่สนใจแล้ว",
+    "wishlistRemoved": "ลบออกจากสินค้าที่สนใจแล้ว",
+    "wishlistError": "อัปเดตสินค้าที่สนใจไม่สำเร็จ",
+    "wishlistLoginTitle": "กรุณาเข้าสู่ระบบ",
+    "wishlistLoginDesc": "เข้าสู่ระบบก่อนบันทึกสินค้าที่สนใจ",
     "chooseOptions": "เลือกตัวเลือกสินค้า",
     "chooseRentalOptions": "เลือกตัวเลือกการเช่า"
+  },
+  "wishlistPage": {
+    "eyebrow": "Wishlist",
+    "title": "สินค้าที่สนใจ",
+    "description": "รวมสินค้าที่คุณกดหัวใจไว้ เพื่อกลับมาดูหรือสั่งซื้อภายหลัง",
+    "browseProducts": "เลือกดูสินค้า",
+    "emptyTitle": "ยังไม่มีสินค้าที่สนใจ",
+    "emptyDescription": "กดไอคอนหัวใจบนการ์ดสินค้าเพื่อบันทึกไว้ที่หน้านี้"
   },
   "productDetail": {
     "home": "หน้าแรก",

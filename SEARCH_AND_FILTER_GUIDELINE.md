@@ -95,6 +95,21 @@ type filtering, and facet counts.
 5. Public category dropdowns must never render raw `category_keys` directly;
    those arrays contain `[main_category_key] + tag_keys`.
 
+## Catalog keyword rules for admin/AI
+
+Use these rules when creating or cleaning product/asset data:
+
+| Field               | Purpose                                                                  | Do not put here                                                               |
+| ------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `main_category_key` | One primary typed category for the row                                   | Multiple categories, free-text keywords                                       |
+| `tag_keys`          | Stable filter/facet tags such as material, application, package type     | Full search phrases, duplicate main category                                  |
+| `category_keys`     | Derived/search helper array: `[main_category_key] + tag_keys`            | Manual AI/admin edits unless backfilling legacy data                          |
+| `search_keywords`   | Synonyms, aliases, typo/spelling variants, Thai/English customer wording | Exact code, slug, product/asset name, brand, main category, or tag duplicates |
+
+For AI-assisted cleanup, prefer adding fewer high-signal `search_keywords` over
+many broad words. If a phrase should become a clickable/filterable facet, promote
+it to `tag_keys` instead of keeping it only as a search keyword.
+
 ## Dynamic filter state model
 
 Separate these concepts:
