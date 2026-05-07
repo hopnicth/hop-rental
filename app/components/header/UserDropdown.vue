@@ -80,6 +80,11 @@ const loggedInItems = computed<DropdownMenuItem[][]>(() => {
         icon: "bx:heart",
         to: "/user/wishlist",
       },
+      {
+        label: t("user.saveList"),
+        icon: "bx:bookmark",
+        to: "/user/save-list",
+      },
     ],
     [
       {

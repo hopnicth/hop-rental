@@ -5,6 +5,7 @@ export type HomeLinkTarget = "_blank" | "_self";
 
 export interface HomeLinkCard {
   id: string;
+  contentPageId?: string;
   sectionKey: HomeLinkSection;
   title: LocalizedString;
   description: LocalizedString;

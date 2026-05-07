@@ -69,6 +69,7 @@ function normalizeLinkCardRow(row: unknown): HomeLinkCard | null {
   if (!isRecord(row)) return null;
 
   const id = toString(row.id);
+  const contentPageId = toString(row.content_page_id);
   const sectionKey = row.section_key === "service" ? "service" : "promotion";
   if (!id) return null;
 
@@ -102,6 +103,7 @@ function normalizeLinkCardRow(row: unknown): HomeLinkCard | null {
 
   return {
     id,
+    contentPageId,
     sectionKey,
     title: localized(titleTh, titleEn, titleCn, titleJp, fallback),
     description: localized(descTh, descEn, descCn, descJp, fallback),

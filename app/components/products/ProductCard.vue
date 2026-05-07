@@ -153,102 +153,105 @@ async function handleWishlistToggle() {
 </script>
 
 <template>
-  <NuxtLink v-if="product" :to="productUrl" class="block h-full">
-    <CatalogCardShell
-      :title="product.name[lang]"
-      :image-src="product.thumbnail"
-      :image-alt="product.name[lang]"
-      :clickable="true"
-      card-class="hover:ring-2 hover:ring-primary"
-    >
-      <template #description>
-        <p class="line-clamp-2 text-sm text-gray-600">
-          {{ product.description[lang] }}
-        </p>
-      </template>
+  <CatalogCardShell
+    v-if="product"
+    :title="product.name[lang]"
+    :image-src="product.thumbnail"
+    :image-alt="product.name[lang]"
+    :to="productUrl"
+    :clickable="true"
+    card-class="hover:ring-2 hover:ring-primary"
+  >
+    <template #overlay>
+      <UTooltip :text="wishlistLabel" :popper="{ placement: 'top' }">
+        <UButton
+          icon="bx:heart"
+          :color="wishlisted ? 'error' : 'neutral'"
+          :variant="wishlisted ? 'solid' : 'soft'"
+          size="sm"
+          square
+          :loading="wishlistLoading"
+          class="shadow-sm backdrop-blur transition-all duration-200 hover:scale-110 hover:shadow-md"
+          :aria-label="wishlistLabel"
+          @click.prevent.stop="handleWishlistToggle()"
+        />
+      </UTooltip>
+    </template>
 
-      <template #details>
-        <div class="flex flex-wrap gap-2">
-          <UBadge
-            v-if="product.isForSale"
-            :color="stock.inStock > 0 ? 'success' : 'neutral'"
-            size="sm"
-            variant="subtle"
-          >
-            {{ t("productPage.inStock") }}
-            <span v-if="stock.inStock > 0" class="ml-1">
-              {{ capCount(stock.inStock) }}
-            </span>
-          </UBadge>
+    <template #description>
+      <p class="line-clamp-2 text-sm text-gray-600">
+        {{ product.description[lang] }}
+      </p>
+    </template>
 
-          <UBadge
-            v-if="matchedAssetCount > 0"
-            color="secondary"
-            size="sm"
-            variant="subtle"
-          >
-            {{ t("productPage.available") }}
-            <span class="ml-1">
-              {{ capCount(matchedAssetCount) }}
-            </span>
-          </UBadge>
-        </div>
-      </template>
-
-      <template #badges>
-        <div v-if="sku" class="flex items-baseline gap-2">
-          <span class="text-base font-bold text-primary">
-            ฿{{ sku.price.final.toLocaleString() }}
+    <template #details>
+      <div class="flex flex-wrap gap-2">
+        <UBadge
+          v-if="product.isForSale"
+          :color="stock.inStock > 0 ? 'success' : 'neutral'"
+          size="sm"
+          variant="subtle"
+        >
+          {{ t("productPage.inStock") }}
+          <span v-if="stock.inStock > 0" class="ml-1">
+            {{ capCount(stock.inStock) }}
           </span>
-          <span
-            v-if="sku.price.discount > 0"
-            class="text-xs text-gray-400 line-through"
-          >
-            ฿{{ sku.price.original.toLocaleString() }}
+        </UBadge>
+
+        <UBadge
+          v-if="matchedAssetCount > 0"
+          color="secondary"
+          size="sm"
+          variant="subtle"
+        >
+          {{ t("productPage.available") }}
+          <span class="ml-1">
+            {{ capCount(matchedAssetCount) }}
           </span>
-        </div>
-      </template>
+        </UBadge>
+      </div>
+    </template>
 
-      <template #actions>
-        <UTooltip :text="wishlistLabel" :popper="{ placement: 'top' }">
-          <UButton
-            icon="bx:heart"
-            :color="wishlisted ? 'error' : 'neutral'"
-            :variant="wishlisted ? 'solid' : 'soft'"
-            size="sm"
-            square
-            :loading="wishlistLoading"
-            class="transition-all duration-200 hover:scale-110 hover:shadow-md"
-            :aria-label="wishlistLabel"
-            @click.prevent.stop="handleWishlistToggle()"
-          />
-        </UTooltip>
+    <template #badges>
+      <div v-if="sku" class="flex items-baseline gap-2">
+        <span class="text-base font-bold text-primary">
+          ฿{{ sku.price.final.toLocaleString() }}
+        </span>
+        <span
+          v-if="sku.price.discount > 0"
+          class="text-xs text-gray-400 line-through"
+        >
+          ฿{{ sku.price.original.toLocaleString() }}
+        </span>
+      </div>
+    </template>
 
-        <UTooltip :text="saleActionTooltipLabel" :popper="{ placement: 'top' }">
-          <UButton
-            v-if="canQuickAddToCart"
-            icon="bx:cart-add"
-            color="primary"
-            variant="soft"
-            size="sm"
-            square
-            class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-primary"
-            :aria-label="t('productCard.addToCart')"
-            @click.prevent.stop="handleAddToCart()"
-          />
+    <template #actions>
+      <UTooltip :text="saleActionTooltipLabel" :popper="{ placement: 'top' }">
+        <UButton
+          v-if="canQuickAddToCart"
+          icon="bx:cart-add"
+          color="primary"
+          variant="soft"
+          size="sm"
+          square
+          class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-primary"
+          :aria-label="t('productCard.addToCart')"
+          @click.prevent.stop="handleAddToCart()"
+        />
 
-          <UButton
-            v-else-if="saleActionRequiresDetail"
-            icon="bx:cart-add"
-            color="primary"
-            variant="soft"
-            size="sm"
-            square
-            class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-primary"
-            :aria-label="saleActionTooltipLabel"
-          />
-        </UTooltip>
-      </template>
-    </CatalogCardShell>
-  </NuxtLink>
+        <UButton
+          v-else-if="saleActionRequiresDetail"
+          :to="productUrl"
+          icon="bx:cart-add"
+          color="primary"
+          variant="soft"
+          size="sm"
+          square
+          class="transition-all duration-200 hover:scale-110 hover:shadow-md hover:ring-1 hover:ring-primary"
+          :aria-label="saleActionTooltipLabel"
+        />
+      </UTooltip>
+    </template>
+  </CatalogCardShell>
 </template>

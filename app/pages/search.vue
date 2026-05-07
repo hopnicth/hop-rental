@@ -799,7 +799,7 @@ watch(mainCategoryKey, (next, previous) => {
                 @click="setScope('rental')"
               />
             </div>
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
               <ProductsAssetCard
                 v-for="asset in rentalResults.slice(0, 6)"
                 :key="asset.id"
@@ -886,7 +886,7 @@ watch(mainCategoryKey, (next, previous) => {
         <div v-else-if="activeScope === 'rental'" class="space-y-4">
           <div
             v-if="rentalResults.length > 0"
-            class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
           >
             <ProductsAssetCard
               v-for="asset in rentalResults"
@@ -912,7 +912,7 @@ watch(mainCategoryKey, (next, previous) => {
         <div v-else class="space-y-4">
           <div
             v-if="visibleContentResults.length > 0"
-            class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+            class="grid grid-cols-2 gap-4 sm:grid-cols-3"
           >
             <ContentPageCard
               v-for="pageItem in visibleContentResults"

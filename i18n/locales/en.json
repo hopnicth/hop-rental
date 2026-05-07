@@ -68,6 +68,7 @@
     "activeRentals": "Active Rentals",
     "orders": "Order History",
     "wishlist": "Wishlist",
+    "saveList": "Save List",
     "settings": "Settings",
     "accountMenu": "Account Menu",
     "personalInfo": "Personal Information",
@@ -336,6 +337,28 @@
     "browseProducts": "Browse products",
     "emptyTitle": "No wishlist products yet",
     "emptyDescription": "Tap the heart icon on a product card to save it here."
+  },
+  "saveList": {
+    "addAsset": "Save rental item",
+    "removeAsset": "Remove saved rental item",
+    "addService": "Save service",
+    "removeService": "Remove saved service",
+    "savedAdded": "Added to Save List",
+    "savedRemoved": "Removed from Save List",
+    "saveError": "Could not update Save List",
+    "loginTitle": "Please sign in",
+    "loginDesc": "Sign in before saving rental items or services."
+  },
+  "saveListPage": {
+    "eyebrow": "Save List",
+    "title": "Save List",
+    "description": "Rental items and services you saved for later browsing.",
+    "browseAssets": "Browse rentals",
+    "browseServices": "Browse services",
+    "emptyTitle": "No saved items yet",
+    "emptyDescription": "Tap the save icon on rental or service cards to keep them here.",
+    "assetsTitle": "Saved rental items",
+    "servicesTitle": "Saved services"
   },
   "productDetail": {
     "home": "Home",

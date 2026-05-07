@@ -219,7 +219,7 @@ const { data: reviews } = await useAsyncData(
 
         <div
           v-if="assetOptions.length"
-          class="grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-6"
+          class="grid grid-cols-2 gap-4 sm:grid-cols-3"
         >
           <LazyProductsAssetCard
             v-for="access in assetOptions"
@@ -231,7 +231,7 @@ const { data: reviews } = await useAsyncData(
         </div>
         <div v-else-if="assetsLoading" class="space-y-4">
           <CommonLoadingCat inline />
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <ProductsCatalogCardSkeleton
               v-for="index in 3"
               :key="`detail-asset-skel-${index}`"

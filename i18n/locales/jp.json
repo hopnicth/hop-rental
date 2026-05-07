@@ -72,6 +72,7 @@
     "activeRentals": "レンタル中",
     "orders": "注文履歴",
     "wishlist": "ウィッシュリスト",
+    "saveList": "保存リスト",
     "settings": "設定",
     "accountMenu": "アカウントメニュー",
     "personalInfo": "個人情報",
@@ -340,6 +341,28 @@
     "browseProducts": "商品を見る",
     "emptyTitle": "保存した商品はまだありません",
     "emptyDescription": "商品カードのハートアイコンを押すとここに保存されます。"
+  },
+  "saveList": {
+    "addAsset": "レンタルを保存",
+    "removeAsset": "保存したレンタルを削除",
+    "addService": "サービスを保存",
+    "removeService": "保存したサービスを削除",
+    "savedAdded": "保存リストに追加しました",
+    "savedRemoved": "保存リストから削除しました",
+    "saveError": "保存リストを更新できませんでした",
+    "loginTitle": "ログインしてください",
+    "loginDesc": "レンタルやサービスを保存するにはログインが必要です。"
+  },
+  "saveListPage": {
+    "eyebrow": "Save List",
+    "title": "保存リスト",
+    "description": "あとで確認できるように保存したレンタルとサービスです。",
+    "browseAssets": "レンタルを見る",
+    "browseServices": "サービスを見る",
+    "emptyTitle": "保存した項目はまだありません",
+    "emptyDescription": "レンタルまたはサービスカードの保存アイコンを押すとここに保存されます。",
+    "assetsTitle": "保存したレンタル",
+    "servicesTitle": "保存したサービス"
   },
   "productDetail": {
     "home": "ホーム",

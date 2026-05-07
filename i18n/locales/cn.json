@@ -72,6 +72,7 @@
     "activeRentals": "当前租赁",
     "orders": "订单历史",
     "wishlist": "心愿单",
+    "saveList": "保存列表",
     "settings": "设置",
     "accountMenu": "账户菜单",
     "personalInfo": "个人信息",
@@ -320,6 +321,28 @@
     "browseProducts": "浏览商品",
     "emptyTitle": "暂无心愿单商品",
     "emptyDescription": "点击商品卡片上的爱心图标即可保存到这里。"
+  },
+  "saveList": {
+    "addAsset": "保存租赁项目",
+    "removeAsset": "移除已保存租赁项目",
+    "addService": "保存服务",
+    "removeService": "移除已保存服务",
+    "savedAdded": "已加入保存列表",
+    "savedRemoved": "已从保存列表移除",
+    "saveError": "无法更新保存列表",
+    "loginTitle": "请先登录",
+    "loginDesc": "登录后即可保存租赁项目或服务。"
+  },
+  "saveListPage": {
+    "eyebrow": "Save List",
+    "title": "保存列表",
+    "description": "这里保存您感兴趣的租赁项目和服务，方便之后查看。",
+    "browseAssets": "浏览租赁项目",
+    "browseServices": "浏览服务",
+    "emptyTitle": "暂无保存项目",
+    "emptyDescription": "点击租赁或服务卡片上的保存图标即可保存到这里。",
+    "assetsTitle": "已保存租赁项目",
+    "servicesTitle": "已保存服务"
   },
   "productDetail": {
     "home": "首页",

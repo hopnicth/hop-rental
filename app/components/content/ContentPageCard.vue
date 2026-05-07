@@ -1,35 +1,129 @@
 <script setup lang="ts">
+import CatalogCardShell from "~/components/products/CatalogCardShell.vue";
 import type { ContentPage } from "~/types/content";
 import type { LocaleCode } from "~/types/locale";
 
 const props = defineProps<{ page: ContentPage }>();
-const { locale } = useI18n();
+const toast = useToast();
+const { locale, t } = useI18n();
+const user = useSupabaseUser();
 const { pathForContent } = useContentPages();
+const { isSaved, isToggling, toggleSaveList } = useSaveList();
 const lang = computed(() => locale.value as LocaleCode);
-const to = computed(() => pathForContent(props.page.contentType, props.page.slug));
+const to = computed(() =>
+  pathForContent(props.page.contentType, props.page.slug),
+);
+const imageSrc = computed(
+  () =>
+    props.page.coverImageUrl ||
+    "https://placehold.co/400x400/E0E0E0/757575?text=HOPNIC&font=roboto",
+);
+const canSaveService = computed(() => props.page.contentType === "service");
+const saved = isSaved("service", props.page.id);
+const saveLoading = isToggling("service", props.page.id);
+const saveLabel = computed(() =>
+  saved.value ? t("saveList.removeService") : t("saveList.addService"),
+);
+
+async function handleSaveToggle() {
+  if (!canSaveService.value) return;
+  if (!user.value) {
+    toast.add({
+      title: t("saveList.loginTitle"),
+      description: t("saveList.loginDesc"),
+      icon: "bx:log-in-circle",
+      color: "warning",
+      duration: 3000,
+    });
+    await navigateTo("/user/login");
+    return;
+  }
+
+  try {
+    const next = await toggleSaveList("service", props.page.id);
+    toast.add({
+      title: next ? t("saveList.savedAdded") : t("saveList.savedRemoved"),
+      icon: next ? "bx:bookmark" : "bx:check-circle",
+      color: next ? "secondary" : "neutral",
+      duration: 2200,
+    });
+  } catch (error) {
+    toast.add({
+      title: t("saveList.saveError"),
+      description: error instanceof Error ? error.message : "Unknown error",
+      icon: "bx:error-circle",
+      color: "error",
+      duration: 3000,
+    });
+  }
+}
 </script>
 
 <template>
-  <NuxtLink :to="to" class="block h-full">
-    <UCard class="h-full overflow-hidden transition hover:-translate-y-0.5 hover:ring-2 hover:ring-primary">
-      <NuxtImg
-        v-if="page.coverImageUrl"
-        :src="page.coverImageUrl"
-        :alt="page.title[lang]"
-        class="aspect-video w-full object-cover"
-        loading="lazy"
-      />
-      <div class="space-y-3 pt-4">
-        <h3 class="line-clamp-2 text-lg font-semibold text-highlighted">
-          {{ page.title[lang] }}
-        </h3>
-        <p class="line-clamp-3 text-sm leading-6 text-muted">
-          {{ page.excerpt[lang] }}
-        </p>
-        <div class="inline-flex items-center gap-1 text-sm font-medium text-primary">
-          Read more <UIcon name="bx:right-arrow-alt" class="size-5" />
-        </div>
+  <CatalogCardShell
+    :title="page.title[lang]"
+    :subtitle="t(`search.scope.${page.contentType}`)"
+    :image-src="imageSrc"
+    :image-alt="page.title[lang]"
+    :to="to"
+    :clickable="true"
+    card-class="hover:ring-2 hover:ring-primary"
+  >
+    <template v-if="canSaveService" #overlay>
+      <UTooltip :text="saveLabel" :popper="{ placement: 'top' }">
+        <UButton
+          icon="bx:bookmark"
+          :color="saved ? 'secondary' : 'neutral'"
+          :variant="saved ? 'solid' : 'soft'"
+          size="sm"
+          square
+          :loading="saveLoading"
+          class="shadow-sm backdrop-blur transition-all duration-200 hover:scale-110 hover:shadow-md"
+          :aria-label="saveLabel"
+          @click.prevent.stop="handleSaveToggle()"
+        />
+      </UTooltip>
+    </template>
+
+    <template #description>
+      <p class="line-clamp-2 text-sm text-muted">
+        {{ page.excerpt[lang] }}
+      </p>
+    </template>
+
+    <template #details>
+      <div class="flex flex-wrap gap-2">
+        <UBadge color="primary" size="sm" variant="subtle">
+          {{ t(`search.scope.${page.contentType}`) }}
+        </UBadge>
+        <UBadge
+          v-for="area in page.serviceAreas.slice(0, 2)"
+          :key="area"
+          color="neutral"
+          size="sm"
+          variant="subtle"
+        >
+          {{ area }}
+        </UBadge>
       </div>
-    </UCard>
-  </NuxtLink>
+    </template>
+
+    <template #badges>
+      <span class="text-sm font-medium text-primary">
+        {{ t("home.learnMore") }}
+      </span>
+    </template>
+
+    <template #actions>
+      <UButton
+        :to="to"
+        icon="bx:right-arrow-alt"
+        color="primary"
+        variant="soft"
+        size="sm"
+        square
+        :aria-label="t('home.learnMore')"
+      />
+    </template>
+  </CatalogCardShell>
 </template>

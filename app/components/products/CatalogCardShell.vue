@@ -14,7 +14,7 @@ const props = withDefaults(
     subtitle: undefined,
     to: null,
     cardClass: "",
-    imageClass: "aspect-square w-full object-cover",
+    imageClass: "block aspect-square w-full object-cover",
     clickable: false,
   },
 );
@@ -56,12 +56,20 @@ function handleCardClick(event: MouseEvent) {
       </div>
     </template>
 
-    <NuxtImg
-      :src="props.imageSrc"
-      :alt="props.imageAlt"
-      loading="lazy"
-      :class="props.imageClass"
-    />
+    <div class="relative overflow-hidden rounded-lg bg-muted">
+      <NuxtImg
+        :src="props.imageSrc"
+        :alt="props.imageAlt"
+        loading="lazy"
+        :class="props.imageClass"
+      />
+      <div
+        v-if="$slots.overlay"
+        class="absolute right-2 top-2 z-10 flex items-center gap-2"
+      >
+        <slot name="overlay" />
+      </div>
+    </div>
 
     <div class="mt-3 flex min-h-60 flex-col gap-3">
       <div class="min-h-10">
