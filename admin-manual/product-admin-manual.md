@@ -1,6 +1,6 @@
 # Product Admin Manual
 
-Last updated: 2026-05-06  
+Last updated: 2026-05-07
 Audience: Admin, data-entry team, Custom AI assistant
 
 ---
@@ -13,12 +13,12 @@ Product ไม่ใช่ตัวเลือกย่อย ตัวเล�
 
 ตัวอย่างโครงสร้างที่ถูกต้อง:
 
-| Level | Example | ใช้ทำอะไร |
-|---|---|---|
-| Product | สว่านกระแทกไร้สาย 18V / Cordless Impact Drill 18V | หน้าสินค้าหลัก, SEO, gallery, specs, category |
-| SKU | ตัวเครื่องเปล่า 18V / 18V Body Only | ราคา, stock, SKU code, variant attributes |
-| Asset | R-DRILL-001 Rental Drill Set | รายการเช่าหรืออุปกรณ์เช่าจริง |
-| Content | รีวิวสว่าน Makita 18V | Blog/review/service/promotion content ที่ link มาหาสินค้าได้ |
+| Level   | Example                                           | ใช้ทำอะไร                                                    |
+| ------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| Product | สว่านกระแทกไร้สาย 18V / Cordless Impact Drill 18V | หน้าสินค้าหลัก, SEO, gallery, specs, category                |
+| SKU     | ตัวเครื่องเปล่า 18V / 18V Body Only               | ราคา, stock, SKU code, variant attributes                    |
+| Asset   | R-DRILL-001 Rental Drill Set                      | รายการเช่าหรืออุปกรณ์เช่าจริง                                |
+| Content | รีวิวสว่าน Makita 18V                             | Blog/review/service/promotion content ที่ link มาหาสินค้าได้ |
 
 ---
 
@@ -26,26 +26,26 @@ Product ไม่ใช่ตัวเลือกย่อย ตัวเล�
 
 เมื่อสร้าง Product ใหม่ ต้องตรวจ field เหล่านี้เสมอ
 
-| API Field | DB Field | Required | Rule |
-|---|---|---:|---|
-| `nameTh` | `name_th` | Yes | ชื่อไทย ห้ามว่าง |
-| `nameEn` | `name_en` | Yes | ชื่ออังกฤษ ห้ามว่าง |
-| `descriptionTh` | `description_th` | Yes | รายละเอียดไทย ห้ามว่าง |
-| `descriptionEn` | `description_en` | Yes | รายละเอียดอังกฤษ ห้ามว่าง |
-| `type` | `type` | Yes | `sale`, `rental`, หรือ `hybrid` |
-| `mainCategoryKey` | `main_category_key` | Yes | หมวดหลัก ต้องมี |
-| `slug` | `slug` | Auto/Required | ถ้าไม่กรอก ระบบสร้างให้ |
-| `brand` | `brand` | Recommended | แนะนำให้กรอกเพื่อ search/slug |
-| `shippingSize` | `shipping_size` | Optional | `free`, `s`, `m`, `l`, `xl` |
-| `isHidden` | `is_hidden` | Optional | Product ใหม่มักซ่อนก่อนจนข้อมูลครบ |
+| API Field         | DB Field            |      Required | Rule                               |
+| ----------------- | ------------------- | ------------: | ---------------------------------- |
+| `nameTh`          | `name_th`           |           Yes | ชื่อไทย ห้ามว่าง                   |
+| `nameEn`          | `name_en`           |           Yes | ชื่ออังกฤษ ห้ามว่าง                |
+| `descriptionTh`   | `description_th`    |           Yes | รายละเอียดไทย ห้ามว่าง             |
+| `descriptionEn`   | `description_en`    |           Yes | รายละเอียดอังกฤษ ห้ามว่าง          |
+| `type`            | `type`              |           Yes | `sale`, `rental`, หรือ `hybrid`    |
+| `mainCategoryKey` | `main_category_key` |           Yes | หมวดหลัก ต้องมี                    |
+| `slug`            | `slug`              | Auto/Required | ถ้าไม่กรอก ระบบสร้างให้            |
+| `brand`           | `brand`             |   Recommended | แนะนำให้กรอกเพื่อ search/slug      |
+| `shippingSize`    | `shipping_size`     |      Optional | `free`, `s`, `m`, `l`, `xl`        |
+| `isHidden`        | `is_hidden`         |      Optional | Product ใหม่มักซ่อนก่อนจนข้อมูลครบ |
 
 ### Product Type
 
-| Value | Meaning | ใช้เมื่อ |
-|---|---|---|
-| `sale` | ขายเท่านั้น | มี SKU ราคา/stock สำหรับขาย |
+| Value    | Meaning      | ใช้เมื่อ                         |
+| -------- | ------------ | -------------------------------- |
+| `sale`   | ขายเท่านั้น  | มี SKU ราคา/stock สำหรับขาย      |
 | `rental` | เช่าเท่านั้น | ใช้คู่กับ Asset หรือ rental flow |
-| `hybrid` | ขายและเช่า | มี SKU ขาย และมี Asset ให้เช่า |
+| `hybrid` | ขายและเช่า   | มี SKU ขาย และมี Asset ให้เช่า   |
 
 ---
 
@@ -61,8 +61,8 @@ Product ไม่ใช่ตัวเลือกย่อย ตัวเล�
 
 Example:
 
-| Input | Auto slug |
-|---|---|
+| Input                                                  | Auto slug                                    |
+| ------------------------------------------------------ | -------------------------------------------- |
 | `nameEn = Cordless Impact Drill 18V`, `brand = Makita` | `cordless-impact-drill-18v-makita-{shortId}` |
 
 Rules:
@@ -80,27 +80,27 @@ SKU คือรายการที่ซื้อ/เช่าได้จร
 
 ### Required SKU Fields
 
-| API Field | DB Field | Required | Rule |
-|---|---|---:|---|
-| `labelTh` | `label_th` | Yes | ชื่อ SKU ไทย |
-| `labelEn` | `label_en` | Yes | ชื่อ SKU อังกฤษ |
-| `skuCode` | `sku_code` | Yes | รหัส SKU ห้ามว่าง |
-| `price` | `price` | Yes | ต้อง ≥ 0 |
+| API Field      | DB Field        |      Required | Rule               |
+| -------------- | --------------- | ------------: | ------------------ |
+| `labelTh`      | `label_th`      |           Yes | ชื่อ SKU ไทย       |
+| `labelEn`      | `label_en`      |           Yes | ชื่อ SKU อังกฤษ    |
+| `skuCode`      | `sku_code`      |           Yes | รหัส SKU ห้ามว่าง  |
+| `price`        | `price`         |           Yes | ต้อง ≥ 0           |
 | `currencyCode` | `currency_code` | Default `THB` | ต้องยาว 3 ตัวอักษร |
-| `stock` | `stock` | Default `0` | ต้อง ≥ 0 |
-| `attributes` | `attributes` | Optional | JSON object |
-| `pricingTiers` | `pricing_tiers` | Optional | JSON array |
+| `stock`        | `stock`         |   Default `0` | ต้อง ≥ 0           |
+| `attributes`   | `attributes`    |      Optional | JSON object        |
+| `pricingTiers` | `pricing_tiers` |      Optional | JSON array         |
 
 ### SKU Pricing Rules
 
-| Field | Rule | Example |
-|---|---|---|
-| `price` | ราคาปัจจุบัน ต้องไม่ติดลบ | `3490` |
-| `originalPrice` | ถ้ามี ต้องมากกว่าหรือเท่ากับ `price` | `3990` |
-| `discountPercent` | 0–100 | `13` |
-| `currencyCode` | ใช้ `THB` เป็น default | `THB` |
-| `promoStartAt` | ต้องเป็น datetime ที่ถูกต้อง | `2026-05-01T00:00:00+07:00` |
-| `promoEndAt` | ต้องไม่ก่อน `promoStartAt` | `2026-05-31T23:59:59+07:00` |
+| Field             | Rule                                 | Example                     |
+| ----------------- | ------------------------------------ | --------------------------- |
+| `price`           | ราคาปัจจุบัน ต้องไม่ติดลบ            | `3490`                      |
+| `originalPrice`   | ถ้ามี ต้องมากกว่าหรือเท่ากับ `price` | `3990`                      |
+| `discountPercent` | 0–100                                | `13`                        |
+| `currencyCode`    | ใช้ `THB` เป็น default               | `THB`                       |
+| `promoStartAt`    | ต้องเป็น datetime ที่ถูกต้อง         | `2026-05-01T00:00:00+07:00` |
+| `promoEndAt`      | ต้องไม่ก่อน `promoStartAt`           | `2026-05-31T23:59:59+07:00` |
 
 ### SKU Feature / Attributes
 
@@ -153,14 +153,14 @@ Rules:
 
 Product มีหลายที่สำหรับใส่รายละเอียด อย่าใช้ผิดที่
 
-| Field | Type | ใช้สำหรับ | Public? |
-|---|---|---|---|
-| `descriptionTh/En` | text | รายละเอียดหลักแบบย่อ/กลาง | Yes |
-| `spec` | JSON object | spec เชิงโครงสร้าง เช่น voltage, weight, warranty | Yes |
-| `detailBlocks` | JSON array | เนื้อหายาว, section เพิ่มเติม, bullet, marketing content | Yes |
-| `mediaGallery` | JSON array | รูปสินค้า | Yes |
-| `mediaLinks` | JSON array | YouTube/external video | Yes |
-| `documents` | JSON array | manual/catalog/datasheet/guide links | Yes |
+| Field              | Type        | ใช้สำหรับ                                                | Public? |
+| ------------------ | ----------- | -------------------------------------------------------- | ------- |
+| `descriptionTh/En` | text        | รายละเอียดหลักแบบย่อ/กลาง                                | Yes     |
+| `spec`             | JSON object | spec เชิงโครงสร้าง เช่น voltage, weight, warranty        | Yes     |
+| `detailBlocks`     | JSON array  | เนื้อหายาว, section เพิ่มเติม, bullet, marketing content | Yes     |
+| `mediaGallery`     | JSON array  | รูปสินค้า                                                | Yes     |
+| `mediaLinks`       | JSON array  | YouTube/external video                                   | Yes     |
+| `documents`        | JSON array  | manual/catalog/datasheet/guide links                     | Yes     |
 
 ### Spec Example
 
@@ -181,7 +181,10 @@ Product มีหลายที่สำหรับใส่รายละเ
   {
     "key": "included-items",
     "title": { "th": "อุปกรณ์ในชุด", "en": "Included Items" },
-    "body": { "th": "เหมาะสำหรับงานช่างทั่วไป", "en": "Suitable for general workshop use." },
+    "body": {
+      "th": "เหมาะสำหรับงานช่างทั่วไป",
+      "en": "Suitable for general workshop use."
+    },
     "items": ["ตัวเครื่อง", "คู่มือ", "กล่องเก็บ"]
   }
 ]
@@ -221,14 +224,14 @@ Document kinds ที่แนะนำ: `manual`, `catalog`, `datasheet`, `guid
 
 Product/SKU image upload รองรับ:
 
-| MIME Type | Allowed |
-|---|---:|
-| `image/jpeg` | Yes |
-| `image/png` | Yes |
-| `image/webp` | Yes |
-| `image/heic` | No |
-| `image/svg+xml` | No สำหรับ Product/SKU ปกติ |
-| `application/pdf` | No สำหรับ image upload |
+| MIME Type         |                    Allowed |
+| ----------------- | -------------------------: |
+| `image/jpeg`      |                        Yes |
+| `image/png`       |                        Yes |
+| `image/webp`      |                        Yes |
+| `image/heic`      |                         No |
+| `image/svg+xml`   | No สำหรับ Product/SKU ปกติ |
+| `application/pdf` |     No สำหรับ image upload |
 
 Limit:
 
@@ -252,11 +255,11 @@ SKU media rule:
 
 ### ความต่างของ Category, Tag, Search Keyword
 
-| Field | ใช้ทำอะไร | ตัวอย่าง |
-|---|---|---|
-| `mainCategoryKey` | หมวดหลัก 1 ค่า | `mechanic_tools` |
-| `tagKeys` | filter/tag รอง | `cordless`, `drill`, `power_tools` |
-| `searchKeywords` | คำค้นเสริม/คำพ้อง | `สว่านแบต`, `สว่านไร้สาย`, `impact drill` |
+| Field             | ใช้ทำอะไร         | ตัวอย่าง                                  |
+| ----------------- | ----------------- | ----------------------------------------- |
+| `mainCategoryKey` | หมวดหลัก 1 ค่า    | `mechanic_tools`                          |
+| `tagKeys`         | filter/tag รอง    | `cordless`, `drill`, `power_tools`        |
+| `searchKeywords`  | คำค้นเสริม/คำพ้อง | `สว่านแบต`, `สว่านไร้สาย`, `impact drill` |
 
 ### Tag Rules
 
@@ -327,12 +330,12 @@ Product core ไม่มี field `note` สำหรับ internal note โ�
 
 ให้ใช้ note ให้ถูกที่:
 
-| Context | Field | ใช้สำหรับ |
-|---|---|---|
-| SKU branch inventory | `notes` | note stock/สาขา เช่น “รอตรวจนับจริง” |
-| Asset match | `note` | note ความสัมพันธ์ Asset ↔ Product |
-| Inventory | `notes` | note คลัง/branch |
-| Product public description | `descriptionTh/En` | ข้อมูลที่ลูกค้าเห็นเท่านั้น |
+| Context                    | Field              | ใช้สำหรับ                            |
+| -------------------------- | ------------------ | ------------------------------------ |
+| SKU branch inventory       | `notes`            | note stock/สาขา เช่น “รอตรวจนับจริง” |
+| Asset match                | `note`             | note ความสัมพันธ์ Asset ↔ Product    |
+| Inventory                  | `notes`            | note คลัง/branch                     |
+| Product public description | `descriptionTh/En` | ข้อมูลที่ลูกค้าเห็นเท่านั้น          |
 
 Good inventory note:
 
@@ -354,13 +357,13 @@ Product ไม่ได้ถือ asset list โดยตรง การเ�
 
 Fields:
 
-| Field | Rule | Example |
-|---|---|---|
-| `assetId` | Asset ที่ต้องการ link | `uuid` |
-| `productId` | Product ที่เกี่ยวข้อง | `prod-xxxx` |
-| `matchType` | free-form label | `compatible`, `primary`, `replacement` |
-| `sortOrder` | ตัวเลข ≥ 0 | `0` |
-| `note` | optional internal note | `ใช้กับชุดเช่า Makita 18V` |
+| Field       | Rule                   | Example                                |
+| ----------- | ---------------------- | -------------------------------------- |
+| `assetId`   | Asset ที่ต้องการ link  | `uuid`                                 |
+| `productId` | Product ที่เกี่ยวข้อง  | `prod-xxxx`                            |
+| `matchType` | free-form label        | `compatible`, `primary`, `replacement` |
+| `sortOrder` | ตัวเลข ≥ 0             | `0`                                    |
+| `note`      | optional internal note | `ใช้กับชุดเช่า Makita 18V`             |
 
 Rules:
 
@@ -371,11 +374,11 @@ Rules:
 
 Good match examples:
 
-| matchType | ใช้เมื่อ | note example |
-|---|---|---|
-| `primary` | Asset หลักของ Product rental | `Rental set หลักสำหรับหน้าสินค้านี้` |
-| `compatible` | ใช้ร่วมกันได้ | `ใช้ร่วมกับแบต 18V series เดียวกัน` |
-| `replacement` | อุปกรณ์ทดแทน | `ใช้แทนรุ่นเก่าเมื่อ stock หมด` |
+| matchType     | ใช้เมื่อ                     | note example                         |
+| ------------- | ---------------------------- | ------------------------------------ |
+| `primary`     | Asset หลักของ Product rental | `Rental set หลักสำหรับหน้าสินค้านี้` |
+| `compatible`  | ใช้ร่วมกันได้                | `ใช้ร่วมกับแบต 18V series เดียวกัน`  |
+| `replacement` | อุปกรณ์ทดแทน                 | `ใช้แทนรุ่นเก่าเมื่อ stock หมด`      |
 
 ---
 
@@ -444,7 +447,12 @@ Rules:
   "brand": "Makita",
   "mainCategoryKey": "mechanic_tools",
   "tagKeys": ["cordless", "drill", "power_tools", "18v"],
-  "searchKeywords": ["สว่านแบต", "สว่านไร้สาย", "สว่าน 18 โวลต์", "impact drill"],
+  "searchKeywords": [
+    "สว่านแบต",
+    "สว่านไร้สาย",
+    "สว่าน 18 โวลต์",
+    "impact drill"
+  ],
   "shippingSize": "m",
   "isHidden": true,
   "spec": {

@@ -17,6 +17,7 @@ import type { RentalPricingLine } from "~/utils/rental-pricing";
 import { calculateShipping } from "~/utils/shipping";
 
 const { t, locale } = useI18n();
+const route = useRoute();
 const lang = computed(() => locale.value as LocaleCode);
 const toast = useToast();
 const { getSaleStockBySku, getProductById } = useProducts();
@@ -25,7 +26,7 @@ const { getSaleStockBySku, getProductById } = useProducts();
 const { isLoggedIn } = useAuthSession();
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
-    navigateTo("/user/login");
+    navigateTo(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`);
   }
 });
 

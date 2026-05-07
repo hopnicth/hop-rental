@@ -1,5 +1,7 @@
 # Payment — Saved Cards & Billing Addresses (Research + Checklist)
 
+Last updated: 2026-05-07
+
 Status: **research / not implemented yet.** Use this file to track scope before
 opening the implementation PR. Promote completed items into
 `PAYMENT_DECISIONS.md → Approved`.
@@ -100,6 +102,7 @@ CREATE TABLE public.user_payment_methods (
 ### Gap analysis vs Thai full tax invoice (Section 86/4 RC)
 
 Required on tax invoice but not in the personal `addresses` schema:
+
 - Tax payer ID (TIN / Citizen ID, 13 digits).
 - Branch identifier (`สำนักงานใหญ่` / `สาขาที่ 0001`) — required for VAT-registered B2B.
 - Legal entity name vs trade name (when buyer = juristic person).

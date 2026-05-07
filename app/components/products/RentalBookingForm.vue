@@ -43,6 +43,13 @@ type CalendarRangeValue = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_SUPPORT_PHONE = "+66 95-479-2333";
+
+type ContactSettingsDto = {
+  supportPhone: string;
+  lineUrl: string;
+  updatedAt: string | null;
+};
 
 const emit = defineEmits<{
   submit: [
@@ -64,12 +71,41 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const toast = useToast();
+const config = useRuntimeConfig();
 const { blockingBookings } = useBooking();
 const { profile } = useUserProfile();
+
+const { data: contactSettings } = useFetch<ContactSettingsDto>(
+  "/api/contact-settings",
+  {
+    key: "public-contact-settings",
+    default: () => ({
+      supportPhone: DEFAULT_SUPPORT_PHONE,
+      lineUrl: "",
+      updatedAt: null,
+    }),
+  },
+);
+
+const supportPhone = computed(() => {
+  const value = String(
+    contactSettings.value?.supportPhone ||
+      config.public.chatSupportPhone ||
+      DEFAULT_SUPPORT_PHONE,
+  ).trim();
+  return value.length > 0 ? value : DEFAULT_SUPPORT_PHONE;
+});
+
+const supportPhoneHref = computed(() =>
+  supportPhone.value ? `tel:${supportPhone.value.replace(/\s+/g, "")}` : null,
+);
 
 // ── Booker contact fields ──
 const bookerName = ref("");
 const bookerPhone = ref("");
+const contactFieldsRef = ref<HTMLElement | null>(null);
+const submitAttempted = ref(false);
 
 // Pre-fill from user profile when available
 watch(
@@ -121,6 +157,24 @@ const minDate = computed(() => {
 });
 
 const selectedRange = shallowRef<CalendarRangeValue | undefined>(undefined);
+const leadTimeAlertVisible = ref(false);
+const rangeAdjustedReason = ref<"min" | "max" | null>(null);
+const calendarRenderKey = ref(0);
+
+const calendarRange = computed<CalendarRangeValue | undefined>({
+  get: () => selectedRange.value,
+  set: (range) => {
+    if (range && isRangeBlockedByLeadTime(range)) {
+      notifyLeadTimeBlocked();
+      selectedRange.value = undefined;
+      rangeAdjustedReason.value = null;
+      return;
+    }
+    const normalized = normalizeRangeSelection(range);
+    selectedRange.value = cloneRangeSelection(normalized.range);
+    rangeAdjustedReason.value = normalized.reason;
+  },
+});
 
 const relevantBookings = computed(() => {
   const skuId = props.selectedSku?.id;
@@ -159,6 +213,13 @@ const blockedDateKeys = computed(() => {
 });
 
 const blockedDateCount = computed(() => blockedDateKeys.value.size);
+const leadTimeBlockedDateCount = computed(() =>
+  diffCalendarDays(todayDate, minDate.value),
+);
+
+const hasLeadTimeRestriction = computed(
+  () => leadTimeBlockedDateCount.value > 0,
+);
 
 // ── Derived values ──
 const startDate = computed(() => selectedRange.value?.start);
@@ -197,6 +258,16 @@ const pricingBreakdown = computed<RentalPricingBreakdown>(() =>
 
 const totalCost = computed(() => pricingBreakdown.value.total);
 
+const rangeAdjustedHint = computed(() => {
+  if (rangeAdjustedReason.value === "min") {
+    return t("booking.rangeAdjustedMin", { min: minDays.value });
+  }
+  if (rangeAdjustedReason.value === "max") {
+    return t("booking.rangeAdjustedMax", { max: maxDays.value });
+  }
+  return null;
+});
+
 function unitLabel(line: RentalPricingLine): string {
   if (line.unit === "month") {
     return t("booking.unitMonths", { n: line.count });
@@ -224,14 +295,36 @@ const selectionHitsBlockedDates = computed(() => {
   return false;
 });
 
-// ── Validation ──
-const isValid = computed(() => {
+const selectionStartsBeforeMinDate = computed(() =>
+  startDate.value
+    ? isBeforeCalendarDate(startDate.value, minDate.value)
+    : false,
+);
+
+const isBookerNameMissing = computed(() => !bookerName.value.trim());
+const isBookerPhoneMissing = computed(() => !bookerPhone.value.trim());
+const isBookerInfoMissing = computed(
+  () => isBookerNameMissing.value || isBookerPhoneMissing.value,
+);
+
+const isRangeSelectionValid = computed(() => {
   if (!startDate.value || !returnDate.value) return false;
+  if (selectionStartsBeforeMinDate.value) return false;
   if (numDays.value < minDays.value) return false;
   if (maxDays.value > 0 && numDays.value > maxDays.value) return false;
   if (selectionHitsBlockedDates.value) return false;
-  if (!bookerName.value.trim()) return false;
-  if (!bookerPhone.value.trim()) return false;
+  return true;
+});
+
+const submitValidationMessage = computed(() => {
+  if (!submitAttempted.value || !isBookerInfoMissing.value) return null;
+  return t("booking.bookerInfoRequired");
+});
+
+// ── Validation ──
+const isValid = computed(() => {
+  if (!isRangeSelectionValid.value) return false;
+  if (isBookerInfoMissing.value) return false;
   return true;
 });
 
@@ -257,6 +350,13 @@ function addUtcDays(value: Date, days: number): Date {
   return new Date(value.getTime() + days * DAY_MS);
 }
 
+function isBeforeCalendarDate(
+  date: DateValue | CalendarDate,
+  min: CalendarDate,
+): boolean {
+  return date.toDate("UTC").getTime() < min.toDate("UTC").getTime();
+}
+
 function diffCalendarDays(start: CalendarDate, end: CalendarDate): number {
   return Math.max(
     0,
@@ -270,8 +370,88 @@ function isDateBooked(date: DateValue | CalendarDate): boolean {
   return blockedDateKeys.value.has(toISODateKey(date.toDate("UTC")));
 }
 
+function isDateToday(date: DateValue | CalendarDate): boolean {
+  return toISODateKey(date.toDate("UTC")) === toISO(todayDate);
+}
+
+function isDateInPast(date: DateValue | CalendarDate): boolean {
+  return isBeforeCalendarDate(date, todayDate);
+}
+
+function isDateBlockedByLeadTime(date: DateValue | CalendarDate): boolean {
+  return (
+    !isBeforeCalendarDate(date, todayDate) &&
+    isBeforeCalendarDate(date, minDate.value)
+  );
+}
+
+function isRangeBlockedByLeadTime(range: CalendarRangeValue): boolean {
+  return isDateBlockedByLeadTime(range.start);
+}
+
+function notifyLeadTimeBlocked(): void {
+  leadTimeAlertVisible.value = true;
+  toast.add({
+    title: t("booking.urgentLeadTimeTitle"),
+    description: t("booking.urgentLeadTimeDesc", { phone: supportPhone.value }),
+    color: "warning",
+    icon: "bx:phone-call",
+  });
+}
+
+function dayChipColor(day: DateValue | CalendarDate): "error" | "warning" {
+  return isDateBooked(day) ? "error" : "warning";
+}
+
+function showDayChip(day: DateValue | CalendarDate): boolean {
+  return isDateBooked(day) || isDateBlockedByLeadTime(day);
+}
+
 function isDateDisabled(date: DateValue): boolean {
   return isDateBooked(date);
+}
+
+function normalizeRangeSelection(range: CalendarRangeValue | undefined): {
+  range: CalendarRangeValue | undefined;
+  reason: "min" | "max" | null;
+} {
+  if (!range?.start || !range.end) {
+    return { range, reason: null };
+  }
+
+  const days = diffCalendarDays(range.start, range.end);
+  if (days === 0) {
+    return { range, reason: null };
+  }
+
+  if (days < minDays.value) {
+    return {
+      range: {
+        start: range.start,
+        end: range.start.add({ days: minDays.value }),
+      },
+      reason: "min",
+    };
+  }
+
+  if (maxDays.value > 0 && days > maxDays.value) {
+    return {
+      range: {
+        start: range.start,
+        end: range.start.add({ days: maxDays.value }),
+      },
+      reason: "max",
+    };
+  }
+
+  return { range, reason: null };
+}
+
+function cloneRangeSelection(
+  range: CalendarRangeValue | undefined,
+): CalendarRangeValue | undefined {
+  if (!range?.start || !range.end) return range;
+  return { start: range.start, end: range.end };
 }
 
 // ── Format CalendarDate → display string ──
@@ -280,10 +460,38 @@ function formatDate(d: CalendarDate | undefined): string {
   return toISO(d);
 }
 
+function scrollToBookerFields(): void {
+  contactFieldsRef.value?.scrollIntoView({
+    behavior: "smooth",
+    block: "center",
+  });
+
+  const targetId = isBookerNameMissing.value
+    ? "booking-booker-name"
+    : isBookerPhoneMissing.value
+      ? "booking-booker-phone"
+      : null;
+
+  if (!targetId || typeof document === "undefined") return;
+
+  requestAnimationFrame(() => {
+    const input = document.getElementById(targetId) as HTMLInputElement | null;
+    input?.focus();
+  });
+}
+
 // ── Submit ──
 function handleSubmit() {
-  if (props.loading || !isValid.value || !startDate.value || !returnDate.value)
+  if (props.loading) return;
+
+  submitAttempted.value = true;
+
+  if (isBookerInfoMissing.value) {
+    scrollToBookerFields();
     return;
+  }
+
+  if (!isValid.value || !startDate.value || !returnDate.value) return;
 
   emit("submit", {
     startDate: toISO(startDate.value),
@@ -302,7 +510,33 @@ function handleSubmit() {
 
 watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
   selectedRange.value = undefined;
+  leadTimeAlertVisible.value = false;
+  rangeAdjustedReason.value = null;
+  submitAttempted.value = false;
 });
+
+const adjustedRangeRenderSignature = computed(() => {
+  if (!rangeAdjustedReason.value || !startDate.value || !returnDate.value) {
+    return null;
+  }
+
+  return [
+    rangeAdjustedReason.value,
+    toISO(startDate.value),
+    toISO(returnDate.value),
+    numDays.value,
+  ].join(":");
+});
+
+watch(
+  adjustedRangeRenderSignature,
+  async (signature) => {
+    if (!signature) return;
+    await nextTick();
+    calendarRenderKey.value += 1;
+  },
+  { flush: "post" },
+);
 </script>
 
 <template>
@@ -326,9 +560,13 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
       :class="{ 'pointer-events-none opacity-60': props.loading }"
     >
       <!-- Booker contact info -->
-      <div class="grid gap-3 sm:grid-cols-2">
+      <div
+        ref="contactFieldsRef"
+        class="grid gap-3 scroll-mt-24 sm:grid-cols-2"
+      >
         <UFormField :label="t('booking.bookerName')" required>
           <UInput
+            id="booking-booker-name"
             v-model="bookerName"
             :placeholder="t('booking.bookerNamePlaceholder')"
             icon="bx:user"
@@ -336,6 +574,7 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
         </UFormField>
         <UFormField :label="t('booking.bookerPhone')" required>
           <UInput
+            id="booking-booker-phone"
             v-model="bookerPhone"
             type="tel"
             :placeholder="t('booking.bookerPhonePlaceholder')"
@@ -354,6 +593,24 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
             </p>
           </div>
 
+          <div
+            class="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs"
+          >
+            <p class="font-medium text-muted">
+              {{ t("booking.earliestStartLabel") }}
+            </p>
+            <p class="text-base font-semibold text-primary">
+              {{ formatDate(minDate) }}
+            </p>
+            <p v-if="hasLeadTimeRestriction" class="mt-0.5 text-muted">
+              {{
+                t("booking.leadTimeRuleDesc", {
+                  days: leadTimeBlockedDateCount,
+                })
+              }}
+            </p>
+          </div>
+
           <UChip
             v-if="blockedDateCount > 0"
             show
@@ -363,26 +620,83 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
           >
             <span class="pl-2 text-xs">{{ t("booking.bookedLegend") }}</span>
           </UChip>
+          <UChip
+            v-if="leadTimeBlockedDateCount > 0"
+            show
+            inset
+            color="warning"
+            size="2xs"
+          >
+            <span class="pl-2 text-xs">{{ t("booking.leadTimeLegend") }}</span>
+          </UChip>
         </div>
 
         <UCalendar
-          v-model="selectedRange"
+          :key="calendarRenderKey"
+          v-model="calendarRange"
           range
           :min-value="minDate"
           :is-date-disabled="isDateDisabled"
         >
           <template #day="{ day }">
-            <UChip :show="isDateBooked(day)" inset color="error" size="2xs">
-              {{ day.day }}
-            </UChip>
+            <span
+              class="inline-flex min-h-6 min-w-6 items-center justify-center rounded-full transition"
+              :class="{
+                'opacity-25 grayscale': isDateInPast(day),
+                'cursor-not-allowed text-warning opacity-60':
+                  isDateBlockedByLeadTime(day),
+                'ring-2 ring-primary/70 ring-offset-2 ring-offset-default dark:ring-offset-gray-950':
+                  isDateToday(day),
+              }"
+            >
+              <UChip
+                :show="showDayChip(day)"
+                inset
+                :color="dayChipColor(day)"
+                size="2xs"
+              >
+                {{ day.day }}
+              </UChip>
+            </span>
           </template>
         </UCalendar>
+
+        <UAlert
+          v-if="leadTimeAlertVisible"
+          class="mt-3"
+          color="warning"
+          variant="soft"
+          icon="bx:phone-call"
+          :title="t('booking.urgentLeadTimeTitle')"
+          :description="
+            t('booking.urgentLeadTimeDesc', { phone: supportPhone })
+          "
+        >
+          <template #actions>
+            <UButton
+              v-if="supportPhoneHref"
+              size="sm"
+              color="warning"
+              variant="solid"
+              icon="bx:phone-call"
+              :href="supportPhoneHref"
+              :label="t('booking.urgentLeadTimeCall')"
+            />
+          </template>
+        </UAlert>
 
         <p class="mt-2 text-xs text-gray-400">
           {{ t("booking.minDays", { min: minDays }) }}
           <span v-if="maxDays > 0">
             · {{ t("booking.maxDays", { max: maxDays }) }}
           </span>
+        </p>
+        <p
+          v-if="rangeAdjustedHint"
+          class="mt-1 text-xs font-medium text-primary"
+        >
+          <UIcon name="bx:calendar-check" class="mr-1 inline" />
+          {{ rangeAdjustedHint }}
         </p>
         <p v-if="isCutoffActive" class="mt-1 text-xs font-medium text-warning">
           <UIcon name="bx:time-five" class="mr-1 inline" />
@@ -448,24 +762,33 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
     </div>
 
     <template #footer>
-      <div class="flex gap-3 justify-end">
-        <UButton
-          :label="t('booking.cancel')"
-          color="neutral"
-          variant="outline"
-          :disabled="props.loading"
-          @click="emit('cancel')"
-        />
-        <UButton
-          :label="
-            props.loading ? t('booking.confirming') : t('booking.confirm')
-          "
-          color="primary"
-          icon="bx:calendar-check"
-          :loading="props.loading"
-          :disabled="props.loading || !isValid"
-          @click="handleSubmit"
-        />
+      <div class="space-y-2">
+        <div class="flex gap-3 justify-end">
+          <UButton
+            :label="t('booking.cancel')"
+            color="neutral"
+            variant="outline"
+            :disabled="props.loading"
+            @click="emit('cancel')"
+          />
+          <UButton
+            :label="
+              props.loading ? t('booking.confirming') : t('booking.confirm')
+            "
+            color="primary"
+            icon="bx:calendar-check"
+            :loading="props.loading"
+            :disabled="props.loading || !isRangeSelectionValid"
+            @click="handleSubmit"
+          />
+        </div>
+        <p
+          v-if="submitValidationMessage"
+          class="text-right text-sm font-medium text-error"
+          aria-live="polite"
+        >
+          {{ submitValidationMessage }}
+        </p>
       </div>
     </template>
   </UCard>

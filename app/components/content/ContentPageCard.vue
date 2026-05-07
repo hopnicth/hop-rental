@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import CatalogCardShell from "~/components/products/CatalogCardShell.vue";
+import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 import type { ContentPage } from "~/types/content";
 import type { LocaleCode } from "~/types/locale";
 
@@ -24,6 +25,15 @@ const saveLoading = isToggling("service", props.page.id);
 const saveLabel = computed(() =>
   saved.value ? t("saveList.removeService") : t("saveList.addService"),
 );
+const serviceAreaMap = Object.fromEntries(
+  SERVICE_AREA_OPTIONS.map((option) => [option.value, option]),
+);
+
+function serviceAreaLabel(area: string) {
+  const option = serviceAreaMap[area];
+  if (!option) return area;
+  return locale.value === "th" ? option.labelTh : option.labelEn;
+}
 
 async function handleSaveToggle() {
   if (!canSaveService.value) return;
@@ -103,7 +113,7 @@ async function handleSaveToggle() {
           size="sm"
           variant="subtle"
         >
-          {{ area }}
+          {{ serviceAreaLabel(area) }}
         </UBadge>
       </div>
     </template>

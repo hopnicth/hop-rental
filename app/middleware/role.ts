@@ -36,7 +36,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (allowedPlatformRoles.length > 0) {
     const { profile, ensureProfileLoaded } = useUserProfile();
 
-    await ensureProfileLoaded(resolvedAuthUser.id);
+    // Admin access must reflect the current DB role, not a stale client-side
+    // profile cached before staff/super_admin promotion.
+    await ensureProfileLoaded(resolvedAuthUser.id, { force: true });
 
     const currentPlatformRole = profile.value?.platformRole ?? null;
     if (

@@ -43,7 +43,7 @@ function rentalPeriodLabel(booking: BookingItem): string {
 
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
-    navigateTo("/user/login");
+    navigateTo(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`);
   }
 });
 

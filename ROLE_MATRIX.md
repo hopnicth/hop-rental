@@ -1,6 +1,6 @@
 # Role Matrix
 
-Last updated: 2026-04-28
+Last updated: 2026-05-07
 Audience: product, ops, developers, future Augment sessions
 
 ## Purpose

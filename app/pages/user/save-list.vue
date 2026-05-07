@@ -1,5 +1,6 @@
 <script setup lang="ts">
 const { isLoggedIn } = useAuthSession();
+const route = useRoute();
 const { t } = useI18n();
 const { assets } = useAssets();
 const { fetchContentPages } = useContentPages();
@@ -28,7 +29,7 @@ const isEmpty = computed(
 
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
-    navigateTo("/user/login");
+    navigateTo(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`);
   }
 });
 
@@ -43,7 +44,9 @@ useSeoMeta({ title: () => t("saveListPage.title") });
 
 <template>
   <UContainer class="py-8">
-    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div
+      class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+    >
       <div>
         <p class="text-sm font-semibold uppercase tracking-wide text-secondary">
           {{ t("saveListPage.eyebrow") }}
@@ -56,10 +59,20 @@ useSeoMeta({ title: () => t("saveListPage.title") });
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <UButton to="/product-rental" variant="soft" color="secondary" icon="bx:box">
+        <UButton
+          to="/product-rental"
+          variant="soft"
+          color="secondary"
+          icon="bx:box"
+        >
           {{ t("saveListPage.browseAssets") }}
         </UButton>
-        <UButton to="/services" variant="soft" color="primary" icon="bx:briefcase">
+        <UButton
+          to="/services"
+          variant="soft"
+          color="primary"
+          icon="bx:briefcase"
+        >
           {{ t("saveListPage.browseServices") }}
         </UButton>
       </div>

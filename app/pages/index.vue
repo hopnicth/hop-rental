@@ -4,7 +4,6 @@ import HomeHorizontalRail from "~/components/home/HomeHorizontalRail.vue";
 import HomeLinkCard from "~/components/home/HomeLinkCard.vue";
 import HomeSectionShell from "~/components/home/HomeSectionShell.vue";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
-import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
 import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
 import type { Asset } from "~/types/asset";
@@ -12,7 +11,6 @@ import type { HomeLinkCard as HomeLinkCardType } from "~/types/home";
 import type { Product } from "~/types/product";
 
 const { t } = useI18n();
-const isCategoryPanelOpen = ref(false);
 const { getAssetShowPath, loading: assetsLoading } = useAssets();
 const { loading: productsLoading } = useProducts();
 const {
@@ -56,8 +54,9 @@ function asProduct(item: unknown) {
 
         <div class="space-y-4 sm:space-y-5">
           <HopFeatureBar />
+          <HomeCategoryShortcutRail />
           <div
-            class="rounded-1xl border border-default bg-white/70 px-4 py-4 sm:px-5"
+            class="hidden rounded-1xl border border-default bg-white/70 px-4 py-4 sm:block sm:px-5"
           >
             <HopPartnerSlide />
           </div>
@@ -165,14 +164,5 @@ function asProduct(item: unknown) {
         </div>
       </div>
     </div>
-
-    <MobileFloatingPanel
-      v-model:open="isCategoryPanelOpen"
-      :title="t('categories.title')"
-      icon="bx:category"
-      :button-label="t('categories.title')"
-    >
-      <CategoriesCard @selected="isCategoryPanelOpen = false" />
-    </MobileFloatingPanel>
   </UContainer>
 </template>

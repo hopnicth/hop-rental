@@ -1,6 +1,6 @@
 # Cart & Booking Test Checklist
 
-Last updated: 2026-04-28
+Last updated: 2026-05-07
 Purpose: manual smoke checklist for the current sale + rental + home-CMS flow
 
 ## Expected baseline
@@ -9,7 +9,10 @@ Purpose: manual smoke checklist for the current sale + rental + home-CMS flow
 - Rental bookings are created as `draft`, confirmed from `/user/cart`
 - Cancelled bookings are hidden from `/user/rentals` and shown in `/user/orders`
 - Booker name + phone are required on rental submit
+- Rental form shows a red inline error and scrolls/focuses contact fields if the user tries to add to cart without booker name/phone
+- Rental calendar shows earliest start/lead-time state and clamps below-min or above-max ranges before submit
 - Home promotion/service rails read live from `content_pages`
+- Home mobile category shortcut cards use the same Home category data and route to `/search?category=...`
 
 ## Customer flow smoke tests
 
@@ -22,6 +25,9 @@ Purpose: manual smoke checklist for the current sale + rental + home-CMS flow
 ### 2. Rental draft creation
 
 - [ ] Open `/asset/[slug]`
+- [ ] Select a valid date range before filling contact fields
+- [ ] Click add-to-cart with empty booker name/phone and verify a red footer error appears
+- [ ] Verify the page scrolls/focuses the missing booker contact field
 - [ ] Fill booker name + phone
 - [ ] Select dates and create booking
 - [ ] Verify redirect to `/user/cart`
@@ -100,6 +106,14 @@ Purpose: manual smoke checklist for the current sale + rental + home-CMS flow
 - [ ] Click a card and confirm it routes to `/promotions/{slug}` or `/services/{slug}` for the same page
 - [ ] Edit the page title/excerpt/image in `/admin/content` and confirm the home rail updates without re-saving the rail
 - [ ] Mark the page inactive and confirm the card disappears from the rail
+
+### 14. Home mobile category shortcuts
+
+- [ ] Open `/` below the `sm` breakpoint and verify partner logos are hidden
+- [ ] Verify square category cards are horizontally scrollable by touch
+- [ ] Tap a category card and confirm it routes to `/search?category=<mainCategoryKey>`
+- [ ] Verify product and rental results respect the selected category where data has that category
+- [ ] Verify the old Home category floating FAB is not visible
 
 ## Notes
 

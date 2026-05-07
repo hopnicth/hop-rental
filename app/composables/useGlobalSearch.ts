@@ -55,6 +55,14 @@ function toIlikePattern(value: string) {
   return tokens.length > 0 ? `%${tokens.join("%")}%` : "";
 }
 
+function isMissingAssetAutocomplete(error: unknown) {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String(error.message)
+      : "";
+  return /autocomplete_assets|search_vector|search_keywords/i.test(message);
+}
+
 export function useGlobalSearch() {
   const supabase = useSupabaseClient();
   const { autocomplete } = useProductSearch();
@@ -63,7 +71,24 @@ export function useGlobalSearch() {
   async function searchRentalAssets(
     q: string,
   ): Promise<GlobalSearchSuggestion[]> {
-    const pattern = toIlikePattern(q);
+    const trimmed = q.trim();
+    if (!trimmed) return [];
+
+    const rpc = await (supabase as any).rpc("autocomplete_assets", {
+      prefix: trimmed,
+      p_limit: 8,
+    });
+
+    if (!rpc.error) return mapRentalAssetSuggestions(rpc.data ?? []);
+    if (!isMissingAssetAutocomplete(rpc.error)) {
+      console.warn(
+        "[useGlobalSearch] autocomplete_assets failed:",
+        rpc.error.message,
+      );
+      return [];
+    }
+
+    const pattern = toIlikePattern(trimmed);
     if (!pattern) return [];
 
     const { data, error } = await supabase
@@ -97,7 +122,13 @@ export function useGlobalSearch() {
       return [];
     }
 
-    return ((data ?? []) as Record<string, unknown>[])
+    return mapRentalAssetSuggestions(data ?? []);
+  }
+
+  function mapRentalAssetSuggestions(
+    rows: unknown[],
+  ): GlobalSearchSuggestion[] {
+    return (rows as Record<string, unknown>[])
       .map((asset) => {
         const id = toText(asset.id);
         const slug = toText(asset.slug);

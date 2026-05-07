@@ -1,6 +1,6 @@
 # Asset Admin Manual
 
-Last updated: 2026-05-06  
+Last updated: 2026-05-07
 Audience: Admin, rental operations, data-entry team, Custom AI assistant
 
 ---
@@ -13,30 +13,30 @@ Asset แยกจาก Product เพราะ Product คือ catalog ห�
 
 ตัวอย่าง:
 
-| Level | Example | ใช้ทำอะไร |
-|---|---|---|
-| Product | Cordless Impact Drill 18V | catalog หลัก / SEO / SKU ขาย |
-| SKU | 18V Body Only | ราคาและ stock ขาย |
-| Asset | R-DRILL-001 Cordless Impact Drill Rental Set | รายการเช่าจริง มีราคาเช่าและมัดจำ |
-| Content | Review: Makita 18V Drill | รีวิวที่ link มาหา Asset ได้ |
+| Level   | Example                                      | ใช้ทำอะไร                         |
+| ------- | -------------------------------------------- | --------------------------------- |
+| Product | Cordless Impact Drill 18V                    | catalog หลัก / SEO / SKU ขาย      |
+| SKU     | 18V Body Only                                | ราคาและ stock ขาย                 |
+| Asset   | R-DRILL-001 Cordless Impact Drill Rental Set | รายการเช่าจริง มีราคาเช่าและมัดจำ |
+| Content | Review: Makita 18V Drill                     | รีวิวที่ link มาหา Asset ได้      |
 
 ---
 
 ## 2. Asset Required Fields
 
-| API Field | DB Field | Required | Rule |
-|---|---|---:|---|
-| `code` | `code` | Auto/Required | รหัส Asset ต้อง unique |
-| `slug` | `slug` | Auto/Required | URL slug ต้อง unique |
-| `nameTh` | `name_th` | Yes | ชื่อไทย ห้ามว่าง |
-| `nameEn` | `name_en` | Yes | ชื่ออังกฤษ ห้ามว่าง |
-| `descriptionTh` | `description_th` | Yes | รายละเอียดไทย ห้ามว่าง |
-| `descriptionEn` | `description_en` | Yes | รายละเอียดอังกฤษ ห้ามว่าง |
-| `status` | `status` | Default `draft` | `draft`, `active`, `archived` |
-| `brand` | `brand` | Recommended | แบรนด์ |
-| `mainCategoryKey` | `main_category_key` | Recommended/Required by admin flow | หมวดหลัก |
-| `tagKeys` | `tag_keys` | Optional | tag/filter รอง |
-| `searchKeywords` | `search_keywords` | Optional | คำค้นเสริม |
+| API Field         | DB Field            |                           Required | Rule                          |
+| ----------------- | ------------------- | ---------------------------------: | ----------------------------- |
+| `code`            | `code`              |                      Auto/Required | รหัส Asset ต้อง unique        |
+| `slug`            | `slug`              |                      Auto/Required | URL slug ต้อง unique          |
+| `nameTh`          | `name_th`           |                                Yes | ชื่อไทย ห้ามว่าง              |
+| `nameEn`          | `name_en`           |                                Yes | ชื่ออังกฤษ ห้ามว่าง           |
+| `descriptionTh`   | `description_th`    |                                Yes | รายละเอียดไทย ห้ามว่าง        |
+| `descriptionEn`   | `description_en`    |                                Yes | รายละเอียดอังกฤษ ห้ามว่าง     |
+| `status`          | `status`            |                    Default `draft` | `draft`, `active`, `archived` |
+| `brand`           | `brand`             |                        Recommended | แบรนด์                        |
+| `mainCategoryKey` | `main_category_key` | Recommended/Required by admin flow | หมวดหลัก                      |
+| `tagKeys`         | `tag_keys`          |                           Optional | tag/filter รอง                |
+| `searchKeywords`  | `search_keywords`   |                           Optional | คำค้นเสริม                    |
 
 ---
 
@@ -73,8 +73,8 @@ Rules:
 
 Example:
 
-| Input | Auto slug |
-|---|---|
+| Input                                                                               | Auto slug                                           |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------- |
 | `nameEn = Cordless Impact Drill Rental Set`, `brand = Makita`, `code = R-DRILL-001` | `cordless-impact-drill-rental-set-makita-drill-001` |
 
 Slug ต้อง unique ถ้าซ้ำจะเกิด `409 Conflict`
@@ -83,18 +83,18 @@ Slug ต้อง unique ถ้าซ้ำจะเกิด `409 Conflict`
 
 ## 4. Asset Status & Publish Rules
 
-| Field | Public condition |
-|---|---|
-| `status` | ต้องเป็น `active` |
-| `isHidden` | ต้องเป็น `false` |
+| Field      | Public condition  |
+| ---------- | ----------------- |
+| `status`   | ต้องเป็น `active` |
+| `isHidden` | ต้องเป็น `false`  |
 
 Status values:
 
-| Value | ใช้เมื่อ |
-|---|---|
-| `draft` | ยังเตรียมข้อมูล ยังไม่ publish |
-| `active` | พร้อมแสดงและให้เช่า |
-| `archived` | เลิกใช้/ไม่แสดงแล้ว |
+| Value      | ใช้เมื่อ                       |
+| ---------- | ------------------------------ |
+| `draft`    | ยังเตรียมข้อมูล ยังไม่ publish |
+| `active`   | พร้อมแสดงและให้เช่า            |
+| `archived` | เลิกใช้/ไม่แสดงแล้ว            |
 
 Recommended:
 
@@ -108,23 +108,23 @@ Recommended:
 
 Asset มีราคาเช่าและมัดจำ
 
-| API Field | DB Field | Rule |
-|---|---|---|
-| `dailyRate` | `daily_rate` | ต้อง ≥ 0 |
-| `weeklyRate` | `weekly_rate` | ต้อง ≥ 0 |
-| `monthlyRate` | `monthly_rate` | ต้อง ≥ 0 |
-| `depositAmount` | `deposit_amount` | ต้อง ≥ 0 |
-| `currencyCode` | `currency_code` | default `THB`, ต้องยาว 3 ตัวอักษร |
-| `minRentalDays` | `min_rental_days` | ต้อง ≥ 1 |
+| API Field       | DB Field          | Rule                                  |
+| --------------- | ----------------- | ------------------------------------- |
+| `dailyRate`     | `daily_rate`      | ต้อง ≥ 0                              |
+| `weeklyRate`    | `weekly_rate`     | ต้อง ≥ 0                              |
+| `monthlyRate`   | `monthly_rate`    | ต้อง ≥ 0                              |
+| `depositAmount` | `deposit_amount`  | ต้อง ≥ 0                              |
+| `currencyCode`  | `currency_code`   | default `THB`, ต้องยาว 3 ตัวอักษร     |
+| `minRentalDays` | `min_rental_days` | ต้อง ≥ 1                              |
 | `maxRentalDays` | `max_rental_days` | `0` = ไม่จำกัด หรือ ≥ `minRentalDays` |
-| `bufferDays` | `buffer_days` | ต้อง ≥ 0 |
+| `bufferDays`    | `buffer_days`     | ต้อง ≥ 0                              |
 
 Enable flags:
 
-| Field | ใช้ทำอะไร |
-|---|---|
-| `dailyEnabled` | เปิด/ปิดราคา daily |
-| `weeklyEnabled` | เปิด/ปิดราคา weekly |
+| Field            | ใช้ทำอะไร            |
+| ---------------- | -------------------- |
+| `dailyEnabled`   | เปิด/ปิดราคา daily   |
+| `weeklyEnabled`  | เปิด/ปิดราคา weekly  |
 | `monthlyEnabled` | เปิด/ปิดราคา monthly |
 
 Example pricing:
@@ -185,14 +185,14 @@ Bad example:
 
 Block fields:
 
-| Field | Rule |
-|---|---|
-| `key` | unique ภายใน asset เช่น `included-items` |
-| `title` | localized object `{ th, en, cn, jp }` |
-| `body` | localized object `{ th, en, cn, jp }` |
-| `items` | array ของ bullet points |
-| `images` | upload ผ่านระบบเท่านั้น |
-| `documents` | PDF documents |
+| Field       | Rule                                     |
+| ----------- | ---------------------------------------- |
+| `key`       | unique ภายใน asset เช่น `included-items` |
+| `title`     | localized object `{ th, en, cn, jp }`    |
+| `body`      | localized object `{ th, en, cn, jp }`    |
+| `items`     | array ของ bullet points                  |
+| `images`    | upload ผ่านระบบเท่านั้น                  |
+| `documents` | PDF documents                            |
 
 Example:
 
@@ -223,12 +223,12 @@ Detail block upload rules:
 
 Asset image upload รองรับ:
 
-| MIME Type | Allowed |
-|---|---:|
-| `image/jpeg` | Yes |
-| `image/png` | Yes |
-| `image/webp` | Yes |
-| `image/heic` | No |
+| MIME Type         |                Allowed |
+| ----------------- | ---------------------: |
+| `image/jpeg`      |                    Yes |
+| `image/png`       |                    Yes |
+| `image/webp`      |                    Yes |
+| `image/heic`      |                     No |
 | `application/pdf` | No สำหรับ image upload |
 
 Limit:
@@ -245,10 +245,10 @@ Limit:
 
 Asset fields:
 
-| Field | ใช้ทำอะไร |
-|---|---|
-| `thumbnailUrl` | รูปปกหลัก |
-| `imageUrls` | gallery URLs |
+| Field          | ใช้ทำอะไร    |
+| -------------- | ------------ |
+| `thumbnailUrl` | รูปปกหลัก    |
+| `imageUrls`    | gallery URLs |
 
 Upload target:
 
@@ -262,17 +262,17 @@ Upload target:
 
 Asset stock แยกตามสาขาและ inventory
 
-| Field | Rule |
-|---|---|
-| `inventoryId` | ต้องมี |
-| `branchId` | resolve จาก inventory/branch |
-| `branchName` | ต้องมี |
-| `onHand` | จำนวนทั้งหมด ต้อง ≥ 0 |
-| `available` | พร้อมให้เช่า ต้อง ≥ 0 และไม่เกิน `onHand` |
-| `reserved` | ถูกจอง ต้อง ≥ 0 และไม่เกิน `onHand` |
-| `incoming` | กำลังเข้า stock ต้อง ≥ 0 |
-| `safetyStock` | stock กันชน ต้อง ≥ 0 |
-| `notes` | internal stock note |
+| Field         | Rule                                      |
+| ------------- | ----------------------------------------- |
+| `inventoryId` | ต้องมี                                    |
+| `branchId`    | resolve จาก inventory/branch              |
+| `branchName`  | ต้องมี                                    |
+| `onHand`      | จำนวนทั้งหมด ต้อง ≥ 0                     |
+| `available`   | พร้อมให้เช่า ต้อง ≥ 0 และไม่เกิน `onHand` |
+| `reserved`    | ถูกจอง ต้อง ≥ 0 และไม่เกิน `onHand`       |
+| `incoming`    | กำลังเข้า stock ต้อง ≥ 0                  |
+| `safetyStock` | stock กันชน ต้อง ≥ 0                      |
+| `notes`       | internal stock note                       |
 
 Validation:
 
@@ -300,12 +300,12 @@ Example:
 
 Asset มี field สำหรับรอบ service
 
-| Field | Rule |
-|---|---|
-| `serviceCycleValue` | ต้อง ≥ 0 |
-| `serviceCycleUnit` | `day`, `week`, `month`, `year` |
-| `lastServicedAt` | `YYYY-MM-DD` |
-| `nextServiceDueAt` | `YYYY-MM-DD` |
+| Field               | Rule                           |
+| ------------------- | ------------------------------ |
+| `serviceCycleValue` | ต้อง ≥ 0                       |
+| `serviceCycleUnit`  | `day`, `week`, `month`, `year` |
+| `lastServicedAt`    | `YYYY-MM-DD`                   |
+| `nextServiceDueAt`  | `YYYY-MM-DD`                   |
 
 Rules:
 
@@ -330,11 +330,11 @@ Example:
 
 ### ความต่างของ Category, Tag, Search Keyword
 
-| Field | ใช้ทำอะไร | ตัวอย่าง |
-|---|---|---|
-| `mainCategoryKey` | หมวดหลัก | `mechanic_tools` |
-| `tagKeys` | filter/tag รอง | `rental_tools`, `cordless`, `drill` |
-| `searchKeywords` | คำค้นเสริม/คำพ้อง | `เช่าสว่าน`, `สว่านให้เช่า`, `rental drill` |
+| Field             | ใช้ทำอะไร         | ตัวอย่าง                                    |
+| ----------------- | ----------------- | ------------------------------------------- |
+| `mainCategoryKey` | หมวดหลัก          | `mechanic_tools`                            |
+| `tagKeys`         | filter/tag รอง    | `rental_tools`, `cordless`, `drill`         |
+| `searchKeywords`  | คำค้นเสริม/คำพ้อง | `เช่าสว่าน`, `สว่านให้เช่า`, `rental drill` |
 
 ### Tag Rules
 
@@ -370,13 +370,25 @@ Bad asset tags:
 Good search keywords:
 
 ```json
-["เช่าสว่าน", "สว่านให้เช่า", "เช่าสว่านไร้สาย", "rental drill", "cordless drill rental"]
+[
+  "เช่าสว่าน",
+  "สว่านให้เช่า",
+  "เช่าสว่านไร้สาย",
+  "rental drill",
+  "cordless drill rental"
+]
 ```
 
 Bad search keywords:
 
 ```json
-["Makita", "R-DRILL-001", "mechanic_tools", "rental_tools", "Cordless Impact Drill Rental Set"]
+[
+  "Makita",
+  "R-DRILL-001",
+  "mechanic_tools",
+  "rental_tools",
+  "Cordless Impact Drill Rental Set"
+]
 ```
 
 เหตุผลที่ไม่ดี:
@@ -399,13 +411,13 @@ Bad search keywords:
 
 Asset มีหลาย field ที่เกี่ยวกับ note ต้องใช้ให้ถูก context
 
-| Context | Field | Public? | ใช้สำหรับ |
-|---|---|---:|---|
-| Asset storage | `storageLocationNote` | Admin/internal | รายละเอียดที่เก็บ เช่น ชั้น/โซน |
-| Asset stock | `notes` | Internal | หมายเหตุ stock/branch |
-| Asset ↔ Product match | `note` | Internal/admin | เหตุผลที่ link กับ Product |
-| Asset description | `descriptionTh/En` | Public | รายละเอียดที่ลูกค้าเห็น |
-| Detail block body | `detailBlocks.body` | Public | ข้อมูลการใช้งาน/เงื่อนไขที่ลูกค้าเห็น |
+| Context               | Field                 |        Public? | ใช้สำหรับ                             |
+| --------------------- | --------------------- | -------------: | ------------------------------------- |
+| Asset storage         | `storageLocationNote` | Admin/internal | รายละเอียดที่เก็บ เช่น ชั้น/โซน       |
+| Asset stock           | `notes`               |       Internal | หมายเหตุ stock/branch                 |
+| Asset ↔ Product match | `note`                | Internal/admin | เหตุผลที่ link กับ Product            |
+| Asset description     | `descriptionTh/En`    |         Public | รายละเอียดที่ลูกค้าเห็น               |
+| Detail block body     | `detailBlocks.body`   |         Public | ข้อมูลการใช้งาน/เงื่อนไขที่ลูกค้าเห็น |
 
 Good notes:
 
@@ -428,12 +440,12 @@ Bad public description:
 
 Fields:
 
-| Field | Rule | Example |
-|---|---|---|
-| `productId` | Product ที่เกี่ยวข้อง ต้องมี | `prod-abc123` |
-| `matchType` | label ความสัมพันธ์ | `primary`, `compatible`, `replacement` |
-| `sortOrder` | ตัวเลข ≥ 0 | `0` |
-| `note` | optional internal note | `Rental set หลักสำหรับ product นี้` |
+| Field       | Rule                         | Example                                |
+| ----------- | ---------------------------- | -------------------------------------- |
+| `productId` | Product ที่เกี่ยวข้อง ต้องมี | `prod-abc123`                          |
+| `matchType` | label ความสัมพันธ์           | `primary`, `compatible`, `replacement` |
+| `sortOrder` | ตัวเลข ≥ 0                   | `0`                                    |
+| `note`      | optional internal note       | `Rental set หลักสำหรับ product นี้`    |
 
 Rules:
 
@@ -444,12 +456,12 @@ Rules:
 
 Recommended match types:
 
-| matchType | ใช้เมื่อ |
-|---|---|
-| `primary` | Asset หลักที่ควรแสดงก่อน |
-| `compatible` | ใช้ร่วมกับ Product ได้ |
-| `replacement` | ใช้แทนกันได้ |
-| `accessory` | เป็นอุปกรณ์เสริม |
+| matchType     | ใช้เมื่อ                 |
+| ------------- | ------------------------ |
+| `primary`     | Asset หลักที่ควรแสดงก่อน |
+| `compatible`  | ใช้ร่วมกับ Product ได้   |
+| `replacement` | ใช้แทนกันได้             |
+| `accessory`   | เป็นอุปกรณ์เสริม         |
 
 Example:
 
@@ -526,7 +538,12 @@ Rules:
   "isHidden": true,
   "mainCategoryKey": "mechanic_tools",
   "tagKeys": ["rental_tools", "cordless", "drill", "18v"],
-  "searchKeywords": ["เช่าสว่าน", "สว่านให้เช่า", "เช่าสว่านไร้สาย", "rental drill"],
+  "searchKeywords": [
+    "เช่าสว่าน",
+    "สว่านให้เช่า",
+    "เช่าสว่านไร้สาย",
+    "rental drill"
+  ],
   "dailyRate": 250,
   "weeklyRate": 1200,
   "monthlyRate": 4200,

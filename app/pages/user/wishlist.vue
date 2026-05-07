@@ -2,6 +2,7 @@
 import type { LocaleCode } from "~/types/locale";
 
 const { isLoggedIn } = useAuthSession();
+const route = useRoute();
 const { locale, t } = useI18n();
 const { products } = useProducts();
 const { productIds, loading, loadWishlist } = useWishlist();
@@ -14,7 +15,7 @@ const wishlistProducts = computed(() => {
 
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
-    navigateTo("/user/login");
+    navigateTo(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`);
   }
 });
 
@@ -29,7 +30,9 @@ useSeoMeta({ title: () => t("wishlistPage.title") });
 
 <template>
   <UContainer class="py-8">
-    <div class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <div
+      class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"
+    >
       <div>
         <p class="text-sm font-semibold uppercase tracking-wide text-primary">
           {{ t("wishlistPage.eyebrow") }}

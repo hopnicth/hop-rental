@@ -1,14 +1,16 @@
 # Admin Manual Index
 
+Last updated: 2026-05-07
+
 คู่มือในโฟลเดอร์นี้ใช้สำหรับ Admin และ Custom AI ที่ช่วยเตรียม/ตรวจข้อมูลก่อนนำเข้าระบบ HOP Rental
 
 ## Files
 
-| File | Purpose |
-|---|---|
-| `custom-gemini-admin-system-prompt.md` | System Prompt หลักสำหรับ Custom Gemini AI |
-| `product-admin-manual.md` | คู่มือ Product Admin: Product, SKU, ราคา, feature, media, tags, search keywords, link กับ Asset/Content |
-| `asset-admin-manual.md` | คู่มือ Asset Admin: Asset rental data, pricing, stock, detail blocks, documents, tags, search keywords, link กับ Product/Content |
+| File                                   | Purpose                                                                                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `custom-gemini-admin-system-prompt.md` | System Prompt หลักสำหรับ Custom Gemini AI                                                                                        |
+| `product-admin-manual.md`              | คู่มือ Product Admin: Product, SKU, ราคา, feature, media, tags, search keywords, link กับ Asset/Content                          |
+| `asset-admin-manual.md`                | คู่มือ Asset Admin: Asset rental data, pricing, stock, detail blocks, documents, tags, search keywords, link กับ Product/Content |
 
 ## Recommended Admin Flow
 

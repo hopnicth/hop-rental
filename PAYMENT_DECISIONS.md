@@ -1,5 +1,7 @@
 # Payment Flow — Approved Decisions
 
+Last updated: 2026-05-07
+
 Single source of truth for what the user (product owner) has **approved** in the
 Omise payment integration. **Do not silently change items in the "Approved"
 section.** If a refactor would alter approved behaviour, ask first.

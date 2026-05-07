@@ -21,6 +21,12 @@ const DOCUMENT_KINDS: AssetDetailBlockDocumentKind[] = [
 const ASSET_ONCE_KEY = "catalog:assets";
 const RENTAL_PLACEHOLDER_IMAGE =
   "https://placehold.co/400x400/E0E0E0/757575?text=Rental&font=roboto";
+const ASSET_CATALOG_SELECT =
+  "id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, category_keys, main_category_key, tag_keys, search_keywords, filter_keys, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at, matches:asset_matches(product_id, match_type, sort_order)";
+const ASSET_CATALOG_SELECT_LEGACY = ASSET_CATALOG_SELECT.replace(
+  "search_keywords, ",
+  "",
+);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -287,6 +293,7 @@ function normalizeAssetRow(row: unknown): Asset | null {
     categories: toStringArray(row.category_keys),
     mainCategoryKey: toString(row.main_category_key),
     tagKeys: toStringArray(row.tag_keys),
+    searchKeywords: toStringArray(row.search_keywords),
     filterKeys: toStringArray(row.filter_keys),
     brand: toString(row.brand),
     thumbnail: toString(row.thumbnail_url) ?? RENTAL_PLACEHOLDER_IMAGE,
@@ -351,15 +358,26 @@ export function useAssets() {
     loading.value = true;
     error.value = null;
     try {
-      const { data, error: fetchError } = await supabase
+      let { data, error: fetchError } = await supabase
         .from("assets")
-        .select(
-          `id, code, slug, status, name_th, name_en, name_cn, name_jp, description_th, description_en, description_cn, description_jp, category_keys, main_category_key, tag_keys, filter_keys, brand, thumbnail_url, image_urls, spec_summary, detail_blocks, currency_code, daily_rate, weekly_rate, monthly_rate, daily_enabled, weekly_enabled, monthly_enabled, deposit_amount, min_rental_days, max_rental_days, buffer_days, storage_location_code, storage_location_note, service_cycle_value, service_cycle_unit, last_serviced_at, next_service_due_at, view_count, rental_count, last_rented_at, sort_order, is_hidden, created_at, updated_at, matches:asset_matches(product_id, match_type, sort_order)`,
-        )
+        .select(ASSET_CATALOG_SELECT)
         .order("sort_order", { ascending: true })
         .order("created_at", { ascending: false });
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        if (!String(fetchError.message ?? "").includes("search_keywords")) {
+          throw fetchError;
+        }
+
+        const fallback = await supabase
+          .from("assets")
+          .select(ASSET_CATALOG_SELECT_LEGACY)
+          .order("sort_order", { ascending: true })
+          .order("created_at", { ascending: false });
+
+        if (fallback.error) throw fallback.error;
+        data = fallback.data;
+      }
 
       const records = ((data ?? []) as unknown[])
         .map(normalizeAssetRow)

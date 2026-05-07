@@ -11,7 +11,6 @@ import type {
   ProductSearchResult,
 } from "~/composables/useProductSearch";
 import type { ContentPage, ContentType } from "~/types/content";
-import type { Asset } from "~/types/asset";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import { mainCategories, mockSubCategories } from "~/mock/categories";
 import {
@@ -29,6 +28,7 @@ import {
   readQueryString,
   writeDynamicFilters,
 } from "~/utils/filter-query";
+import { assetMatchesSearchText } from "~/utils/asset-search";
 import type { Product } from "~/types/product";
 
 const route = useRoute();
@@ -163,37 +163,15 @@ function contentResultsFor(scope: ContentType) {
   return contentResults.value.filter((item) => item.contentType === scope);
 }
 
-function assetMatchesSearchText(asset: Asset): boolean {
-  const query = q.value.trim().toLowerCase();
-  if (!query) return true;
-  const haystack = [
-    asset.code,
-    asset.name.th,
-    asset.name.en,
-    asset.name.cn,
-    asset.name.jp,
-    asset.description.th,
-    asset.description.en,
-    asset.description.cn,
-    asset.description.jp,
-    asset.brand,
-    ...asset.categories,
-    ...asset.tagKeys,
-    ...asset.filterKeys,
-    ...Object.values(asset.specSummary ?? {}),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-
-  return (
-    haystack.includes(query) ||
-    haystack.replaceAll(" ", "").includes(query.replaceAll(" ", ""))
-  );
-}
-
 const rentalResults = computed(() =>
-  assets.value.filter((asset) => assetMatchesSearchText(asset)),
+  assets.value.filter((asset) => {
+    if (!assetMatchesSearchText(asset, q.value)) return false;
+    if (selectedCategory.value === "all") return true;
+    return (
+      asset.mainCategoryKey === selectedCategory.value ||
+      asset.categories.includes(selectedCategory.value)
+    );
+  }),
 );
 
 const visibleContentResults = computed(() => {
@@ -669,13 +647,12 @@ watch(mainCategoryKey, (next, previous) => {
 
     <!-- Search input bar (big, editable) -->
     <div class="mb-4">
-      <UInput
+      <SearchBar
         v-model="q"
-        :placeholder="t('search.placeholder')"
-        icon="bx:search"
+        v-model:scope="activeScope"
         size="lg"
-        variant="outline"
-        class="w-full"
+        full-width
+        :navigate-on-submit="false"
       />
     </div>
 

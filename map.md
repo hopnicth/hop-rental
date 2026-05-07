@@ -1,6 +1,6 @@
 # HOP-RENTAL Doc Map
 
-Last updated: 2026-04-29
+Last updated: 2026-05-07
 Purpose: lightweight entrypoint for Augment and developers. Read this first before opening other docs.
 
 ## Read order
@@ -61,10 +61,10 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 
 - Internal admin access uses `public.users.platform_role` (`staff`, `super_admin`), not `company_members.role`.
 - `/admin/home-content` is intentionally narrower than general admin and remains `super_admin` only.
-- Homepage partner/logo marquee now comes from `home_partner_logos` with storefront fallback only for older schemas.
+- Homepage partner/logo marquee now comes from `home_partner_logos` with storefront fallback only for older schemas; it is hidden on small mobile in favor of category shortcut cards.
 - Homepage curated product/asset rails are capped at 15 items each.
 - Homepage promotion/service cards are pure references to `content_pages` rows; admin must create the content page first, then pick it from `/admin/home-content`.
-- Homepage category card is DB-backed through `/api/home-category-cards` with mock fallback only. It routes selections to `/search?q=...` only; do not add `category` for Home-card shortcuts.
+- Homepage category card data is DB-backed through `/api/home-category-cards` with mock fallback only. Desktop sub-option selection routes to `/search?q=...`; mobile icon group cards route to `/search?category=<mainCategoryKey>` for whole-category browsing. Do not use sub-option shortcut keys as `category`.
 - `content_pages.content_type` supports `blog`, `service`, `promotion`, and `review`. Reviews can be linked to one or more `products` and/or `assets` from `/admin/content`, and render as a "Product reviews" section on `/product-{group}/{slug}` and `/asset/{slug}`.
 - Homepage card sections use Nuxt UI `UCarousel`/Embla rails with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin.
 - Storefront card images should preserve square `1:1` frames using `aspect-square` and `object-cover`; avoid reverting card media to fixed `h-48` heights.
@@ -80,7 +80,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - For PostgREST `ILIKE` filters, use `*term*`, not `%term%`.
 - Dynamic filters are tag-driven: `filter_options.key` must exactly equal a `tag_keys` entry; `filter_keys` are trigger-generated tokens like `sub_category__impact_drill`.
 - `category_keys` contains `[main_category_key] + tag_keys`; do not render it directly as a public category list without whitelisting real main categories.
-- Home category-card selections should route to `/search?q=...` only; `/search` should open dynamic filters after the user selects a real main category in the filter sidebar.
+- Home category sub-option selections should route to `/search?q=...` only; Home mobile category icon cards may route to `/search?category=<mainCategoryKey>` because that is a real typed main category. `/search` should open dynamic filters after a real main category is active.
 - Main categories are typed by `entity_types`; always scope category pickers by the current domain (`product`, `asset`, `service`, `promotion`, `blog`, `review`).
 - Content listing pages (`/services`, `/reviews`, `/blog`, `/promotions`) use `content_pages.main_category_key` and persist filters in `?category=...`. Migration `047` is applied; existing content still needs category assignment in `/admin/content`.
 - Future global search should support products, rental assets, services, blogs, reviews, and promotions. Migration `045` for DB-level product dynamic filters is prepared but still pending remote apply.

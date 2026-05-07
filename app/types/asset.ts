@@ -88,6 +88,7 @@ export interface Asset {
   categories: string[];
   mainCategoryKey?: string;
   tagKeys: string[];
+  searchKeywords: string[];
   filterKeys: string[];
   brand?: string;
   thumbnail: string;

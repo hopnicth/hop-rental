@@ -1,6 +1,6 @@
 # API Index
 
-Last updated: 2026-04-30
+Last updated: 2026-05-07
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -65,10 +65,12 @@ Read this after `map.md` when debugging or implementing features.
 
 Current storefront implementation:
 
-- `app/components/categories_card/CategoriesCard.vue` renders the Home category card.
+- `app/components/categories_card/CategoriesCard.vue` renders the desktop Home category card/sidebar.
+- `app/components/home/HomeCategoryShortcutRail.vue` renders mobile Home category icon cards from the same data source.
 - It reads DB-backed rows from `/api/home-category-cards` via `useCategories()`, with mock data only as a safe fallback.
-- Selecting a sub-category routes to `/search?q=<localized label>` only.
-- Do **not** send Home shortcut keys as `category`; `/search` should stay on All Categories until the user selects a real main category in the sidebar.
+- Selecting a desktop sub-category routes to `/search?q=<localized label>` only.
+- Tapping a mobile icon-card group routes to `/search?category=<mainCategoryKey>` so `/search` browses the whole typed category group.
+- Do **not** send Home sub-option shortcut keys as `category`; only real `mainCategoryKey` values are valid for the `category` query.
 
 Persistence direction:
 
@@ -80,6 +82,7 @@ Persistence direction:
 
 - Home content sections render through `app/components/home/HomeHorizontalRail.vue`, a Nuxt UI `UCarousel`/Embla wrapper using loop + timed autoplay, arrows, and dots.
 - Do not use the continuous Auto Scroll plugin for Home section cards unless explicitly requested.
+- On Home mobile, partner-logo marquee is hidden and category shortcut cards are shown instead; do not re-add the Home category floating FAB unless explicitly requested.
 - Product/asset listing cards share `CatalogCardShell.vue`; card media should stay `aspect-square w-full object-cover`.
 - Home promotion/service cards use `HomeLinkCard.vue` and read title/excerpt/cover/link live from the linked `content_pages` row.
 - Global HOP theme tokens live in `app/assets/css/main.css` (`--ui-primary`, `--ui-secondary`, status colors, and `0.2rem` radius scale).

@@ -50,7 +50,22 @@ export default defineNuxtConfig({
     redirectOptions: {
       login: "/user/login",
       callback: "/user/confirm",
-      exclude: ["/", "/product-*", "/product-*/**", "/search"],
+      exclude: [
+        "/",
+        "/search",
+        "/product-*",
+        "/product-*/**",
+        "/asset/*",
+        "/asset/**",
+        "/services",
+        "/services/**",
+        "/blog",
+        "/blog/**",
+        "/promotions",
+        "/promotions/**",
+        "/reviews",
+        "/reviews/**",
+      ],
       saveRedirectToCookie: true,
     },
     cookieOptions: {

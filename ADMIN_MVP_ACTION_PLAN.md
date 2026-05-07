@@ -1,6 +1,6 @@
 # Admin MVP Action Plan
 
-Last updated: 2026-04-28
+Last updated: 2026-05-07
 Owner: continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -17,7 +17,7 @@ Use this as the active admin backlog, not as a historical transcript.
 - [x] Admin writes go through privileged server APIs.
 - [x] Assets are the rental/commercial root; matches are explicit admin-managed links.
 - [x] Dynamic filter assignments are tag-derived; manual assignment UI should remain read-only to avoid drift.
-- [x] Home category-card config is `super_admin` editable and preserves the `/search?q=...` shortcut behavior.
+- [x] Home category-card config is `super_admin` editable. Desktop sub-options preserve `/search?q=...`; mobile group icon cards may use `/search?category=<mainCategoryKey>`.
 - [x] Typed main categories support product, asset, service, promotion, blog, and review through `main_categories.entity_types`.
 
 ## Phase status

@@ -1,6 +1,6 @@
 # Search & Filter Guideline
 
-Last updated: 2026-04-29
+Last updated: 2026-05-07
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -12,12 +12,14 @@ category/filter management.
 
 ## Current decision for the near-term fix
 
-- Home category-card selections should route to `/search?q=...` only.
-- Home should **not** send a product `category`, `main`, or Home shortcut key.
+- Home desktop category-card sub-option selections should route to `/search?q=...` only.
+- Home mobile icon-card group selections may route to `/search?category=<mainCategoryKey>` because they represent a real typed main category.
+- Home should **not** send sub-option shortcut keys as `category`, `main`, or product categories.
 - On `/search`, dynamic filters should appear only after the customer selects a
   real main category from the filter sidebar.
 - Selecting a main category in `/search` may update URL query state, but it must
   not cause a full page remount/flicker.
+- Rental asset results on `/search` must respect the selected `category` query as well as text query matching.
 
 ## Current Universal Search implementation
 
@@ -94,6 +96,7 @@ type filtering, and facet counts.
 4. URL query should store active search state, not transient UI-only state.
 5. Public category dropdowns must never render raw `category_keys` directly;
    those arrays contain `[main_category_key] + tag_keys`.
+6. `category=<mainCategoryKey>` is valid only for real main categories from the typed registry/fallback list.
 
 ## Catalog keyword rules for admin/AI
 

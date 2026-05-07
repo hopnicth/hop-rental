@@ -103,7 +103,13 @@ export function useUserProfile() {
 
   async function ensureProfileLoaded(
     expectedUserId?: string | null,
+    options: { force?: boolean } = {},
   ): Promise<void> {
+    if (options.force) {
+      await fetchProfile(true);
+      return;
+    }
+
     if (
       expectedUserId &&
       profile.value?.id === expectedUserId &&

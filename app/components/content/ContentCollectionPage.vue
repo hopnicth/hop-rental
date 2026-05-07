@@ -4,7 +4,10 @@ import type {
   MainCategoryEntityType,
   StorefrontMainCategory,
 } from "~/types/category";
+import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 import { queryObjectsEqual, readQueryString } from "~/utils/filter-query";
+
+const SERVICE_FILTER_ALL_VALUE = "__all__";
 
 const props = defineProps<{
   contentType: ContentType;
@@ -12,10 +15,23 @@ const props = defineProps<{
   description: string;
 }>();
 
+const serviceAreaMap = new Map(
+  SERVICE_AREA_OPTIONS.map((option) => [option.value, option] as const),
+);
+const bangkokMetroAreaValues = [
+  "bangkok",
+  "nonthaburi",
+  "pathum-thani",
+  "samut-prakan",
+  "samut-sakhon",
+  "nakhon-pathom",
+];
+
 const route = useRoute();
 const router = useRouter();
 const { locale, t } = useI18n();
-const selectedCategory = ref(readQueryString(route.query.category));
+const selectedCategory = ref(readCategoryQuery(route.query.category));
+const selectedServiceArea = ref(readServiceAreaQuery(route.query.area));
 const mainCategoryEntityType = computed<MainCategoryEntityType>(
   () => props.contentType,
 );
@@ -48,6 +64,71 @@ const categoryOptions = computed(() =>
   })),
 );
 
+const categorySelectItems = computed(() => [
+  { value: SERVICE_FILTER_ALL_VALUE, label: "ทุกประเภทบริการ" },
+  ...categoryOptions.value,
+]);
+
+const serviceAreaSelectItems = computed(() => [
+  { value: SERVICE_FILTER_ALL_VALUE, label: "ทุกพื้นที่ให้บริการ" },
+  ...SERVICE_AREA_OPTIONS.map((option) => ({
+    value: option.value,
+    label: locale.value === "th" ? option.labelTh : option.labelEn,
+  })),
+]);
+
+const selectedCategoryInput = computed({
+  get: () => selectedCategory.value || SERVICE_FILTER_ALL_VALUE,
+  set: (value: string) => {
+    selectedCategory.value = value === SERVICE_FILTER_ALL_VALUE ? "" : value;
+  },
+});
+
+const selectedServiceAreaInput = computed({
+  get: () => selectedServiceArea.value || SERVICE_FILTER_ALL_VALUE,
+  set: (value: string) => {
+    selectedServiceArea.value = value === SERVICE_FILTER_ALL_VALUE ? "" : value;
+  },
+});
+
+function readCategoryQuery(value: unknown): string {
+  const raw = readQueryString(value);
+  return raw === SERVICE_FILTER_ALL_VALUE ? "" : raw;
+}
+
+function readServiceAreaQuery(value: unknown): string {
+  const raw = readQueryString(value);
+  return serviceAreaMap.has(raw) ? raw : "";
+}
+
+function pageMatchesServiceArea(pageAreas: string[]) {
+  const selected = selectedServiceArea.value;
+  if (props.contentType !== "service" || !selected) return true;
+  if (pageAreas.includes("nationwide") || pageAreas.includes(selected))
+    return true;
+
+  const selectedOption = serviceAreaMap.get(selected);
+  if (!selectedOption) return false;
+
+  if (selectedOption.group === "region") {
+    const group = selected.replace(/^region-/, "");
+    const provinceValues = SERVICE_AREA_OPTIONS.filter(
+      (option) => option.group === group,
+    ).map((option) => option.value);
+    return provinceValues.some((value) => pageAreas.includes(value));
+  }
+
+  if (selected === "bangkok-metro") {
+    return bangkokMetroAreaValues.some((value) => pageAreas.includes(value));
+  }
+
+  if (bangkokMetroAreaValues.includes(selected)) {
+    return pageAreas.includes("bangkok-metro");
+  }
+
+  return pageAreas.includes(`region-${selectedOption.group}`);
+}
+
 const selectedCategoryLabel = computed(() => {
   if (!selectedCategory.value) return t("search.categoryAll");
   return (
@@ -56,24 +137,52 @@ const selectedCategoryLabel = computed(() => {
   );
 });
 
+const selectedServiceAreaLabel = computed(() => {
+  if (!selectedServiceArea.value) return "ทุกพื้นที่ให้บริการ";
+  const option = serviceAreaMap.get(selectedServiceArea.value);
+  if (!option) return selectedServiceArea.value;
+  return locale.value === "th" ? option.labelTh : option.labelEn;
+});
+
+const activeServiceFilterCount = computed(
+  () =>
+    Number(Boolean(selectedCategory.value)) +
+    Number(Boolean(selectedServiceArea.value)),
+);
+
+function clearServiceFilters() {
+  selectedCategory.value = "";
+  selectedServiceArea.value = "";
+}
+
 const filteredPages = computed(() => {
-  if (!selectedCategory.value) return pages.value;
   return pages.value.filter(
-    (page) => page.mainCategoryKey === selectedCategory.value,
+    (page) =>
+      (!selectedCategory.value ||
+        page.mainCategoryKey === selectedCategory.value) &&
+      pageMatchesServiceArea(page.serviceAreas ?? []),
   );
 });
 
 watch(
   () => route.query.category,
   (value) => {
-    selectedCategory.value = readQueryString(value);
+    selectedCategory.value = readCategoryQuery(value);
   },
 );
 
-watch(selectedCategory, (value) => {
+watch(
+  () => route.query.area,
+  (value) => {
+    selectedServiceArea.value = readServiceAreaQuery(value);
+  },
+);
+
+watch([selectedCategory, selectedServiceArea], ([category, area]) => {
   if (!import.meta.client) return;
   const next = { ...route.query };
-  value ? (next.category = value) : delete next.category;
+  category ? (next.category = category) : delete next.category;
+  area ? (next.area = area) : delete next.area;
   if (!queryObjectsEqual(route.query, next)) {
     void router.replace({ query: next });
   }
@@ -93,7 +202,38 @@ watch(selectedCategory, (value) => {
         </p>
       </div>
 
-      <div v-if="categoryOptions.length" class="space-y-3">
+      <UCard v-if="contentType === 'service'" :ui="{ body: 'space-y-4' }">
+        <template #header>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-1.5">
+              <h2 class="text-sm font-semibold">{{ t("search.filters") }}</h2>
+              <UBadge v-if="activeServiceFilterCount > 0" color="primary" variant="soft" size="sm">
+                {{ activeServiceFilterCount }}
+              </UBadge>
+            </div>
+            <UButton v-if="activeServiceFilterCount > 0" variant="ghost" color="neutral" size="xs" :label="t('search.clearAll')" @click="clearServiceFilters" />
+          </div>
+        </template>
+
+        <div v-if="activeServiceFilterCount > 0" class="flex flex-wrap gap-1.5">
+          <UButton v-if="selectedCategory" :label="'ประเภทบริการ: ' + selectedCategoryLabel" icon="i-lucide-x" variant="soft" color="primary" size="xs" @click="selectedCategory = ''" />
+          <UButton v-if="selectedServiceArea" :label="'พื้นที่ให้บริการ: ' + selectedServiceAreaLabel" icon="i-lucide-x" variant="soft" color="primary" size="xs" @click="selectedServiceArea = ''" />
+        </div>
+
+        <div class="grid gap-3 md:grid-cols-2">
+          <div>
+            <p class="mb-1 text-xs font-medium text-muted">ประเภทบริการ</p>
+            <USelect v-model="selectedCategoryInput" :items="categorySelectItems" value-key="value" class="w-full" />
+          </div>
+
+          <div>
+            <p class="mb-1 text-xs font-medium text-muted">พื้นที่ให้บริการ</p>
+            <USelect v-model="selectedServiceAreaInput" :items="serviceAreaSelectItems" value-key="value" class="w-full" />
+          </div>
+        </div>
+      </UCard>
+
+      <div v-else-if="categoryOptions.length" class="space-y-3">
         <div class="flex items-center gap-2 text-sm font-medium text-muted">
           <UIcon name="bx:filter-alt" class="size-4" />
           <span>{{ t("search.category") }}: {{ selectedCategoryLabel }}</span>

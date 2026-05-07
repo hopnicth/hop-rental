@@ -29,6 +29,7 @@ import {
 } from "~/utils/role-display";
 
 const { isLoggedIn } = useAuthSession();
+const route = useRoute();
 const { t } = useI18n();
 const { profile } = useUserProfile();
 const {
@@ -78,7 +79,7 @@ async function ensureCompanyContext() {
 // ── Auth guard — redirect if not logged in ──
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
-    navigateTo("/user/login");
+    navigateTo(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`);
   }
 });
 

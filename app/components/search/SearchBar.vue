@@ -12,14 +12,30 @@ import type {
   GlobalSearchSuggestion,
 } from "~/composables/useGlobalSearch";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     autofocus?: boolean;
+    fullWidth?: boolean;
+    modelValue?: string;
+    navigateOnSubmit?: boolean;
+    scope?: GlobalSearchScope;
+    size?: "xs" | "sm" | "md" | "lg" | "xl";
   }>(),
   {
     autofocus: false,
+    fullWidth: false,
+    modelValue: "",
+    navigateOnSubmit: true,
+    scope: "all",
+    size: "md",
   },
 );
+
+const emit = defineEmits<{
+  submit: [value: string];
+  "update:modelValue": [value: string];
+  "update:scope": [value: GlobalSearchScope];
+}>();
 
 const { t, locale } = useI18n();
 const { searchGlobalSuggestions } = useGlobalSearch();
@@ -36,15 +52,33 @@ const scopes: GlobalSearchScope[] = [
   "promotion",
 ];
 
-const query = ref("");
+const query = ref(props.modelValue);
 const suggestions = ref<GlobalSearchSuggestion[]>([]);
-const activeScope = ref<GlobalSearchScope>("all");
+const activeScope = ref<GlobalSearchScope>(props.scope);
 const loading = ref(false);
 const open = ref(false);
 const highlighted = ref(-1);
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let latestRequestId = 0;
+
+watch(
+  () => props.modelValue,
+  (value) => {
+    if (value !== query.value) query.value = value;
+  },
+);
+
+watch(query, (value) => emit("update:modelValue", value));
+
+watch(
+  () => props.scope,
+  (scope) => {
+    if (scope !== activeScope.value) activeScope.value = scope;
+  },
+);
+
+watch(activeScope, (scope) => emit("update:scope", scope));
 
 function isResultScope(
   scope: GlobalSearchScope,
@@ -136,6 +170,7 @@ function scheduleSuggest() {
 
 function searchUrl(q: string) {
   const params = new URLSearchParams({ q });
+  if (activeScope.value !== "all") params.set("scope", activeScope.value);
   return `/search?${params.toString()}`;
 }
 
@@ -143,7 +178,8 @@ function submitQuery() {
   const value = query.value.trim();
   if (value.length === 0) return;
   open.value = false;
-  void navigateTo(searchUrl(value));
+  emit("submit", value);
+  if (props.navigateOnSubmit) void navigateTo(searchUrl(value));
 }
 
 function suggestionUrl(suggestion: GlobalSearchSuggestion) {
@@ -198,18 +234,24 @@ function onBlur() {
 }
 
 function onFocus() {
-  if (query.value.trim().length > 0) open.value = true;
+  if (query.value.trim().length > 0) {
+    open.value = true;
+    if (suggestions.value.length === 0) scheduleSuggest();
+  }
 }
 </script>
 
 <template>
-  <div class="relative w-full max-w-sm">
+  <div
+    class="relative w-full"
+    :class="props.fullWidth ? 'max-w-none' : 'max-w-sm'"
+  >
     <UInput
       v-model="query"
       :placeholder="t('search.placeholder')"
-      :autofocus="autofocus"
+      :autofocus="props.autofocus"
       icon="bx:search"
-      size="md"
+      :size="props.size"
       variant="outline"
       :loading="loading"
       :trailing="false"
@@ -222,7 +264,12 @@ function onFocus() {
 
     <div
       v-if="open && query.trim()"
-      class="absolute left-0 top-full z-50 mt-1 w-[min(92vw,34rem)] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-default bg-default shadow-lg"
+      class="absolute left-0 top-full z-50 mt-1 overflow-hidden rounded-md border border-default bg-default shadow-lg"
+      :class="
+        props.fullWidth
+          ? 'right-0 w-full'
+          : 'w-[min(92vw,34rem)] max-w-[calc(100vw-2rem)]'
+      "
     >
       <div class="border-b border-default px-3 py-2">
         <p class="mb-1 text-[11px] font-medium text-muted">

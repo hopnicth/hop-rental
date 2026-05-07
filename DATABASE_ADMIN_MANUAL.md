@@ -1,6 +1,6 @@
 # Database Admin Manual
 
-Last updated: 2026-04-28
+Last updated: 2026-05-07
 Audience: internal staff, data-entry, developers
 
 ## Purpose
@@ -134,7 +134,7 @@ Notes:
 - Stock should be managed through admin endpoints, not direct DB writes, so audit logs remain correct.
 - Booking docs/checklists are stored separately from asset-level docs.
 - Homepage promotion/service rails read live data from `content_pages`; do not edit `home_link_cards` text fields directly.
-- Home category-card options are managed separately from content pages in `/admin/home-categories`; storefront selection sends only `/search?q=...`.
+- Home category-card options are managed separately from content pages in `/admin/home-categories`; desktop sub-option selection sends `/search?q=...`, while mobile group icon cards use real `mainCategoryKey` values in `/search?category=...`.
 
 ## Migration-sensitive notes
 

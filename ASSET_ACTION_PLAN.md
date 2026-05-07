@@ -1,6 +1,6 @@
 # Asset Action Plan
 
-Last updated: 2026-04-28
+Last updated: 2026-05-07
 Owner: continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -17,13 +17,14 @@ Use this for asset/rental decisions and next steps.
 - [x] Rental bookings can root on `asset_id`.
 - [x] An asset may represent a single item, package, or set.
 - [x] Backoffice-ready docs/checklists belong in the schema from the start.
+- [x] Storefront rental booking UI must clearly show lead time / earliest start and enforce min/max rental duration before adding to cart.
 
 ## Implemented state (summary)
 
 All initial asset/rental scope is shipped; one-line summaries below.
 
 - [x] **Data model** — `assets`, `asset_matches`, `asset_documents`, `asset_service_events`, asset checklist templates + items, `rental_booking_checklists` + items, `rental_booking_documents`
-- [x] **Storefront flow** — `/product-rental` asset catalog, matched assets on product detail, `/asset/[slug]` booking entry, asset-only booking, tiered rental pricing, booker name + phone capture
+- [x] **Storefront flow** — `/product-rental` asset catalog, matched assets on product detail, `/asset/[slug]` booking entry, asset-only booking, tiered rental pricing, booker name + phone capture, lead-time/min-max calendar guardrails, and red contact validation with scroll/focus
 - [x] **Admin flow** — `/admin/assets` CRUD with inline matches, asset media, asset detail blocks, rental booking docs/checklists on `/admin/rental-bookings/[id]`
 
 ## Business rules to preserve

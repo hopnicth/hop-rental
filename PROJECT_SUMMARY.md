@@ -1,6 +1,6 @@
 # HOP-RENTAL Project Summary
 
-Last updated: 2026-04-30
+Last updated: 2026-05-07
 Audience: developers, operators, future Augment sessions
 
 ## Purpose
@@ -67,7 +67,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Dynamic filter groups/options are super-admin managed and auto-assigned from exact `tag_keys` matches for both products and assets. Product/asset `filter_keys` are trigger-generated for fast public filtering; admin product assignment UI is read-only.
 - Header quick search and `/search` are now Universal Search surfaces covering products, rental assets, services, reviews, blog articles, and promotions. Results are grouped/scoped with `all`, `product`, `rental`, `service`, `review`, `blog`, and `promotion` tabs.
 - `/search` persists `?scope=...`, keeps filters visible across scopes, and uses Browse Mode when there is no `q` or active filter so empty tabs do not show a false no-results state.
-- Homepage category cards are DB-backed and super-admin editable, with mock fallback only for older/empty schemas. Selecting an option sends `/search?q=...` only; it must not set the product `category` query.
+- Homepage category cards are DB-backed and super-admin editable, with mock fallback only for older/empty schemas. Desktop sidebar option selections send `/search?q=...` only. The Home mobile shortcut rail uses the same group data as icon cards and routes to `/search?category=<mainCategoryKey>` to browse the whole group.
+- Home partner logos remain DB-backed but are hidden on small mobile; mobile uses category shortcut cards instead of the logo marquee and no longer mounts the Home category floating panel.
 - Main categories are typed through `main_categories.entity_types` for `product`, `asset`, `service`, `promotion`, `blog`, and `review`. Content pages can store `main_category_key`, and `/services`, `/reviews`, `/blog`, and `/promotions` expose URL-persistent category filters.
 
 ### Booking + checkout
@@ -78,6 +79,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Shipping cost + breakdown are persisted on sale orders
 - Pickup-at-branch flow is supported
 - Booker name + contact phone are required for rental submit
+- Rental date selection exposes earliest start, buffer/lead-time state, min/max clamp hints, and blocks submit until the date range is valid.
+- If a valid date range is selected but booker name/phone are missing, the add-to-cart button stays clickable, shows a red inline error, and scrolls/focuses the missing contact field instead of submitting.
 
 ### Admin order operations
 
@@ -151,6 +154,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `category_keys` includes tags by design, so UI category lists must whitelist real main categories before rendering.
 - Content listing filters require both migration `047` and admin data assignment: create/enable a typed main category, then assign `Main category` on each `/admin/content` page.
 - `/search` should distinguish Browse Mode from Search Mode: no `q` and no active filters means browse/default content, not a no-results state.
+- Home mobile category cards may deep-link to `/search?category=<mainCategoryKey>` for whole-category browsing; desktop Home sub-option selects still use `/search?q=...` only.
 
 ## Highest-value next priorities
 
