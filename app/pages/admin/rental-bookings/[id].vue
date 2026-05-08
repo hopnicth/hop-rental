@@ -125,6 +125,8 @@ function unitLabel(unit: "day" | "week" | "month", count: number): string {
 
 function rentalStatusColor(s: RentalBookingStatus): BadgeColor {
   if (s === "confirmed") return "success";
+  if (s === "picked_up") return "info";
+  if (s === "returned") return "primary";
   if (s === "draft") return "warning";
   return "error";
 }

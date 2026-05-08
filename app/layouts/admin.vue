@@ -31,6 +31,7 @@ const navItems = computed<AdminNavItem[]>(() => {
     { label: "Assets", to: "/admin/assets" },
     { label: "Branch & Inventory", to: "/admin/branches-inventory" },
     { label: "Orders", to: "/admin/orders" },
+    { label: "POS", to: "/admin/pos" },
     { label: "Alerts", to: "/admin/alerts", badge: alertsBadge.value },
     { label: "Messages", to: "/admin/messages" },
   ];
@@ -74,9 +75,19 @@ const navItems = computed<AdminNavItem[]>(() => {
             </p>
           </div>
 
-          <UBadge color="warning" variant="soft" size="lg">
-            {{ formatPlatformRole(profile?.platformRole) }}
-          </UBadge>
+          <div class="flex flex-wrap items-center gap-2">
+            <UButton
+              to="/admin/pos"
+              icon="bx:store"
+              label="เปิด POS หน้าร้าน"
+              color="primary"
+              size="lg"
+              class="shadow-sm"
+            />
+            <UBadge color="warning" variant="soft" size="lg">
+              {{ formatPlatformRole(profile?.platformRole) }}
+            </UBadge>
+          </div>
         </div>
 
         <div class="mt-4 flex flex-wrap gap-2">

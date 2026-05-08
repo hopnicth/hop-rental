@@ -15,6 +15,9 @@ import type {
   OrderStatus,
 } from "~/types/order";
 import type {
+  RentalDepositPaymentMethod,
+  RentalDepositPaymentStatus,
+  RentalDepositRefundStatus,
   RentalBookingStatus,
   RentalPricingBreakdownRow,
 } from "~/types/rental-booking";
@@ -24,6 +27,8 @@ export interface AdminCustomerProfile {
   userId: string;
   fullName: string | null;
   phone: string | null;
+  kycStatus?: "pending" | "verified" | "rejected" | null;
+  idCardUrl?: string | null;
 }
 
 export interface AdminSaleOrderItem {
@@ -99,6 +104,7 @@ export interface AdminPaymentAlertListResponse {
 export interface AdminRentalBookingDetail {
   id: string;
   userId: string;
+  walkInPhone: string | null;
   status: RentalBookingStatus;
   assetId: string | null;
   assetCode: string | null;
@@ -122,6 +128,10 @@ export interface AdminRentalBookingDetail {
   monthlyRate: number;
   rentalTotal: number;
   depositAmount: number;
+  depositPaidAmount: number;
+  depositPaymentMethod: RentalDepositPaymentMethod | null;
+  depositPaymentStatus: RentalDepositPaymentStatus;
+  depositRefundStatus: RentalDepositRefundStatus;
   pricingBreakdown: RentalPricingBreakdownRow | Record<string, never>;
   storageBranchId: string | null;
   storageBranchName: string | null;

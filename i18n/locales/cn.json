@@ -623,6 +623,8 @@
     "status": {
       "draft": "草稿",
       "confirmed": "已确认",
+      "picked_up": "已提货",
+      "returned": "已归还",
       "cancelled": "已取消"
     }
   },

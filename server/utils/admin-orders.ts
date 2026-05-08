@@ -32,11 +32,18 @@ type AnyClient = {
   from: (table: string) => any;
 };
 
+export interface AdminUserProfileSummary {
+  fullName: string | null;
+  phone: string | null;
+  kycStatus: AdminCustomerProfile["kycStatus"];
+  idCardUrl: string | null;
+}
+
 export const ADMIN_ORDER_LIST_SELECT =
   "id, order_number, user_id, status, payment_status, fulfillment_status, checkout_mode, payment_method, grand_total, currency_code, address_snapshot, created_at, order_items(count)";
 
 export const ADMIN_RENTAL_BOOKING_LIST_SELECT =
-  "id, user_id, status, asset_id, asset_name, asset_thumbnail, product_name, thumbnail, hub_name, booker_name, booker_phone, start_date, end_date, rental_days, rental_total, deposit_amount, currency_code, created_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+  "id, user_id, walk_in_phone, status, asset_id, asset_name, asset_thumbnail, product_name, thumbnail, hub_name, booker_name, booker_phone, start_date, end_date, rental_days, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, currency_code, created_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
 
 const DEFAULT_PAGE_SIZE = 20;
 const FETCH_OVERSAMPLE_CAP = 2000;
@@ -147,6 +154,7 @@ export function mapAdminRentalBookingRow(row: unknown): AdminRentalBookingRow {
   return {
     id: String(r.id ?? ""),
     userId: String(r.user_id ?? ""),
+    walkInPhone: typeof r.walk_in_phone === "string" ? r.walk_in_phone : null,
     status: String(r.status ?? "draft") as AdminRentalBookingRow["status"],
     assetName: typeof r.asset_name === "string" ? r.asset_name : null,
     productName: String(r.product_name ?? ""),
@@ -161,6 +169,17 @@ export function mapAdminRentalBookingRow(row: unknown): AdminRentalBookingRow {
     rentalDays: Number(r.rental_days ?? 0),
     rentalTotal: Number(r.rental_total ?? 0),
     depositAmount: Number(r.deposit_amount ?? 0),
+    depositPaidAmount: Number(r.deposit_paid_amount ?? 0),
+    depositPaymentMethod:
+      typeof r.deposit_payment_method === "string"
+        ? (r.deposit_payment_method as AdminRentalBookingRow["depositPaymentMethod"])
+        : null,
+    depositPaymentStatus: String(
+      r.deposit_payment_status ?? "unpaid",
+    ) as AdminRentalBookingRow["depositPaymentStatus"],
+    depositRefundStatus: String(
+      r.deposit_refund_status ?? "not_refunded",
+    ) as AdminRentalBookingRow["depositRefundStatus"],
     currencyCode: String(r.currency_code ?? "THB"),
     storageBranchId: branchId,
     storageBranchName: branchName,
@@ -290,7 +309,7 @@ export async function fetchAdminRentalBookings(
       const userClause =
         userIdList.length > 0 ? `,user_id.in.(${userIdList.join(",")})` : "";
       q = q.or(
-        `asset_name.ilike.${term},product_name.ilike.${term}${userClause}`,
+        `asset_name.ilike.${term},product_name.ilike.${term},booker_phone.ilike.${term}${userClause}`,
       );
     }
   }
@@ -326,7 +345,7 @@ export function isAdminSaleOrderActionRequired(
 export function isAdminRentalBookingActionRequired(
   booking: Pick<AdminRentalBookingRow, "status">,
 ): boolean {
-  return booking.status === "confirmed";
+  return booking.status === "confirmed" || booking.status === "picked_up";
 }
 
 export function countAdminActionRequiredItems(
@@ -352,16 +371,13 @@ export function filterAdminActionRequiredRows(
 export async function fetchAdminUserProfiles(
   adminClient: AnyClient,
   userIds: string[],
-): Promise<Map<string, { fullName: string | null; phone: string | null }>> {
-  const map = new Map<
-    string,
-    { fullName: string | null; phone: string | null }
-  >();
+): Promise<Map<string, AdminUserProfileSummary>> {
+  const map = new Map<string, AdminUserProfileSummary>();
   if (userIds.length === 0) return map;
 
   const { data, error } = await adminClient
     .from("users")
-    .select("id, full_name, phone")
+    .select("id, full_name, phone, kyc_status, id_card_url")
     .in("id", userIds);
 
   if (error) throw error;
@@ -370,10 +386,14 @@ export async function fetchAdminUserProfiles(
     id: string;
     full_name: string | null;
     phone: string | null;
+    kyc_status?: AdminCustomerProfile["kycStatus"];
+    id_card_url?: string | null;
   }>) {
     map.set(r.id, {
       fullName: r.full_name ?? null,
       phone: r.phone ?? null,
+      kycStatus: r.kyc_status ?? null,
+      idCardUrl: r.id_card_url ?? null,
     });
   }
   return map;
@@ -382,7 +402,7 @@ export async function fetchAdminUserProfiles(
 export function groupCustomerCards(
   saleOrders: AdminSaleOrderRow[],
   rentalBookings: AdminRentalBookingRow[],
-  profiles: Map<string, { fullName: string | null; phone: string | null }>,
+  profiles: Map<string, AdminUserProfileSummary>,
   emails: Map<string, string>,
 ): AdminCustomerCard[] {
   const byUser = new Map<string, AdminCustomerCard>();
@@ -446,7 +466,7 @@ export const ADMIN_ORDER_ITEMS_SELECT =
   "id, product_id, sku_id, name, thumbnail, unit_price, original_unit_price, discount_percent, quantity, line_total";
 
 export const ADMIN_RENTAL_BOOKING_DETAIL_SELECT =
-  "id, user_id, status, asset_id, asset_code, asset_name, asset_thumbnail, asset_snapshot, product_id, sku_id, product_name, matched_product_id, matched_product_name, thumbnail, hub_id, hub_name, start_date, end_date, rental_days, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, pricing_breakdown, booker_name, booker_phone, created_at, updated_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+  "id, user_id, walk_in_phone, status, asset_id, asset_code, asset_name, asset_thumbnail, asset_snapshot, product_id, sku_id, product_name, matched_product_id, matched_product_name, thumbnail, hub_id, hub_name, start_date, end_date, rental_days, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, pricing_breakdown, booker_name, booker_phone, created_at, updated_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
 
 const EMPTY_ADDRESS_SNAPSHOT: OrderAddressSnapshot = {
   title: "",
@@ -580,6 +600,7 @@ export function mapAdminRentalBookingDetail(
   return {
     id: String(r.id ?? ""),
     userId: String(r.user_id ?? ""),
+    walkInPhone: typeof r.walk_in_phone === "string" ? r.walk_in_phone : null,
     status: String(r.status ?? "draft") as RentalBookingStatus,
     assetId: typeof r.asset_id === "string" ? r.asset_id : null,
     assetCode: typeof r.asset_code === "string" ? r.asset_code : null,
@@ -613,6 +634,17 @@ export function mapAdminRentalBookingDetail(
     monthlyRate: Number(r.monthly_rate ?? 0),
     rentalTotal: Number(r.rental_total ?? 0),
     depositAmount: Number(r.deposit_amount ?? 0),
+    depositPaidAmount: Number(r.deposit_paid_amount ?? 0),
+    depositPaymentMethod:
+      typeof r.deposit_payment_method === "string"
+        ? (r.deposit_payment_method as AdminRentalBookingDetail["depositPaymentMethod"])
+        : null,
+    depositPaymentStatus: String(
+      r.deposit_payment_status ?? "unpaid",
+    ) as AdminRentalBookingDetail["depositPaymentStatus"],
+    depositRefundStatus: String(
+      r.deposit_refund_status ?? "not_refunded",
+    ) as AdminRentalBookingDetail["depositRefundStatus"],
     pricingBreakdown,
     storageBranchId: branchId,
     storageBranchName: branchName,
@@ -634,6 +666,8 @@ export async function fetchAdminCustomerProfile(
     userId,
     fullName: profile?.fullName ?? null,
     phone: profile?.phone ?? null,
+    kycStatus: profile?.kycStatus ?? null,
+    idCardUrl: profile?.idCardUrl ?? null,
   };
 }
 

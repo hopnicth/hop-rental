@@ -423,7 +423,6 @@
     "unavailableDesc": "在庫状況が更新されました。現在のオプションを確認してから再度お試しください。",
     "confirm": "レンタルカートに追加",
     "cancel": "キャンセル",
-    "bookerInfoRequired": "カートに追加する前に、予約者名と連絡先電話番号を入力してください。",
     "priceBreakdownTitle": "レンタル料金内訳",
     "unitMonths": "{n} か月",
     "unitWeeks": "{n} 週間",
@@ -618,6 +617,8 @@
     "status": {
       "draft": "下書き",
       "confirmed": "確定済み",
+      "picked_up": "受け取り済み",
+      "returned": "返却済み",
       "cancelled": "キャンセル済み"
     }
   },

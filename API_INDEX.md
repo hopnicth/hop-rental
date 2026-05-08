@@ -1,6 +1,6 @@
 # API Index
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -18,6 +18,7 @@ Read this after `map.md` when debugging or implementing features.
 - For PostgREST `ILIKE`, use `*term*`, not `%term%`.
 - Dynamic filter option matching is **case-sensitive exact**: `filter_options.key` must equal one item in `products.tag_keys` / `assets.tag_keys`.
 - `products.category_keys` and `assets.category_keys` are derived compatibility/search arrays. They contain `[main_category_key] + tag_keys`, so do not treat every `category_keys` entry as a public category.
+- Admin POS file uploads use `catalog-media` for customer IDs, deposit proofs, and fulfillment signatures.
 
 ## Main read paths
 
@@ -34,6 +35,7 @@ Read this after `map.md` when debugging or implementing features.
 | Dynamic filter groups          | `app/composables/useFilterGroups.ts`                   | `/api/filter-groups?main_category=...` → `filter_groups`, `filter_options`                             |
 | Typed main categories          | `app/composables/useMainCategories.ts`                 | `/api/main-categories?entityType=...` → `main_categories.entity_types`                                 |
 | Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                          |
+| Admin POS lookup + catalog     | `app/pages/admin/pos.vue`                              | `/api/admin/customers/lookup`, `/api/admin/pos/catalog`, `users`, `walk_in_customers`, `assets`        |
 | Cookie consent                 | `app/composables/useCookieConsent.ts`                  | `hop-rental-cookie-consent` cookie (versioned, 180-day TTL)                                            |
 | Search/filter guideline        | `SEARCH_AND_FILTER_GUIDELINE.md`                       | Current `/search` rules + future multi-type search direction                                           |
 
@@ -153,6 +155,10 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 | Admin order update                 | `/api/admin/orders/[id].patch.ts`                                | `orders`                                 |
 | Admin booking update               | `/api/admin/rental-bookings/[id].patch.ts`                       | `rental_bookings`                        |
 | Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables           |
+| Admin POS booking creation         | `/api/admin/pos/bookings.post.ts`                                | `rental_bookings`, `walk_in_customers`   |
+| Admin customer ID-card upload      | `/api/admin/customers/id-card.post.ts`                           | `users`, `walk_in_customers`, storage    |
+| Admin booking deposit proof upload | `/api/admin/rental-bookings/[id]/deposit-proof.post.ts`          | `rental_booking_deposit_proofs`, storage |
+| Admin booking fulfillment          | `/api/admin/rental-bookings/[id]/fulfillment.post.ts`            | `rental_booking_fulfillments`, storage   |
 | Admin homepage content CRUD/upload | `/api/admin/home-content/*`                                      | `home_*` tables + `catalog-media` bucket |
 | Admin content pages CRUD/upload    | `/api/admin/content/*`                                           | `content_pages` + `catalog-media` bucket |
 | Admin Home category-card CRUD      | `/api/admin/home-categories/*`                                   | `home_category_card_groups/options`      |
@@ -171,6 +177,8 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `/admin/branches-inventory`
 - `/admin/orders`
 - `/admin/orders/[id]`
+- `/admin/pos`
+- `/admin/walk-in` (redirect alias)
 - `/admin/rental-bookings/[id]`
 - `/admin/home-content`
 - `/admin/home-categories`
@@ -182,9 +190,12 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `server/utils/admin-orders.ts`
 - `server/utils/admin-bookings-ops.ts`
 - `server/api/admin/orders/*`
+- `server/api/admin/pos/*`
+- `server/api/admin/customers/*`
 - `server/api/admin/rental-bookings/*`
 - `server/api/admin/assets/*`
 - `server/api/admin/products/*`
+- `server/utils/admin-pos.ts`
 - `server/api/admin/home-content/*`
 - `server/api/admin/home-categories/*`
 - `server/utils/admin-home.ts`
@@ -305,6 +316,19 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - No per-message read receipt table; unread state is conversation-level via `chat_participants.last_read_at`.
 - DB trigger rate-limits inserts to 10 messages/second per sender; server API also applies the same burst guard.
 - RLS allows reads only for conversation participants or platform staff; mutations are intended to go through server APIs so `sender_id` is derived from the authenticated session.
+
+### `056_admin_walkin_fulfillment.sql`
+
+- Adds rental status values `picked_up` and `returned`.
+- Creates `walk_in_customers` for phone-primary POS customer records and ID-card metadata.
+- Creates `rental_booking_fulfillments` for pickup/return audit events, optional signature storage path, and operator attribution.
+
+### `057_admin_pos_booking_deposits.sql`
+
+- Allows `rental_bookings.user_id` to be null when `walk_in_phone` is present.
+- Adds booking-level deposit fields: paid amount, payment method/status, refund status, timestamps, and notes.
+- Creates `rental_booking_deposit_proofs` for uploaded payment/refund proof files.
+- `GET /api/admin/customers/lookup`, `POST /api/admin/pos/bookings`, and `/admin/pos` all assume this schema.
 
 ### Chat realtime + client conventions
 

@@ -639,6 +639,8 @@
     "status": {
       "draft": "Draft",
       "confirmed": "Confirmed",
+      "picked_up": "Picked up",
+      "returned": "Returned",
       "cancelled": "Cancelled"
     }
   },

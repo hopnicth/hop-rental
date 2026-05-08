@@ -1,5 +1,31 @@
 /** Rental booking lifecycle status. */
-export type RentalBookingStatus = "draft" | "confirmed" | "cancelled";
+export type RentalBookingStatus =
+  | "draft"
+  | "confirmed"
+  | "picked_up"
+  | "returned"
+  | "cancelled";
+
+export type RentalDepositPaymentMethod =
+  | "cash"
+  | "qr_transfer"
+  | "bank_transfer"
+  | "card"
+  | "other";
+
+export type RentalDepositPaymentStatus =
+  | "unpaid"
+  | "pending_review"
+  | "paid"
+  | "refunded"
+  | "partial_refund";
+
+export type RentalDepositRefundStatus =
+  | "not_refunded"
+  | "pending"
+  | "refunded"
+  | "forfeited"
+  | "not_applicable";
 
 /** Current rental pricing calculation model kept with the booking snapshot. */
 export type RentalPricingModel = "daily";
@@ -64,7 +90,8 @@ export interface RentalBooking
     RentalBookingPeriodSnapshot,
     RentalBookingPricingSnapshot {
   id: string;
-  user_id: string;
+  user_id: string | null;
+  walk_in_phone?: string | null;
   /** NULL for asset-only bookings (no matched product/SKU). */
   product_id: string | null;
   /** NULL for asset-only bookings (no matched product/SKU). */
@@ -77,6 +104,13 @@ export interface RentalBooking
   booker_name?: string | null;
   /** Contact phone of the person making the booking */
   booker_phone?: string | null;
+  deposit_paid_amount?: number;
+  deposit_payment_method?: RentalDepositPaymentMethod | null;
+  deposit_payment_status?: RentalDepositPaymentStatus;
+  deposit_refund_status?: RentalDepositRefundStatus;
+  deposit_paid_at?: string | null;
+  deposit_refunded_at?: string | null;
+  deposit_notes?: string | null;
   status: RentalBookingStatus;
   created_at: string;
   updated_at: string;

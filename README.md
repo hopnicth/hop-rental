@@ -1,6 +1,6 @@
 # HOP-RENTAL
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 
 HOP-RENTAL is a Nuxt-based commerce + rental platform for HOPNIC.
 This single app contains storefront, customer self-service, and internal admin surfaces.
@@ -14,6 +14,7 @@ This single app contains storefront, customer self-service, and internal admin s
 - Mobile Home category shortcut cards backed by the same Home category-card data
 - Customer order history and rental history
 - Internal admin for catalog, assets, stock, orders, and rental operations
+- Admin POS for phone-first customer lookup, walk-in rentals, deposit capture, and pickup/return fulfillment
 
 ## Quick start
 
@@ -80,15 +81,21 @@ npm run build
 - `/admin/branches-inventory`
 - `/admin/orders`
 - `/admin/orders/[id]`
+- `/admin/pos`
+- `/admin/walk-in` → redirects to `/admin/pos`
 - `/admin/rental-bookings/[id]`
 
 ## Important current rules
 
 - Rental is now `asset`-first.
 - Rental bookings are created as `draft` and confirmed from `/user/cart`.
+- Admin POS can create `confirmed` rental bookings directly for account customers or walk-ins.
+- Rental bookings must have either `user_id` or `walk_in_phone`.
+- Rental booking status now includes `picked_up` and `returned` for fulfillment tracking.
 - Booking cancellation is soft-delete via `status = 'cancelled'`.
 - Booker name + phone are captured on rental submission.
 - Rental booking form blocks invalid date ranges, shows lead-time/min/max hints, and scrolls back to missing booker contact fields after submit attempts.
+- Admin POS stores ID-card images, deposit proof files, and pickup signatures in `catalog-media`.
 - On Home mobile, category icon cards replace the partner-logo marquee; the Home category FAB is intentionally not mounted.
 - Admin order tracking info is customer-visible after admin updates it.
 
@@ -103,6 +110,7 @@ Then use:
 - `ADMIN_MVP_ACTION_PLAN.md` — admin backlog and status
 - `ASSET_ACTION_PLAN.md` — asset/rental decisions and backlog
 - `DATABASE_ADMIN_MANUAL.md` — setup rules for admin data
+- `admin-manual/README.md` — index of task-oriented admin manuals
 - `ROLE_MATRIX.md` — permission model
 - `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
 

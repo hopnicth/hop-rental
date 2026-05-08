@@ -9,156 +9,203 @@ const user = useSupabaseUser();
 const { t } = useI18n();
 const toast = useToast();
 
-/** Toggle between sign-in and sign-up mode */
-const mode = ref<"in" | "up">("in");
+type AuthMode = "password" | "magic";
+type AccountMode = "in" | "up";
+
+const accountMode = ref<AccountMode>("in");
+const authMode = ref<AuthMode>("password");
 const loading = ref(false);
+const email = ref("");
+const password = ref("");
+const confirmPassword = ref("");
+const formError = ref<string | null>(null);
+const touched = reactive({
+  email: false,
+  password: false,
+  confirmPassword: false,
+});
 
 const redirectTarget = computed(() => {
-  const redirect = route.query.redirect;
-  return typeof redirect === "string" && redirect.startsWith("/")
-    ? redirect
-    : "/";
-});
-
-// Redirect to home if already logged in
-watchEffect(() => {
-  if (user.value) {
-    navigateTo(redirectTarget.value);
+  const raw = Array.isArray(route.query.redirect)
+    ? route.query.redirect[0]
+    : route.query.redirect;
+  if (typeof raw !== "string") return "/";
+  try {
+    const decoded = decodeURIComponent(raw);
+    return decoded.startsWith("/") && !decoded.startsWith("//") ? decoded : "/";
+  } catch {
+    return raw.startsWith("/") && !raw.startsWith("//") ? raw : "/";
   }
 });
 
-// ── Form fields ──
-const fields = computed(() => {
-  const base = [
-    {
-      name: "email",
-      label: t("auth.emailLabel"),
-      type: "text" as const,
-      placeholder: t("auth.emailPlaceholder"),
-      required: true,
-    },
-    {
-      name: "password",
-      label: t("auth.passwordLabel"),
-      type: "password" as const,
-      placeholder: t("auth.passwordPlaceholder"),
-      required: true,
-    },
-  ];
-
-  if (mode.value === "up") {
-    base.push({
-      name: "confirmPassword",
-      label: t("auth.confirmPasswordLabel"),
-      type: "password" as const,
-      placeholder: t("auth.confirmPasswordPlaceholder"),
-      required: true,
-    });
+const normalizedEmail = computed(() => email.value.trim().toLowerCase());
+const emailError = computed(() => {
+  if (!normalizedEmail.value) return "กรุณากรอกอีเมล";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail.value)) {
+    return "รูปแบบอีเมลไม่ถูกต้อง";
   }
-
-  return base;
+  return null;
 });
-
-// ── Google OAuth provider ──
-const providers = computed(() => [
+const passwordChecks = computed(() => [
   {
-    label: t("auth.signInWithGoogle"),
-    icon: "bx:bxl-google",
-    color: "neutral" as const,
-    variant: "outline" as const,
-    onClick: signInWithGoogle,
+    label: "อย่างน้อย 6 ตัวอักษร",
+    met: password.value.length >= 6,
+  },
+  {
+    label: "มีตัวพิมพ์เล็กอย่างน้อย 1 ตัว",
+    met: /[a-z]/.test(password.value),
+  },
+  {
+    label: "มีตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว",
+    met: /[A-Z]/.test(password.value),
+  },
+  {
+    label: "มีตัวเลขอย่างน้อย 1 ตัว",
+    met: /[0-9]/.test(password.value),
   },
 ]);
+const isStrongPassword = computed(() =>
+  passwordChecks.value.every((check) => check.met),
+);
+const passwordError = computed(() => {
+  if (authMode.value !== "password") return null;
+  if (!password.value) return "กรุณากรอกรหัสผ่าน";
+  if (accountMode.value === "up" && !isStrongPassword.value) {
+    return "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร และประกอบด้วยตัวพิมพ์ใหญ่ ตัวพิมพ์เล็ก และตัวเลข";
+  }
+  return null;
+});
+const confirmPasswordError = computed(() => {
+  if (accountMode.value !== "up" || authMode.value !== "password") return null;
+  if (!confirmPassword.value) return "กรุณายืนยันรหัสผ่าน";
+  if (password.value !== confirmPassword.value) return "รหัสผ่านไม่ตรงกัน";
+  return null;
+});
+const canSubmit = computed(
+  () =>
+    !emailError.value && !passwordError.value && !confirmPasswordError.value,
+);
 
-// ── Auth actions ──
-async function signInWithEmail(email: string, password: string) {
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+watchEffect(() => {
+  if (user.value) void navigateTo(redirectTarget.value, { replace: true });
+});
+
+function markAllTouched() {
+  touched.email = true;
+  touched.password = true;
+  touched.confirmPassword = true;
+}
+
+function friendlyAuthError(error: AuthError): string {
+  const message = error.message.toLowerCase();
+  if (message.includes("invalid login credentials")) {
+    return "ไม่พบอีเมลนี้ในระบบ หรือรหัสผ่านไม่ถูกต้อง";
+  }
+  if (message.includes("email not confirmed")) {
+    return "อีเมลนี้ยังไม่ได้ยืนยัน กรุณาตรวจสอบกล่องจดหมาย";
+  }
+  if (message.includes("user already registered")) {
+    return "อีเมลนี้ถูกใช้งานแล้ว กรุณาเข้าสู่ระบบแทน";
+  }
+  if (message.includes("rate limit") || message.includes("too many")) {
+    return "มีการพยายามเข้าสู่ระบบหลายครั้ง กรุณารอสักครู่แล้วลองใหม่";
+  }
+  return "ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง";
+}
+
+function showError(error: AuthError) {
+  formError.value = friendlyAuthError(error);
+  toast.add({
+    title:
+      accountMode.value === "in" ? t("auth.loginError") : t("auth.signUpError"),
+    description: formError.value,
+    icon: "bx:error-circle",
+    color: "error",
+  });
+}
+
+async function signInWithPassword() {
+  const { error } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail.value,
+    password: password.value,
+  });
   if (error) return showError(error);
   toast.add({
     title: t("auth.loginSuccess"),
     icon: "bx:check-circle",
     color: "success",
   });
+  await navigateTo(redirectTarget.value, { replace: true });
 }
 
-async function signUpWithEmail(email: string, password: string) {
-  const { data, error } = await supabase.auth.signUp({ email, password });
+async function signUpWithEmail() {
+  const { data, error } = await supabase.auth.signUp({
+    email: normalizedEmail.value,
+    password: password.value,
+    options: {
+      emailRedirectTo: `${window.location.origin}/user/confirm?redirect=${encodeURIComponent(redirectTarget.value)}`,
+    },
+  });
   if (error) return showError(error);
-
-  // Supabase returns user with empty identities when email already exists
-  // (security feature to prevent email enumeration)
   if (
     data.user &&
     (!data.user.identities || data.user.identities.length === 0)
   ) {
+    formError.value = "อีเมลนี้ถูกใช้งานแล้ว กรุณาเข้าสู่ระบบแทน";
     toast.add({
       title: t("auth.signUpError"),
-      description: t("auth.emailAlreadyRegistered"),
-      icon: "bx:error-circle",
+      description: formError.value,
       color: "error",
     });
     return;
   }
-
-  // If session exists → auto-confirmed (Confirm email disabled in Supabase)
-  // watchEffect will redirect to home — no need to call signInWithEmail
-  if (data.session) {
-    toast.add({
-      title: t("auth.signUpSuccess"),
-      icon: "bx:check-circle",
-      color: "success",
-    });
-    return;
-  }
-
-  // No session → email confirmation required
   toast.add({
-    title: t("auth.signUpCheckEmail"),
+    title: data.session ? t("auth.signUpSuccess") : t("auth.signUpCheckEmail"),
+    icon: data.session ? "bx:check-circle" : "bx:envelope",
+    color: data.session ? "success" : "info",
+  });
+  if (data.session) await navigateTo(redirectTarget.value, { replace: true });
+}
+
+async function sendMagicLink() {
+  const { error } = await supabase.auth.signInWithOtp({
+    email: normalizedEmail.value,
+    options: {
+      emailRedirectTo: `${window.location.origin}/user/confirm?redirect=${encodeURIComponent(redirectTarget.value)}`,
+    },
+  });
+  if (error) return showError(error);
+  toast.add({
+    title: "ส่งลิงก์เข้าสู่ระบบแล้ว",
+    description: "กรุณาตรวจสอบอีเมลและกดลิงก์เพื่อเข้าสู่ระบบ",
     icon: "bx:envelope",
-    color: "info",
+    color: "success",
   });
 }
 
 async function signInWithGoogle() {
+  loading.value = true;
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo: `${window.location.origin}/user/confirm?redirect=${encodeURIComponent(redirectTarget.value)}`,
     },
   });
+  loading.value = false;
   if (error) showError(error);
 }
 
-function showError(error: AuthError) {
-  toast.add({
-    title: mode.value === "in" ? t("auth.loginError") : t("auth.signUpError"),
-    description: error.message,
-    icon: "bx:error-circle",
-    color: "error",
-  });
-}
-
-// ── Form submit handler ──
-async function onSubmit(payload: any) {
-  const { email, password, confirmPassword } = payload.data;
-
-  if (mode.value === "up" && password !== confirmPassword) {
-    toast.add({
-      title: t("auth.signUpError"),
-      description: "Passwords do not match",
-      icon: "bx:error-circle",
-      color: "error",
-    });
-    return;
-  }
+async function onSubmit() {
+  if (loading.value) return;
+  formError.value = null;
+  markAllTouched();
+  if (!canSubmit.value) return;
 
   loading.value = true;
   try {
-    if (mode.value === "in") {
-      await signInWithEmail(email, password);
-    } else {
-      await signUpWithEmail(email, password);
-    }
+    if (authMode.value === "magic") await sendMagicLink();
+    else if (accountMode.value === "up") await signUpWithEmail();
+    else await signInWithPassword();
   } finally {
     loading.value = false;
   }
@@ -169,38 +216,210 @@ async function onSubmit(payload: any) {
   <UContainer
     class="min-h-[calc(100vh-4rem)] flex items-center justify-center px-4 py-12"
   >
-    <UCard class="w-full max-w-sm">
-      <UAuthForm
-        :title="mode === 'in' ? t('auth.loginTitle') : t('auth.signUpTitle')"
-        :description="
-          mode === 'in' ? t('auth.loginSubtitle') : t('auth.signUpSubtitle')
-        "
-        icon="bx:user-circle"
-        :fields="fields"
-        :providers="providers"
-        :separator="t('auth.orContinueWith')"
-        :loading="loading"
-        :submit="{
-          label:
-            mode === 'in' ? t('auth.signInButton') : t('auth.signUpButton'),
-          block: true,
-        }"
-        @submit="onSubmit"
-      >
-        <template #footer>
-          <p class="text-center text-sm text-[var(--ui-text-muted)]">
-            {{ mode === "in" ? t("auth.noAccount") : t("auth.hasAccount") }}
-            <UButton
-              variant="link"
-              :label="
-                mode === 'in' ? t('auth.signUpButton') : t('auth.signInButton')
-              "
-              class="p-0"
-              @click="mode = mode === 'in' ? 'up' : 'in'"
-            />
+    <UCard class="w-full max-w-md">
+      <form class="space-y-5" novalidate @submit.prevent="onSubmit">
+        <div class="text-center">
+          <UIcon
+            name="bx:user-circle"
+            class="mx-auto mb-2 text-4xl text-primary"
+          />
+          <h1 class="text-xl font-semibold">
+            {{
+              accountMode === "in"
+                ? t("auth.loginTitle")
+                : t("auth.signUpTitle")
+            }}
+          </h1>
+          <p class="mt-1 text-sm text-muted">
+            {{
+              accountMode === "in"
+                ? t("auth.loginSubtitle")
+                : t("auth.signUpSubtitle")
+            }}
           </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 rounded-xl bg-elevated p-1">
+          <UButton
+            label="รหัสผ่าน"
+            :variant="authMode === 'password' ? 'solid' : 'ghost'"
+            block
+            @click="authMode = 'password'"
+          />
+          <UButton
+            label="Magic Link"
+            :variant="authMode === 'magic' ? 'solid' : 'ghost'"
+            block
+            @click="authMode = 'magic'"
+          />
+        </div>
+
+        <UAlert
+          v-if="authMode === 'magic'"
+          color="info"
+          variant="soft"
+          icon="bx:info-circle"
+          title="Magic Link คืออะไร?"
+          description="Magic Link คือการเข้าสู่ระบบแบบไม่ต้องใช้รหัสผ่าน ระบบจะส่งลิงก์เข้าอีเมลของคุณ เมื่อกดลิงก์นั้นก็จะเข้าสู่ระบบได้ทันที เหมาะสำหรับคนที่ไม่อยากจำรหัสผ่านหรือใช้อุปกรณ์ส่วนตัว"
+        />
+
+        <UAlert
+          v-if="formError"
+          color="error"
+          variant="soft"
+          icon="bx:error-circle"
+          :title="formError"
+        />
+
+        <UFormField
+          class="w-full"
+          :label="t('auth.emailLabel')"
+          :error="touched.email ? emailError : undefined"
+        >
+          <UInput
+            v-model="email"
+            type="email"
+            icon="bx:envelope"
+            :placeholder="t('auth.emailPlaceholder')"
+            autocomplete="email"
+            size="lg"
+            class="w-full"
+            @blur="touched.email = true"
+          />
+        </UFormField>
+
+        <template v-if="authMode === 'password'">
+          <UFormField
+            class="w-full"
+            :label="t('auth.passwordLabel')"
+            :error="touched.password ? passwordError : undefined"
+          >
+            <UInput
+              v-model="password"
+              type="password"
+              icon="bx:lock-alt"
+              :placeholder="t('auth.passwordPlaceholder')"
+              :autocomplete="
+                accountMode === 'in' ? 'current-password' : 'new-password'
+              "
+              size="lg"
+              class="w-full"
+              @blur="touched.password = true"
+            />
+          </UFormField>
+          <div class="rounded-lg bg-elevated/60 px-3 py-2 text-xs text-muted">
+            <p class="font-medium text-default">ข้อกำหนดรหัสผ่าน</p>
+            <ul class="mt-1 space-y-1">
+              <li
+                v-for="check in passwordChecks"
+                :key="check.label"
+                class="flex items-center gap-2"
+              >
+                <UIcon
+                  :name="check.met ? 'bx:check-circle' : 'bx:circle'"
+                  :class="check.met ? 'text-success' : 'text-muted'"
+                />
+                <span :class="check.met ? 'text-default' : 'text-muted'">
+                  {{ check.label }}
+                </span>
+              </li>
+            </ul>
+            <p class="mt-2">
+              แนะนำให้ใช้รหัสที่คาดเดายาก และไม่ซ้ำกับบริการอื่น
+            </p>
+            <p v-if="accountMode === 'in'" class="mt-1 text-[11px]">
+              ข้อกำหนดนี้ใช้สำหรับการสมัครสมาชิกใหม่
+            </p>
+            <p v-else class="mt-1 text-[11px]">
+              ระบบจะตรวจข้อกำหนดนี้ก่อนสมัครสมาชิก
+            </p>
+          </div>
+          <div
+            v-if="accountMode === 'up' && touched.password && passwordError"
+            class="text-xs text-error"
+          >
+            {{ passwordError }}
+          </div>
+          <UFormField
+            v-if="accountMode === 'up'"
+            class="w-full"
+            :label="t('auth.confirmPasswordLabel')"
+            :error="touched.confirmPassword ? confirmPasswordError : undefined"
+          >
+            <UInput
+              v-model="confirmPassword"
+              type="password"
+              icon="bx:lock-alt"
+              :placeholder="t('auth.confirmPasswordPlaceholder')"
+              autocomplete="new-password"
+              size="lg"
+              class="w-full"
+              @blur="touched.confirmPassword = true"
+            />
+          </UFormField>
         </template>
-      </UAuthForm>
+        <template v-else-if="accountMode === 'up'">
+          <div class="rounded-lg bg-elevated/60 px-3 py-2 text-xs text-muted">
+            <p class="font-medium text-default">ข้อกำหนดรหัสผ่าน</p>
+            <ul class="mt-1 list-disc space-y-0.5 pl-4">
+              <li>อย่างน้อย 6 ตัวอักษร</li>
+              <li>มีตัวพิมพ์เล็กอย่างน้อย 1 ตัว</li>
+              <li>มีตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว</li>
+              <li>มีตัวเลขอย่างน้อย 1 ตัว</li>
+            </ul>
+            <p class="mt-2">
+              แนะนำให้ใช้รหัสที่คาดเดายาก และไม่ซ้ำกับบริการอื่น
+            </p>
+          </div>
+        </template>
+
+        <UButton
+          type="submit"
+          block
+          size="lg"
+          :loading="loading"
+          :disabled="loading || !canSubmit"
+          :label="
+            authMode === 'magic'
+              ? 'ส่ง Magic Link'
+              : accountMode === 'in'
+                ? t('auth.signInButton')
+                : t('auth.signUpButton')
+          "
+        />
+
+        <div class="relative py-1 text-center text-xs text-muted">
+          <span class="bg-white px-2">{{ t("auth.orContinueWith") }}</span>
+        </div>
+        <UButton
+          icon="bx:bxl-google"
+          color="neutral"
+          variant="outline"
+          block
+          :disabled="loading"
+          :label="t('auth.signInWithGoogle')"
+          @click="signInWithGoogle"
+        />
+
+        <p
+          v-if="authMode === 'password'"
+          class="text-center text-sm text-muted"
+        >
+          {{
+            accountMode === "in" ? t("auth.noAccount") : t("auth.hasAccount")
+          }}
+          <UButton
+            variant="link"
+            class="p-0"
+            :label="
+              accountMode === 'in'
+                ? t('auth.signUpButton')
+                : t('auth.signInButton')
+            "
+            @click="accountMode = accountMode === 'in' ? 'up' : 'in'"
+          />
+        </p>
+      </form>
     </UCard>
   </UContainer>
 </template>

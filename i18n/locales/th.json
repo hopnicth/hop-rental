@@ -643,6 +643,8 @@
     "status": {
       "draft": "ฉบับร่าง",
       "confirmed": "ยืนยันแล้ว",
+      "picked_up": "รับของแล้ว",
+      "returned": "คืนของแล้ว",
       "cancelled": "ยกเลิกแล้ว"
     }
   }

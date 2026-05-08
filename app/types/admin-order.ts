@@ -16,6 +16,11 @@ import type {
   OrderStatus,
 } from "~/types/order";
 import type { RentalBookingStatus } from "~/types/rental-booking";
+import type {
+  RentalDepositPaymentMethod,
+  RentalDepositPaymentStatus,
+  RentalDepositRefundStatus,
+} from "~/types/rental-booking";
 
 export type AdminOrderType = "sale" | "rental";
 export type AdminOrderQueueView = "all" | "action_required";
@@ -52,6 +57,7 @@ export interface AdminSaleOrderRow {
 export interface AdminRentalBookingRow {
   id: string;
   userId: string;
+  walkInPhone: string | null;
   status: RentalBookingStatus;
   assetName: string | null;
   productName: string;
@@ -61,6 +67,10 @@ export interface AdminRentalBookingRow {
   rentalDays: number;
   rentalTotal: number;
   depositAmount: number;
+  depositPaidAmount: number;
+  depositPaymentMethod: RentalDepositPaymentMethod | null;
+  depositPaymentStatus: RentalDepositPaymentStatus;
+  depositRefundStatus: RentalDepositRefundStatus;
   currencyCode: string;
   storageBranchId: string | null;
   storageBranchName: string | null;

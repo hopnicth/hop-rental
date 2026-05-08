@@ -1,6 +1,6 @@
 # HOP-RENTAL Project Summary
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 Audience: developers, operators, future Augment sessions
 
 ## Purpose
@@ -41,6 +41,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Open `/asset/[slug]`
 - Create booking draft
 - Confirm rental from `/user/cart`
+- Staff can also create confirmed rentals from `/admin/pos` for account or walk-in customers
 - Customer sees active history in `/user/rentals`
 - Cancelled bookings remain in DB and appear in `/user/orders`
 - Admin manages rental operations from `/admin/orders` and `/admin/rental-bookings/[id]`
@@ -88,6 +89,11 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - QR scan supports `order:<number>`, `booking:<uuid>`, `customer:<uuid>`
 - Incomplete rows are highlighted visually
 - Sale orders support admin tracking updates
+- `/admin/pos` combines customer lookup, walk-in capture, rentable-asset search, deposit entry, and immediate booking creation
+- POS supports ID-card upload for account or walk-in customers and reuses `walk_in_customers` as the phone-primary record
+- POS pickup flow stores a customer signature and creates a fulfillment audit row before moving the booking to `picked_up`
+- POS return flow records a fulfillment event and moves the booking to `returned`
+- POS keeps pending ID-card uploads / booking drafts in `localStorage` for retry on flaky connections
 - Rental booking detail supports checklists + documents
 - Booking docs store storage metadata for clean delete
 
@@ -136,6 +142,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/admin/branches-inventory`
 - `/admin/orders`
 - `/admin/orders/[id]`
+- `/admin/pos`
+- `/admin/walk-in` (redirect alias)
 - `/admin/rental-bookings/[id]`
 - `/admin/content`
 - `/admin/home-categories`
@@ -146,8 +154,12 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Internal admin access uses `public.users.platform_role`.
 - `company_members.role` does not grant `/admin` access.
 - Rental is `asset`-first; product matching is recommended, not always required.
+- `rental_bookings` now allow account-backed or walk-in bookings, but each row must have either `user_id` or `walk_in_phone`.
+- POS-created rentals are inserted directly as `confirmed` bookings instead of customer-side `draft` bookings.
+- Rental fulfillment introduces `picked_up` and `returned` statuses; POS pickup requires a confirmed booking and POS return requires a picked-up booking.
 - Booking cancellation is soft-delete.
 - Booker phone/name should be preferred over account phone/name when present on a booking.
+- Deposit collection is tracked on the booking row, while uploaded proof files are stored separately for audit.
 - Homepage promotion/service cards must reference an existing `content_pages` row; create the page in `/admin/content` first, then link it from `/admin/home-content`.
 - For PostgREST `ILIKE`, use `*term*` instead of `%term%`.
 - For dynamic filters, put machine keys in `tag_keys`, not only `search_keywords`. Matching is exact/case-sensitive against `filter_options.key`.

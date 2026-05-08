@@ -44,6 +44,8 @@ export const RENTAL_BOOKING_STATUS_TRANSITIONS: Record<
   RentalBookingStatus[]
 > = {
   draft: ["confirmed", "cancelled"],
-  confirmed: ["cancelled"],
+  confirmed: ["picked_up", "cancelled"],
+  picked_up: ["returned"],
+  returned: [],
   cancelled: [],
 };

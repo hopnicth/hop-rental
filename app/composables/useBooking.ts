@@ -77,7 +77,13 @@ function normalizeRecord(value: unknown): Record<string, unknown> | undefined {
 }
 
 function normalizeBookingStatus(value: unknown): BookingItem["status"] {
-  if (value === "draft" || value === "confirmed" || value === "cancelled") {
+  if (
+    value === "draft" ||
+    value === "confirmed" ||
+    value === "picked_up" ||
+    value === "returned" ||
+    value === "cancelled"
+  ) {
     return value;
   }
   return "draft";

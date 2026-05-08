@@ -1,6 +1,6 @@
 # Database Admin Manual
 
-Last updated: 2026-05-07
+Last updated: 2026-05-08
 Audience: internal staff, data-entry, developers
 
 ## Purpose
@@ -68,6 +68,14 @@ Notes:
 | `orders` / `order_items` | sale transactions          | Usually no       |
 | `addresses`              | customer/company addresses | No catalog setup |
 
+## Rental operations tables
+
+| Table                           | Purpose                                               | Edit manually?            |
+| ------------------------------- | ----------------------------------------------------- | ------------------------- |
+| `walk_in_customers`             | phone-primary POS customer records + ID-card metadata | Through `/admin/pos` only |
+| `rental_booking_fulfillments`   | pickup/return audit trail + signature metadata        | No                        |
+| `rental_booking_deposit_proofs` | uploaded deposit/refund proof files                   | No                        |
+
 ## Minimum publish checklist
 
 ### Product
@@ -96,6 +104,18 @@ Notes:
 - [ ] min rental days is correct
 - [ ] description/spec explain what is included
 - [ ] add `asset_matches` if product-detail discoverability is required
+
+## Setup order for a POS / walk-in rental
+
+1. Open `/admin/pos` (or `/admin/walk-in`, which redirects there)
+2. Search by phone or customer UUID; if no account exists, enter a walk-in phone + full name
+3. Capture the customer's ID card before pickup; this stores a `walk_in_customers` row when needed
+4. Select an active, non-hidden asset with a valid daily rental rate
+5. Choose dates that satisfy the asset's `min_rental_days` / `max_rental_days`
+6. Record the deposit amount and payment method; attach a proof file if ops policy requires it
+7. Create the booking; POS inserts it directly as `status = 'confirmed'`
+8. At handover, confirm pickup from POS so a `rental_booking_fulfillments` row is written and the booking moves to `picked_up`
+9. At return, confirm return from POS so another fulfillment row is written and the booking moves to `returned`
 
 ## Setup order for a homepage promotion or service card
 
@@ -131,6 +151,10 @@ Notes:
 - Use `search_keywords` only for natural-language aliases, spelling variants, Thai/English synonyms, and customer wording. Do not duplicate code, slug, exact name, brand, main category, or tag values.
 - Assets can be booked with `asset_id` alone in newer schemas.
 - `asset_matches` are recommended for discoverability but are not always required for booking.
+- `rental_bookings` must now satisfy `user_id IS NOT NULL OR walk_in_phone IS NOT NULL`.
+- POS catalog reads only active, non-hidden assets with `daily_enabled = true` and `daily_rate > 0`.
+- ID-card files are stored under `catalog-media/customer-ids/`, deposit proofs under `catalog-media/deposit-proofs/`, and pickup signatures under `catalog-media/rental-fulfillment/`.
+- POS pickup/return are operational events, not generic status edits; use the dedicated POS or admin booking endpoints so audit rows stay intact.
 - Stock should be managed through admin endpoints, not direct DB writes, so audit logs remain correct.
 - Booking docs/checklists are stored separately from asset-level docs.
 - Homepage promotion/service rails read live data from `content_pages`; do not edit `home_link_cards` text fields directly.
@@ -149,6 +173,8 @@ Notes:
 - `044` adds DB-backed Home category-card groups/options
 - `046` adds typed `main_categories.entity_types`
 - `047` adds `content_pages.main_category_key` for content listing filters
+- `056` adds walk-in customer capture and rental fulfillment audit events
+- `057` adds POS booking deposit fields + deposit proof storage
 
 ## Related docs
 

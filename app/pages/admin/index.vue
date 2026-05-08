@@ -33,6 +33,12 @@ const sections = computed(() => {
       to: "/admin/orders",
     },
     {
+      title: "POS & Fulfillment",
+      description:
+        "Phone-first customer lookup, ID-card capture, pre-booked pick-list, pickup signature, and return flow.",
+      to: "/admin/pos",
+    },
+    {
       title: "Messages",
       description:
         "Support inbox for customer conversations, unread indicators, and admin replies.",
@@ -87,6 +93,31 @@ const sections = computed(() => {
 
 <template>
   <div class="space-y-6">
+    <UCard class="border-primary/30 bg-primary/5">
+      <div
+        class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+      >
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide text-primary">
+            Staff shortcut
+          </p>
+          <h2 class="text-2xl font-bold">POS หน้าร้าน</h2>
+          <p class="mt-1 text-sm text-muted">
+            สแกน QR, ค้นหาด้วยเบอร์, เก็บบัตรประชาชน, ทำ Pickup/Return
+            ได้จากจุดเดียว
+          </p>
+        </div>
+        <UButton
+          to="/admin/pos"
+          icon="bx:store"
+          label="เปิดหน้า POS"
+          color="primary"
+          size="xl"
+          class="justify-center"
+        />
+      </div>
+    </UCard>
+
     <UCard>
       <template #header>
         <div>

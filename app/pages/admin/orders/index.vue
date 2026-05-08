@@ -103,6 +103,8 @@ const rentalStatusOptions: Array<{
 }> = [
   { value: "draft", label: "Draft" },
   { value: "confirmed", label: "Confirmed" },
+  { value: "picked_up", label: "Picked up" },
+  { value: "returned", label: "Returned" },
   { value: "cancelled", label: "Cancelled" },
 ];
 
@@ -248,6 +250,8 @@ function fulfillmentStatusColor(status: OrderFulfillmentStatus): BadgeColor {
 
 function rentalStatusColor(status: RentalBookingStatus): BadgeColor {
   if (status === "confirmed") return "success";
+  if (status === "picked_up") return "info";
+  if (status === "returned") return "primary";
   if (status === "draft") return "warning";
   return "error";
 }

@@ -64,6 +64,8 @@ function statusLabel(status: BookingStatus): string {
 
 function statusColor(status: BookingStatus): BadgeColor {
   if (status === "confirmed") return "success";
+  if (status === "picked_up") return "info";
+  if (status === "returned") return "neutral";
   if (status === "draft") return "warning";
   return "error";
 }
@@ -367,7 +369,11 @@ async function confirmCancel() {
         <div v-if="qrTarget" class="flex flex-col items-center gap-4 py-2">
           <p class="text-sm text-muted">{{ t("rentalsPage.qrInstruction") }}</p>
           <div class="rounded-xl border bg-white p-4">
-            <QrcodeVue :value="qrTarget.bookingId" :size="220" level="H" />
+            <QrcodeVue
+              :value="`booking:${qrTarget.bookingId}`"
+              :size="220"
+              level="H"
+            />
           </div>
           <div class="w-full space-y-1 text-sm">
             <p class="font-semibold">{{ bookingTitle(qrTarget) }}</p>

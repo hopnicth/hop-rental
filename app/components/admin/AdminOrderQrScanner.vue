@@ -3,9 +3,10 @@
  * Admin order QR scanner.
  *
  * Opens a modal with the device camera and decodes HOPNIC QR payloads:
- *   - `order:<orderNumber>` → sale order lookup
- *   - `booking:<bookingId>` → rental booking lookup
- *   - `customer:<userId>`   → customer lookup
+ *   - `order:<orderNumber>`       → sale order lookup
+ *   - `booking:<bookingId>`       → rental booking lookup
+ *   - `customer:<userId|phone>`   → customer lookup
+ *   - `customer-phone:<phone>`    → walk-in/customer phone lookup
  *
  * Anything else is forwarded as a raw search term so callers can
  * fall back to free-text search.
@@ -31,11 +32,27 @@ const errorMessage = ref<string | null>(null);
 
 function parsePayload(raw: string) {
   const trimmed = raw.trim();
-  const match = /^(order|booking|customer):(.+)$/i.exec(trimmed);
-  if (match) {
+  const urlMatch =
+    /^https?:\/\/[^/]+\/(?:admin\/)?(?:orders|rentals|customers)\/(.+)$/i.exec(
+      trimmed,
+    );
+  if (urlMatch) {
     return {
       raw: trimmed,
-      kind: match[1].toLowerCase() as "order" | "booking" | "customer",
+      kind: "unknown" as const,
+      value: urlMatch[1].trim(),
+    };
+  }
+
+  const match = /^(order|booking|customer|customer-phone):(.+)$/i.exec(trimmed);
+  if (match) {
+    const normalizedKind =
+      match[1].toLowerCase() === "customer-phone"
+        ? "customer"
+        : match[1].toLowerCase();
+    return {
+      raw: trimmed,
+      kind: normalizedKind as "order" | "booking" | "customer",
       value: match[2].trim(),
     };
   }
@@ -105,8 +122,7 @@ onBeforeUnmount(() => {
     <template #body>
       <div class="flex flex-col items-center gap-3">
         <p class="text-sm text-muted">
-          Point the camera at the customer's order, booking, or profile QR
-          code.
+          Point the camera at the customer's order, booking, or profile QR code.
         </p>
 
         <div
@@ -136,9 +152,8 @@ onBeforeUnmount(() => {
 
         <p class="text-xs text-muted">
           Supports payloads:
-          <code>order:&lt;number&gt;</code>,
-          <code>booking:&lt;uuid&gt;</code>,
-          <code>customer:&lt;uuid&gt;</code>.
+          <code>order:&lt;number&gt;</code>, <code>booking:&lt;uuid&gt;</code>,
+          <code>customer:&lt;uuid/phone&gt;</code>.
         </p>
       </div>
     </template>
