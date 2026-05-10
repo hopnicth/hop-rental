@@ -12,7 +12,7 @@ export type LocaleCode = "th" | "en" | "cn" | "jp";
 export type ServiceProviderType = "individual" | "company";
 
 export const ADMIN_CONTENT_PAGE_SELECT =
-  "id, content_type, slug, main_category_key, provider_id, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order), service_providers(provider_id, provider_type, is_verified, contact_phone, contact_email, google_maps_url, kyc_documents, created_at, updated_at)";
+  "id, content_type, slug, main_category_key, provider_id, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order), service_providers(provider_id, provider_type, is_verified, contact_phone, contact_email, google_maps_url, line_id, line_url, kyc_documents, created_at, updated_at)";
 
 const LOCALES: LocaleCode[] = ["th", "en", "cn", "jp"];
 
@@ -77,6 +77,34 @@ function asProviderId(value: unknown) {
     fail422("providerId must be a 13-digit Citizen ID or Juristic ID");
   }
   return digits;
+}
+
+function asLineId(value: unknown) {
+  const raw = asOptionalString(value);
+  if (!raw) return null;
+  const normalized = raw.replace(/\s+/g, "");
+  if (!/^@?[A-Za-z0-9._-]{2,64}$/.test(normalized)) {
+    fail422("lineId must be a valid Line ID");
+  }
+  return normalized;
+}
+
+function asLineUrl(value: unknown) {
+  const raw = asOptionalString(value);
+  if (!raw) return null;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    fail422("lineUrl must be a valid URL");
+  }
+  const host = url.hostname.toLowerCase();
+  const isAllowedHost =
+    host === "line.me" || host === "lin.ee" || host.endsWith(".line.me");
+  if (url.protocol !== "https:" || !isAllowedHost) {
+    fail422("lineUrl must be an HTTPS line.me or lin.ee URL");
+  }
+  return url.toString();
 }
 
 function providerInput(body: Record<string, unknown>) {
@@ -220,6 +248,8 @@ export function buildServiceProviderPayload(body: Record<string, unknown>) {
     contact_phone: asOptionalString(input.contactPhone),
     contact_email: asOptionalString(input.contactEmail),
     google_maps_url: asOptionalString(input.googleMapsUrl),
+    line_id: asLineId(input.lineId),
+    line_url: asLineUrl(input.lineUrl),
     kyc_documents: normalizeKycDocuments(input.kycDocuments, providerType),
   };
 }
@@ -287,6 +317,8 @@ function mapServiceProviderRow(row: unknown) {
     contactPhone: asOptionalString(provider.contact_phone) ?? "",
     contactEmail: asOptionalString(provider.contact_email) ?? "",
     googleMapsUrl: asOptionalString(provider.google_maps_url) ?? "",
+    lineId: asOptionalString(provider.line_id) ?? "",
+    lineUrl: asOptionalString(provider.line_url) ?? "",
     kycDocuments: normalizeKycDocuments(provider.kyc_documents, providerType),
     createdAt: provider.created_at,
     updatedAt: provider.updated_at,

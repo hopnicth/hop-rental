@@ -1,6 +1,10 @@
 import { createError, defineEventHandler, getRouterParam, readBody } from "h3";
 import { requireSuperAdmin } from "~~/server/utils/admin";
-import { buildProductPayload } from "~~/server/utils/admin-catalog";
+import {
+  ADMIN_PRODUCT_DETAIL_SELECT,
+  buildProductPayload,
+  mapAdminProductDetail,
+} from "~~/server/utils/admin-catalog";
 
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requireSuperAdmin(event);
@@ -36,7 +40,7 @@ export default defineEventHandler(async (event) => {
     .from("products")
     .update(payload)
     .eq("id", productId)
-    .select("id")
+    .select(ADMIN_PRODUCT_DETAIL_SELECT)
     .single();
 
   if (error || !data) {
@@ -46,5 +50,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  return { ok: true };
+  return {
+    ok: true,
+    product: mapAdminProductDetail(data as Record<string, unknown>),
+  };
 });

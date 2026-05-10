@@ -60,6 +60,8 @@ staff ต้องมี branch grant ใน `admin_user_branch_access.can_pos`;
 
 ### Step 3: เลือก Asset และช่วงวันเช่า
 
+POS rental mode ตอนนี้ใช้ปฏิทินและสรุปราคา **ชุดเดียวกับฝั่งลูกค้า** เพื่อให้กฎ booking ตรงกันมากขึ้น
+
 POS catalog จะแสดงเฉพาะ Asset ที่:
 
 - `status = 'active'`
@@ -67,11 +69,19 @@ POS catalog จะแสดงเฉพาะ Asset ที่:
 - `daily_enabled = true`
 - `daily_rate > 0`
 
+ปฏิทินจะ:
+
+- block วันที่ชนกับ booking ที่ใช้งานอยู่
+- คำนวณจำนวนวันเช่า / ราคา / มัดจำแบบ live
+- บังคับกฎ `min_rental_days` และ `max_rental_days`
+
 ต้องเลือกวันที่ให้ผ่านกฎของ Asset:
 
 - `endDate` ต้องมากกว่า `startDate`
 - ต้องไม่ต่ำกว่า `min_rental_days`
 - ถ้ามี `max_rental_days` ต้องไม่เกินค่าที่กำหนด
+
+หมายเหตุ: POS ตั้ง `bufferDays = 0` โดยตั้งใจ เพื่อให้ทีมหน้าร้านทำ booking หน้างานได้ แม้ storefront จะมี lead/buffer day สำหรับลูกค้าทั่วไป
 
 ### Step 4: เก็บเงินมัดจำ
 

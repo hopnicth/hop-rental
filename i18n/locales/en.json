@@ -59,6 +59,19 @@
     "measurement": "Measurement",
     "measurementDesc": "Measuring tools"
   },
+  "service": {
+    "contactProvider": "Contact",
+    "contactProviderTitle": "Contact service provider",
+    "lineContact": "Contact via Line",
+    "openLine": "Open Line",
+    "call": "Call",
+    "phone": "Phone",
+    "callNow": "Call now",
+    "email": "Email",
+    "googleMaps": "Google Maps",
+    "copy": "Copy",
+    "open": "Open"
+  },
   "user": {
     "profile": "Profile",
     "signIn": "Sign In",

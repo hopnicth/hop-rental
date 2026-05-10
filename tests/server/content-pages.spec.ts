@@ -108,6 +108,8 @@ describe("content page payload helpers", () => {
         contactPhone: "02-123-4567",
         contactEmail: "provider@example.com",
         googleMapsUrl: "https://maps.google.com/example",
+        lineId: "@hopnic",
+        lineUrl: "https://line.me/R/ti/p/@hopnic",
         kycDocuments: {
           citizenCard: {
             path: "content-pages/file/2026-05-10/id-card.pdf",
@@ -131,6 +133,8 @@ describe("content page payload helpers", () => {
       contact_phone: "02-123-4567",
       contact_email: "provider@example.com",
       google_maps_url: "https://maps.google.com/example",
+      line_id: "@hopnic",
+      line_url: "https://line.me/R/ti/p/@hopnic",
     });
     expect(providerPayload?.kyc_documents).toEqual({
       citizenCard: expect.objectContaining({
@@ -162,6 +166,8 @@ describe("content page payload helpers", () => {
         contact_phone: "099-999-9999",
         contact_email: "company@example.com",
         google_maps_url: "https://maps.google.com/company",
+        line_id: "@company",
+        line_url: "https://lin.ee/company",
         kyc_documents: {
           companyCertificate: {
             path: "content-pages/file/company.pdf",
@@ -176,6 +182,8 @@ describe("content page payload helpers", () => {
       providerType: "company",
       isVerified: true,
       contactPhone: "099-999-9999",
+      lineId: "@company",
+      lineUrl: "https://lin.ee/company",
     });
     expect(row.serviceProvider?.kycDocuments).toEqual({
       companyCertificate: expect.objectContaining({

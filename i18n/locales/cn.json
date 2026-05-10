@@ -63,6 +63,19 @@
     "measurement": "测量工具",
     "measurementDesc": "测量工具"
   },
+  "service": {
+    "contactProvider": "联系",
+    "contactProviderTitle": "联系服务提供者",
+    "lineContact": "通过 Line 联系",
+    "openLine": "打开 Line",
+    "call": "电话",
+    "phone": "电话",
+    "callNow": "立即拨打",
+    "email": "电子邮件",
+    "googleMaps": "Google 地图",
+    "copy": "复制",
+    "open": "打开"
+  },
   "user": {
     "profile": "个人资料",
     "signIn": "登录",

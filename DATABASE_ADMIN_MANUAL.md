@@ -112,11 +112,15 @@ Notes:
 2. Search by phone or customer UUID; if no account exists, enter a walk-in phone + full name
 3. Capture the customer's ID card before pickup; this stores a `walk_in_customers` row when needed
 4. Select an active, non-hidden asset with a valid daily rental rate
-5. Choose dates that satisfy the asset's `min_rental_days` / `max_rental_days`
+5. Choose dates in the shared rental calendar; it blocks overlapping dates and enforces the asset's `min_rental_days` / `max_rental_days`
 6. Record the deposit amount and payment method; attach a proof file if ops policy requires it
 7. Create the booking; POS inserts it directly as `status = 'confirmed'`
 8. At handover, confirm pickup from POS so a `rental_booking_fulfillments` row is written and the booking moves to `picked_up`
 9. At return, confirm return from POS so another fulfillment row is written and the booking moves to `returned`
+
+Notes:
+
+- POS rental uses the same calendar/pricing logic as storefront booking, but intentionally passes `bufferDays = 0` so front-desk staff are not blocked by storefront lead buffers.
 
 ## Setup order for a POS sale
 
@@ -134,7 +138,7 @@ The home-rail promotion/service cards are pure references to `content_pages`.
 There is no longer a way to type a title/excerpt/image directly on a card.
 
 1. Open `/admin/content` and create a `content_pages` row of type `promotion` or `service`
-2. Fill the localized title/excerpt/cover image and mark it active
+2. Fill the localized title/excerpt/cover image and mark it active; if it is a `service` page, also fill provider phone/email/Google Maps and optional Line ID / Line URL when the public page should show contact CTAs
 3. Open `/admin/home-content` and use **Add promotion card** or **Add service card**
 4. Pick the content page from the picker; the rail card derives title, excerpt, image, and `/services/{slug}` or `/promotions/{slug}` link from it live
 5. To remove a card from the rail, delete the home-content card (the source page stays); to remove the page everywhere, delete the `content_pages` row (the linked card cascades)
@@ -182,6 +186,7 @@ Notes:
 - Booking docs/checklists are stored separately from asset-level docs.
 - Homepage hero banners support a required desktop image plus an optional mobile-specific image; use the mobile field when the phone crop needs different artwork.
 - Homepage promotion/service rails read live data from `content_pages`; do not edit `home_link_cards` text fields directly.
+- Service pages can expose provider phone/email/Google Maps and optional Line contact. Prefer storing `line_id` when you only know the handle; if you store `line_url`, keep it as an HTTPS `line.me` / `lin.ee` URL.
 - Home category-card options are managed separately from content pages in `/admin/home-categories`; desktop sub-option selection sends `/search?q=...`, while mobile group icon cards use real `mainCategoryKey` values in `/search?category=...`.
 
 ## Migration-sensitive notes
@@ -202,6 +207,7 @@ Notes:
 - `058` adds atomic rental booking overlap protection
 - `059` adds full admin POS branch/sale/payment/scanner support
 - `060` restores `sku_branch_inventory.inventory_kind` for POS sale inventory logic
+- `066` adds `service_providers.line_id` / `line_url` for service-page contact actions
 
 ## Related docs
 

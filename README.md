@@ -15,6 +15,7 @@ This single app contains storefront, customer self-service, and internal admin s
 - Customer order history and rental history
 - Internal admin for catalog, assets, stock, orders, rental operations, and POS
 - Admin POS for branch-scoped sale/rental transactions, optional Sale-mode customer info, walk-in rentals, daily history, and accounting export
+- Service pages can expose provider contact actions (phone, email, Line, Maps) managed from the content CMS
 
 ## Quick start
 
@@ -97,7 +98,9 @@ npm run build
 - Booking cancellation is soft-delete via `status = 'cancelled'`.
 - Booker name + phone are captured on rental submission.
 - Rental booking form blocks invalid date ranges, shows lead-time/min/max hints, and scrolls back to missing booker contact fields after submit attempts.
+- Admin POS rental mode reuses the same booking calendar/pricing summary as storefront booking, but intentionally does not enforce asset buffer days.
 - Admin POS stores ID-card images, deposit proof files, and pickup signatures in `catalog-media`.
+- Service pages can expose provider phone/email/Line/Google Maps contact actions; Line links are sanitized to HTTPS `line.me` / `lin.ee` URLs before storefront use.
 - On Home mobile, category icon cards replace the partner-logo marquee; the Home category FAB is intentionally not mounted.
 - Admin order tracking info is customer-visible after admin updates it.
 

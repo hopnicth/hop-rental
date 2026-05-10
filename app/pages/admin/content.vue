@@ -54,6 +54,8 @@ type AdminServiceProvider = {
   contactPhone: string;
   contactEmail: string;
   googleMapsUrl: string;
+  lineId: string;
+  lineUrl: string;
   kycDocuments: KycDocuments;
 };
 
@@ -116,6 +118,8 @@ const emptyServiceProvider = (): AdminServiceProvider => ({
   contactPhone: "",
   contactEmail: "",
   googleMapsUrl: "",
+  lineId: "",
+  lineUrl: "",
   kycDocuments: {},
 });
 
@@ -829,6 +833,29 @@ async function uploadKycDocument(key: string, event: Event) {
                   v-model="form.serviceProvider.googleMapsUrl"
                   class="w-full"
                   placeholder="https://maps.google.com/..."
+                />
+              </UFormField>
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+              <UFormField
+                label="Line ID"
+                help="เช่น @hopnic หรือ Line ID ส่วนตัว"
+              >
+                <UInput
+                  v-model="form.serviceProvider.lineId"
+                  class="w-full"
+                  placeholder="@hopnic"
+                />
+              </UFormField>
+              <UFormField
+                label="Line URL"
+                help="ต้องเป็น https://line.me/... หรือ https://lin.ee/..."
+              >
+                <UInput
+                  v-model="form.serviceProvider.lineUrl"
+                  class="w-full"
+                  placeholder="https://line.me/R/ti/p/@hopnic"
                 />
               </UFormField>
             </div>

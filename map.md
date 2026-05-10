@@ -67,6 +67,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Homepage promotion/service cards are pure references to `content_pages` rows; admin must create the content page first, then pick it from `/admin/home-content`.
 - Homepage category card data is DB-backed through `/api/home-category-cards` with mock fallback only. Desktop sub-option selection routes to `/search?q=...`; mobile icon group cards route to `/search?category=<mainCategoryKey>` for whole-category browsing. Do not use sub-option shortcut keys as `category`.
 - `content_pages.content_type` supports `blog`, `service`, `promotion`, and `review`. Reviews can be linked to one or more `products` and/or `assets` from `/admin/content`, and render as a "Product reviews" section on `/product-{group}/{slug}` and `/asset/{slug}`.
+- Service pages may expose provider phone/email/Google Maps and optional Line contact from `service_providers`; only HTTPS `line.me` / `lin.ee` URLs should be stored or rendered.
 - Homepage card sections use Nuxt UI `UCarousel`/Embla rails with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin.
 - Storefront card images should preserve square `1:1` frames using `aspect-square` and `object-cover`; avoid reverting card media to fixed `h-48` heights.
 - Card-based async lists/grids/rails must show `<CommonLoadingCat />` plus shape-matched skeleton cards while loading; never leave empty space or use ad-hoc spinners. See "Lazy load loading state standard" in `API_INDEX.md`.
@@ -87,6 +88,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Future global search should support products, rental assets, services, blogs, reviews, and promotions. Migration `045` for DB-level product dynamic filters is prepared but still pending remote apply.
 - Admin order QR payloads: `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
 - Admin POS payloads/flows are branch-scoped; Sale customer info is optional, Rental customer info is required, and `Scan Customer` lives in the customer info card.
+- Shared rental calendar logic now lives in `app/components/products/RentalBookingCalendar.vue`; storefront and POS should stay behaviorally aligned, with POS intentionally passing `bufferDays = 0`.
 - Cookie consent is captured by `<CookieConsentBanner />` mounted in both `default` and `admin` layouts. Consent state lives in the `hop-rental-cookie-consent` cookie (180-day TTL, versioned). Categories: `necessary` (always on), `analytics`, `preferences`, `marketing`. Non-essential default off — never load analytics/marketing scripts before checking `useCookieConsent().isAllowed(...)`.
 - Floating UI z-index ladder: ChatFab / MobileFloatingPanel `z-40` → generic Nuxt UI modals `z-50` → cookie consent banner `z-60` → cookie preferences modal `z-70`. Keep ChatFab below modal overlays; do not raise it back to `z-999`.
 
@@ -135,6 +137,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `058_rental_booking_atomic_overlap_guard.sql` (applied; rental overlap guard)
 - `059_admin_pos_full_function.sql` (applied; branch-aware POS sale/rental support)
 - `060_restore_sku_inventory_kind.sql` (applied; POS sale inventory compatibility)
+- `066_service_provider_line_contact.sql` (adds `service_providers.line_id` / `line_url` for public service contact actions)
 
 ## Recommended maintenance rule
 

@@ -20,6 +20,8 @@ Read this after `map.md` when debugging or implementing features.
 - `products.category_keys` and `assets.category_keys` are derived compatibility/search arrays. They contain `[main_category_key] + tag_keys`, so do not treat every `category_keys` entry as a public category.
 - Admin POS file uploads use `catalog-media` for customer IDs, deposit proofs, and fulfillment signatures.
 - Admin POS is branch-scoped: staff only see branches from `admin_user_branch_access.can_pos`; `super_admin` sees all active branches.
+- Public service-page contact actions read phone/email/Google Maps plus optional `line_id` / `line_url` from `service_providers`; only HTTPS `line.me` / `lin.ee` links should survive validation.
+- Shared rental date logic lives in `app/components/products/RentalBookingCalendar.vue`; storefront asset booking uses asset rules, while admin POS rental creation intentionally passes `bufferDays = 0`.
 
 ## Main read paths
 
@@ -29,6 +31,7 @@ Read this after `map.md` when debugging or implementing features.
 | Asset browse/detail            | `app/composables/useAssets.ts`                         | `assets`, `asset_matches`                                                                                                                         |
 | Cart                           | `app/composables/useCart.ts`                           | `carts`, `cart_items`                                                                                                                             |
 | Rental booking store           | `app/composables/useBooking.ts`                        | `rental_bookings`                                                                                                                                 |
+| Shared rental booking calendar | `app/components/products/RentalBookingCalendar.vue`    | `useBooking()` blocking rows + `rental-pricing` + `booking-cutoff`; reused by storefront booking and admin POS                                    |
 | Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                                                                                           |
 | Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                                                                                                  |
 | Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners` (`image_url`, optional `mobile_image_url`), `home_link_cards` joined with `content_pages`, `home_featured_*`, `home_partner_logos` |
@@ -266,6 +269,7 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 
 - `content_pages` stores blog, service, and promotion pages
 - Admin uploads share `catalog-media` with `content-pages/*` storage prefix
+- Service pages may also expose provider contact metadata from `service_providers`; Line-specific fields are added by migration `066`
 
 ### `037_content_pages_localized_body.sql`
 
@@ -362,6 +366,13 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 
 - Restores `sku_branch_inventory.inventory_kind` expected by branch-aware sale catalog/inventory logic.
 - POS catalog/sale APIs include compatibility fallback for older schemas, but production DBs should apply this migration.
+
+### `066_service_provider_line_contact.sql`
+
+- Adds `service_providers.line_id` and `line_url` with format constraints.
+- Grants public `SELECT` on those columns so `/services/{slug}` can render a Line CTA alongside phone/email/google maps.
+- `/admin/content` now exposes Line ID / Line URL fields for service-provider contact data.
+- Storefront sanitizes Line links to HTTPS `line.me` / `lin.ee` hosts before rendering the contact action.
 
 ### Chat realtime + client conventions
 

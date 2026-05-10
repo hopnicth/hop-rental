@@ -21,6 +21,8 @@ export interface ServiceProvider {
   contactPhone: string;
   contactEmail: string;
   googleMapsUrl: string;
+  lineId: string;
+  lineUrl: string;
   kycDocuments?: KycDocuments;
   createdAt?: string;
   updatedAt?: string;

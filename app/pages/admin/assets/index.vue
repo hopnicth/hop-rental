@@ -645,14 +645,42 @@ function categoryLabel(key: string): string {
   return categoryLabelMap.value[key] ?? key;
 }
 
+/*
+  ⚠️ REACTIVITY CRITICAL SECTION — DO NOT SIMPLIFY ⚠️
+
+  Background:
+  `useFetch` returns a reactive `data` ref. Computed chains (`items` →
+  `filteredItems`) depend on it. If we only mutate `list[index]` in place,
+  Vue’s reactivity system does not reliably propagate through the computed
+  chain, so the `USwitch` in the list row will NOT update its visual state
+  until the page is refreshed.
+
+  Required pattern:
+  1. `Object.assign(list[index], patch)` — mutates the existing object so
+     any direct references (e.g. the `item` in `v-for`) stay reactive.
+  2. `data.value = { ...currentData, items: [...list] }` — creates a new
+     top-level ref value so Vue detects the change and re-evaluates the
+     `items` / `filteredItems` computed properties, triggering a re-render.
+
+  Incorrect pattern (DO NOT REVERT TO THIS):
+    list[index] = { ...list[index], ...patch };
+  The above breaks the computed reactivity chain and causes the UI toggle
+  to appear stuck after a successful API call.
+
+  See also: `toggleAssetVisibility` below, which relies on this helper.
+*/
 function patchListItem(id: string, patch: Partial<ListItem>) {
-  const list = data.value?.items;
-  if (!list) return;
+  const currentData = data.value;
+  const list = currentData?.items;
+  if (!currentData || !list) return;
   const index = list.findIndex((item) => item.id === id);
   if (index === -1) return;
-  list[index] = {
-    ...list[index],
-    ...patch,
+  // Keep the same object reference for any in-memory bindings.
+  Object.assign(list[index], patch);
+  // Force the `items` / `filteredItems` computed chain to re-evaluate.
+  data.value = {
+    ...currentData,
+    items: [...list],
   };
 }
 
@@ -667,6 +695,7 @@ async function toggleAssetVisibility(item: ListItem, visible: boolean) {
       `/api/admin/assets/${encodeURIComponent(item.id)}`,
       { method: "PATCH", body: { isHidden: nextHidden } },
     );
+    // Uses the reactivity-critical `patchListItem` helper above.
     patchListItem(item.id, { isHidden: result.item.isHidden });
     if (detail.value?.id === item.id) {
       detail.value = result.item;

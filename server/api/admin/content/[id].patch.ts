@@ -1,9 +1,11 @@
 import { createError, defineEventHandler, getRouterParam, readBody } from "h3";
 import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
+  ADMIN_CONTENT_PAGE_SELECT,
   buildContentPagePayload,
   buildServiceProviderPayload,
   extractLinkedIds,
+  mapContentPageRow,
   syncContentPageLinks,
   upsertServiceProvider,
 } from "~~/server/utils/content-pages";
@@ -58,5 +60,15 @@ export default defineEventHandler(async (event) => {
     await removeContentMediaByPublicUrl(adminClient, existing.cover_image_url);
   }
 
-  return { ok: true };
+  const { data, error: selectError } = await adminClient
+    .from("content_pages")
+    .select(ADMIN_CONTENT_PAGE_SELECT)
+    .eq("id", id)
+    .single();
+
+  if (selectError) {
+    throw createError({ statusCode: 500, statusMessage: selectError.message });
+  }
+
+  return { ok: true, item: mapContentPageRow(data) };
 });

@@ -54,12 +54,53 @@ const serviceAreas = computed(() => {
 
 const contactOpen = ref(false);
 const serviceProvider = computed(() => page.value?.serviceProvider ?? null);
+function sanitizeLineUrl(value?: string) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    const isAllowedHost =
+      host === "line.me" || host === "lin.ee" || host.endsWith(".line.me");
+    return url.protocol === "https:" && isAllowedHost ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function sanitizeLineId(value?: string) {
+  const id = String(value ?? "")
+    .trim()
+    .replace(/\s+/g, "");
+  return /^@?[A-Za-z0-9._-]{2,64}$/.test(id) ? id : "";
+}
+
+function lineUrlFromId(value?: string) {
+  const id = sanitizeLineId(value);
+  if (!id) return "";
+  if (id.startsWith("@")) return `https://line.me/R/ti/p/${id}`;
+  return `https://line.me/ti/p/~${encodeURIComponent(id)}`;
+}
+
+const lineContactHref = computed(() => {
+  const provider = serviceProvider.value;
+  if (!provider) return "";
+  return (
+    sanitizeLineUrl(provider.lineUrl) ||
+    sanitizeLineUrl(provider.lineId) ||
+    lineUrlFromId(provider.lineId)
+  );
+});
+const lineContactDisplay = computed(
+  () => serviceProvider.value?.lineId || lineContactHref.value,
+);
 const hasContactOptions = computed(() => {
   if (props.contentType !== "service" || !serviceProvider.value) return false;
   return Boolean(
     serviceProvider.value.contactPhone ||
     serviceProvider.value.contactEmail ||
-    serviceProvider.value.googleMapsUrl,
+    serviceProvider.value.googleMapsUrl ||
+    lineContactHref.value,
   );
 });
 const callHref = computed(() => {
@@ -137,24 +178,43 @@ async function copyContact(value: string, label: string) {
     </article>
   </UContainer>
 
-  <UButton
+  <div
     v-if="hasContactOptions"
-    class="fixed bottom-6 right-6 z-40 shadow-lg"
-    color="primary"
-    size="xl"
-    icon="bx:phone-call"
-    label="Contact"
-    @click="contactOpen = true"
-  />
+    class="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3"
+  >
+    <UTooltip v-if="lineContactHref" :text="t('service.lineContact')">
+      <UButton
+        :to="lineContactHref"
+        target="_blank"
+        external
+        class="shadow-lg"
+        color="success"
+        size="xl"
+        icon="ri:line-fill"
+        :aria-label="t('service.lineContact')"
+      />
+    </UTooltip>
+    <UButton
+      class="shadow-lg"
+      color="primary"
+      size="xl"
+      icon="bx:phone-call"
+      :label="t('service.contactProvider')"
+      :aria-label="t('service.contactProvider')"
+      @click="contactOpen = true"
+    />
+  </div>
 
-  <UModal v-model:open="contactOpen" title="Contact service provider">
+  <UModal v-model:open="contactOpen" :title="t('service.contactProviderTitle')">
     <template #body>
       <div v-if="serviceProvider" class="space-y-4">
         <div
           v-if="serviceProvider.contactPhone"
           class="rounded-lg border border-default p-4"
         >
-          <p class="mb-1 text-sm font-semibold text-highlighted">Call</p>
+          <p class="mb-1 text-sm font-semibold text-highlighted">
+            {{ t("service.call") }}
+          </p>
           <p class="break-all text-sm text-muted">
             {{ serviceProvider.contactPhone }}
           </p>
@@ -163,11 +223,46 @@ async function copyContact(value: string, label: string) {
               size="sm"
               variant="soft"
               icon="bx:copy"
-              @click="copyContact(serviceProvider.contactPhone, 'Phone')"
+              @click="
+                copyContact(serviceProvider.contactPhone, t('service.phone'))
+              "
             >
-              Copy
+              {{ t("service.copy") }}
             </UButton>
-            <UButton size="sm" icon="bx:phone" :to="callHref">Call now</UButton>
+            <UButton size="sm" icon="bx:phone" :to="callHref">
+              {{ t("service.callNow") }}
+            </UButton>
+          </div>
+        </div>
+
+        <div
+          v-if="lineContactHref"
+          class="rounded-lg border border-default p-4"
+        >
+          <p class="mb-1 text-sm font-semibold text-highlighted">
+            {{ t("service.lineContact") }}
+          </p>
+          <p class="break-all text-sm text-muted">
+            {{ lineContactDisplay }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="bx:copy"
+              @click="copyContact(lineContactDisplay, t('service.lineContact'))"
+            >
+              {{ t("service.copy") }}
+            </UButton>
+            <UButton
+              size="sm"
+              icon="ri:line-fill"
+              :to="lineContactHref"
+              target="_blank"
+              external
+            >
+              {{ t("service.openLine") }}
+            </UButton>
           </div>
         </div>
 
@@ -175,7 +270,9 @@ async function copyContact(value: string, label: string) {
           v-if="serviceProvider.contactEmail"
           class="rounded-lg border border-default p-4"
         >
-          <p class="mb-1 text-sm font-semibold text-highlighted">Email</p>
+          <p class="mb-1 text-sm font-semibold text-highlighted">
+            {{ t("service.email") }}
+          </p>
           <p class="break-all text-sm text-muted">
             {{ serviceProvider.contactEmail }}
           </p>
@@ -184,16 +281,18 @@ async function copyContact(value: string, label: string) {
               size="sm"
               variant="soft"
               icon="bx:copy"
-              @click="copyContact(serviceProvider.contactEmail, 'Email')"
+              @click="
+                copyContact(serviceProvider.contactEmail, t('service.email'))
+              "
             >
-              Copy
+              {{ t("service.copy") }}
             </UButton>
             <UButton
               size="sm"
               icon="bx:envelope"
               :to="`mailto:${serviceProvider.contactEmail}`"
             >
-              Email
+              {{ t("service.email") }}
             </UButton>
           </div>
         </div>
@@ -202,7 +301,9 @@ async function copyContact(value: string, label: string) {
           v-if="serviceProvider.googleMapsUrl"
           class="rounded-lg border border-default p-4"
         >
-          <p class="mb-1 text-sm font-semibold text-highlighted">Google Maps</p>
+          <p class="mb-1 text-sm font-semibold text-highlighted">
+            {{ t("service.googleMaps") }}
+          </p>
           <p class="break-all text-sm text-muted">
             {{ serviceProvider.googleMapsUrl }}
           </p>
@@ -211,9 +312,14 @@ async function copyContact(value: string, label: string) {
               size="sm"
               variant="soft"
               icon="bx:copy"
-              @click="copyContact(serviceProvider.googleMapsUrl, 'Google Maps')"
+              @click="
+                copyContact(
+                  serviceProvider.googleMapsUrl,
+                  t('service.googleMaps'),
+                )
+              "
             >
-              Copy
+              {{ t("service.copy") }}
             </UButton>
             <UButton
               size="sm"
@@ -222,7 +328,7 @@ async function copyContact(value: string, label: string) {
               target="_blank"
               external
             >
-              Open
+              {{ t("service.open") }}
             </UButton>
           </div>
         </div>

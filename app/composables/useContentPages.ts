@@ -116,6 +116,8 @@ function normalizeServiceProvider(value: unknown): ServiceProvider | null {
     contactPhone: toString(row.contact_phone),
     contactEmail: toString(row.contact_email),
     googleMapsUrl: toString(row.google_maps_url),
+    lineId: toString(row.line_id),
+    lineUrl: toString(row.line_url),
     kycDocuments: normalizeKycDocuments(row.kyc_documents),
     createdAt: toString(row.created_at),
     updatedAt: toString(row.updated_at),
@@ -182,7 +184,7 @@ const CONTENT_PAGE_BASE_FIELDS =
   "id, content_type, slug, main_category_key, provider_id, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
 
 const SERVICE_PROVIDER_PUBLIC_SELECT =
-  "service_providers(provider_id, provider_type, is_verified, contact_phone, contact_email, google_maps_url)";
+  "service_providers(provider_id, provider_type, is_verified, contact_phone, contact_email, google_maps_url, line_id, line_url)";
 
 const PUBLIC_CONTENT_PAGE_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order), ${SERVICE_PROVIDER_PUBLIC_SELECT}`;
 

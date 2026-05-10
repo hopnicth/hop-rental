@@ -57,6 +57,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Multi-inventory branch stock management is live
 - Homepage content admin exists and is `super_admin` only, including banners, partner logos, curated product/asset rails, upload, and delete flows
 - Generic content page admin exists for blog, services, promotions, and product reviews with localized TipTap (ProseMirror) bodies and shared media upload
+- Service pages can store provider phone/email/Google Maps plus optional Line ID / Line URL in `/admin/content`; public service detail pages expose floating contact actions and sanitize Line links to HTTPS `line.me` / `lin.ee` hosts only
 - Product reviews are a `content_pages` row of type `review` and can be linked to one or more products and/or assets from `/admin/content`; linked reviews render as a "Product reviews" section on `/product-{group}/{slug}` and `/asset/{slug}`, and have their own public routes at `/reviews` and `/reviews/{slug}`
 - Homepage promotion/service cards are now live references to `content_pages` rows, so titles, excerpts, cover images, and `/services/{slug}` or `/promotions/{slug}` links stay in sync with the CMS
 - Homepage curated sections (`promotions`, rentals, products, services) use a shared Nuxt UI `UCarousel`/Embla rail with loop + timed autoplay, arrows, dots, and no continuous auto-scroll plugin
@@ -82,6 +83,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Pickup-at-branch flow is supported
 - Booker name + contact phone are required for rental submit
 - Rental date selection exposes earliest start, buffer/lead-time state, min/max clamp hints, and blocks submit until the date range is valid.
+- Shared `<ProductsRentalBookingCalendar />` now owns the rental range + pricing-summary logic so storefront booking and admin POS rental creation stay aligned.
 - If a valid date range is selected but booker name/phone are missing, the add-to-cart button stays clickable, shows a red inline error, and scrolls/focuses the missing contact field instead of submitting.
 
 ### Admin order operations
@@ -92,6 +94,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Sale orders support admin tracking updates
 - `/admin/pos` combines customer lookup, walk-in capture, rentable-asset search, deposit entry, and immediate booking creation
 - `/admin/pos` now has separated Rental/Sale mode tabs, branch-scoped catalog, sale cart, unified payment capture, and daily POS transaction history
+- POS rental mode reuses the storefront booking calendar/pricing breakdown component, but intentionally passes `bufferDays = 0` for front-desk booking.
 - POS history shows sale+rental rows with daily summaries; print buttons are placeholders and `super_admin` can void/cancel rows
 - POS supports ID-card upload for account or walk-in customers and reuses `walk_in_customers` as the phone-primary record
 - POS pickup flow stores a customer signature and creates a fulfillment audit row before moving the booking to `picked_up`
@@ -167,6 +170,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Booker phone/name should be preferred over account phone/name when present on a booking.
 - Deposit collection is tracked on the booking row, while uploaded proof files are stored separately for audit.
 - Homepage promotion/service cards must reference an existing `content_pages` row; create the page in `/admin/content` first, then link it from `/admin/home-content`.
+- Public service-provider Line links must be sanitized to HTTPS `line.me` / `lin.ee` URLs; raw IDs may be stored separately and converted at render time.
 - For PostgREST `ILIKE`, use `*term*` instead of `%term%`.
 - For dynamic filters, put machine keys in `tag_keys`, not only `search_keywords`. Matching is exact/case-sensitive against `filter_options.key`.
 - `category_keys` includes tags by design, so UI category lists must whitelist real main categories before rendering.

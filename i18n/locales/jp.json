@@ -63,6 +63,19 @@
     "measurement": "測定工具",
     "measurementDesc": "測定工具"
   },
+  "service": {
+    "contactProvider": "お問い合わせ",
+    "contactProviderTitle": "サービス提供者に連絡",
+    "lineContact": "Lineで連絡",
+    "openLine": "Lineを開く",
+    "call": "電話",
+    "phone": "電話番号",
+    "callNow": "今すぐ電話",
+    "email": "メール",
+    "googleMaps": "Googleマップ",
+    "copy": "コピー",
+    "open": "開く"
+  },
   "user": {
     "profile": "プロフィール",
     "signIn": "ログイン",

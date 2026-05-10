@@ -63,6 +63,19 @@
     "measurement": "เครื่องมือวัด",
     "measurementDesc": "เครื่องมือช่าง ตวง วัด"
   },
+  "service": {
+    "contactProvider": "ติดต่อ",
+    "contactProviderTitle": "ติดต่อผู้ให้บริการ",
+    "lineContact": "ติดต่อผ่าน Line",
+    "openLine": "เปิด Line",
+    "call": "โทร",
+    "phone": "เบอร์โทรศัพท์",
+    "callNow": "โทรตอนนี้",
+    "email": "อีเมล",
+    "googleMaps": "Google Maps",
+    "copy": "คัดลอก",
+    "open": "เปิด"
+  },
   "user": {
     "profile": "โปรไฟล์",
     "signIn": "เข้าสู่ระบบ",

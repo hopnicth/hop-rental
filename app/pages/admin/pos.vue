@@ -6,7 +6,10 @@ import type {
   AdminCustomerProfile,
   AdminRentalBookingDetail,
 } from "~/types/admin-order-detail";
-import { decomposeRentalDuration } from "~/utils/rental-pricing";
+import {
+  decomposeRentalDuration,
+  type RentalPricingBreakdown,
+} from "~/utils/rental-pricing";
 import type { RentalDepositPaymentMethod } from "~/types/rental-booking";
 
 definePageMeta({
@@ -114,6 +117,19 @@ interface PosHistoryResponse {
   };
 }
 
+interface RentalBookingCalendarPayload {
+  startDate: string;
+  numDays: number;
+  returnDate: string;
+  totalCost: number;
+  deposit: number;
+  dailyRate: number;
+  weeklyRate: number;
+  monthlyRate: number;
+  pricingBreakdown: RentalPricingBreakdown;
+  isValid: boolean;
+}
+
 type PosTransactionMode = "rental" | "sale";
 type ScannerPurpose = "customer" | "catalog";
 
@@ -151,8 +167,9 @@ const catalogSuggestOpen = ref(false);
 const catalogProducts = ref<PosCatalogProduct[]>([]);
 const selectedProductId = ref("");
 const selectedSkuId = ref("");
-const bookingStartDate = ref(toDateInputValue(new Date()));
-const bookingEndDate = ref(toDateInputValue(addDays(new Date(), 1)));
+const bookingStartDate = ref("");
+const bookingEndDate = ref("");
+const bookingCalendarValid = ref(false);
 const rentalDepositPaidAmount = ref(0);
 const salePaidAmount = ref(0);
 const depositPaidAmount = computed({
@@ -218,9 +235,6 @@ const requiresIdCardForCheckout = computed(
 const activeBookings = computed(() => lookup.value?.bookings ?? []);
 const pickupCandidates = computed(() =>
   activeBookings.value.filter((b) => b.status === "confirmed"),
-);
-const returnCandidates = computed(() =>
-  activeBookings.value.filter((b) => b.status === "picked_up"),
 );
 const filteredCatalogProducts = computed(() =>
   catalogProducts.value.filter((p) => p.type === transactionMode.value),
@@ -325,6 +339,7 @@ const canCreateBooking = computed(
     Boolean(selectedBranchId.value) &&
     Boolean(selectedProduct.value) &&
     Boolean(selectedSku.value) &&
+    bookingCalendarValid.value &&
     bookingDays.value > 0 &&
     !creatingBooking.value,
 );
@@ -387,16 +402,6 @@ function todayBangkokDateInput() {
   }).format(new Date());
 }
 
-function addDays(value: Date, days: number) {
-  const next = new Date(value);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function toDateInputValue(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
 function diffDateInputDays(start: string, end: string) {
   if (!start || !end) return 0;
   const startDate = new Date(`${start}T00:00:00.000Z`);
@@ -450,6 +455,9 @@ watch(selectedProductId, () => {
 watch(transactionMode, () => {
   selectedProductId.value = "";
   selectedSkuId.value = "";
+  bookingStartDate.value = "";
+  bookingEndDate.value = "";
+  bookingCalendarValid.value = false;
   void loadCatalog();
 });
 
@@ -468,6 +476,21 @@ watch(selectedSku, (sku) => {
     rentalDepositPaidAmount.value = sku.depositAmount;
   }
 });
+
+watch(selectedSkuId, () => {
+  if (transactionMode.value !== "rental") return;
+  bookingStartDate.value = "";
+  bookingEndDate.value = "";
+  bookingCalendarValid.value = false;
+});
+
+function handlePosBookingCalendarChange(
+  payload: RentalBookingCalendarPayload,
+): void {
+  bookingStartDate.value = payload.startDate;
+  bookingEndDate.value = payload.returnDate;
+  bookingCalendarValid.value = payload.isValid;
+}
 
 function formatCurrency(value: number, currency = "THB") {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency }).format(
@@ -922,7 +945,7 @@ async function submitIdCard() {
     toast.add({ title: "บันทึกบัตรประชาชนแล้ว", color: "success" });
     idModalOpen.value = false;
     await lookupCustomer(phone);
-  } catch (e) {
+  } catch {
     await savePendingIdDraft(file);
     toast.add({
       title: "บันทึกไม่สำเร็จ",
@@ -963,7 +986,7 @@ async function applyFulfillment(eventType: "pickup" | "return") {
       color: "success",
     });
     signature.value = null;
-  } catch (e) {
+  } catch {
     booking.status = previous;
     localStorage.setItem(
       `hop-admin-fulfillment-retry:${booking.id}`,
@@ -1120,7 +1143,7 @@ async function createPosBooking() {
     localStorage.removeItem(PENDING_BOOKING_KEY);
     hasPendingBookingDraft.value = false;
     toast.add({ title: "สร้างรายการเช่าจาก POS แล้ว", color: "success" });
-  } catch (e) {
+  } catch {
     localStorage.setItem(
       PENDING_BOOKING_KEY,
       JSON.stringify({ payload, createdAt: new Date().toISOString() }),
@@ -1174,7 +1197,7 @@ async function createPosSale() {
       description: response.order.order_number || response.order.orderNumber,
       color: "success",
     });
-  } catch (e) {
+  } catch {
     localStorage.setItem(
       "hop-admin-pos-pending-sale:v1",
       JSON.stringify({ payload, createdAt: new Date().toISOString() }),
@@ -1740,60 +1763,72 @@ async function retryPendingBookingDraft() {
             "
           />
 
-          <div
-            v-if="transactionMode === 'rental'"
-            class="grid gap-3 md:grid-cols-2"
-          >
-            <UFormField label="Asset">
-              <select
-                v-model="selectedProductId"
-                class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
-              >
-                <option value="" disabled>เลือกสินค้า</option>
-                <option
-                  v-for="product in filteredCatalogProducts"
-                  :key="product.id"
-                  :value="product.id"
+          <div v-if="transactionMode === 'rental'" class="space-y-3">
+            <div class="grid gap-3 md:grid-cols-2">
+              <UFormField label="Asset">
+                <select
+                  v-model="selectedProductId"
+                  class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
                 >
-                  [{{ product.type }}] {{ product.nameTh }}
-                  {{ product.brand ? `· ${product.brand}` : "" }}
-                </option>
-              </select>
-            </UFormField>
+                  <option value="" disabled>เลือกสินค้า</option>
+                  <option
+                    v-for="product in filteredCatalogProducts"
+                    :key="product.id"
+                    :value="product.id"
+                  >
+                    [{{ product.type }}] {{ product.nameTh }}
+                    {{ product.brand ? `· ${product.brand}` : "" }}
+                  </option>
+                </select>
+              </UFormField>
 
-            <UFormField label="Asset / Variant">
-              <select
-                v-model="selectedSkuId"
-                class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
-              >
-                <option value="" disabled>เลือก SKU</option>
-                <option
-                  v-for="sku in selectedProduct?.skus ?? []"
-                  :key="sku.id"
-                  :value="sku.id"
+              <UFormField label="Asset / Variant">
+                <select
+                  v-model="selectedSkuId"
+                  class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
                 >
-                  {{ sku.labelTh }} ·
-                  {{
-                    transactionMode === "rental"
-                      ? `${formatCurrency(sku.dailyRate)}/วัน`
-                      : formatCurrency(sku.price)
-                  }}
-                </option>
-              </select>
-            </UFormField>
+                  <option value="" disabled>เลือก SKU</option>
+                  <option
+                    v-for="sku in selectedProduct?.skus ?? []"
+                    :key="sku.id"
+                    :value="sku.id"
+                  >
+                    {{ sku.labelTh }} ·
+                    {{
+                      transactionMode === "rental"
+                        ? `${formatCurrency(sku.dailyRate)}/วัน`
+                        : formatCurrency(sku.price)
+                    }}
+                  </option>
+                </select>
+              </UFormField>
+            </div>
 
-            <UFormField
-              v-if="transactionMode === 'rental'"
-              label="วันที่เริ่มเช่า"
-            >
-              <UInput v-model="bookingStartDate" class="w-full" type="date" />
-            </UFormField>
-            <UFormField
-              v-if="transactionMode === 'rental'"
-              label="วันที่คืนสินค้า"
-            >
-              <UInput v-model="bookingEndDate" class="w-full" type="date" />
-            </UFormField>
+            <ProductsRentalBookingCalendar
+              v-if="selectedSku"
+              :selected-sku-id="selectedSku.id"
+              :asset-id="selectedSku.id"
+              :daily-rate="selectedSku.dailyRate"
+              :weekly-rate="selectedSku.weeklyRate"
+              :monthly-rate="selectedSku.monthlyRate"
+              :daily-enabled="true"
+              :weekly-enabled="selectedSku.weeklyRate > 0"
+              :monthly-enabled="selectedSku.monthlyRate > 0"
+              :deposit="defaultDepositAmount"
+              currency-code="THB"
+              :min-days="selectedProduct?.rentalMinDays ?? 1"
+              :max-days="selectedProduct?.rentalMaxDays ?? 0"
+              :buffer-days="0"
+              :loading="creatingBooking"
+              @change="handlePosBookingCalendarChange"
+            />
+            <UAlert
+              v-else
+              color="neutral"
+              variant="soft"
+              title="เลือก Asset ก่อนเริ่มจอง"
+              description="POS booking จะใช้ปฏิทินและสรุปราคาแบบเดียวกับหน้า Booking ของลูกค้า แต่จะไม่บังคับ buffer day"
+            />
           </div>
 
           <div v-if="transactionMode === 'sale'" class="space-y-3">
