@@ -5,6 +5,7 @@ const mockState = vi.hoisted(() => ({
   platformAdminClient: null as any,
   body: {} as Record<string, unknown>,
   query: {} as Record<string, unknown>,
+  routerParams: {} as Record<string, string>,
   headers: [] as Array<{ name: string; value: string }>,
 }));
 
@@ -12,6 +13,8 @@ vi.mock("h3", () => ({
   defineEventHandler: (handler: any) => handler,
   readBody: async () => mockState.body,
   getQuery: () => mockState.query,
+  getRouterParam: (_event: unknown, name: string) =>
+    mockState.routerParams[name],
   setHeader: (_event: unknown, name: string, value: string) => {
     mockState.headers.push({ name, value });
   },
@@ -52,8 +55,13 @@ const historyGet = (await import("../../server/api/admin/pos/history.get"))
 const historyCancelPost = (
   await import("../../server/api/admin/pos/history/cancel.post")
 ).default;
+const depositPatch = (
+  await import("../../server/api/admin/rental-bookings/[id]/deposit.patch")
+).default;
 const catalogGet = (await import("../../server/api/admin/pos/catalog.get"))
   .default;
+const { posMediaGalleryPrimaryUrl } =
+  await import("../../server/utils/admin-pos");
 
 function queryResult(result: any) {
   const chain: any = {
@@ -82,6 +90,20 @@ const branchRow = {
 };
 
 describe("admin POS catalog API", () => {
+  it("reads ready catalog thumbnails from media gallery variants", () => {
+    expect(
+      posMediaGalleryPrimaryUrl([
+        {
+          status: "ready",
+          variants: {
+            thumbnail: { url: "https://cdn.example/thumb.webp" },
+            card: { url: "https://cdn.example/card.webp" },
+          },
+        },
+      ]),
+    ).toBe("https://cdn.example/card.webp");
+  });
+
   it("does not send non-UUID rental searches to the assets UUID id filter", async () => {
     const orClauses: string[] = [];
     mockState.query = {
@@ -185,31 +207,22 @@ describe("admin POS history API", () => {
 });
 
 describe("admin POS history cancel API", () => {
-  it("cancels POS sales as super admin", async () => {
-    const updates: unknown[] = [];
+  it("cancels POS sales as super admin and restocks applied inventory", async () => {
+    const rpcCalls: unknown[] = [];
     mockState.body = { type: "sale", id: "order-1" };
     mockState.superAdminClient = {
-      from: (table: string) => {
-        expect(table).toBe("orders");
+      rpc: async (name: string, params: unknown) => {
+        rpcCalls.push({ name, params });
         return {
-          select: () => ({
-            eq: () => ({
-              maybeSingle: async () => ({
-                data: {
-                  id: "order-1",
-                  status: "completed",
-                  payment_status: "paid",
-                  pos_branch_id: "branch-hq",
-                  inventory_applied_at: "2026-05-10T00:00:00Z",
-                },
-                error: null,
-              }),
-            }),
-          }),
-          update: (payload: unknown) => {
-            updates.push(payload);
-            return { eq: async () => ({ error: null }) };
+          data: {
+            ok: true,
+            status: "cancelled",
+            inventoryWasApplied: true,
+            inventoryAlreadyReversed: false,
+            inventoryRestocked: true,
+            restockedQuantity: 2,
           },
+          error: null,
         };
       },
     };
@@ -219,22 +232,118 @@ describe("admin POS history cancel API", () => {
     expect(result).toMatchObject({
       ok: true,
       status: "cancelled",
-      inventoryReversalRequired: true,
+      inventoryWasApplied: true,
+      inventoryRestocked: true,
+      restockedQuantity: 2,
+      inventoryReversalRequired: false,
     });
-    expect(updates[0]).toMatchObject({
-      status: "cancelled",
-      payment_status: "cancelled",
-      fulfillment_status: "cancelled",
-    });
+    expect(rpcCalls).toEqual([
+      { name: "f_cancel_pos_sale", params: { p_order_id: "order-1" } },
+    ]);
   });
 });
 
 beforeEach(() => {
   mockState.body = {};
   mockState.query = {};
+  mockState.routerParams = {};
   mockState.headers = [];
   mockState.superAdminClient = null;
   mockState.platformAdminClient = null;
+});
+
+describe("admin rental booking deposit API", () => {
+  it("updates deposit amount and writes an audit log", async () => {
+    const updates: any[] = [];
+    const logs: any[] = [];
+    let rentalBookingCall = 0;
+    mockState.routerParams = { id: "booking-1" };
+    mockState.body = {
+      depositPaidAmount: 300,
+      depositPaymentMethod: "cash",
+      depositNotes: "manual override",
+      reason: "staff correction",
+    };
+    mockState.platformAdminClient = {
+      from: (table: string) => {
+        if (table === "rental_booking_deposit_action_logs") {
+          return {
+            insert: async (payload: any) => {
+              logs.push(payload);
+              return { error: null };
+            },
+          };
+        }
+        rentalBookingCall += 1;
+        if (rentalBookingCall === 1) {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: {
+                    id: "booking-1",
+                    rental_total: 500,
+                    deposit_amount: 200,
+                    deposit_paid_amount: 200,
+                    deposit_payment_method: "qr_transfer",
+                    deposit_payment_status: "paid",
+                    checkout_total_amount: 700,
+                    checkout_paid_amount: 700,
+                    checkout_payment_method: "qr_transfer",
+                    pos_branch_id: "b1",
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        return {
+          update: (payload: any) => {
+            updates.push(payload);
+            return {
+              eq: () => ({
+                select: () => ({
+                  single: async () => ({
+                    data: {
+                      id: "booking-1",
+                      deposit_amount: 200,
+                      deposit_paid_amount: 300,
+                      deposit_payment_method: "cash",
+                      deposit_payment_status: "paid",
+                      deposit_notes: "manual override",
+                      checkout_total_amount: 800,
+                      checkout_paid_amount: 800,
+                      checkout_payment_method: "cash",
+                    },
+                    error: null,
+                  }),
+                }),
+              }),
+            };
+          },
+        };
+      },
+    };
+
+    await expect(depositPatch({})).resolves.toMatchObject({
+      log: { action: "manual_update" },
+    });
+    expect(updates[0]).toMatchObject({
+      deposit_paid_amount: 300,
+      checkout_total_amount: 800,
+      checkout_paid_amount: 800,
+    });
+    expect(logs[0]).toMatchObject({
+      booking_id: "booking-1",
+      staff_user_id: "staff-1",
+      branch_id: "b1",
+      action: "manual_update",
+      reason: "staff correction",
+    });
+    expect(logs[0].old_values.depositPaidAmount).toBe(200);
+    expect(logs[0].new_values.depositPaidAmount).toBe(300);
+  });
 });
 
 describe("admin POS branch access API", () => {
@@ -482,6 +591,65 @@ describe("admin POS sale API", () => {
       user_id: null,
       walk_in_phone: null,
     });
+  });
+
+  it("rejects POS sales that are not fully paid before stock deduction", async () => {
+    mockState.body = {
+      branchId: "b1",
+      paymentMethod: "cash",
+      paidAmount: 50,
+      items: [{ skuId: "sku-1", quantity: 1 }],
+    };
+    mockState.platformAdminClient = {
+      from: (table: string) => {
+        if (table === "store_branches")
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  single: async () => ({ data: branchRow, error: null }),
+                }),
+              }),
+            }),
+          };
+        if (table === "product_skus")
+          return {
+            select: () => ({
+              in: async () => ({
+                data: [
+                  {
+                    id: "sku-1",
+                    product_id: "p1",
+                    label_th: "Cable",
+                    price: 100,
+                    original_price: 100,
+                    currency_code: "THB",
+                    products: { name_th: "Cable", is_hidden: false },
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          };
+        if (table === "sku_branch_inventory")
+          return {
+            select: () => ({
+              eq: () => ({
+                in: () => ({
+                  in: async () => ({
+                    data: [{ sku_id: "sku-1", available: 5 }],
+                    error: null,
+                  }),
+                }),
+              }),
+            }),
+          };
+        if (table === "orders") throw new Error("order should not be created");
+        return { insert: async () => ({ error: null }) };
+      },
+    };
+
+    await expect(posSalePost({})).rejects.toMatchObject({ statusCode: 422 });
   });
 });
 

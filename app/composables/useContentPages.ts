@@ -2,7 +2,10 @@ import {
   emptyLocalizedDoc,
   type ContentPage,
   type ContentType,
+  type KycDocuments,
   type LocalizedDoc,
+  type ServiceProvider,
+  type ServiceProviderType,
   type TipTapDoc,
 } from "~/types/content";
 import type { LocaleCode, LocalizedString } from "~/types/locale";
@@ -74,6 +77,51 @@ function pickLinkedIds(
   return out;
 }
 
+function normalizeKycDocuments(value: unknown): KycDocuments {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const output: KycDocuments = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const doc = raw as Record<string, unknown>;
+    const path = toString(doc.path);
+    if (!path) continue;
+    output[key] = {
+      path,
+      url: toString(doc.url),
+      filename: toString(doc.filename),
+      mimeType: toString(doc.mimeType),
+      sizeBytes: Number(doc.sizeBytes ?? 0),
+      uploadedAt: toString(doc.uploadedAt),
+    };
+  }
+  return output;
+}
+
+function normalizeServiceProvider(value: unknown): ServiceProvider | null {
+  const provider = Array.isArray(value) ? value[0] : value;
+  if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
+    return null;
+  }
+
+  const row = provider as Record<string, unknown>;
+  const providerId = toString(row.provider_id);
+  if (!providerId) return null;
+  const providerType: ServiceProviderType =
+    row.provider_type === "company" ? "company" : "individual";
+
+  return {
+    providerId,
+    providerType,
+    isVerified: row.is_verified === true,
+    contactPhone: toString(row.contact_phone),
+    contactEmail: toString(row.contact_email),
+    googleMapsUrl: toString(row.google_maps_url),
+    kycDocuments: normalizeKycDocuments(row.kyc_documents),
+    createdAt: toString(row.created_at),
+    updatedAt: toString(row.updated_at),
+  };
+}
+
 const VALID_CONTENT_TYPES: ContentType[] = [
   "blog",
   "service",
@@ -97,6 +145,7 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
     contentType,
     slug,
     mainCategoryKey: toString(row.main_category_key),
+    providerId: toString(row.provider_id),
     title: localized(
       row.title_th,
       row.title_en,
@@ -120,6 +169,7 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
       : [],
     linkedProductIds: pickLinkedIds(row.content_page_products, "product_id"),
     linkedAssetIds: pickLinkedIds(row.content_page_assets, "asset_id"),
+    serviceProvider: normalizeServiceProvider(row.service_providers),
     sortOrder: Number(row.sort_order ?? 0),
     isActive: row.is_active !== false,
     publishedAt: toString(row.published_at),
@@ -129,13 +179,16 @@ function normalizeContentPage(row: ContentPageRow): ContentPage | null {
 }
 
 const CONTENT_PAGE_BASE_FIELDS =
-  "id, content_type, slug, main_category_key, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
+  "id, content_type, slug, main_category_key, provider_id, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at";
 
-const PUBLIC_CONTENT_PAGE_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order)`;
+const SERVICE_PROVIDER_PUBLIC_SELECT =
+  "service_providers(provider_id, provider_type, is_verified, contact_phone, contact_email, google_maps_url)";
 
-const REVIEWS_FOR_PRODUCT_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products!inner(product_id, sort_order), content_page_assets(asset_id, sort_order)`;
+const PUBLIC_CONTENT_PAGE_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order), ${SERVICE_PROVIDER_PUBLIC_SELECT}`;
 
-const REVIEWS_FOR_ASSET_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets!inner(asset_id, sort_order)`;
+const REVIEWS_FOR_PRODUCT_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products!inner(product_id, sort_order), content_page_assets(asset_id, sort_order), ${SERVICE_PROVIDER_PUBLIC_SELECT}`;
+
+const REVIEWS_FOR_ASSET_SELECT = `${CONTENT_PAGE_BASE_FIELDS}, content_page_products(product_id, sort_order), content_page_assets!inner(asset_id, sort_order), ${SERVICE_PROVIDER_PUBLIC_SELECT}`;
 
 export interface ContentPageSearchParams {
   q: string;

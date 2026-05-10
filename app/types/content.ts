@@ -1,6 +1,30 @@
 import type { LocaleCode, LocalizedString } from "~/types/locale";
 
 export type ContentType = "blog" | "service" | "promotion" | "review";
+export type ServiceProviderType = "individual" | "company";
+
+export interface KycDocument {
+  path: string;
+  url?: string;
+  filename?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+  uploadedAt?: string;
+}
+
+export type KycDocuments = Record<string, KycDocument | undefined>;
+
+export interface ServiceProvider {
+  providerId: string;
+  providerType: ServiceProviderType;
+  isVerified: boolean;
+  contactPhone: string;
+  contactEmail: string;
+  googleMapsUrl: string;
+  kycDocuments?: KycDocuments;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 /**
  * Minimal TipTap / ProseMirror document shape.
@@ -29,6 +53,7 @@ export interface ContentPage {
   contentType: ContentType;
   slug: string;
   mainCategoryKey: string;
+  providerId: string;
   title: LocalizedString;
   excerpt: LocalizedString;
   coverImageUrl: string;
@@ -36,6 +61,7 @@ export interface ContentPage {
   serviceAreas: string[];
   linkedProductIds: string[];
   linkedAssetIds: string[];
+  serviceProvider: ServiceProvider | null;
   sortOrder: number;
   isActive: boolean;
   publishedAt: string;

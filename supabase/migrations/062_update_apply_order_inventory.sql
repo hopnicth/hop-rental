@@ -1,24 +1,5 @@
--- 060: Restore/ensure sku_branch_inventory.inventory_kind for POS sale stock filters.
-
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_type t
-    JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = 'public' AND t.typname = 'sku_inventory_kind'
-  ) THEN
-    CREATE TYPE public.sku_inventory_kind AS ENUM ('sale', 'rental', 'shared');
-  END IF;
-END $$;
-
-ALTER TABLE public.sku_branch_inventory
-  ADD COLUMN IF NOT EXISTS inventory_kind public.sku_inventory_kind NOT NULL DEFAULT 'shared';
-
-CREATE INDEX IF NOT EXISTS idx_sku_branch_inventory_sku_kind
-  ON public.sku_branch_inventory (sku_id, inventory_kind);
-
-CREATE INDEX IF NOT EXISTS idx_sku_branch_inventory_branch_kind
-  ON public.sku_branch_inventory (branch_id, inventory_kind);
+-- 062: Update f_apply_order_inventory to use available stock and add insufficient stock guard
+-- This migration replaces the previous implementation with the branch-aware version.
 
 CREATE OR REPLACE FUNCTION public.f_apply_order_inventory(p_order_id UUID)
 RETURNS BOOLEAN

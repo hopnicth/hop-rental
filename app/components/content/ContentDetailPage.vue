@@ -14,6 +14,7 @@ const props = defineProps<{
 }>();
 
 const route = useRoute();
+const toast = useToast();
 const { t, locale } = useI18n();
 const lang = computed(() => locale.value as LocaleCode);
 const slug = computed(() => String(route.params.slug ?? ""));
@@ -50,6 +51,36 @@ const serviceAreas = computed(() => {
   if (props.contentType !== "service") return [];
   return page.value?.serviceAreas ?? [];
 });
+
+const contactOpen = ref(false);
+const serviceProvider = computed(() => page.value?.serviceProvider ?? null);
+const hasContactOptions = computed(() => {
+  if (props.contentType !== "service" || !serviceProvider.value) return false;
+  return Boolean(
+    serviceProvider.value.contactPhone ||
+    serviceProvider.value.contactEmail ||
+    serviceProvider.value.googleMapsUrl,
+  );
+});
+const callHref = computed(() => {
+  const phone =
+    serviceProvider.value?.contactPhone.replace(/[^\d+]/g, "") ?? "";
+  return phone ? `tel:${phone}` : "";
+});
+
+async function copyContact(value: string, label: string) {
+  if (!value || !import.meta.client) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.add({ title: `${label} copied`, color: "success", icon: "bx:copy" });
+  } catch {
+    toast.add({
+      title: "Copy failed",
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  }
+}
 </script>
 
 <template>
@@ -105,4 +136,97 @@ const serviceAreas = computed(() => {
       <ContentRenderer :body="page.body" />
     </article>
   </UContainer>
+
+  <UButton
+    v-if="hasContactOptions"
+    class="fixed bottom-6 right-6 z-40 shadow-lg"
+    color="primary"
+    size="xl"
+    icon="bx:phone-call"
+    label="Contact"
+    @click="contactOpen = true"
+  />
+
+  <UModal v-model:open="contactOpen" title="Contact service provider">
+    <template #body>
+      <div v-if="serviceProvider" class="space-y-4">
+        <div
+          v-if="serviceProvider.contactPhone"
+          class="rounded-lg border border-default p-4"
+        >
+          <p class="mb-1 text-sm font-semibold text-highlighted">Call</p>
+          <p class="break-all text-sm text-muted">
+            {{ serviceProvider.contactPhone }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="bx:copy"
+              @click="copyContact(serviceProvider.contactPhone, 'Phone')"
+            >
+              Copy
+            </UButton>
+            <UButton size="sm" icon="bx:phone" :to="callHref">Call now</UButton>
+          </div>
+        </div>
+
+        <div
+          v-if="serviceProvider.contactEmail"
+          class="rounded-lg border border-default p-4"
+        >
+          <p class="mb-1 text-sm font-semibold text-highlighted">Email</p>
+          <p class="break-all text-sm text-muted">
+            {{ serviceProvider.contactEmail }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="bx:copy"
+              @click="copyContact(serviceProvider.contactEmail, 'Email')"
+            >
+              Copy
+            </UButton>
+            <UButton
+              size="sm"
+              icon="bx:envelope"
+              :to="`mailto:${serviceProvider.contactEmail}`"
+            >
+              Email
+            </UButton>
+          </div>
+        </div>
+
+        <div
+          v-if="serviceProvider.googleMapsUrl"
+          class="rounded-lg border border-default p-4"
+        >
+          <p class="mb-1 text-sm font-semibold text-highlighted">Google Maps</p>
+          <p class="break-all text-sm text-muted">
+            {{ serviceProvider.googleMapsUrl }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <UButton
+              size="sm"
+              variant="soft"
+              icon="bx:copy"
+              @click="copyContact(serviceProvider.googleMapsUrl, 'Google Maps')"
+            >
+              Copy
+            </UButton>
+            <UButton
+              size="sm"
+              icon="bx:map"
+              :to="serviceProvider.googleMapsUrl"
+              target="_blank"
+              external
+            >
+              Open
+            </UButton>
+          </div>
+        </div>
+      </div>
+    </template>
+  </UModal>
 </template>

@@ -80,11 +80,12 @@ export default defineEventHandler(async (event) => {
 
   if (mode === "all" || mode === "sale") {
     let allowedSkuIds: string[] | null = null;
+    const availableBySku = new Map<string, number>();
 
     if (branchId) {
       let branchStockResult = await adminClient
         .from("sku_branch_inventory")
-        .select("sku_id")
+        .select("sku_id, available")
         .eq("branch_id", branchId)
         .in("inventory_kind", ["sale", "shared"])
         .gt("available", 0)
@@ -96,7 +97,7 @@ export default defineEventHandler(async (event) => {
       ) {
         branchStockResult = await adminClient
           .from("sku_branch_inventory")
-          .select("sku_id")
+          .select("sku_id, available")
           .eq("branch_id", branchId)
           .gt("available", 0)
           .limit(300);
@@ -113,11 +114,29 @@ export default defineEventHandler(async (event) => {
 
       allowedSkuIds = [
         ...new Set(
-          ((branchStock ?? []) as Array<{ sku_id?: unknown }>)
+          (
+            (branchStock ?? []) as Array<{
+              sku_id?: unknown;
+              available?: unknown;
+            }>
+          )
             .map((row) => String(row.sku_id ?? ""))
             .filter(Boolean),
         ),
       ];
+      for (const row of (branchStock ?? []) as Array<{
+        sku_id?: unknown;
+        available?: unknown;
+      }>) {
+        const skuId = String(row.sku_id ?? "");
+        const available = Number(row.available ?? 0);
+        if (skuId && Number.isFinite(available)) {
+          availableBySku.set(
+            skuId,
+            (availableBySku.get(skuId) ?? 0) + available,
+          );
+        }
+      }
 
       if (allowedSkuIds.length === 0) {
         return { items };
@@ -180,7 +199,10 @@ export default defineEventHandler(async (event) => {
       ReturnType<typeof mapPosSaleCatalogItem>
     >();
     for (const sku of (saleSkus ?? []) as AdminPosSaleSkuRow[]) {
-      const mapped = mapPosSaleCatalogItem(sku);
+      const branchAvailable = availableBySku.get(String(sku.id));
+      const mapped = mapPosSaleCatalogItem(
+        branchAvailable === undefined ? sku : { ...sku, branchAvailable },
+      );
       const existing = byProduct.get(mapped.id);
       if (existing) existing.skus.push(...mapped.skus);
       else byProduct.set(mapped.id, mapped);

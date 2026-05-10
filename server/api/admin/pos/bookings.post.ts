@@ -41,6 +41,7 @@ interface PosBookingPayload {
   depositPaymentMethod?: RentalDepositPaymentMethod | null;
   depositPaymentStatus?: RentalDepositPaymentStatus | null;
   depositNotes?: string | null;
+  depositAdjustmentReason?: string | null;
 }
 
 const PAYMENT_METHODS = new Set([
@@ -287,6 +288,39 @@ export default defineEventHandler(
         statusCode: 500,
         statusMessage: insertError.message,
       });
+    }
+
+    const defaultDepositAmount = money(a.deposit_amount);
+    if (paidAmount !== defaultDepositAmount) {
+      const { error: logError } = await adminClient
+        .from("rental_booking_deposit_action_logs")
+        .insert({
+          booking_id: inserted.id,
+          action: "pos_create_override",
+          staff_user_id: adminUserId,
+          branch_id: String(branch.id),
+          old_values: {
+            depositAmount: defaultDepositAmount,
+            depositPaidAmount: defaultDepositAmount,
+            depositPaymentMethod: null,
+            depositPaymentStatus:
+              defaultDepositAmount > 0 ? "unpaid" : "unpaid",
+          },
+          new_values: {
+            depositAmount: defaultDepositAmount,
+            depositPaidAmount: paidAmount,
+            depositPaymentMethod,
+            depositPaymentStatus,
+            checkoutTotalAmount:
+              checkoutTotalAmount || pricingBreakdown.total + paidAmount,
+            checkoutPaidAmount: checkoutPaidAmount || paidAmount,
+          },
+          change_summary: `POS booking deposit override ${defaultDepositAmount} -> ${paidAmount}`,
+          reason: asText(body.depositAdjustmentReason) || null,
+        });
+      if (logError) {
+        throw createError({ statusCode: 500, statusMessage: logError.message });
+      }
     }
 
     return { booking: mapAdminRentalBookingRow(inserted) };

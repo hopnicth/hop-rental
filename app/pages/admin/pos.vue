@@ -66,8 +66,10 @@ interface PosSaleLine {
   productId: string;
   code: string;
   name: string;
+  imageUrl: string | null;
   unitPrice: number;
   quantity: number;
+  maxQuantity: number;
 }
 
 interface PosHistoryItem {
@@ -78,10 +80,25 @@ interface PosHistoryItem {
   createdAt: string;
   customerName: string;
   amount: number;
+  rentalTotal?: number;
+  depositPaidAmount?: number;
   paymentStatus: string;
   paymentMethod: string;
+  depositPaymentMethod?: string | null;
   branchId: string;
   branchName: string;
+}
+
+interface SaleSkuOption {
+  key: string;
+  product: PosCatalogProduct;
+  sku: PosCatalogSku;
+  productName: string;
+  skuName: string;
+  code: string;
+  imageUrl: string | null;
+  stock: number;
+  searchText: string;
 }
 
 interface PosHistoryResponse {
@@ -130,12 +147,25 @@ const branchLoading = ref(false);
 const selectedBranchId = ref("");
 const catalogSearch = ref("");
 const catalogLoading = ref(false);
+const catalogSuggestOpen = ref(false);
 const catalogProducts = ref<PosCatalogProduct[]>([]);
 const selectedProductId = ref("");
 const selectedSkuId = ref("");
 const bookingStartDate = ref(toDateInputValue(new Date()));
 const bookingEndDate = ref(toDateInputValue(addDays(new Date(), 1)));
-const depositPaidAmount = ref(0);
+const rentalDepositPaidAmount = ref(0);
+const salePaidAmount = ref(0);
+const depositPaidAmount = computed({
+  get: () =>
+    transactionMode.value === "sale"
+      ? salePaidAmount.value
+      : rentalDepositPaidAmount.value,
+  set: (value: number) => {
+    const normalized = Math.max(0, Number(value) || 0);
+    if (transactionMode.value === "sale") salePaidAmount.value = normalized;
+    else rentalDepositPaidAmount.value = normalized;
+  },
+});
 const depositPaymentMethod = ref<RentalDepositPaymentMethod>("cash");
 const depositNotes = ref("");
 const depositProofFile = ref<File | null>(null);
@@ -149,11 +179,32 @@ const historyDate = ref(todayBangkokDateInput());
 const historyLoading = ref(false);
 const posHistory = ref<PosHistoryResponse | null>(null);
 const cancellingHistoryKey = ref<string | null>(null);
+const depositConfirmOpen = ref(false);
+const depositEditOpen = ref(false);
+const depositEditSaving = ref(false);
+const pendingDepositAction = ref<"create-booking" | "update-booking" | null>(
+  null,
+);
+const depositAdjustmentReason = ref("");
+const depositEdit = reactive({
+  bookingId: "",
+  documentNo: "",
+  currentAmount: 0,
+  newAmount: 0,
+  currentMethod: "",
+  newMethod: "cash" as RentalDepositPaymentMethod,
+  currentStatus: "unpaid",
+  notes: "",
+});
+let catalogSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
 const transactionModeTabs = [
-  { label: "เช่า / จอง", value: "rental", icon: "bx:calendar-check" },
+  { label: "เช่า (Rental)", value: "rental", icon: "bx:calendar-check" },
   { label: "ขายขาด", value: "sale", icon: "bx:receipt" },
 ];
+
+const PRODUCT_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Crect width='160' height='160' rx='24' fill='%23f1f5f9'/%3E%3Cpath d='M40 112h80L98 84 82 101 68 72z' fill='%23cbd5e1'/%3E%3Ccircle cx='104' cy='54' r='12' fill='%23cbd5e1'/%3E%3C/svg%3E";
 
 const depositProofFileName = computed(
   () => depositProofFile.value?.name ?? "ยังไม่ได้แนบหลักฐานมัดจำ",
@@ -185,8 +236,23 @@ const selectedSku = computed(
     selectedProduct.value?.skus.find((s) => s.id === selectedSkuId.value) ??
     null,
 );
+const defaultDepositAmount = computed(
+  () => selectedSku.value?.depositAmount ?? 0,
+);
+const isRentalDepositAdjusted = computed(
+  () =>
+    transactionMode.value === "rental" &&
+    Boolean(selectedSku.value) &&
+    rentalDepositPaidAmount.value !== defaultDepositAmount.value,
+);
 const customerPhone = computed(
   () => customer.value?.phone || draft.phone || search.value.trim(),
+);
+const customerNameForCheckout = computed(
+  () => customer.value?.fullName || draft.fullName.trim(),
+);
+const rentalCustomerInfoReady = computed(
+  () => Boolean(customerPhone.value) && Boolean(customerNameForCheckout.value),
 );
 const bookingDays = computed(() =>
   diffDateInputDays(bookingStartDate.value, bookingEndDate.value),
@@ -206,15 +272,56 @@ const bookingPricing = computed(() => {
   });
 });
 const rentalCheckoutTotal = computed(
-  () => (bookingPricing.value?.total ?? 0) + depositPaidAmount.value,
+  () => (bookingPricing.value?.total ?? 0) + rentalDepositPaidAmount.value,
 );
 const saleCartTotal = computed(() =>
   saleCart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
 );
+const saleCartQuantityBySku = computed(() => {
+  const quantityBySku = new Map<string, number>();
+  for (const line of saleCart.value) {
+    const quantity = Math.max(0, Number(line.quantity) || 0);
+    quantityBySku.set(
+      line.skuId,
+      (quantityBySku.get(line.skuId) ?? 0) + quantity,
+    );
+  }
+  return quantityBySku;
+});
+const saleSkuOptions = computed<SaleSkuOption[]>(() =>
+  filteredCatalogProducts.value.flatMap((product) =>
+    product.skus.map((sku) => {
+      const productName = product.nameTh || product.nameEn || product.id;
+      const skuName = sku.labelTh || sku.labelEn || sku.id;
+      const code = sku.code || sku.id;
+      const inCartQuantity = saleCartQuantityBySku.value.get(sku.id) ?? 0;
+      return {
+        key: `${product.id}:${sku.id}`,
+        product,
+        sku,
+        productName,
+        skuName,
+        code,
+        imageUrl: sku.imageUrl || product.thumbnailUrl,
+        stock: Math.max(0, sku.rentalStock - inCartQuantity),
+        searchText:
+          `${productName} ${product.nameEn} ${skuName} ${sku.labelEn} ${code} ${product.brand ?? ""}`.toLowerCase(),
+      };
+    }),
+  ),
+);
+const saleSkuSuggestions = computed(() => {
+  const term = catalogSearch.value.trim().toLowerCase();
+  const options = saleSkuOptions.value;
+  if (!term) return options.slice(0, 8);
+  return options
+    .filter((option) => option.searchText.includes(term))
+    .slice(0, 8);
+});
 const canCreateBooking = computed(
   () =>
     transactionMode.value === "rental" &&
-    Boolean(customerPhone.value) &&
+    rentalCustomerInfoReady.value &&
     Boolean(selectedBranchId.value) &&
     Boolean(selectedProduct.value) &&
     Boolean(selectedSku.value) &&
@@ -227,6 +334,10 @@ const canCreateSale = computed(
     Boolean(selectedBranchId.value) &&
     saleCart.value.length > 0 &&
     saleCartTotal.value > 0 &&
+    salePaidAmount.value >= saleCartTotal.value &&
+    saleCart.value.every(
+      (line) => line.quantity > 0 && line.quantity <= line.maxQuantity,
+    ) &&
     !creatingSale.value,
 );
 const isSuperAdmin = computed(
@@ -241,6 +352,30 @@ const historyPaymentBreakdown = computed(() =>
   Object.entries(posHistory.value?.summary.paymentBreakdown ?? {}).sort(
     (a, b) => a[0].localeCompare(b[0]),
   ),
+);
+const selectedBranch = computed(
+  () =>
+    branches.value.find((branch) => branch.id === selectedBranchId.value) ??
+    null,
+);
+const modeAccentClass = computed(() =>
+  transactionMode.value === "rental"
+    ? "border-primary/60 ring-primary/30"
+    : "border-secondary/60 ring-secondary/30",
+);
+const modeSoftClass = computed(() =>
+  transactionMode.value === "rental" ? "bg-primary/5" : "bg-secondary/5",
+);
+const catalogSuggestionItems = computed(() =>
+  saleSkuSuggestions.value.map((option) => ({
+    key: option.key,
+    productName: option.productName,
+    skuName: option.skuName,
+    code: option.code,
+    imageUrl: option.imageUrl,
+    stock: option.stock,
+    price: option.sku.price,
+  })),
 );
 
 function todayBangkokDateInput() {
@@ -315,8 +450,6 @@ watch(selectedProductId, () => {
 watch(transactionMode, () => {
   selectedProductId.value = "";
   selectedSkuId.value = "";
-  depositPaidAmount.value =
-    transactionMode.value === "sale" ? saleCartTotal.value : 0;
   void loadCatalog();
 });
 
@@ -332,7 +465,7 @@ watch(historyDate, () => {
 
 watch(selectedSku, (sku) => {
   if (sku && transactionMode.value === "rental") {
-    depositPaidAmount.value = sku.depositAmount;
+    rentalDepositPaidAmount.value = sku.depositAmount;
   }
 });
 
@@ -340,6 +473,13 @@ function formatCurrency(value: number, currency = "THB") {
   return new Intl.NumberFormat("th-TH", { style: "currency", currency }).format(
     value,
   );
+}
+
+function productImageSrc(value?: string | null) {
+  const normalized = typeof value === "string" ? value.trim() : "";
+  return normalized && !normalized.endsWith("/favicon.svg")
+    ? normalized
+    : PRODUCT_IMAGE_PLACEHOLDER;
 }
 
 function formatTime(value: string) {
@@ -395,6 +535,8 @@ async function cancelHistoryItem(item: PosHistoryItem) {
     const result = await $fetch<{
       ok: boolean;
       inventoryReversalRequired?: boolean;
+      inventoryRestocked?: boolean;
+      restockedQuantity?: number;
       refundRequired?: boolean;
     }>("/api/admin/pos/history/cancel", {
       method: "POST",
@@ -402,14 +544,16 @@ async function cancelHistoryItem(item: PosHistoryItem) {
     });
     toast.add({
       title: "ยกเลิกรายการแล้ว",
-      description: result.inventoryReversalRequired
-        ? "รายการขายนี้เคยตัด stock แล้ว กรุณาตรวจสอบ/ปรับ stock คืนตามกระบวนการ"
-        : result.refundRequired
-          ? "รายการนี้มีเงินรับแล้ว กรุณาตรวจสอบการคืนเงิน/มัดจำ"
-          : item.documentNo,
+      description: result.inventoryRestocked
+        ? `คืน Stock อัตโนมัติแล้ว ${result.restockedQuantity ?? 0} ชิ้น กรุณาตรวจสอบการคืนเงินหากมี`
+        : result.inventoryReversalRequired
+          ? "รายการขายนี้เคยตัด stock แล้ว กรุณาตรวจสอบ/ปรับ stock คืนตามกระบวนการ"
+          : result.refundRequired
+            ? "รายการนี้มีเงินรับแล้ว กรุณาตรวจสอบการคืนเงิน/มัดจำ"
+            : item.documentNo,
       color: "success",
     });
-    await loadPosHistory();
+    await Promise.all([loadCatalog(), loadPosHistory()]);
   } catch (e) {
     toast.add({
       title: "ยกเลิกรายการไม่สำเร็จ",
@@ -478,6 +622,27 @@ async function loadCatalog() {
   } finally {
     catalogLoading.value = false;
   }
+}
+
+function scheduleCatalogSearch() {
+  catalogSuggestOpen.value = transactionMode.value === "sale";
+  if (catalogSearchTimer) clearTimeout(catalogSearchTimer);
+  catalogSearchTimer = setTimeout(() => {
+    catalogSearchTimer = null;
+    void loadCatalog();
+  }, 250);
+}
+
+function showCatalogSuggestions() {
+  if (transactionMode.value !== "sale") return;
+  catalogSuggestOpen.value = true;
+  if (catalogProducts.value.length === 0) void loadCatalog();
+}
+
+function hideCatalogSuggestionsSoon() {
+  setTimeout(() => {
+    catalogSuggestOpen.value = false;
+  }, 150);
 }
 
 async function loadPosHistory() {
@@ -601,31 +766,93 @@ function addSaleSkuToCart(
   sku = selectedSku.value,
 ) {
   if (!product || !sku || product.type !== "sale") return;
+  const maxQuantity = Math.max(0, sku.rentalStock);
+  if (maxQuantity <= 0) {
+    toast.add({ title: "SKU นี้ไม่มี stock พร้อมขาย", color: "warning" });
+    return;
+  }
   const existing = saleCart.value.find((line) => line.skuId === sku.id);
-  if (existing) existing.quantity += 1;
-  else {
+  if (existing) {
+    if (existing.quantity >= existing.maxQuantity) {
+      toast.add({
+        title: "จำนวนในตะกร้าถึง stock ที่พร้อมขายแล้ว",
+        color: "warning",
+      });
+      return;
+    }
+    existing.quantity += 1;
+  } else {
     saleCart.value.push({
       skuId: sku.id,
       productId: product.id,
       code: sku.code || sku.id,
       name: sku.labelTh || product.nameTh,
+      imageUrl: sku.imageUrl || product.thumbnailUrl,
       unitPrice: sku.price,
       quantity: 1,
+      maxQuantity,
     });
   }
-  depositPaidAmount.value = saleCartTotal.value;
+  salePaidAmount.value = saleCartTotal.value;
+}
+
+function selectSaleSkuOption(option: SaleSkuOption) {
+  selectedProductId.value = option.product.id;
+  selectedSkuId.value = option.sku.id;
+  addSaleSkuToCart(option.product, option.sku);
+  catalogSearch.value = "";
+  catalogSuggestOpen.value = false;
+}
+
+function selectSaleSkuSuggestionByKey(key: string) {
+  const option = saleSkuSuggestions.value.find((item) => item.key === key);
+  if (option) selectSaleSkuOption(option);
+}
+
+function applyCommittedSaleToCatalog(
+  lines: Array<{ skuId: string; quantity: number }>,
+) {
+  const soldBySku = new Map<string, number>();
+  for (const line of lines) {
+    const quantity = Math.max(0, Math.floor(Number(line.quantity) || 0));
+    if (line.skuId && quantity > 0) {
+      soldBySku.set(line.skuId, (soldBySku.get(line.skuId) ?? 0) + quantity);
+    }
+  }
+  if (soldBySku.size === 0) return;
+
+  catalogProducts.value = catalogProducts.value.map((product) => ({
+    ...product,
+    skus: product.skus.map((sku) => {
+      const soldQuantity = soldBySku.get(sku.id) ?? 0;
+      if (soldQuantity <= 0) return sku;
+      return {
+        ...sku,
+        rentalStock: Math.max(0, sku.rentalStock - soldQuantity),
+      };
+    }),
+  }));
+}
+
+function saleLineRemaining(line: PosSaleLine) {
+  return Math.max(0, line.maxQuantity - line.quantity);
+}
+
+function normalizeSaleLineQuantity(line: PosSaleLine) {
+  const next = Math.floor(Number(line.quantity) || 1);
+  line.quantity = Math.min(Math.max(1, next), Math.max(1, line.maxQuantity));
 }
 
 function removeSaleLine(skuId: string) {
   saleCart.value = saleCart.value.filter((line) => line.skuId !== skuId);
-  depositPaidAmount.value = saleCartTotal.value;
+  salePaidAmount.value = saleCartTotal.value;
 }
 
 watch(
   saleCart,
   () => {
     if (transactionMode.value === "sale")
-      depositPaidAmount.value = saleCartTotal.value;
+      salePaidAmount.value = saleCartTotal.value;
   },
   { deep: true },
 );
@@ -762,13 +989,93 @@ async function uploadDepositProof(bookingId: string) {
   if (!file) return;
   const fd = new FormData();
   fd.append("file", file);
-  fd.append("amount", String(depositPaidAmount.value));
+  fd.append("amount", String(rentalDepositPaidAmount.value));
   fd.append("paymentMethod", depositPaymentMethod.value);
   if (depositNotes.value) fd.append("notes", depositNotes.value);
   await $fetch(`/api/admin/rental-bookings/${bookingId}/deposit-proof`, {
     method: "POST",
     body: fd,
   });
+}
+
+function requestCreatePosBooking() {
+  if (isRentalDepositAdjusted.value) {
+    pendingDepositAction.value = "create-booking";
+    depositAdjustmentReason.value = depositNotes.value;
+    depositConfirmOpen.value = true;
+    return;
+  }
+  void createPosBooking();
+}
+
+function openDepositEdit(item: PosHistoryItem) {
+  if (item.type !== "rental") return;
+  depositEdit.bookingId = item.id;
+  depositEdit.documentNo = item.documentNo;
+  depositEdit.currentAmount = item.depositPaidAmount ?? 0;
+  depositEdit.newAmount = item.depositPaidAmount ?? 0;
+  depositEdit.currentMethod = item.depositPaymentMethod || item.paymentMethod;
+  depositEdit.newMethod = (item.depositPaymentMethod ||
+    item.paymentMethod ||
+    "cash") as RentalDepositPaymentMethod;
+  depositEdit.currentStatus = item.paymentStatus || "unpaid";
+  depositEdit.notes = "";
+  depositAdjustmentReason.value = "";
+  depositEditOpen.value = true;
+}
+
+function requestDepositEditSave() {
+  pendingDepositAction.value = "update-booking";
+  depositConfirmOpen.value = true;
+}
+
+async function confirmDepositAction() {
+  const action = pendingDepositAction.value;
+  depositConfirmOpen.value = false;
+  pendingDepositAction.value = null;
+  if (action === "create-booking") {
+    await createPosBooking();
+    return;
+  }
+  if (action === "update-booking") {
+    await saveDepositAdjustment();
+  }
+}
+
+async function saveDepositAdjustment() {
+  if (!depositEdit.bookingId) return;
+  depositEditSaving.value = true;
+  progress.value = true;
+  try {
+    await $fetch(
+      `/api/admin/rental-bookings/${depositEdit.bookingId}/deposit`,
+      {
+        method: "PATCH",
+        body: {
+          depositPaidAmount: depositEdit.newAmount,
+          depositPaymentMethod: depositEdit.newMethod,
+          depositPaymentStatus: depositEdit.newAmount > 0 ? "paid" : "unpaid",
+          depositNotes: depositEdit.notes,
+          reason: depositAdjustmentReason.value,
+        },
+      },
+    );
+    toast.add({
+      title: "อัปเดตมัดจำและบันทึก Audit Log แล้ว",
+      color: "success",
+    });
+    depositEditOpen.value = false;
+    await loadPosHistory();
+  } catch (e) {
+    toast.add({
+      title: "อัปเดตมัดจำไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    depositEditSaving.value = false;
+    progress.value = false;
+  }
 }
 
 async function createPosBooking() {
@@ -778,7 +1085,7 @@ async function createPosBooking() {
   const payload = {
     userId: customer.value?.kind === "account" ? customer.value.userId : null,
     walkInPhone: phone,
-    bookerName: customer.value?.fullName || draft.fullName,
+    bookerName: customerNameForCheckout.value,
     bookerPhone: phone,
     productId: selectedProduct.value.id,
     skuId: selectedSku.value.id,
@@ -788,10 +1095,13 @@ async function createPosBooking() {
     checkoutTotalAmount: rentalCheckoutTotal.value,
     checkoutPaidAmount: rentalCheckoutTotal.value,
     checkoutPaymentMethod: depositPaymentMethod.value,
-    depositPaidAmount: depositPaidAmount.value,
+    depositPaidAmount: rentalDepositPaidAmount.value,
     depositPaymentMethod: depositPaymentMethod.value,
-    depositPaymentStatus: depositPaidAmount.value > 0 ? "paid" : "unpaid",
+    depositPaymentStatus: rentalDepositPaidAmount.value > 0 ? "paid" : "unpaid",
     depositNotes: depositNotes.value,
+    depositAdjustmentReason: isRentalDepositAdjusted.value
+      ? depositAdjustmentReason.value || depositNotes.value
+      : null,
   };
 
   creatingBooking.value = true;
@@ -834,23 +1144,31 @@ async function createPosSale() {
   const payload = {
     userId: customer.value?.kind === "account" ? customer.value.userId : null,
     walkInPhone: customerPhone.value || null,
-    customerName: customer.value?.fullName || draft.fullName || null,
+    customerName: customerNameForCheckout.value || null,
     branchId: selectedBranchId.value,
     paymentMethod: depositPaymentMethod.value,
-    paidAmount: depositPaidAmount.value,
+    paidAmount: salePaidAmount.value,
     notes: saleNotes.value || depositNotes.value,
     items: saleCart.value.map((line) => ({
       skuId: line.skuId,
       quantity: line.quantity,
     })),
   };
+  const committedSaleLines = saleCart.value.map((line) => ({
+    skuId: line.skuId,
+    quantity: line.quantity,
+  }));
 
   try {
     const response = await $fetch<{
       order: { id: string; order_number?: string; orderNumber?: string };
+      appliedInventory?: boolean;
     }>("/api/admin/pos/sales", { method: "POST", body: payload });
+    if (response.appliedInventory !== false) {
+      applyCommittedSaleToCatalog(committedSaleLines);
+    }
     saleCart.value = [];
-    await loadPosHistory();
+    await Promise.all([loadCatalog(), loadPosHistory()]);
     toast.add({
       title: "บันทึกขายหน้าร้านสำเร็จ",
       description: response.order.order_number || response.order.orderNumber,
@@ -931,17 +1249,21 @@ async function retryPendingBookingDraft() {
     <UProgress v-if="progress" animation="carousel" />
 
     <UCard>
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 class="font-semibold">Branch Selection</h3>
+            <p class="text-sm text-muted">
+              เลือกสาขาก่อนเริ่มทำรายการ เพื่อใช้กรองประวัติและ Stock หน้าร้าน
+            </p>
+          </div>
+          <UBadge color="neutral" variant="soft">
+            {{ selectedBranch?.nameTh || "ยังไม่ได้เลือกสาขา" }}
+          </UBadge>
+        </div>
+      </template>
       <div class="grid gap-3 md:grid-cols-3">
-        <UFormField label="โหมดทำรายการ" class="md:col-span-1">
-          <UTabs
-            v-model="transactionMode"
-            :items="transactionModeTabs"
-            value-key="value"
-            :content="false"
-            class="w-full"
-          />
-        </UFormField>
-        <UFormField label="สาขา POS">
+        <UFormField label="สาขา POS" class="md:col-span-2" required>
           <select
             v-model="selectedBranchId"
             class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
@@ -958,31 +1280,12 @@ async function retryPendingBookingDraft() {
           </select>
         </UFormField>
         <div class="rounded-xl border border-default p-3 text-sm">
-          <p class="font-medium">ID Card Workflow</p>
+          <p class="font-medium">Workspace status</p>
           <p class="text-muted">
-            {{
-              transactionMode === "rental"
-                ? "Rental ต้องมีบัตรประชาชน"
-                : "Sale ข้ามขั้นตอนบัตรประชาชน"
-            }}
+            ประวัติและ Catalog จะอิงจากสาขานี้โดยอัตโนมัติ
           </p>
         </div>
       </div>
-      <UAlert
-        class="mt-3"
-        :color="transactionMode === 'rental' ? 'warning' : 'success'"
-        variant="soft"
-        :title="
-          transactionMode === 'rental'
-            ? 'Rental/Booking Mode: ต้องระบุข้อมูลลูกค้า'
-            : 'Sale Mode: ข้อมูลลูกค้าเป็น Optional'
-        "
-        :description="
-          transactionMode === 'rental'
-            ? 'ต้องมีเบอร์/ข้อมูลลูกค้า และต้องมีบัตรประชาชนก่อน Pickup'
-            : 'สามารถขายหน้าร้านแบบ Walk-in ไม่ระบุลูกค้าได้ หรือกรอกข้อมูลลูกค้าไว้เพื่ออ้างอิงภายหลัง'
-        "
-      />
     </UCard>
 
     <UCard>
@@ -1140,6 +1443,16 @@ async function retryPendingBookingDraft() {
                       @click="showPrintPlaceholder('abbreviated', item)"
                     />
                     <UButton
+                      v-if="item.type === 'rental'"
+                      size="xs"
+                      variant="soft"
+                      color="warning"
+                      icon="bx:money"
+                      label="Deposit"
+                      :disabled="isHistoryItemCancelled(item)"
+                      @click="openDepositEdit(item)"
+                    />
+                    <UButton
                       v-if="isSuperAdmin"
                       size="xs"
                       variant="soft"
@@ -1160,24 +1473,26 @@ async function retryPendingBookingDraft() {
     </UCard>
 
     <div class="grid gap-4 lg:grid-cols-3">
-      <UCard class="lg:col-span-1">
+      <UCard :class="['lg:col-span-1 ring-1', modeAccentClass]">
         <template #header>
-          <div>
-            <h3 class="font-semibold">
-              1)
-              {{
-                transactionMode === "rental"
-                  ? "Customer lookup / New walk-in"
-                  : "Customer info (Optional)"
-              }}
-            </h3>
-            <p class="text-sm text-muted">
-              {{
-                transactionMode === "rental"
-                  ? "Rental/Booking ต้องมีข้อมูลลูกค้าก่อนทำรายการ"
-                  : "Sale สามารถเว้นว่างได้ หากเป็นการขายหน้าร้านทั่วไป"
-              }}
-            </p>
+          <div class="space-y-3">
+            <div>
+              <h3 class="font-semibold">Customer Info Section</h3>
+              <p class="text-sm text-muted">
+                {{
+                  transactionMode === "rental"
+                    ? "Rental ต้องมีเบอร์และชื่อ-นามสกุลก่อนสร้างรายการ"
+                    : "Sale เป็น Optional — กรอกเมื่ออยากเก็บ reference ลูกค้า"
+                }}
+              </p>
+            </div>
+            <UTabs
+              v-model="transactionMode"
+              :items="transactionModeTabs"
+              value-key="value"
+              :content="false"
+              class="w-full"
+            />
           </div>
         </template>
         <div class="space-y-3">
@@ -1218,9 +1533,16 @@ async function retryPendingBookingDraft() {
                   ? 'เบอร์โทรศัพท์ (จำเป็น)'
                   : 'เบอร์โทรศัพท์ (Optional)'
               "
+              :required="transactionMode === 'rental'"
               ><UInput v-model="draft.phone" class="w-full"
             /></UFormField>
-            <UFormField label="ชื่อ-นามสกุล"
+            <UFormField
+              :label="
+                transactionMode === 'rental'
+                  ? 'ชื่อ-นามสกุล (จำเป็น)'
+                  : 'ชื่อ-นามสกุล (Optional)'
+              "
+              :required="transactionMode === 'rental'"
               ><UInput v-model="draft.fullName" class="w-full"
             /></UFormField>
             <UFormField label="หมายเหตุ"
@@ -1249,17 +1571,33 @@ async function retryPendingBookingDraft() {
         </div>
       </UCard>
 
-      <UCard class="lg:col-span-2">
+      <UCard :class="['lg:col-span-2 ring-1', modeAccentClass, modeSoftClass]">
         <template #header>
-          <h3 class="font-semibold">
-            2)
-            {{
-              transactionMode === "rental"
-                ? "Customer & ID check"
-                : "Sale customer summary"
-            }}
-          </h3>
+          <div>
+            <h3 class="font-semibold">
+              {{
+                transactionMode === "rental"
+                  ? "Rental customer validation"
+                  : "Sale customer summary"
+              }}
+            </h3>
+            <p class="text-sm text-muted">
+              {{
+                transactionMode === "rental"
+                  ? "ตรวจข้อมูลลูกค้าและบัตรประชาชน"
+                  : "ข้อมูลลูกค้าไม่บังคับในโหมดขายขาด"
+              }}
+            </p>
+          </div>
         </template>
+        <UAlert
+          v-if="transactionMode === 'rental' && !rentalCustomerInfoReady"
+          class="mb-3"
+          color="warning"
+          variant="soft"
+          title="Rental Mode ต้องระบุข้อมูลลูกค้า"
+          description="กรอกเบอร์โทรศัพท์และชื่อ-นามสกุล หรือค้นหาลูกค้าที่มีข้อมูลครบก่อนสร้าง Booking"
+        />
         <UAlert
           v-if="transactionMode === 'sale' && !customer"
           color="success"
@@ -1326,12 +1664,12 @@ async function retryPendingBookingDraft() {
       </UCard>
     </div>
 
-    <UCard>
+    <UCard :class="['ring-1', modeAccentClass]">
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 class="font-semibold">
-              3)
+              Workspace Section ·
               {{
                 transactionMode === "rental"
                   ? "สร้างรายการเช่า"
@@ -1356,7 +1694,7 @@ async function retryPendingBookingDraft() {
 
       <UAlert
         class="mb-4"
-        :color="transactionMode === 'rental' ? 'warning' : 'primary'"
+        :color="transactionMode === 'rental' ? 'primary' : 'secondary'"
         variant="soft"
         :title="
           transactionMode === 'rental'
@@ -1372,27 +1710,19 @@ async function retryPendingBookingDraft() {
 
       <div class="grid gap-4 xl:grid-cols-3">
         <div class="space-y-3 xl:col-span-2">
-          <div class="flex gap-2">
-            <UInput
-              v-model="catalogSearch"
-              icon="bx:search"
-              class="w-full min-w-0 flex-1"
-              placeholder="ค้นหาสินค้า / SKU"
-              @keyup.enter="loadCatalog"
-            />
-            <UButton
-              :loading="catalogLoading"
-              icon="bx:refresh"
-              label="ค้นหา"
-              @click="loadCatalog"
-            />
-            <UButton
-              icon="bx:barcode-reader"
-              variant="soft"
-              label="สแกน"
-              @click="openScanner('catalog')"
-            />
-          </div>
+          <AdminPosCatalogSearch
+            v-model="catalogSearch"
+            :mode="transactionMode"
+            :loading="catalogLoading"
+            :suggestions="catalogSuggestionItems"
+            :suggestions-open="catalogSuggestOpen"
+            @search-input="scheduleCatalogSearch"
+            @focus-input="showCatalogSuggestions"
+            @blur-input="hideCatalogSuggestionsSoon"
+            @submit="loadCatalog"
+            @scan="openScanner('catalog')"
+            @select-suggestion="selectSaleSkuSuggestionByKey"
+          />
 
           <UAlert
             v-if="!catalogLoading && filteredCatalogProducts.length === 0"
@@ -1410,8 +1740,11 @@ async function retryPendingBookingDraft() {
             "
           />
 
-          <div class="grid gap-3 md:grid-cols-2">
-            <UFormField label="สินค้า">
+          <div
+            v-if="transactionMode === 'rental'"
+            class="grid gap-3 md:grid-cols-2"
+          >
+            <UFormField label="Asset">
               <select
                 v-model="selectedProductId"
                 class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
@@ -1428,7 +1761,7 @@ async function retryPendingBookingDraft() {
               </select>
             </UFormField>
 
-            <UFormField label="SKU / Variant">
+            <UFormField label="Asset / Variant">
               <select
                 v-model="selectedSkuId"
                 class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
@@ -1462,11 +1795,60 @@ async function retryPendingBookingDraft() {
               <UInput v-model="bookingEndDate" class="w-full" type="date" />
             </UFormField>
           </div>
+
+          <div v-if="transactionMode === 'sale'" class="space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <div>
+                <p class="text-sm font-medium">รายการ SKU พร้อมขาย</p>
+                <p class="text-xs text-muted">
+                  แสดงรูปสินค้า ราคา และ stock คงเหลือของสาขาที่เลือก
+                </p>
+              </div>
+              <UBadge color="neutral" variant="soft">
+                {{ saleSkuOptions.length }} SKU
+              </UBadge>
+            </div>
+            <div
+              class="grid max-h-72 gap-2 overflow-y-auto pr-1 md:grid-cols-2"
+            >
+              <button
+                v-for="option in saleSkuOptions"
+                :key="option.key"
+                type="button"
+                class="flex items-center gap-3 rounded-xl border border-default p-3 text-left transition hover:border-secondary hover:bg-secondary/5 disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="option.stock <= 0"
+                @click="selectSaleSkuOption(option)"
+              >
+                <img
+                  :src="productImageSrc(option.imageUrl)"
+                  alt=""
+                  class="h-14 w-14 rounded-lg border object-cover"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate text-sm font-semibold">
+                    {{ option.productName }}
+                  </span>
+                  <span class="block truncate text-xs text-muted">
+                    {{ option.skuName }} · {{ option.code }}
+                  </span>
+                  <span class="block text-xs font-medium">
+                    {{ formatCurrency(option.sku.price) }}
+                  </span>
+                </span>
+                <UBadge
+                  :color="option.stock > 0 ? 'success' : 'error'"
+                  variant="soft"
+                >
+                  Stock {{ option.stock }}
+                </UBadge>
+              </button>
+            </div>
+          </div>
           <UButton
             v-if="transactionMode === 'sale'"
             class="mt-3"
             icon="bx:cart-add"
-            color="primary"
+            color="secondary"
             variant="soft"
             :disabled="!selectedSku"
             label="เพิ่มลงตะกร้าขาย"
@@ -1474,43 +1856,20 @@ async function retryPendingBookingDraft() {
           />
         </div>
 
-        <div class="space-y-3 rounded-xl border border-default p-3">
-          <div v-if="transactionMode === 'rental'">
-            <p class="text-sm font-medium">ราคาเช่าอัตโนมัติ</p>
-            <p class="text-xs text-muted">
-              ใช้ logic tier day/week/month เดียวกับหน้าจองของลูกค้า
-            </p>
-          </div>
-          <div v-if="transactionMode === 'rental'" class="space-y-1 text-sm">
-            <div class="flex justify-between">
-              <span class="text-muted">จำนวนวัน</span>
-              <span class="font-medium">{{ bookingDays || "—" }}</span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-muted">ยอดค่าเช่า</span>
-              <span class="font-semibold">
-                {{
-                  bookingPricing ? formatCurrency(bookingPricing.total) : "—"
-                }}
-              </span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-muted">ยอดรวมรับชำระ</span>
-              <span class="font-semibold">
-                {{ formatCurrency(rentalCheckoutTotal) }}
-              </span>
-            </div>
-            <div class="flex justify-between">
-              <span class="text-muted">มัดจำตาม Asset</span>
-              <span class="font-semibold">
-                {{
-                  selectedSku ? formatCurrency(selectedSku.depositAmount) : "—"
-                }}
-              </span>
-            </div>
-          </div>
+        <div :class="['space-y-3 rounded-xl border p-3', modeAccentClass]">
+          <AdminPosTotalSummary
+            :mode="transactionMode"
+            :rental-days="bookingDays"
+            :rental-subtotal="bookingPricing?.total ?? null"
+            :rental-checkout-total="rentalCheckoutTotal"
+            :default-deposit-amount="defaultDepositAmount"
+            :current-deposit-amount="depositPaidAmount"
+            :is-deposit-adjusted="isRentalDepositAdjusted"
+            :sale-cart-count="saleCart.length"
+            :sale-cart-total="saleCartTotal"
+          />
 
-          <div v-else class="space-y-3">
+          <div v-if="transactionMode === 'sale'" class="space-y-3">
             <p class="text-sm font-medium">ตะกร้าขายขาด</p>
             <div v-if="saleCart.length === 0" class="text-sm text-muted">
               ยังไม่มีสินค้าในตะกร้า — สแกน Barcode/QR
@@ -1522,11 +1881,22 @@ async function retryPendingBookingDraft() {
               class="rounded-lg border border-default p-2 text-sm"
             >
               <div class="flex items-start justify-between gap-2">
-                <div>
-                  <p class="font-medium">{{ line.name }}</p>
-                  <p class="text-xs text-muted">
-                    {{ line.code }} · {{ formatCurrency(line.unitPrice) }}
-                  </p>
+                <div class="flex min-w-0 gap-3">
+                  <img
+                    :src="productImageSrc(line.imageUrl)"
+                    alt=""
+                    class="h-12 w-12 rounded-lg border object-cover"
+                  />
+                  <div class="min-w-0">
+                    <p class="truncate font-medium">{{ line.name }}</p>
+                    <p class="text-xs text-muted">
+                      {{ line.code }} · {{ formatCurrency(line.unitPrice) }}
+                    </p>
+                    <p class="text-xs text-muted">
+                      พร้อมขาย {{ line.maxQuantity }} · คงเหลือหลังตะกร้า
+                      {{ saleLineRemaining(line) }}
+                    </p>
+                  </div>
                 </div>
                 <UButton
                   size="xs"
@@ -1541,11 +1911,9 @@ async function retryPendingBookingDraft() {
                 class="mt-2"
                 type="number"
                 min="1"
+                :max="line.maxQuantity"
+                @blur="normalizeSaleLineQuantity(line)"
               />
-            </div>
-            <div class="flex justify-between text-sm font-semibold">
-              <span>ยอดขายรวม</span>
-              <span>{{ formatCurrency(saleCartTotal) }}</span>
             </div>
           </div>
 
@@ -1555,12 +1923,21 @@ async function retryPendingBookingDraft() {
                 transactionMode === 'rental' ? 'รับมัดจำจริง' : 'รับชำระจริง'
               "
             >
-              <UInput
-                v-model.number="depositPaidAmount"
-                class="w-full"
-                type="number"
-                min="0"
-              />
+              <div class="flex gap-2">
+                <UInput
+                  v-model.number="depositPaidAmount"
+                  class="w-full"
+                  type="number"
+                  min="0"
+                />
+                <UButton
+                  v-if="transactionMode === 'rental' && selectedSku"
+                  color="neutral"
+                  variant="soft"
+                  label="Reset"
+                  @click="depositPaidAmount = defaultDepositAmount"
+                />
+              </div>
             </UFormField>
             <UFormField label="วิธีชำระเงิน">
               <select
@@ -1586,7 +1963,12 @@ async function retryPendingBookingDraft() {
               <div class="grid gap-2 sm:grid-cols-2">
                 <label
                   for="deposit-proof-camera"
-                  class="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-primary bg-primary px-3 py-2 text-sm font-medium text-white shadow-sm"
+                  :class="[
+                    'flex cursor-pointer items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium text-white shadow-sm',
+                    transactionMode === 'rental'
+                      ? 'border-primary bg-primary'
+                      : 'border-secondary bg-secondary',
+                  ]"
                 >
                   <UIcon name="bx:camera" />
                   ถ่ายรูปหลักฐาน
@@ -1657,18 +2039,29 @@ async function retryPendingBookingDraft() {
             :loading="creatingBooking"
             :disabled="!canCreateBooking || requiresIdCardForCheckout"
             label="สร้าง Booking และรับชำระรวม"
-            @click="createPosBooking"
+            @click="requestCreatePosBooking"
           />
           <UButton
             v-else
             block
-            color="primary"
+            color="secondary"
             icon="bx:receipt"
             :loading="creatingSale"
             :disabled="!canCreateSale"
             label="บันทึกขายขาดและตัด Stock"
             @click="createPosSale"
           />
+          <p
+            v-if="
+              transactionMode === 'sale' &&
+              saleCart.length > 0 &&
+              salePaidAmount < saleCartTotal
+            "
+            class="text-xs text-error"
+          >
+            ต้องรับชำระอย่างน้อย
+            {{ formatCurrency(saleCartTotal) }} ก่อนบันทึกขายและตัด Stock
+          </p>
           <UTextarea
             v-if="transactionMode === 'sale'"
             v-model="saleNotes"
@@ -1852,6 +2245,128 @@ async function retryPendingBookingDraft() {
             icon="bx:upload"
             label="Upload / Retry"
             @click="submitIdCard"
+          />
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="depositEditOpen" title="ปรับยอดมัดจำ Booking">
+      <template #body>
+        <div class="space-y-3">
+          <UAlert
+            color="warning"
+            variant="soft"
+            title="Manual Deposit Management"
+            description="การแก้ไขยอดมัดจำต้องยืนยันอีกครั้ง และระบบจะบันทึก Staff ID พร้อมรายละเอียดลง Audit Log"
+          />
+          <div class="rounded-xl border border-default p-3 text-sm">
+            <p class="font-medium">{{ depositEdit.documentNo }}</p>
+            <p class="text-muted">
+              เดิม {{ formatCurrency(depositEdit.currentAmount) }} ·
+              {{ formatPaymentMethod(depositEdit.currentMethod) }} ·
+              {{ depositEdit.currentStatus }}
+            </p>
+          </div>
+          <div class="grid gap-2 sm:grid-cols-2">
+            <UFormField label="ยอดมัดจำใหม่">
+              <UInput
+                v-model.number="depositEdit.newAmount"
+                type="number"
+                min="0"
+                class="w-full"
+              />
+            </UFormField>
+            <UFormField label="วิธีชำระเงิน">
+              <select
+                v-model="depositEdit.newMethod"
+                class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
+              >
+                <option value="cash">เงินสด</option>
+                <option value="qr_transfer">โอนผ่าน QR</option>
+                <option value="bank_transfer">โอนบัญชี</option>
+                <option value="card">บัตร</option>
+                <option value="other">อื่น ๆ</option>
+              </select>
+            </UFormField>
+          </div>
+          <UTextarea
+            v-model="depositEdit.notes"
+            :rows="2"
+            placeholder="หมายเหตุใน booking / เลขอ้างอิง"
+          />
+          <UTextarea
+            v-model="depositAdjustmentReason"
+            :rows="2"
+            placeholder="เหตุผลที่ปรับยอดมัดจำ (แนะนำให้กรอกเพื่อ Audit)"
+          />
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            label="Cancel"
+            @click="depositEditOpen = false"
+          />
+          <UButton
+            color="warning"
+            icon="bx:check-shield"
+            :loading="depositEditSaving"
+            label="ยืนยันก่อนบันทึก"
+            @click="requestDepositEditSave"
+          />
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="depositConfirmOpen" title="ยืนยันการปรับยอดมัดจำ">
+      <template #body>
+        <div class="space-y-3">
+          <UAlert
+            color="warning"
+            variant="soft"
+            title="โปรดตรวจสอบก่อนบันทึก"
+            description="หลังยืนยัน ระบบจะบันทึกยอดใหม่และสร้าง Audit Log พร้อม Staff ID ผู้ทำรายการ"
+          />
+          <div
+            v-if="pendingDepositAction === 'create-booking'"
+            class="rounded-xl border border-default p-3 text-sm"
+          >
+            <p class="font-medium">สร้าง Booking พร้อมยอดมัดจำที่ปรับเอง</p>
+            <p class="text-muted">
+              {{ formatCurrency(defaultDepositAmount) }} →
+              {{ formatCurrency(depositPaidAmount) }}
+            </p>
+          </div>
+          <div v-else class="rounded-xl border border-default p-3 text-sm">
+            <p class="font-medium">{{ depositEdit.documentNo }}</p>
+            <p class="text-muted">
+              {{ formatCurrency(depositEdit.currentAmount) }} →
+              {{ formatCurrency(depositEdit.newAmount) }}
+            </p>
+          </div>
+          <UTextarea
+            v-model="depositAdjustmentReason"
+            :rows="2"
+            placeholder="เหตุผล/หมายเหตุสำหรับ Audit Log"
+          />
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            label="ย้อนกลับ"
+            @click="depositConfirmOpen = false"
+          />
+          <UButton
+            color="warning"
+            icon="bx:check"
+            label="ยืนยันและบันทึก"
+            :loading="creatingBooking || depositEditSaving"
+            @click="confirmDepositAction"
           />
         </div>
       </template>

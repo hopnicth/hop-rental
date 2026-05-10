@@ -9,9 +9,10 @@ import { asCategoryKey } from "~~/server/utils/admin-main-categories";
 
 export type ContentType = "blog" | "service" | "promotion" | "review";
 export type LocaleCode = "th" | "en" | "cn" | "jp";
+export type ServiceProviderType = "individual" | "company";
 
 export const ADMIN_CONTENT_PAGE_SELECT =
-  "id, content_type, slug, main_category_key, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order)";
+  "id, content_type, slug, main_category_key, provider_id, title_th, title_en, title_cn, title_jp, excerpt_th, excerpt_en, excerpt_cn, excerpt_jp, cover_image_url, blocks, service_areas, sort_order, is_active, published_at, created_at, updated_at, content_page_products(product_id, sort_order), content_page_assets(asset_id, sort_order), service_providers(provider_id, provider_type, is_verified, contact_phone, contact_email, google_maps_url, kyc_documents, created_at, updated_at)";
 
 const LOCALES: LocaleCode[] = ["th", "en", "cn", "jp"];
 
@@ -59,6 +60,57 @@ function asPublishedAt(value: unknown) {
 function asOptionalCategoryKey(value: unknown) {
   const raw = asOptionalString(value);
   return raw ? asCategoryKey(raw, "mainCategoryKey") : null;
+}
+
+function asServiceProviderType(value: unknown): ServiceProviderType {
+  if (value === "company") return "company";
+  if (value === "individual" || value == null || value === "")
+    return "individual";
+  fail422("providerType must be individual or company");
+}
+
+function asProviderId(value: unknown) {
+  const raw = asOptionalString(value);
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (!/^\d{13}$/.test(digits)) {
+    fail422("providerId must be a 13-digit Citizen ID or Juristic ID");
+  }
+  return digits;
+}
+
+function providerInput(body: Record<string, unknown>) {
+  return isRecord(body.serviceProvider) ? body.serviceProvider : body;
+}
+
+const KYC_KEYS: Record<ServiceProviderType, string[]> = {
+  individual: ["citizenCard"],
+  company: ["companyCertificate", "vatCertificate"],
+};
+
+export function normalizeKycDocuments(
+  value: unknown,
+  providerType: ServiceProviderType = "individual",
+) {
+  const output: Record<string, Record<string, unknown>> = {};
+  if (!isRecord(value)) return output;
+
+  for (const key of KYC_KEYS[providerType]) {
+    const entry = value[key];
+    if (!isRecord(entry)) continue;
+    const path = asOptionalString(entry.path);
+    if (!path) continue;
+    output[key] = {
+      path,
+      url: asOptionalString(entry.url),
+      filename: asOptionalString(entry.filename),
+      mimeType: asOptionalString(entry.mimeType),
+      sizeBytes: asNumber(entry.sizeBytes, 0),
+      uploadedAt: asOptionalString(entry.uploadedAt),
+    };
+  }
+
+  return output;
 }
 
 const EMPTY_DOC = { type: "doc", content: [] } as const;
@@ -128,10 +180,13 @@ export function extractLinkedIds(
 
 export function buildContentPagePayload(body: Record<string, unknown>) {
   const contentType = asContentType(body.contentType);
+  const input = providerInput(body);
   return {
     content_type: contentType,
     slug: asSlug(body.slug),
     main_category_key: asOptionalCategoryKey(body.mainCategoryKey),
+    provider_id:
+      contentType === "service" ? asProviderId(input.providerId) : null,
     title_th: asNonEmptyString(body.titleTh, "titleTh"),
     title_en: asNonEmptyString(body.titleEn, "titleEn"),
     title_cn: asOptionalString(body.titleCn),
@@ -146,6 +201,26 @@ export function buildContentPagePayload(body: Record<string, unknown>) {
     sort_order: Math.max(0, asNumber(body.sortOrder, 0)),
     is_active: body.isActive !== false,
     published_at: asPublishedAt(body.publishedAt),
+  };
+}
+
+export function buildServiceProviderPayload(body: Record<string, unknown>) {
+  const contentType = asContentType(body.contentType);
+  if (contentType !== "service") return null;
+
+  const input = providerInput(body);
+  const providerId = asProviderId(input.providerId);
+  if (!providerId) return null;
+
+  const providerType = asServiceProviderType(input.providerType);
+  return {
+    provider_id: providerId,
+    provider_type: providerType,
+    is_verified: input.isVerified === true,
+    contact_phone: asOptionalString(input.contactPhone),
+    contact_email: asOptionalString(input.contactEmail),
+    google_maps_url: asOptionalString(input.googleMapsUrl),
+    kyc_documents: normalizeKycDocuments(input.kycDocuments, providerType),
   };
 }
 
@@ -173,6 +248,7 @@ export function mapContentPageRow(row: any) {
     contentType: row.content_type as ContentType,
     slug: row.slug,
     mainCategoryKey: row.main_category_key ?? "",
+    providerId: row.provider_id ?? "",
     titleTh: row.title_th,
     titleEn: row.title_en,
     titleCn: row.title_cn ?? "",
@@ -190,6 +266,7 @@ export function mapContentPageRow(row: any) {
       : [],
     linkedProductIds: pickLinkedIds(row.content_page_products, "product_id"),
     linkedAssetIds: pickLinkedIds(row.content_page_assets, "asset_id"),
+    serviceProvider: mapServiceProviderRow(row.service_providers),
     sortOrder: Number(row.sort_order ?? 0),
     isActive: row.is_active !== false,
     publishedAt: row.published_at ?? "",
@@ -198,9 +275,41 @@ export function mapContentPageRow(row: any) {
   };
 }
 
+function mapServiceProviderRow(row: unknown) {
+  const provider = Array.isArray(row) ? row[0] : row;
+  if (!isRecord(provider)) return null;
+  const providerType =
+    provider.provider_type === "company" ? "company" : "individual";
+  return {
+    providerId: asOptionalString(provider.provider_id) ?? "",
+    providerType,
+    isVerified: provider.is_verified === true,
+    contactPhone: asOptionalString(provider.contact_phone) ?? "",
+    contactEmail: asOptionalString(provider.contact_email) ?? "",
+    googleMapsUrl: asOptionalString(provider.google_maps_url) ?? "",
+    kycDocuments: normalizeKycDocuments(provider.kyc_documents, providerType),
+    createdAt: provider.created_at,
+    updatedAt: provider.updated_at,
+  };
+}
+
 type SupabaseAdminClient = {
   from: (table: string) => any;
 };
+
+export async function upsertServiceProvider(
+  adminClient: SupabaseAdminClient,
+  payload: ReturnType<typeof buildServiceProviderPayload>,
+) {
+  if (!payload) return;
+
+  const { error } = await adminClient
+    .from("service_providers")
+    .upsert(payload, { onConflict: "provider_id" });
+  if (error) {
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  }
+}
 
 export async function syncContentPageLinks(
   adminClient: SupabaseAdminClient,

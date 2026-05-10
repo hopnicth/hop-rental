@@ -3,9 +3,11 @@ import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_CONTENT_PAGE_SELECT,
   buildContentPagePayload,
+  buildServiceProviderPayload,
   extractLinkedIds,
   mapContentPageRow,
   syncContentPageLinks,
+  upsertServiceProvider,
 } from "~~/server/utils/content-pages";
 
 export default defineEventHandler(async (event) => {
@@ -13,7 +15,10 @@ export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Record<string, unknown>;
 
   const payload = buildContentPagePayload(body);
+  const providerPayload = buildServiceProviderPayload(body);
   const { productIds, assetIds } = extractLinkedIds(body, payload.content_type);
+
+  await upsertServiceProvider(adminClient, providerPayload);
 
   const { data: inserted, error: insertError } = await adminClient
     .from("content_pages")

@@ -84,7 +84,7 @@ const showSkeleton = computed(
               trailing-icon="bx:right-arrow-alt"
             >
               {{ item.ctaLabel[lang] }}
-            </UButton>
+            </UButton>  
           </div>
         </div>
       </div>

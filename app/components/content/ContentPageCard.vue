@@ -20,6 +20,9 @@ const imageSrc = computed(
     "https://placehold.co/400x400/E0E0E0/757575?text=HOPNIC&font=roboto",
 );
 const canSaveService = computed(() => props.page.contentType === "service");
+const isVerifiedService = computed(
+  () => canSaveService.value && props.page.serviceProvider?.isVerified === true,
+);
 const saved = isSaved("service", props.page.id);
 const saveLoading = isToggling("service", props.page.id);
 const saveLabel = computed(() =>
@@ -79,7 +82,17 @@ async function handleSaveToggle() {
     :clickable="true"
     card-class="hover:ring-2 hover:ring-primary"
   >
-    <template v-if="canSaveService" #overlay>
+    <template v-if="canSaveService || isVerifiedService" #overlay>
+      <UTooltip v-if="isVerifiedService" text="Verified provider">
+        <UBadge
+          color="success"
+          variant="solid"
+          icon="bx:check-circle"
+          class="shadow-sm"
+        >
+          Verified
+        </UBadge>
+      </UTooltip>
       <UTooltip :text="saveLabel" :popper="{ placement: 'top' }">
         <UButton
           icon="bx:bookmark"

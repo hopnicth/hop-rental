@@ -2,8 +2,10 @@ import { createError, defineEventHandler, getRouterParam, readBody } from "h3";
 import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
   buildContentPagePayload,
+  buildServiceProviderPayload,
   extractLinkedIds,
   syncContentPageLinks,
+  upsertServiceProvider,
 } from "~~/server/utils/content-pages";
 import { removeContentMediaByPublicUrl } from "~~/server/utils/content-media";
 
@@ -15,6 +17,7 @@ export default defineEventHandler(async (event) => {
 
   const body = (await readBody(event)) as Record<string, unknown>;
   const payload = buildContentPagePayload(body);
+  const providerPayload = buildServiceProviderPayload(body);
   const { productIds, assetIds } = extractLinkedIds(body, payload.content_type);
 
   const { data: existing, error: fetchError } = await adminClient
@@ -32,6 +35,8 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Content page not found",
     });
   }
+
+  await upsertServiceProvider(adminClient, providerPayload);
 
   const { error } = await adminClient
     .from("content_pages")

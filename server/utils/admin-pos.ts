@@ -52,6 +52,7 @@ export interface AdminPosSaleSkuRow {
   original_price: number | string | null;
   currency_code: string | null;
   stock: number | string | null;
+  branchAvailable?: number | string | null;
   product?: AdminPosSaleProductRow | AdminPosSaleProductRow[] | null;
 }
 
@@ -117,13 +118,36 @@ export function mapPosAssetCatalogItem(row: AdminPosAssetRow) {
   };
 }
 
-function firstMediaUrl(value: unknown): string | null {
+function mediaVariantUrl(
+  item: Record<string, unknown>,
+  key: "card" | "thumbnail" | "large",
+) {
+  const variants =
+    item.variants && typeof item.variants === "object"
+      ? (item.variants as Record<string, unknown>)
+      : null;
+  const variant =
+    variants?.[key] && typeof variants[key] === "object"
+      ? (variants[key] as Record<string, unknown>)
+      : null;
+  return typeof variant?.url === "string" && variant.url ? variant.url : null;
+}
+
+export function posMediaGalleryPrimaryUrl(value: unknown): string | null {
   const gallery = Array.isArray(value) ? value : [];
   for (const item of gallery) {
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
+    if (row.status && row.status !== "ready") continue;
+    const variantUrl =
+      mediaVariantUrl(row, "card") ??
+      mediaVariantUrl(row, "thumbnail") ??
+      mediaVariantUrl(row, "large");
+    if (variantUrl) return variantUrl;
     if (typeof row.url === "string" && row.url.length > 0) return row.url;
     if (typeof row.src === "string" && row.src.length > 0) return row.src;
+    if (typeof row.publicUrl === "string" && row.publicUrl.length > 0)
+      return row.publicUrl;
   }
   return null;
 }
@@ -134,8 +158,13 @@ export function mapPosSaleCatalogItem(row: AdminPosSaleSkuRow) {
   const nameTh = product?.name_th ?? row.label_th ?? row.id;
   const nameEn = product?.name_en ?? row.label_en ?? nameTh;
   const imageUrl =
-    firstMediaUrl(row.media_gallery) ?? firstMediaUrl(product?.media_gallery);
+    posMediaGalleryPrimaryUrl(row.media_gallery) ??
+    posMediaGalleryPrimaryUrl(product?.media_gallery);
   const skuCode = row.sku_code || row.id;
+  const availableStock = Math.max(
+    0,
+    posNumber(row.branchAvailable ?? row.stock, 0),
+  );
 
   return {
     id: productId,
@@ -160,7 +189,7 @@ export function mapPosSaleCatalogItem(row: AdminPosSaleSkuRow) {
         dailyRate: 0,
         weeklyRate: 0,
         monthlyRate: 0,
-        rentalStock: Math.max(0, posNumber(row.stock, 0)),
+        rentalStock: availableStock,
         reservedStock: 0,
       },
     ],

@@ -22,40 +22,30 @@ export default defineEventHandler(async (event) => {
   const type = asText(body.type) as PosHistoryType;
 
   if (!id || (type !== "sale" && type !== "rental")) {
-    throw createError({ statusCode: 422, statusMessage: "type and id are required" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "type and id are required",
+    });
   }
 
   if (type === "sale") {
-    const { data, error } = await adminClient
-      .from("orders")
-      .select("id, status, payment_status, pos_branch_id, inventory_applied_at")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-    const order = (data ?? null) as Row | null;
-    if (!order) throw createError({ statusCode: 404, statusMessage: "POS sale not found" });
-    if (!asText(order.pos_branch_id)) {
-      throw createError({ statusCode: 422, statusMessage: "Only POS sales can be cancelled here" });
+    const { data, error } = await adminClient.rpc("f_cancel_pos_sale", {
+      p_order_id: id,
+    });
+    if (error) {
+      throw createError({ statusCode: 500, statusMessage: error.message });
     }
-    if (asText(order.status) !== "cancelled") {
-      const { error: updateError } = await adminClient
-        .from("orders")
-        .update({
-          status: "cancelled",
-          payment_status: "cancelled",
-          fulfillment_status: "cancelled",
-        })
-        .eq("id", id);
-      if (updateError) {
-        throw createError({ statusCode: 500, statusMessage: updateError.message });
-      }
-    }
+    const result = (data && typeof data === "object" ? data : {}) as Row;
     return {
       ok: true,
       type,
       id,
       status: "cancelled",
-      inventoryReversalRequired: Boolean(order.inventory_applied_at),
+      inventoryWasApplied: result.inventoryWasApplied === true,
+      inventoryAlreadyReversed: result.inventoryAlreadyReversed === true,
+      inventoryRestocked: result.inventoryRestocked === true,
+      restockedQuantity: Number(result.restockedQuantity ?? 0),
+      inventoryReversalRequired: false,
     };
   }
 
@@ -64,16 +54,27 @@ export default defineEventHandler(async (event) => {
     .select("id, status, pos_branch_id, deposit_payment_status")
     .eq("id", id)
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
   const booking = (data ?? null) as Row | null;
-  if (!booking) throw createError({ statusCode: 404, statusMessage: "POS rental not found" });
+  if (!booking)
+    throw createError({
+      statusCode: 404,
+      statusMessage: "POS rental not found",
+    });
   if (!asText(booking.pos_branch_id)) {
-    throw createError({ statusCode: 422, statusMessage: "Only POS rentals can be cancelled here" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Only POS rentals can be cancelled here",
+    });
   }
 
   const currentStatus = asText(booking.status);
   if (["picked_up", "returned"].includes(currentStatus)) {
-    throw createError({ statusCode: 422, statusMessage: "Cannot cancel rental after pickup/return" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Cannot cancel rental after pickup/return",
+    });
   }
   if (currentStatus !== "cancelled") {
     const { error: updateError } = await adminClient
@@ -81,7 +82,10 @@ export default defineEventHandler(async (event) => {
       .update({ status: "cancelled" })
       .eq("id", id);
     if (updateError) {
-      throw createError({ statusCode: 500, statusMessage: updateError.message });
+      throw createError({
+        statusCode: 500,
+        statusMessage: updateError.message,
+      });
     }
   }
 

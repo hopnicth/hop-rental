@@ -1,5 +1,6 @@
 import { createError, defineEventHandler, readBody } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
+import { posMediaGalleryPrimaryUrl } from "~~/server/utils/admin-pos";
 import type { OrderPaymentMethod } from "~~/app/types/order";
 
 type AnyRecord = Record<string, unknown>;
@@ -37,16 +38,6 @@ function money(value: unknown): number {
 
 function asRow(value: unknown): AnyRecord {
   return value && typeof value === "object" ? (value as AnyRecord) : {};
-}
-
-function firstMediaUrl(value: unknown): string | null {
-  const gallery = Array.isArray(value) ? value : [];
-  for (const item of gallery) {
-    const row = asRow(item);
-    if (typeof row.url === "string" && row.url) return row.url;
-    if (typeof row.src === "string" && row.src) return row.src;
-  }
-  return null;
 }
 
 function isMissingInventoryKindColumn(error: unknown): boolean {
@@ -202,8 +193,8 @@ export default defineEventHandler(async (event) => {
       sku_id: String(sku.id),
       name,
       thumbnail:
-        firstMediaUrl(sku.media_gallery) ??
-        firstMediaUrl(product.media_gallery),
+        posMediaGalleryPrimaryUrl(sku.media_gallery) ??
+        posMediaGalleryPrimaryUrl(product.media_gallery),
       unit_price: unitPrice,
       original_unit_price: originalUnitPrice,
       discount_percent:
@@ -228,6 +219,12 @@ export default defineEventHandler(async (event) => {
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.line_total, 0);
   const paidAmount = money(body.paidAmount);
+  if (paidAmount < subtotal) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "paidAmount must be at least the POS sale total",
+    });
+  }
   const isPaid = paidAmount >= subtotal && subtotal > 0;
   const branchName = String(branch.name_th ?? branch.name_en ?? "");
 

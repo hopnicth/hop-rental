@@ -7,7 +7,10 @@ import {
 import {
   emptyLocalizedDoc,
   type ContentType,
+  type KycDocument,
+  type KycDocuments,
   type LocalizedDoc,
+  type ServiceProviderType,
 } from "~/types/content";
 import type { MainCategoryEntityType } from "~/types/category";
 import { getAdminApiErrorMessage } from "~/utils/admin-api";
@@ -23,6 +26,7 @@ type AdminContentPage = {
   contentType: ContentType;
   slug: string;
   mainCategoryKey: string;
+  providerId: string;
   titleTh: string;
   titleEn: string;
   titleCn: string;
@@ -36,10 +40,21 @@ type AdminContentPage = {
   serviceAreas: string[];
   linkedProductIds: string[];
   linkedAssetIds: string[];
+  serviceProvider: AdminServiceProvider | null;
   sortOrder: number;
   isActive: boolean;
   publishedAt: string;
   updatedAt?: string;
+};
+
+type AdminServiceProvider = {
+  providerId: string;
+  providerType: ServiceProviderType;
+  isVerified: boolean;
+  contactPhone: string;
+  contactEmail: string;
+  googleMapsUrl: string;
+  kycDocuments: KycDocuments;
 };
 
 type LinkOption = { value: string; label: string; isHidden: boolean };
@@ -51,6 +66,7 @@ const editingId = ref<string | null>(null);
 const saving = ref(false);
 const deletingId = ref<string | null>(null);
 const uploadingCover = ref(false);
+const uploadingKycDocument = ref<string | null>(null);
 const visibilitySavingId = ref<string | null>(null);
 
 const contentTypeOptions: Array<{
@@ -64,10 +80,50 @@ const contentTypeOptions: Array<{
   { value: "review", label: "Reviews", path: "/reviews" },
 ];
 
+const providerTypeOptions: Array<{
+  value: ServiceProviderType;
+  label: string;
+}> = [
+  { value: "individual", label: "บุคคลธรรมดา (Individual)" },
+  { value: "company", label: "นิติบุคคล (Company)" },
+];
+
+const individualKycFields = [
+  {
+    key: "citizenCard",
+    label: "รูปบัตรประชาชน",
+    help: "รองรับรูปภาพหรือ PDF",
+  },
+];
+
+const companyKycFields = [
+  {
+    key: "companyCertificate",
+    label: "หนังสือรับรองบริษัท",
+    help: "รองรับรูปภาพหรือ PDF",
+  },
+  {
+    key: "vatCertificate",
+    label: "ภ.พ.20",
+    help: "รองรับรูปภาพหรือ PDF",
+  },
+];
+
+const emptyServiceProvider = (): AdminServiceProvider => ({
+  providerId: "",
+  providerType: "individual",
+  isVerified: false,
+  contactPhone: "",
+  contactEmail: "",
+  googleMapsUrl: "",
+  kycDocuments: {},
+});
+
 const emptyForm = (): Omit<AdminContentPage, "id"> => ({
   contentType: "blog",
   slug: "",
   mainCategoryKey: "",
+  providerId: "",
   titleTh: "",
   titleEn: "",
   titleCn: "",
@@ -81,6 +137,7 @@ const emptyForm = (): Omit<AdminContentPage, "id"> => ({
   serviceAreas: [],
   linkedProductIds: [],
   linkedAssetIds: [],
+  serviceProvider: emptyServiceProvider(),
   sortOrder: 0,
   isActive: true,
   publishedAt: "",
@@ -131,6 +188,11 @@ const { data, pending, error, refresh } = await useFetch<{
 const items = computed(() => data.value?.items ?? []);
 const productOptions = computed(() => data.value?.productOptions ?? []);
 const assetOptions = computed(() => data.value?.assetOptions ?? []);
+const kycDocumentFields = computed(() =>
+  form.serviceProvider.providerType === "company"
+    ? companyKycFields
+    : individualKycFields,
+);
 const filteredItems = computed(() =>
   selectedType.value === "all"
     ? items.value
@@ -150,6 +212,7 @@ function editItem(item: AdminContentPage) {
   form.contentType = item.contentType;
   form.slug = item.slug;
   form.mainCategoryKey = item.mainCategoryKey ?? "";
+  form.providerId = item.providerId ?? "";
   form.titleTh = item.titleTh;
   form.titleEn = item.titleEn;
   form.titleCn = item.titleCn;
@@ -163,6 +226,12 @@ function editItem(item: AdminContentPage) {
   form.serviceAreas = [...(item.serviceAreas ?? [])];
   form.linkedProductIds = [...(item.linkedProductIds ?? [])];
   form.linkedAssetIds = [...(item.linkedAssetIds ?? [])];
+  form.serviceProvider = {
+    ...emptyServiceProvider(),
+    ...(item.serviceProvider ?? {}),
+    providerId: item.serviceProvider?.providerId ?? item.providerId ?? "",
+    kycDocuments: { ...(item.serviceProvider?.kycDocuments ?? {}) },
+  };
   form.sortOrder = item.sortOrder;
   form.isActive = item.isActive;
   form.publishedAt = item.publishedAt;
@@ -171,6 +240,39 @@ function editItem(item: AdminContentPage) {
     formRef.value?.scrollIntoView({ behavior: "smooth", block: "start" }),
   );
 }
+
+function kycDocumentFor(key: string): KycDocument | undefined {
+  return form.serviceProvider.kycDocuments[key];
+}
+
+function formatFileSize(sizeBytes?: number) {
+  const bytes = Number(sizeBytes ?? 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function removeKycDocument(key: string) {
+  const next = { ...form.serviceProvider.kycDocuments };
+  delete next[key];
+  form.serviceProvider.kycDocuments = next;
+}
+
+watch(
+  () => form.serviceProvider.providerType,
+  (providerType) => {
+    const allowed = new Set(
+      (providerType === "company" ? companyKycFields : individualKycFields).map(
+        (field) => field.key,
+      ),
+    );
+    form.serviceProvider.kycDocuments = Object.fromEntries(
+      Object.entries(form.serviceProvider.kycDocuments).filter(([key]) =>
+        allowed.has(key),
+      ),
+    );
+  },
+);
 
 function pagePath(item: AdminContentPage) {
   const match = contentTypeOptions.find(
@@ -313,6 +415,48 @@ async function uploadCover(event: Event) {
     uploadingCover.value = false;
   }
 }
+
+async function uploadKycDocument(key: string, event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+
+  uploadingKycDocument.value = key;
+  try {
+    const body = new FormData();
+    body.append("kind", file.type === "application/pdf" ? "file" : "image");
+    body.append("file", file);
+    const result = await $fetch<{
+      path: string;
+      url: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+    }>("/api/admin/content/upload", { method: "POST", body });
+
+    form.serviceProvider.kycDocuments = {
+      ...form.serviceProvider.kycDocuments,
+      [key]: {
+        path: result.path,
+        url: result.url,
+        filename: result.filename || file.name,
+        mimeType: result.mimeType,
+        sizeBytes: result.sizeBytes,
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+  } catch (uploadError) {
+    toast.add({
+      title: "KYC upload failed",
+      description: getAdminApiErrorMessage(uploadError, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    uploadingKycDocument.value = null;
+  }
+}
 </script>
 
 <template>
@@ -411,6 +555,17 @@ async function uploadCover(event: Event) {
                   variant="soft"
                 >
                   {{ item.isActive ? "Active" : "Hidden" }}
+                </UBadge>
+                <UBadge
+                  v-if="
+                    item.contentType === 'service' &&
+                    item.serviceProvider?.isVerified
+                  "
+                  color="success"
+                  variant="solid"
+                  icon="bx:check-circle"
+                >
+                  Verified
                 </UBadge>
               </div>
               <h3 class="font-semibold text-highlighted">
@@ -612,6 +767,157 @@ async function uploadCover(event: Event) {
             class="w-full"
           />
         </UFormField>
+
+        <UCard v-if="form.contentType === 'service'" variant="subtle">
+          <template #header>
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <h3 class="font-semibold text-highlighted">
+                  Service Provider / KYC
+                </h3>
+                <p class="text-sm text-muted">
+                  แยกข้อมูลผู้ให้บริการและเอกสาร KYC ออกจากเนื้อหา Service
+                </p>
+              </div>
+              <UFormField label="Verified">
+                <USwitch v-model="form.serviceProvider.isVerified" />
+              </UFormField>
+            </div>
+          </template>
+
+          <div class="space-y-4">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <UFormField label="Provider type">
+                <USelect
+                  v-model="form.serviceProvider.providerType"
+                  :items="providerTypeOptions"
+                  value-key="value"
+                  class="w-full"
+                />
+              </UFormField>
+              <UFormField
+                label="Citizen/Juristic ID"
+                help="ใช้เลข 13 หลักเป็น Primary Key ของผู้ให้บริการ"
+              >
+                <UInput
+                  v-model="form.serviceProvider.providerId"
+                  class="w-full"
+                  maxlength="13"
+                  placeholder="1234567890123"
+                />
+              </UFormField>
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-3">
+              <UFormField label="Contact phone">
+                <UInput
+                  v-model="form.serviceProvider.contactPhone"
+                  class="w-full"
+                  placeholder="02-xxx-xxxx"
+                />
+              </UFormField>
+              <UFormField label="Contact email">
+                <UInput
+                  v-model="form.serviceProvider.contactEmail"
+                  class="w-full"
+                  type="email"
+                  placeholder="contact@example.com"
+                />
+              </UFormField>
+              <UFormField label="Google Maps URL">
+                <UInput
+                  v-model="form.serviceProvider.googleMapsUrl"
+                  class="w-full"
+                  placeholder="https://maps.google.com/..."
+                />
+              </UFormField>
+            </div>
+
+            <div class="space-y-3">
+              <div>
+                <h4 class="text-sm font-semibold text-highlighted">
+                  KYC documents
+                </h4>
+                <p class="text-xs text-muted">
+                  ไฟล์ถูกอัปโหลดไปยัง catalog-media bucket และเก็บ path ใน
+                  service_providers.kyc_documents
+                </p>
+              </div>
+              <div
+                v-for="field in kycDocumentFields"
+                :key="field.key"
+                class="rounded-lg border border-default p-3"
+              >
+                <div
+                  class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div class="min-w-0">
+                    <p class="font-medium text-highlighted">
+                      {{ field.label }}
+                    </p>
+                    <p class="text-xs text-muted">{{ field.help }}</p>
+                    <p
+                      v-if="kycDocumentFor(field.key)?.path"
+                      class="mt-1 truncate text-xs text-muted"
+                    >
+                      {{ kycDocumentFor(field.key)?.path }}
+                      <span
+                        v-if="
+                          formatFileSize(kycDocumentFor(field.key)?.sizeBytes)
+                        "
+                      >
+                        ·
+                        {{
+                          formatFileSize(kycDocumentFor(field.key)?.sizeBytes)
+                        }}
+                      </span>
+                    </p>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <UButton
+                      v-if="kycDocumentFor(field.key)?.url"
+                      :to="kycDocumentFor(field.key)?.url"
+                      target="_blank"
+                      size="xs"
+                      variant="soft"
+                      color="neutral"
+                      icon="bx:link-external"
+                    >
+                      View
+                    </UButton>
+                    <UButton
+                      v-if="kycDocumentFor(field.key)?.path"
+                      size="xs"
+                      variant="soft"
+                      color="error"
+                      icon="bx:x"
+                      @click="removeKycDocument(field.key)"
+                    >
+                      Remove
+                    </UButton>
+                    <label class="inline-flex">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        class="hidden"
+                        @change="(event) => uploadKycDocument(field.key, event)"
+                      />
+                      <UButton
+                        as="span"
+                        size="xs"
+                        variant="soft"
+                        icon="bx:upload"
+                        :loading="uploadingKycDocument === field.key"
+                      >
+                        Upload
+                      </UButton>
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </UCard>
 
         <template v-if="form.contentType === 'review'">
           <UFormField

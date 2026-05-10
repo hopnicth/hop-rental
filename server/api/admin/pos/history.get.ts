@@ -126,7 +126,7 @@ export default defineEventHandler(async (event) => {
   let rentalsQuery = adminClient
     .from("rental_bookings")
     .select(
-      "id, created_at, walk_in_phone, user_id, booker_name, booker_phone, status, rental_total, deposit_paid_amount, deposit_payment_status, checkout_total_amount, checkout_paid_amount, checkout_payment_method, pos_branch_id, pos_branch_code, pos_branch_name",
+      "id, created_at, walk_in_phone, user_id, booker_name, booker_phone, status, rental_total, deposit_paid_amount, deposit_payment_method, deposit_payment_status, checkout_total_amount, checkout_paid_amount, checkout_payment_method, pos_branch_id, pos_branch_code, pos_branch_name",
     )
     .gte("created_at", startIso)
     .lt("created_at", endIso)
@@ -190,8 +190,14 @@ export default defineEventHandler(async (event) => {
       createdAt: asText(row.created_at),
       customerName: customerLabel(row),
       amount,
+      rentalTotal: money(row.rental_total),
+      depositPaidAmount: money(row.deposit_paid_amount),
       paymentStatus: paymentStatus(row, asText(row.status) || "unknown"),
-      paymentMethod: asText(row.checkout_payment_method) || "unknown",
+      paymentMethod:
+        asText(row.checkout_payment_method) ||
+        asText(row.deposit_payment_method) ||
+        "unknown",
+      depositPaymentMethod: asText(row.deposit_payment_method) || null,
       branchId: asText(row.pos_branch_id),
       branchName: asText(row.pos_branch_name) || asText(row.pos_branch_code),
     };
