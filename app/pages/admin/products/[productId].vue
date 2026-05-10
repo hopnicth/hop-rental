@@ -99,6 +99,10 @@ type AdminProductDetail = {
 
 const route = useRoute();
 const toast = useToast();
+const { profile } = useUserProfile();
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
 
 const productId = computed(() => String(route.params.productId ?? ""));
 const productApiPath = computed(
@@ -1000,7 +1004,10 @@ async function deleteActiveSkuImage(imageId: string) {
               :class="ADMIN_FIELD_CLASS"
             >
               <div class="flex h-10 items-center">
-                <UCheckbox v-model="productForm.isHidden" />
+                <UCheckbox
+                  v-model="productForm.isHidden"
+                  :disabled="!isSuperAdmin"
+                />
               </div>
             </UFormField>
 

@@ -89,6 +89,7 @@ if (import.meta.client) {
         <UInput
           v-model="search"
           icon="bx:search"
+          class="w-full"
           placeholder="Search by customer, phone, subject..."
         />
 

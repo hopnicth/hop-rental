@@ -33,6 +33,10 @@ type BadgeColor =
 const route = useRoute();
 const toast = useToast();
 const orderId = computed(() => String(route.params.id ?? ""));
+const { profile } = useUserProfile();
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
 
 const order = ref<AdminSaleOrderDetail | null>(null);
 const loading = ref(false);
@@ -128,10 +132,14 @@ function fulfillmentStatusColor(s: OrderFulfillmentStatus): BadgeColor {
 
 // ── Allowed transitions for the current row ──
 const allowedOrderStatuses = computed<OrderStatus[]>(() =>
-  order.value ? (ORDER_STATUS_TRANSITIONS[order.value.status] ?? []) : [],
+  order.value
+    ? (ORDER_STATUS_TRANSITIONS[order.value.status] ?? []).filter(
+        (status) => isSuperAdmin.value || status !== "cancelled",
+      )
+    : [],
 );
 const allowedPaymentStatuses = computed<OrderPaymentStatus[]>(() =>
-  order.value
+  order.value && isSuperAdmin.value
     ? (ORDER_PAYMENT_STATUS_TRANSITIONS[order.value.paymentStatus] ?? [])
     : [],
 );
@@ -380,6 +388,9 @@ async function handleResolveAlert(id: string): Promise<void> {
                 </UButton>
               </div>
             </div>
+            <p v-else-if="!isSuperAdmin" class="text-xs text-muted">
+              Payment status changes are restricted to Super Admin.
+            </p>
 
             <div v-if="allowedFulfillmentStatuses.length > 0">
               <p class="mb-1 text-xs font-semibold uppercase text-muted">
@@ -417,7 +428,7 @@ async function handleResolveAlert(id: string): Promise<void> {
               Action required ({{ openAlerts.length }})
             </h3>
             <UButton
-              v-if="hasInventoryFailure"
+              v-if="hasInventoryFailure && isSuperAdmin"
               color="primary"
               size="sm"
               :loading="applyingInventory"
@@ -471,6 +482,7 @@ async function handleResolveAlert(id: string): Promise<void> {
       <!-- Manual apply-inventory shortcut for paid orders without alerts -->
       <UCard
         v-else-if="
+          isSuperAdmin &&
           order.paymentStatus === 'paid' &&
           order.fulfillmentStatus !== 'shipped'
         "
@@ -582,6 +594,7 @@ async function handleResolveAlert(id: string): Promise<void> {
           <UFormField label="Carrier" hint="e.g. Kerry, Flash, Thailand Post">
             <UInput
               v-model="trackingEdit.carrier"
+              class="w-full"
               placeholder="Carrier name"
               @update:model-value="markTrackingDirty"
             />
@@ -589,6 +602,7 @@ async function handleResolveAlert(id: string): Promise<void> {
           <UFormField label="Tracking number">
             <UInput
               v-model="trackingEdit.number"
+              class="w-full"
               placeholder="Tracking / consignment no."
               @update:model-value="markTrackingDirty"
             />
@@ -601,6 +615,7 @@ async function handleResolveAlert(id: string): Promise<void> {
         >
           <UTextarea
             v-model="trackingEdit.note"
+            class="w-full"
             :rows="2"
             placeholder="Optional notes about the shipment"
             @update:model-value="markTrackingDirty"
@@ -723,11 +738,16 @@ async function handleResolveAlert(id: string): Promise<void> {
           </p>
           <div class="grid gap-3 sm:grid-cols-2">
             <UFormField label="Carrier">
-              <UInput v-model="trackingForm.carrier" placeholder="e.g. Kerry" />
+              <UInput
+                v-model="trackingForm.carrier"
+                class="w-full"
+                placeholder="e.g. Kerry"
+              />
             </UFormField>
             <UFormField label="Tracking number">
               <UInput
                 v-model="trackingForm.number"
+                class="w-full"
                 placeholder="Carrier consignment no."
               />
             </UFormField>
@@ -735,6 +755,7 @@ async function handleResolveAlert(id: string): Promise<void> {
           <UFormField label="Note to customer">
             <UTextarea
               v-model="trackingForm.note"
+              class="w-full"
               :rows="2"
               placeholder="Optional message"
             />

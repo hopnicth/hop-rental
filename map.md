@@ -1,6 +1,6 @@
 # HOP-RENTAL Doc Map
 
-Last updated: 2026-05-07
+Last updated: 2026-05-10
 Purpose: lightweight entrypoint for Augment and developers. Read this first before opening other docs.
 
 ## Read order
@@ -21,7 +21,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `/user/cart` is the unified review page for cart items + draft rental bookings.
 - Sale orders and rental bookings both have customer history pages.
 - Internal backoffice lives under `/admin` and is gated by `public.users.platform_role`.
-- Admin now has product, asset, branch/inventory, order, and rental-booking operations surfaces.
+- Admin now has product, asset, branch/inventory, order, rental-booking, and POS sale/rental operations surfaces.
 
 ## Most important docs by task
 
@@ -62,6 +62,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Internal admin access uses `public.users.platform_role` (`staff`, `super_admin`), not `company_members.role`.
 - `/admin/home-content` is intentionally narrower than general admin and remains `super_admin` only.
 - Homepage partner/logo marquee now comes from `home_partner_logos` with storefront fallback only for older schemas; it is hidden on small mobile in favor of category shortcut cards.
+- Homepage hero banners support a required desktop image plus an optional mobile-specific image; mobile falls back to the desktop image when no phone version is set.
 - Homepage curated product/asset rails are capped at 15 items each.
 - Homepage promotion/service cards are pure references to `content_pages` rows; admin must create the content page first, then pick it from `/admin/home-content`.
 - Homepage category card data is DB-backed through `/api/home-category-cards` with mock fallback only. Desktop sub-option selection routes to `/search?q=...`; mobile icon group cards route to `/search?category=<mainCategoryKey>` for whole-category browsing. Do not use sub-option shortcut keys as `category`.
@@ -85,6 +86,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Content listing pages (`/services`, `/reviews`, `/blog`, `/promotions`) use `content_pages.main_category_key` and persist filters in `?category=...`. Migration `047` is applied; existing content still needs category assignment in `/admin/content`.
 - Future global search should support products, rental assets, services, blogs, reviews, and promotions. Migration `045` for DB-level product dynamic filters is prepared but still pending remote apply.
 - Admin order QR payloads: `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
+- Admin POS payloads/flows are branch-scoped; Sale customer info is optional, Rental customer info is required, and `Scan Customer` lives in the customer info card.
 - Cookie consent is captured by `<CookieConsentBanner />` mounted in both `default` and `admin` layouts. Consent state lives in the `hop-rental-cookie-consent` cookie (180-day TTL, versioned). Categories: `necessary` (always on), `analytics`, `preferences`, `marketing`. Non-essential default off — never load analytics/marketing scripts before checking `useCookieConsent().isAllowed(...)`.
 - Floating UI z-index ladder: ChatFab / MobileFloatingPanel `z-40` → generic Nuxt UI modals `z-50` → cookie consent banner `z-60` → cookie preferences modal `z-70`. Keep ChatFab below modal overlays; do not raise it back to `z-999`.
 
@@ -92,7 +94,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 
 - Storefront: `/`, `/product-{group}`, `/product-{group}/{slug}`, `/product-rental`, `/asset/{slug}`, `/blog`, `/blog/[slug]`, `/services`, `/services/[slug]`, `/promotions`, `/promotions/[slug]`, `/reviews`, `/reviews/[slug]`
 - Customer: `/user/cart`, `/user/orders`, `/user/rentals`
-- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/filter-groups`, `/admin/main-categories`, `/admin/home-categories`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`, `/admin/home-content`, `/admin/content`
+- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/filter-groups`, `/admin/main-categories`, `/admin/home-categories`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/pos`, `/admin/walk-in`, `/admin/rental-bookings/[id]`, `/admin/home-content`, `/admin/content`
 
 ## Key server/API areas
 
@@ -100,6 +102,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Public dynamic filters: `server/api/filter-groups.get.ts`
 - Admin orders: `server/api/admin/orders/*`, `server/utils/admin-orders.ts`
 - Admin rental ops: `server/api/admin/rental-bookings/*`, `server/utils/admin-bookings-ops.ts`
+- Admin POS: `server/api/admin/pos/*`, `server/utils/admin-pos.ts`
 - Admin catalog/assets: `server/api/admin/products/*`, `server/api/admin/assets/*`
 - Admin dynamic filters: `server/api/admin/filter-groups/*`, `server/utils/admin-filter-groups.ts`
 - Public typed categories: `server/api/main-categories.get.ts`, `app/composables/useMainCategories.ts`
@@ -129,6 +132,9 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `045_search_products_dynamic_filters.sql` (prepared; apply status must be checked per environment)
 - `046_main_category_entity_types.sql` (applied; typed `main_categories.entity_types`)
 - `047_content_pages_main_category.sql` (applied; content listing category filters)
+- `058_rental_booking_atomic_overlap_guard.sql` (applied; rental overlap guard)
+- `059_admin_pos_full_function.sql` (applied; branch-aware POS sale/rental support)
+- `060_restore_sku_inventory_kind.sql` (applied; POS sale inventory compatibility)
 
 ## Recommended maintenance rule
 

@@ -1,6 +1,6 @@
 # API Index
 
-Last updated: 2026-05-08
+Last updated: 2026-05-10
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -19,25 +19,26 @@ Read this after `map.md` when debugging or implementing features.
 - Dynamic filter option matching is **case-sensitive exact**: `filter_options.key` must equal one item in `products.tag_keys` / `assets.tag_keys`.
 - `products.category_keys` and `assets.category_keys` are derived compatibility/search arrays. They contain `[main_category_key] + tag_keys`, so do not treat every `category_keys` entry as a public category.
 - Admin POS file uploads use `catalog-media` for customer IDs, deposit proofs, and fulfillment signatures.
+- Admin POS is branch-scoped: staff only see branches from `admin_user_branch_access.can_pos`; `super_admin` sees all active branches.
 
 ## Main read paths
 
-| Surface                        | Main code                                              | Source                                                                                                 |
-| ------------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Product browse/detail          | `app/composables/useProducts.ts`                       | `products`, `product_skus`                                                                             |
-| Asset browse/detail            | `app/composables/useAssets.ts`                         | `assets`, `asset_matches`                                                                              |
-| Cart                           | `app/composables/useCart.ts`                           | `carts`, `cart_items`                                                                                  |
-| Rental booking store           | `app/composables/useBooking.ts`                        | `rental_bookings`                                                                                      |
-| Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                                                |
-| Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                                                       |
-| Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners`, `home_link_cards` joined with `content_pages`, `home_featured_*`, `home_partner_logos` |
-| Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages` (localized TipTap body) joined with `content_page_products`, `content_page_assets`     |
-| Dynamic filter groups          | `app/composables/useFilterGroups.ts`                   | `/api/filter-groups?main_category=...` → `filter_groups`, `filter_options`                             |
-| Typed main categories          | `app/composables/useMainCategories.ts`                 | `/api/main-categories?entityType=...` → `main_categories.entity_types`                                 |
-| Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                          |
-| Admin POS lookup + catalog     | `app/pages/admin/pos.vue`                              | `/api/admin/customers/lookup`, `/api/admin/pos/catalog`, `users`, `walk_in_customers`, `assets`        |
-| Cookie consent                 | `app/composables/useCookieConsent.ts`                  | `hop-rental-cookie-consent` cookie (versioned, 180-day TTL)                                            |
-| Search/filter guideline        | `SEARCH_AND_FILTER_GUIDELINE.md`                       | Current `/search` rules + future multi-type search direction                                           |
+| Surface                        | Main code                                              | Source                                                                                                                                            |
+| ------------------------------ | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Product browse/detail          | `app/composables/useProducts.ts`                       | `products`, `product_skus`                                                                                                                        |
+| Asset browse/detail            | `app/composables/useAssets.ts`                         | `assets`, `asset_matches`                                                                                                                         |
+| Cart                           | `app/composables/useCart.ts`                           | `carts`, `cart_items`                                                                                                                             |
+| Rental booking store           | `app/composables/useBooking.ts`                        | `rental_bookings`                                                                                                                                 |
+| Orders history                 | `app/composables/useOrders.ts`                         | `orders`, `order_items`                                                                                                                           |
+| Branch picker                  | `app/composables/useBranches.ts`                       | `store_branches`                                                                                                                                  |
+| Homepage banners/content/logos | `useBanners.ts`, `useHomeContent.ts`, `usePartners.ts` | `home_banners` (`image_url`, optional `mobile_image_url`), `home_link_cards` joined with `content_pages`, `home_featured_*`, `home_partner_logos` |
+| Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages` (localized TipTap body) joined with `content_page_products`, `content_page_assets`                                                |
+| Dynamic filter groups          | `app/composables/useFilterGroups.ts`                   | `/api/filter-groups?main_category=...` → `filter_groups`, `filter_options`                                                                        |
+| Typed main categories          | `app/composables/useMainCategories.ts`                 | `/api/main-categories?entityType=...` → `main_categories.entity_types`                                                                            |
+| Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                                                                     |
+| Admin POS workflow/history     | `app/pages/admin/pos.vue`                              | `/api/admin/customers/lookup`, `/api/admin/pos/*`, `users`, `walk_in_customers`, `assets`, `product_skus`, `orders`, `rental_bookings`            |
+| Cookie consent                 | `app/composables/useCookieConsent.ts`                  | `hop-rental-cookie-consent` cookie (versioned, 180-day TTL)                                                                                       |
+| Search/filter guideline        | `SEARCH_AND_FILTER_GUIDELINE.md`                       | Current `/search` rules + future multi-type search direction                                                                                      |
 
 ## Catalog / category / dynamic-filter schema map
 
@@ -156,6 +157,8 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 | Admin booking update               | `/api/admin/rental-bookings/[id].patch.ts`                       | `rental_bookings`                        |
 | Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables           |
 | Admin POS booking creation         | `/api/admin/pos/bookings.post.ts`                                | `rental_bookings`, `walk_in_customers`   |
+| Admin POS sale creation            | `/api/admin/pos/sales.post.ts`                                   | `orders`, `order_items`, stock RPC       |
+| Admin POS history cancel           | `/api/admin/pos/history/cancel.post.ts`                          | `orders` / `rental_bookings` status      |
 | Admin customer ID-card upload      | `/api/admin/customers/id-card.post.ts`                           | `users`, `walk_in_customers`, storage    |
 | Admin booking deposit proof upload | `/api/admin/rental-bookings/[id]/deposit-proof.post.ts`          | `rental_booking_deposit_proofs`, storage |
 | Admin booking fulfillment          | `/api/admin/rental-bookings/[id]/fulfillment.post.ts`            | `rental_booking_fulfillments`, storage   |
@@ -205,9 +208,23 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `server/utils/content-pages.ts`
 - `server/utils/content-media.ts`
 
+### Admin POS API map
+
+| Route                                      | Role                | Purpose                                                                   |
+| ------------------------------------------ | ------------------- | ------------------------------------------------------------------------- |
+| `GET /api/admin/pos/branches`              | staff + super_admin | Branch picker scoped by `admin_user_branch_access`; super admin sees all. |
+| `GET /api/admin/pos/catalog`               | staff + super_admin | Rental assets or sale SKUs for the selected branch and mode.              |
+| `POST /api/admin/pos/bookings`             | staff + super_admin | Create confirmed rental/walk-in booking; customer info remains required.  |
+| `POST /api/admin/pos/sales`                | staff + super_admin | Create branch POS sale; customer fields are optional in Sale mode.        |
+| `GET /api/admin/pos/history?date&branchId` | staff + super_admin | Daily sale+rental transaction list plus payment summary.                  |
+| `POST /api/admin/pos/history/cancel`       | super_admin         | Void/cancel POS sale or rental transaction.                               |
+| `GET /api/admin/pos/accounting-export`     | staff + super_admin | CSV export for accounting/reconciliation.                                 |
+| `GET/PATCH /api/admin/pos/branch-access`   | super_admin         | Maintain staff POS branch grants.                                         |
+
 ### `014_homepage_content.sql`
 
 - `home_banners`, `home_link_cards`, `home_featured_products`, `home_featured_assets`
+- `home_banners.mobile_image_url` stores optional phone-specific hero artwork; storefront falls back to `image_url` when it is empty
 
 ## Migration-sensitive behavior
 
@@ -330,6 +347,22 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - Creates `rental_booking_deposit_proofs` for uploaded payment/refund proof files.
 - `GET /api/admin/customers/lookup`, `POST /api/admin/pos/bookings`, and `/admin/pos` all assume this schema.
 
+### `058_rental_booking_atomic_overlap_guard.sql`
+
+- Adds DB-side booking overlap protection for confirmed/picked-up rental rows.
+- POS booking creation and admin/customer confirmation paths recheck availability before status changes.
+
+### `059_admin_pos_full_function.sql`
+
+- Adds `admin_user_branch_access`, POS branch metadata, unified payment fields, scanner code indexes, and POS sale support fields.
+- Sale mode allows optional customer information; Rental/Booking mode still requires an account or walk-in phone.
+- `/admin/pos` uses a segmented Rental/Sale mode control, has branch selection, scanner actions, sale cart, accounting export, and daily history.
+
+### `060_restore_sku_inventory_kind.sql`
+
+- Restores `sku_branch_inventory.inventory_kind` expected by branch-aware sale catalog/inventory logic.
+- POS catalog/sale APIs include compatibility fallback for older schemas, but production DBs should apply this migration.
+
 ### Chat realtime + client conventions
 
 - Supabase Realtime `postgres_changes` are RLS-filtered server-side; the client must call `supabase.realtime.setAuth(accessToken)` before/while subscribing or no events are delivered. `useChat` does this in `subscribe()` and re-applies on `onAuthStateChange`.
@@ -363,7 +396,7 @@ Planned alignment:
 
 1. Is the user authenticated for customer-owned writes?
 2. Does the user have the correct `platform_role` for admin routes?
-3. Is the target DB on migrations `029` through `047`? Note: `045` may intentionally remain pending if DB-level `/search` dynamic filtering has not been enabled yet.
+3. Is the target DB on migrations `029` through `060` for POS/order work? Note: `045` may intentionally remain pending if DB-level `/search` dynamic filtering has not been enabled yet.
 4. If search fails on PostgREST, are you using `*term*` wildcards?
 5. If asset booking fails, is `asset_id` valid and allowed by the current schema?
 6. If booking docs fail to delete cleanly, are `storage_bucket` and `storage_path` present?
@@ -377,6 +410,8 @@ Planned alignment:
 14. If dynamic filter auto-assignment does not appear, confirm the value is in `tag_keys` (not only `search_keywords`), the matching `filter_options.key` is exact/case-sensitive, and the row's `main_category_key` matches the option's group.
 15. If tags appear as public categories, check code that reads `category_keys`; whitelist against `main_categories` or static `mainCategories` before rendering category UI.
 16. If `/search` filters flicker or disappear after clearing an option, check whether UI-added dynamic groups are being stored only inside active filter values; see `SEARCH_AND_FILTER_GUIDELINE.md`.
+17. If POS catalog errors mention `inventory_kind`, apply migration `060` and confirm `sku_branch_inventory` rows exist for the selected branch.
+18. If a staff user sees no POS branches/history, check `admin_user_branch_access.can_pos`; `super_admin` bypasses this grant table.
 
 ## Cross refs
 

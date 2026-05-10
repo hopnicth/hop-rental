@@ -1,6 +1,6 @@
 # Admin MVP Action Plan
 
-Last updated: 2026-05-07
+Last updated: 2026-05-10
 Owner: continuity doc for future sessions
 Status legend: `[ ]` not started, `[/]` in progress, `[x]` done, `[-]` dropped
 
@@ -32,6 +32,7 @@ what was delivered; do not re-expand into checklists unless a regression appears
 - [x] **Home content live-reference CMS** — promotion/service cards on the home rail are now `content_pages` references; admin picks a CMS page instead of typing title/excerpt/image (migration `038`)
 - [x] **Home category cards** — groups/options are DB-backed and editable from `/admin/home-categories`; storefront sends only `q` to `/search` (migration `044`)
 - [x] **Content category filters** — `/admin/content` assigns typed Main Category and `/services`, `/reviews`, `/blog`, `/promotions` filter via `?category=...` (migration `047`)
+- [x] **Admin POS rollout** — customer scanner moved into customer card, Rental/Sale mode tabs, optional customer for Sale, branch-scoped catalog, sale cart, daily history, accounting CSV, super-admin void/cancel, and print placeholders
 
 ### Phase 2 — media/admin usability (mostly done)
 
@@ -49,6 +50,7 @@ what was delivered; do not re-expand into checklists unless a regression appears
 - `/admin/products`, `/admin/assets`, `/admin/branches-inventory`
 - `/admin/filter-groups` (super-admin dynamic filter setup)
 - `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`
+- `/admin/pos`, `/admin/walk-in` (POS route alias)
 - `/admin/home-content` (super_admin only), `/admin/home-categories`, `/admin/content`
 
 ## Current important server areas
@@ -56,6 +58,7 @@ what was delivered; do not re-expand into checklists unless a regression appears
 - `server/api/admin/products/*`, `server/api/admin/assets/*`
 - `server/api/admin/filter-groups/*`, `server/utils/admin-filter-groups.ts`
 - `server/api/admin/orders/*`, `server/api/admin/rental-bookings/*`
+- `server/api/admin/pos/*`, `server/utils/admin-pos.ts`
 - `server/api/admin/home-content/*`, `server/api/admin/home-categories/*`, `server/utils/admin-home.ts`, `server/utils/home-categories.ts`
 - `server/api/admin/content/*`, `server/utils/content-pages.ts`
 - `server/utils/admin-orders.ts`, `server/utils/admin-bookings-ops.ts`
@@ -64,10 +67,10 @@ what was delivered; do not re-expand into checklists unless a regression appears
 
 1. [ ] Decide/apply migration `045` for DB-level `/search` dynamic filters
 2. [ ] Backfill existing `content_pages.main_category_key` values from `/admin/content`
-3. [ ] Improve validation/messages on remaining admin forms
-4. [ ] Add storefront quick-links for spot checking product/asset/admin edits
-5. [ ] Add checklist-template management polish if ops team needs more control
-6. [ ] Continue documenting which admin flows are staff vs super-admin only
+3. [ ] Implement official POS document generation: receipt, abbreviated tax invoice, full tax invoice, delivery note
+4. [ ] Improve validation/messages on remaining admin forms
+5. [ ] Add storefront quick-links for spot checking product/asset/admin edits
+6. [ ] Add robust POS offline queue if front-desk offline use becomes frequent
 
 ## Notes to preserve
 
@@ -75,6 +78,8 @@ what was delivered; do not re-expand into checklists unless a regression appears
 - Admin order QR payloads are `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
 - Incomplete sale/rental rows in the admin order list should remain visually highlighted.
 - Booker contact on a rental booking should be preferred over account contact when present.
+- POS Sale mode customer info is optional; Rental/Booking mode still requires customer identity/contact.
+- POS history cancel is `super_admin` only; print buttons are UI placeholders until document APIs are added.
 - Homepage admin covers banners, partner logos, curated featured rails, and CMS-linked promotion/service cards.
 - Promotion/service rail rule: a `content_pages` row of the matching type must exist before it can be linked from `/admin/home-content`. Empty rails render empty states; do not reintroduce random fallbacks.
 - Content Pages admin uses a localized TipTap editor (`th`/`en`/`cn`/`jp`) and shares the `catalog-media` bucket via the `content-pages/*` prefix.

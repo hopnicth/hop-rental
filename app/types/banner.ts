@@ -14,7 +14,7 @@ export interface BannerSlide {
   ctaLabel: LocalizedString;
   /** Desktop image URL */
   imageUrl: string;
-  /** Optional mobile image URL */
+  /** Optional phone-specific image URL; storefront falls back to imageUrl */
   mobileImageUrl?: string;
   /** Link URL set by Admin */
   linkUrl: string;

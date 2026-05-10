@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import type { AuthError } from "@supabase/supabase-js";
+import {
+  getPasswordPolicyChecks,
+  isPasswordPolicyMet,
+  PASSWORD_POLICY_DESCRIPTION,
+} from "~/utils/password-policy";
 
 definePageMeta({ layout: "default" });
 
@@ -46,32 +51,13 @@ const emailError = computed(() => {
   }
   return null;
 });
-const passwordChecks = computed(() => [
-  {
-    label: "อย่างน้อย 6 ตัวอักษร",
-    met: password.value.length >= 6,
-  },
-  {
-    label: "มีตัวพิมพ์เล็กอย่างน้อย 1 ตัว",
-    met: /[a-z]/.test(password.value),
-  },
-  {
-    label: "มีตัวพิมพ์ใหญ่อย่างน้อย 1 ตัว",
-    met: /[A-Z]/.test(password.value),
-  },
-  {
-    label: "มีตัวเลขอย่างน้อย 1 ตัว",
-    met: /[0-9]/.test(password.value),
-  },
-]);
-const isStrongPassword = computed(() =>
-  passwordChecks.value.every((check) => check.met),
-);
+const passwordChecks = computed(() => getPasswordPolicyChecks(password.value));
+const isStrongPassword = computed(() => isPasswordPolicyMet(password.value));
 const passwordError = computed(() => {
   if (authMode.value !== "password") return null;
   if (!password.value) return "กรุณากรอกรหัสผ่าน";
   if (accountMode.value === "up" && !isStrongPassword.value) {
-    return "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร และประกอบด้วยตัวพิมพ์ใหญ่ ตัวพิมพ์เล็ก และตัวเลข";
+    return PASSWORD_POLICY_DESCRIPTION;
   }
   return null;
 });
@@ -307,6 +293,14 @@ async function onSubmit() {
               @blur="touched.password = true"
             />
           </UFormField>
+          <div v-if="accountMode === 'in'" class="-mt-3 text-right">
+            <UButton
+              to="/user/forgot-password"
+              variant="link"
+              class="p-0 text-xs"
+              label="ลืมรหัสผ่าน?"
+            />
+          </div>
           <div class="rounded-lg bg-elevated/60 px-3 py-2 text-xs text-muted">
             <p class="font-medium text-default">ข้อกำหนดรหัสผ่าน</p>
             <ul class="mt-1 space-y-1">

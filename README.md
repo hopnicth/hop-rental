@@ -1,6 +1,6 @@
 # HOP-RENTAL
 
-Last updated: 2026-05-08
+Last updated: 2026-05-10
 
 HOP-RENTAL is a Nuxt-based commerce + rental platform for HOPNIC.
 This single app contains storefront, customer self-service, and internal admin surfaces.
@@ -13,8 +13,8 @@ This single app contains storefront, customer self-service, and internal admin s
 - Universal Search across products, rental assets, services, reviews, blogs, and promotions
 - Mobile Home category shortcut cards backed by the same Home category-card data
 - Customer order history and rental history
-- Internal admin for catalog, assets, stock, orders, and rental operations
-- Admin POS for phone-first customer lookup, walk-in rentals, deposit capture, and pickup/return fulfillment
+- Internal admin for catalog, assets, stock, orders, rental operations, and POS
+- Admin POS for branch-scoped sale/rental transactions, optional Sale-mode customer info, walk-in rentals, daily history, and accounting export
 
 ## Quick start
 
@@ -90,6 +90,8 @@ npm run build
 - Rental is now `asset`-first.
 - Rental bookings are created as `draft` and confirmed from `/user/cart`.
 - Admin POS can create `confirmed` rental bookings directly for account customers or walk-ins.
+- Admin POS can create Sale-mode orders without customer info; customer scan/search is optional and lives inside the customer info card.
+- POS transaction history is daily/branch-scoped; only `super_admin` can void/cancel rows.
 - Rental bookings must have either `user_id` or `walk_in_phone`.
 - Rental booking status now includes `picked_up` and `returned` for fulfillment tracking.
 - Booking cancellation is soft-delete via `status = 'cancelled'`.

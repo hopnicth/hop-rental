@@ -51,6 +51,7 @@ const editingId = ref<string | null>(null);
 const saving = ref(false);
 const deletingId = ref<string | null>(null);
 const uploadingCover = ref(false);
+const visibilitySavingId = ref<string | null>(null);
 
 const contentTypeOptions: Array<{
   value: ContentType;
@@ -255,6 +256,36 @@ async function deleteItem(item: AdminContentPage) {
   }
 }
 
+async function toggleContentVisibility(
+  item: AdminContentPage,
+  active: boolean,
+) {
+  if (item.isActive === active) return;
+  visibilitySavingId.value = item.id;
+  try {
+    await $fetch(`/api/admin/content/${encodeURIComponent(item.id)}`, {
+      method: "PATCH",
+      body: { ...item, body: item.body, isActive: active },
+    });
+    item.isActive = active;
+    if (editingId.value === item.id) form.isActive = active;
+    toast.add({
+      title: active ? "Content shown" : "Content hidden",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "Visibility update failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    visibilitySavingId.value = null;
+  }
+}
+
 async function uploadCover(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -391,6 +422,17 @@ async function uploadCover(event: Event) {
               </p>
             </div>
             <div class="flex flex-wrap gap-2">
+              <div class="flex items-center gap-2 text-xs text-muted">
+                <span>{{ item.isActive ? "Shown" : "Hidden" }}</span>
+                <USwitch
+                  :model-value="item.isActive"
+                  :disabled="visibilitySavingId === item.id"
+                  @update:model-value="
+                    (active: boolean) =>
+                      void toggleContentVisibility(item, active)
+                  "
+                />
+              </div>
               <UButton
                 :to="pagePath(item)"
                 target="_blank"
@@ -470,7 +512,11 @@ async function uploadCover(event: Event) {
             </select>
           </UFormField>
           <UFormField label="Slug">
-            <UInput v-model="form.slug" placeholder="my-content-slug" />
+            <UInput
+              v-model="form.slug"
+              class="w-full"
+              placeholder="my-content-slug"
+            />
           </UFormField>
         </div>
 
@@ -495,36 +541,36 @@ async function uploadCover(event: Event) {
 
         <div class="grid gap-3 sm:grid-cols-2">
           <UFormField label="Title TH"
-            ><UInput v-model="form.titleTh"
+            ><UInput v-model="form.titleTh" class="w-full"
           /></UFormField>
           <UFormField label="Title EN"
-            ><UInput v-model="form.titleEn"
+            ><UInput v-model="form.titleEn" class="w-full"
           /></UFormField>
           <UFormField label="Title CN"
-            ><UInput v-model="form.titleCn"
+            ><UInput v-model="form.titleCn" class="w-full"
           /></UFormField>
           <UFormField label="Title JP"
-            ><UInput v-model="form.titleJp"
+            ><UInput v-model="form.titleJp" class="w-full"
           /></UFormField>
         </div>
 
         <UFormField label="Excerpt TH"
-          ><UTextarea v-model="form.excerptTh" :rows="2"
+          ><UTextarea v-model="form.excerptTh" class="w-full" :rows="2"
         /></UFormField>
         <UFormField label="Excerpt EN"
-          ><UTextarea v-model="form.excerptEn" :rows="2"
+          ><UTextarea v-model="form.excerptEn" class="w-full" :rows="2"
         /></UFormField>
         <div class="grid gap-3 sm:grid-cols-2">
           <UFormField label="Excerpt CN"
-            ><UTextarea v-model="form.excerptCn" :rows="2"
+            ><UTextarea v-model="form.excerptCn" class="w-full" :rows="2"
           /></UFormField>
           <UFormField label="Excerpt JP"
-            ><UTextarea v-model="form.excerptJp" :rows="2"
+            ><UTextarea v-model="form.excerptJp" class="w-full" :rows="2"
           /></UFormField>
         </div>
 
         <UFormField label="Cover image URL">
-          <UInput v-model="form.coverImageUrl" />
+          <UInput v-model="form.coverImageUrl" class="w-full" />
         </UFormField>
         <div class="flex flex-wrap items-center gap-3">
           <label class="inline-flex">
@@ -600,11 +646,12 @@ async function uploadCover(event: Event) {
 
         <div class="grid gap-3 sm:grid-cols-3">
           <UFormField label="Sort order"
-            ><UInput v-model="form.sortOrder" type="number"
+            ><UInput v-model="form.sortOrder" class="w-full" type="number"
           /></UFormField>
           <UFormField label="Published at"
             ><UInput
               v-model="form.publishedAt"
+              class="w-full"
               placeholder="2026-04-27T09:00:00Z"
           /></UFormField>
           <UFormField label="Active"

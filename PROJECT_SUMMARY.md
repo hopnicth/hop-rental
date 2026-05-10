@@ -1,6 +1,6 @@
 # HOP-RENTAL Project Summary
 
-Last updated: 2026-05-08
+Last updated: 2026-05-10
 Audience: developers, operators, future Augment sessions
 
 ## Purpose
@@ -34,6 +34,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Submit order from `/user/cart`
 - Customer sees history in `/user/orders`
 - Admin manages status from `/admin/orders`
+- Staff can create branch-scoped POS sales from `/admin/pos`; customer info is optional in Sale mode
 
 ### Rental
 
@@ -63,7 +64,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Storefront card images are standardized to square `1:1` media frames (`aspect-square` + `object-cover`) so responsive cards preserve consistent image geometry
 - Partner logos are DB-backed, support SVG uploads, and render through a compact 40px marquee with hover-pause only
 - Global Nuxt UI theme tokens are customized in `app/assets/css/main.css` for HOP colors and a unified `0.2rem` radius scale
-- Hero banners are DB-backed, autoplay with loop, and align title/subtitle/CTA to the right with a right-side readability gradient
+- Hero banners are DB-backed, autoplay with loop, align title/subtitle/CTA to the right with a right-side readability gradient, and can use a dedicated mobile image (`mobile_image_url`) with desktop fallback when omitted
 - Card-based lists/grids/rails share a standard loading state: `<CommonLoadingCat />` (sleeping-cat GIF at `public/loading-cat.gif`) plus shape-matched `<ProductsCatalogCardSkeleton />` / `<HomeHomeLinkCardSkeleton />` while async data is loading; see `API_INDEX.md` for the required pattern
 - Dynamic filter groups/options are super-admin managed and auto-assigned from exact `tag_keys` matches for both products and assets. Product/asset `filter_keys` are trigger-generated for fast public filtering; admin product assignment UI is read-only.
 - Header quick search and `/search` are now Universal Search surfaces covering products, rental assets, services, reviews, blog articles, and promotions. Results are grouped/scoped with `all`, `product`, `rental`, `service`, `review`, `blog`, and `promotion` tabs.
@@ -90,6 +91,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Incomplete rows are highlighted visually
 - Sale orders support admin tracking updates
 - `/admin/pos` combines customer lookup, walk-in capture, rentable-asset search, deposit entry, and immediate booking creation
+- `/admin/pos` now has separated Rental/Sale mode tabs, branch-scoped catalog, sale cart, unified payment capture, and daily POS transaction history
+- POS history shows sale+rental rows with daily summaries; print buttons are placeholders and `super_admin` can void/cancel rows
 - POS supports ID-card upload for account or walk-in customers and reuses `walk_in_customers` as the phone-primary record
 - POS pickup flow stores a customer signature and creates a fulfillment audit row before moving the booking to `picked_up`
 - POS return flow records a fulfillment event and moves the booking to `returned`
@@ -156,6 +159,9 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Rental is `asset`-first; product matching is recommended, not always required.
 - `rental_bookings` now allow account-backed or walk-in bookings, but each row must have either `user_id` or `walk_in_phone`.
 - POS-created rentals are inserted directly as `confirmed` bookings instead of customer-side `draft` bookings.
+- POS Sale mode does not require customer info; POS Rental/Booking mode still requires an account or walk-in phone.
+- POS staff branch access is controlled by `admin_user_branch_access`; `super_admin` sees all active branches.
+- POS sale void/cancel marks the transaction cancelled; stock reversal should be handled by the controlled stock adjustment process until a safe reverse-inventory RPC exists.
 - Rental fulfillment introduces `picked_up` and `returned` statuses; POS pickup requires a confirmed booking and POS return requires a picked-up booking.
 - Booking cancellation is soft-delete.
 - Booker phone/name should be preferred over account phone/name when present on a booking.
@@ -173,9 +179,9 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 1. Decide/apply migration `045` when ready to enable DB-level `/search` dynamic filtering
 2. Backfill `main_category_key` on existing `content_pages` rows so public content filters show useful results
 3. Search schema alignment: consolidate current hybrid Universal Search into a server-owned global endpoint/RPC for ranking and facets
-4. Customer-facing rental documents/history polish
+4. Official POS receipt/tax invoice/delivery-note PDF generation
 5. Backoffice checklist-template management polish
-6. Quotation/document/payment follow-through not yet implemented end-to-end
+6. Robust offline POS queue with idempotency keys
 
 ## Read next
 

@@ -41,10 +41,12 @@ type MainCategoryItem = {
 };
 
 const { profile } = useUserProfile();
+const toast = useToast();
 
 const searchQuery = ref("");
 const selectedCategory = ref("all");
 const visibilityFilter = ref("all");
+const visibilitySavingId = ref<string | null>(null);
 
 const visibilityOptions = [
   { label: "All visibility", value: "all" },
@@ -158,6 +160,38 @@ function formatPriceRange(item: AdminProductListItem) {
 async function refreshAll() {
   await Promise.all([refresh(), refreshCategories()]);
 }
+
+async function toggleProductVisibility(
+  item: AdminProductListItem,
+  visible: boolean,
+) {
+  if (!isSuperAdmin.value) return;
+  const nextHidden = !visible;
+  if (item.isHidden === nextHidden) return;
+
+  visibilitySavingId.value = item.id;
+  try {
+    await $fetch(`/api/admin/products/${encodeURIComponent(item.id)}`, {
+      method: "PATCH",
+      body: { isHidden: nextHidden },
+    });
+    item.isHidden = nextHidden;
+    toast.add({
+      title: nextHidden ? "Product hidden" : "Product shown",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "Visibility update failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    visibilitySavingId.value = null;
+  }
+}
 </script>
 
 <template>
@@ -225,6 +259,7 @@ async function refreshAll() {
             v-model="searchQuery"
             icon="bx:search"
             placeholder="Search by name, slug, brand, tags, keywords"
+            class="w-full"
           />
         </UFormField>
 
@@ -233,6 +268,7 @@ async function refreshAll() {
             v-model="selectedCategory"
             :items="categoryOptions"
             value-key="value"
+            class="w-full"
           />
         </UFormField>
 
@@ -241,6 +277,7 @@ async function refreshAll() {
             v-model="visibilityFilter"
             :items="visibilityOptions"
             value-key="value"
+            class="w-full"
           />
         </UFormField>
       </div>
@@ -375,6 +412,20 @@ async function refreshAll() {
               >
                 Open detail
               </UButton>
+              <div
+                v-if="isSuperAdmin"
+                class="flex items-center justify-end gap-2 text-xs text-muted"
+              >
+                <span>{{ item.isHidden ? "Hidden" : "Shown" }}</span>
+                <USwitch
+                  :model-value="!item.isHidden"
+                  :disabled="visibilitySavingId === item.id"
+                  @update:model-value="
+                    (visible: boolean) =>
+                      void toggleProductVisibility(item, visible)
+                  "
+                />
+              </div>
             </div>
           </div>
         </div>

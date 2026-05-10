@@ -1,6 +1,6 @@
 # Rental POS Manual
 
-Last updated: 2026-05-08
+Last updated: 2026-05-10
 Audience: Admin, front-desk staff, rental operations
 
 ---
@@ -18,6 +18,8 @@ Audience: Admin, front-desk staff, rental operations
 
 `/admin/walk-in` เป็น route alias ที่ redirect ไปหน้าเดียวกัน
 
+หน้าเดียวกันนี้มี **Sale Mode** ด้วย แต่คู่มือนี้โฟกัสงานเช่า/จอง; ใน Sale Mode ข้อมูลลูกค้าเป็น optional และปุ่ม `Scan Customer` อยู่ในกล่อง `1) Customer info (Optional)`
+
 ---
 
 ## 2. สิทธิ์ที่ใช้งานได้
@@ -26,6 +28,7 @@ Audience: Admin, front-desk staff, rental operations
 - `super_admin`
 
 ผู้ใช้ที่ไม่มี `platform_role` ระดับนี้ไม่ควรเข้าหน้า POS ได้
+staff ต้องมี branch grant ใน `admin_user_branch_access.can_pos`; `super_admin` เห็นทุกสาขาที่ active
 
 ---
 
@@ -145,6 +148,8 @@ POS รองรับ method:
 - หลักฐานมัดจำและเอกสาร booking เป็นคนละชุดข้อมูลกัน
 - หน้า POS ตอนนี้โฟกัสที่การเก็บ proof ฝั่ง payment; proof ฝั่ง refund มี schema รองรับแต่ยังไม่ใช่ flow หลักของ UI
 - ถ้าต้องทำ checklist/เอกสารเชิงลึกต่อ booking ให้เปิด `/admin/rental-bookings/[id]`
+- POS Transaction History เป็นมุมมองรายวันตามสาขา; ปุ่ม Void/Cancel แสดงเฉพาะ `super_admin`
+- ปุ่มพิมพ์ใบกำกับภาษี Full/Abbreviated ตอนนี้เป็น placeholder จนกว่าจะมี document API
 
 ---
 

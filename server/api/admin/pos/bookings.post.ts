@@ -17,6 +17,11 @@ import {
   primaryMatchedProductId,
   type AdminPosAssetRow,
 } from "~~/server/utils/admin-pos";
+import {
+  assertRentalBookingAvailability,
+  isRentalBookingConflictError,
+  throwRentalBookingConflict,
+} from "~~/server/utils/rental-booking-availability";
 
 interface PosBookingPayload {
   userId?: string | null;
@@ -26,8 +31,12 @@ interface PosBookingPayload {
   assetId?: string;
   productId?: string;
   skuId?: string;
+  branchId?: string | null;
   startDate?: string;
   endDate?: string;
+  checkoutTotalAmount?: number;
+  checkoutPaidAmount?: number;
+  checkoutPaymentMethod?: RentalDepositPaymentMethod | null;
   depositPaidAmount?: number;
   depositPaymentMethod?: RentalDepositPaymentMethod | null;
   depositPaymentStatus?: RentalDepositPaymentStatus | null;
@@ -91,6 +100,7 @@ export default defineEventHandler(
     const bookerName = asText(body.bookerName);
     const bookerPhone = asText(body.bookerPhone || body.walkInPhone);
     const assetId = asText(body.assetId || body.skuId || body.productId);
+    const branchId = asText(body.branchId);
     const startDate = asText(body.startDate);
     const endDate = asText(body.endDate);
 
@@ -106,7 +116,26 @@ export default defineEventHandler(
         statusMessage: "Asset is required",
       });
     }
+    if (!branchId) {
+      throw createError({
+        statusCode: 422,
+        statusMessage: "Branch is required",
+      });
+    }
     const rentalDays = diffDays(startDate, endDate);
+
+    const { data: branch, error: branchError } = await adminClient
+      .from("store_branches")
+      .select("id, code, name_th, name_en, is_active")
+      .eq("id", branchId)
+      .eq("is_active", true)
+      .single();
+    if (branchError || !branch) {
+      throw createError({
+        statusCode: 422,
+        statusMessage: "branchId must reference an active branch",
+      });
+    }
 
     const { data: asset, error: assetError } = await adminClient
       .from("assets")
@@ -185,6 +214,19 @@ export default defineEventHandler(
         : "unpaid";
     const assetName = a.name_th || a.name_en || a.code || a.id;
     const matchedProductId = primaryMatchedProductId(a);
+    const branchName = String(branch.name_th ?? branch.name_en ?? "");
+    const checkoutTotalAmount = money(body.checkoutTotalAmount);
+    const checkoutPaidAmount = money(body.checkoutPaidAmount);
+    const checkoutMethod = asText(body.checkoutPaymentMethod);
+    const checkoutPaymentMethod = PAYMENT_METHODS.has(checkoutMethod)
+      ? (checkoutMethod as RentalDepositPaymentMethod)
+      : depositPaymentMethod;
+
+    await assertRentalBookingAvailability(adminClient, {
+      assetId: a.id,
+      startDate,
+      endDate,
+    });
 
     const { data: inserted, error: insertError } = await adminClient
       .from("rental_bookings")
@@ -203,6 +245,8 @@ export default defineEventHandler(
         matched_product_name: matchedProductId ? assetName : null,
         product_name: assetName,
         thumbnail: a.thumbnail_url,
+        hub_id: String(branch.id),
+        hub_name: branchName,
         start_date: startDate,
         end_date: endDate,
         rental_days: rentalDays,
@@ -224,14 +268,26 @@ export default defineEventHandler(
           paidAmount > 0 ? "not_refunded" : "not_applicable",
         deposit_paid_at: paidAmount > 0 ? new Date().toISOString() : null,
         deposit_notes: asText(body.depositNotes) || null,
+        checkout_total_amount:
+          checkoutTotalAmount || pricingBreakdown.total + paidAmount,
+        checkout_paid_amount: checkoutPaidAmount || paidAmount,
+        checkout_payment_method: checkoutPaymentMethod,
+        pos_branch_id: String(branch.id),
+        pos_branch_code: String(branch.code ?? ""),
+        pos_branch_name: branchName,
+        pos_staff_user_id: adminUserId,
       })
       .select(ADMIN_RENTAL_BOOKING_LIST_SELECT)
       .single();
-    if (insertError)
+    if (insertError) {
+      if (isRentalBookingConflictError(insertError)) {
+        throwRentalBookingConflict();
+      }
       throw createError({
         statusCode: 500,
         statusMessage: insertError.message,
       });
+    }
 
     return { booking: mapAdminRentalBookingRow(inserted) };
   },

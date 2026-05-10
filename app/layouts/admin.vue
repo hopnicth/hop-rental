@@ -8,6 +8,11 @@ interface AdminNavItem {
   badge?: string | null;
 }
 
+interface AdminNavGroup {
+  label: string;
+  items: AdminNavItem[];
+}
+
 const route = useRoute();
 const { profile } = useUserProfile();
 const { unresolvedTotal, refreshUnresolvedCount, subscribe, unsubscribe } =
@@ -24,30 +29,53 @@ const alertsBadge = computed(() => {
   return unresolvedTotal.value > 99 ? "99+" : String(unresolvedTotal.value);
 });
 
-const navItems = computed<AdminNavItem[]>(() => {
-  const items: AdminNavItem[] = [
-    { label: "Overview", to: "/admin" },
-    { label: "Products", to: "/admin/products" },
-    { label: "Assets", to: "/admin/assets" },
-    { label: "Branch & Inventory", to: "/admin/branches-inventory" },
-    { label: "Orders", to: "/admin/orders" },
-    { label: "POS", to: "/admin/pos" },
-    { label: "Alerts", to: "/admin/alerts", badge: alertsBadge.value },
-    { label: "Messages", to: "/admin/messages" },
+const navGroups = computed<AdminNavGroup[]>(() => {
+  const groups: AdminNavGroup[] = [
+    {
+      label: "Main",
+      items: [{ label: "Overview", to: "/admin" }],
+    },
+    {
+      label: "Catalog",
+      items: [
+        { label: "Products", to: "/admin/products" },
+        { label: "Assets", to: "/admin/assets" },
+      ],
+    },
+    {
+      label: "Rental & ops",
+      items: [
+        { label: "Branch & Inventory", to: "/admin/branches-inventory" },
+        { label: "Orders", to: "/admin/orders" },
+        { label: "POS", to: "/admin/pos" },
+        { label: "Alerts", to: "/admin/alerts", badge: alertsBadge.value },
+        { label: "Messages", to: "/admin/messages" },
+      ],
+    },
   ];
 
   if (profile.value?.platformRole === "super_admin") {
-    items.push(
-      { label: "Content", to: "/admin/content" },
-      { label: "Home Content", to: "/admin/home-content" },
-      { label: "Home Categories", to: "/admin/home-categories" },
-      { label: "Settings", to: "/admin/settings" },
-      { label: "Main Categories", to: "/admin/main-categories" },
-      { label: "Filter Groups", to: "/admin/filter-groups" },
+    groups.push(
+      {
+        label: "Taxonomy",
+        items: [
+          { label: "Main Categories", to: "/admin/main-categories" },
+          { label: "Filter Groups", to: "/admin/filter-groups" },
+        ],
+      },
+      {
+        label: "Content",
+        items: [
+          { label: "Content", to: "/admin/content" },
+          { label: "Home Content", to: "/admin/home-content" },
+          { label: "Home Categories", to: "/admin/home-categories" },
+          { label: "Settings", to: "/admin/settings" },
+        ],
+      },
     );
   }
 
-  return items;
+  return groups;
 });
 </script>
 
@@ -90,26 +118,40 @@ const navItems = computed<AdminNavItem[]>(() => {
           </div>
         </div>
 
-        <div class="mt-4 flex flex-wrap gap-2">
-          <UButton
-            v-for="item in navItems"
-            :key="item.to"
-            :to="item.to"
-            :variant="route.path === item.to ? 'solid' : 'soft'"
-            color="primary"
-            size="sm"
+        <div class="mt-5 space-y-3">
+          <div
+            v-for="group in navGroups"
+            :key="group.label"
+            class="rounded-xl border border-default bg-(--ui-bg-elevated)/40 p-3"
           >
-            {{ item.label }}
-            <UBadge
-              v-if="item.badge"
-              color="error"
-              variant="solid"
-              size="xs"
-              class="ml-1"
+            <p
+              class="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted"
             >
-              {{ item.badge }}
-            </UBadge>
-          </UButton>
+              {{ group.label }}
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <UButton
+                v-for="item in group.items"
+                :key="item.to"
+                :to="item.to"
+                :variant="route.path === item.to ? 'solid' : 'soft'"
+                color="primary"
+                size="sm"
+                class="justify-start"
+              >
+                {{ item.label }}
+                <UBadge
+                  v-if="item.badge"
+                  color="error"
+                  variant="solid"
+                  size="xs"
+                  class="ml-1"
+                >
+                  {{ item.badge }}
+                </UBadge>
+              </UButton>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -861,6 +861,18 @@ export function useBooking() {
   ): Promise<boolean> {
     return (async () => {
       try {
+        if (status === "confirmed") {
+          const response = await $fetch<{ booking: Record<string, unknown> }>(
+            `/api/rental-bookings/${encodeURIComponent(bookingId)}/confirm`,
+            { method: "POST" },
+          );
+
+          replaceStoreBooking(
+            mapRowToBooking(response.booking, getBookingById(bookingId)),
+          );
+          return true;
+        }
+
         const { data, error } = await supabase
           .from("rental_bookings")
           .update({ status })

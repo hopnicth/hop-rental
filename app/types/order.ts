@@ -2,7 +2,15 @@ import type { Address } from "~/types/user";
 import type { ShippingBreakdown } from "~/utils/shipping";
 
 export type OrderCheckoutMode = "payment" | "quotation";
-export type OrderPaymentMethod = "credit_card" | "promptpay" | "company_credit";
+export type OrderPaymentMethod =
+  | "credit_card"
+  | "promptpay"
+  | "company_credit"
+  | "cash"
+  | "qr_transfer"
+  | "bank_transfer"
+  | "card"
+  | "other";
 export type OrderStatus = "submitted" | "confirmed" | "completed" | "cancelled";
 export type OrderPaymentStatus =
   | "not_applicable"

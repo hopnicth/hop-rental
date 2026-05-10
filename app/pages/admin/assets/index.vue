@@ -180,6 +180,7 @@ type FormState = {
 };
 
 const toast = useToast();
+const { profile } = useUserProfile();
 const formatter = new Intl.NumberFormat("th-TH");
 const searchQuery = ref("");
 const selectedCategory = ref("all");
@@ -433,6 +434,11 @@ const uploadingThumb = ref(false);
 const savingGallery = ref(false);
 const thumbnailFiles = ref<File[]>([]);
 const detailBlocksUploading = ref(false);
+const visibilitySavingId = ref<string | null>(null);
+
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
 
 const { data: branchesData } = await useFetch<{ items: BranchOption[] }>(
   "/api/admin/branches",
@@ -648,6 +654,39 @@ function patchListItem(id: string, patch: Partial<ListItem>) {
     ...list[index],
     ...patch,
   };
+}
+
+async function toggleAssetVisibility(item: ListItem, visible: boolean) {
+  if (!isSuperAdmin.value) return;
+  const nextHidden = !visible;
+  if (item.isHidden === nextHidden) return;
+
+  visibilitySavingId.value = item.id;
+  try {
+    const result = await $fetch<{ item: Detail }>(
+      `/api/admin/assets/${encodeURIComponent(item.id)}`,
+      { method: "PATCH", body: { isHidden: nextHidden } },
+    );
+    patchListItem(item.id, { isHidden: result.item.isHidden });
+    if (detail.value?.id === item.id) {
+      detail.value = result.item;
+      form.isHidden = result.item.isHidden;
+    }
+    toast.add({
+      title: nextHidden ? "Asset hidden" : "Asset shown",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "Visibility update failed",
+      description: getAdminApiErrorMessage(err, "Unknown error"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    visibilitySavingId.value = null;
+  }
 }
 
 function resetFormState() {
@@ -1490,6 +1529,7 @@ async function deleteStockRow(id: string) {
             v-model="searchQuery"
             icon="bx:search"
             placeholder="Search by code, slug, name, brand, tags, keywords"
+            class="w-full"
           />
         </UFormField>
 
@@ -1498,6 +1538,7 @@ async function deleteStockRow(id: string) {
             v-model="selectedCategory"
             :items="categoryOptions"
             value-key="value"
+            class="w-full"
           />
         </UFormField>
 
@@ -1506,6 +1547,7 @@ async function deleteStockRow(id: string) {
             v-model="statusFilter"
             :items="statusFilterOptions"
             value-key="value"
+            class="w-full"
           />
         </UFormField>
 
@@ -1514,6 +1556,7 @@ async function deleteStockRow(id: string) {
             v-model="visibilityFilter"
             :items="visibilityOptions"
             value-key="value"
+            class="w-full"
           />
         </UFormField>
       </div>
@@ -1537,15 +1580,18 @@ async function deleteStockRow(id: string) {
         <p class="text-sm text-muted">
           {{ filteredItems.length }} of {{ items.length }} assets
         </p>
-        <button
+        <div
           v-for="item in filteredItems"
           :key="item.id"
-          type="button"
-          class="block w-full rounded-xl border border-default p-3 text-left transition hover:border-primary/60 hover:bg-(--ui-bg-elevated)/40"
+          role="button"
+          tabindex="0"
+          class="block w-full rounded-xl border border-default p-3 text-left transition hover:border-primary/60 hover:bg-elevated/40"
           :class="{
             'border-primary ring-2 ring-primary/30': selectedId === item.id,
           }"
           @click="selectItem(item.id)"
+          @keydown.enter.prevent="selectItem(item.id)"
+          @keydown.space.prevent="selectItem(item.id)"
         >
           <div class="flex gap-3">
             <div
@@ -1659,9 +1705,25 @@ async function deleteStockRow(id: string) {
                   }}</span></span
                 >
               </div>
+              <div
+                v-if="isSuperAdmin"
+                class="mt-3 flex items-center gap-2 text-xs text-muted"
+                @click.stop
+                @keydown.stop
+              >
+                <span>{{ item.isHidden ? "Hidden" : "Shown" }}</span>
+                <USwitch
+                  :model-value="!item.isHidden"
+                  :disabled="visibilitySavingId === item.id"
+                  @update:model-value="
+                    (visible: boolean) =>
+                      void toggleAssetVisibility(item, visible)
+                  "
+                />
+              </div>
             </div>
           </div>
-        </button>
+        </div>
       </div>
     </UCard>
 
@@ -1735,7 +1797,7 @@ async function deleteStockRow(id: string) {
               <div class="flex flex-col gap-2 md:flex-row">
                 <UInput
                   v-model="form.code"
-                  class="flex-1"
+                  class="w-full min-w-0 flex-1"
                   placeholder="R-A1B2C3D4"
                 />
                 <UButton
@@ -1755,7 +1817,7 @@ async function deleteStockRow(id: string) {
               <div class="flex flex-col gap-2 md:flex-row">
                 <UInput
                   :model-value="form.slug"
-                  class="flex-1"
+                  class="w-full min-w-0 flex-1"
                   placeholder="rent-electrician-package"
                   @update:model-value="setSlugManually"
                 />
@@ -1780,39 +1842,40 @@ async function deleteStockRow(id: string) {
                 v-model="form.status"
                 :items="statusOptions"
                 value-key="value"
+                class="w-full"
               />
             </UFormField>
             <UFormField label="Brand">
-              <UInput v-model="form.brand" />
+              <UInput v-model="form.brand" class="w-full" />
             </UFormField>
           </div>
 
           <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Name (TH)" required>
-              <UInput v-model="form.nameTh" />
+              <UInput v-model="form.nameTh" class="w-full" />
             </UFormField>
             <UFormField label="Name (EN)" required>
-              <UInput v-model="form.nameEn" />
+              <UInput v-model="form.nameEn" class="w-full" />
             </UFormField>
             <UFormField label="Name (CN)">
-              <UInput v-model="form.nameCn" />
+              <UInput v-model="form.nameCn" class="w-full" />
             </UFormField>
             <UFormField label="Name (JP)">
-              <UInput v-model="form.nameJp" />
+              <UInput v-model="form.nameJp" class="w-full" />
             </UFormField>
           </div>
 
           <UFormField label="Description (TH)" required>
-            <UTextarea v-model="form.descriptionTh" :rows="3" />
+            <UTextarea v-model="form.descriptionTh" class="w-full" :rows="3" />
           </UFormField>
           <UFormField label="Description (EN)" required>
-            <UTextarea v-model="form.descriptionEn" :rows="3" />
+            <UTextarea v-model="form.descriptionEn" class="w-full" :rows="3" />
           </UFormField>
           <UFormField label="Description (CN)">
-            <UTextarea v-model="form.descriptionCn" :rows="3" />
+            <UTextarea v-model="form.descriptionCn" class="w-full" :rows="3" />
           </UFormField>
           <UFormField label="Description (JP)">
-            <UTextarea v-model="form.descriptionJp" :rows="3" />
+            <UTextarea v-model="form.descriptionJp" class="w-full" :rows="3" />
           </UFormField>
 
           <div class="grid gap-4 md:grid-cols-2">
@@ -1822,6 +1885,7 @@ async function deleteStockRow(id: string) {
                 :items="mainCategoryOptions"
                 value-key="value"
                 placeholder="Select main category"
+                class="w-full"
               />
             </UFormField>
             <UFormField label="Tags">
@@ -1873,7 +1937,7 @@ async function deleteStockRow(id: string) {
                 <UCheckbox v-model="form.dailyEnabled" label="Daily" />
                 <UInput
                   v-model.number="form.dailyRate"
-                  class="mt-2"
+                  class="mt-2 w-full"
                   type="number"
                   min="0"
                   :disabled="!form.dailyEnabled"
@@ -1884,7 +1948,7 @@ async function deleteStockRow(id: string) {
                 <UCheckbox v-model="form.weeklyEnabled" label="Weekly" />
                 <UInput
                   v-model.number="form.weeklyRate"
-                  class="mt-2"
+                  class="mt-2 w-full"
                   type="number"
                   min="0"
                   :disabled="!form.weeklyEnabled"
@@ -1895,7 +1959,7 @@ async function deleteStockRow(id: string) {
                 <UCheckbox v-model="form.monthlyEnabled" label="Monthly" />
                 <UInput
                   v-model.number="form.monthlyRate"
-                  class="mt-2"
+                  class="mt-2 w-full"
                   type="number"
                   min="0"
                   :disabled="!form.monthlyEnabled"
@@ -1906,13 +1970,19 @@ async function deleteStockRow(id: string) {
           </div>
 
           <UFormField label="Deposit amount">
-            <UInput v-model.number="form.depositAmount" type="number" min="0" />
+            <UInput
+              v-model.number="form.depositAmount"
+              class="w-full"
+              type="number"
+              min="0"
+            />
           </UFormField>
 
           <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Min rental days">
               <UInput
                 v-model.number="form.minRentalDays"
+                class="w-full"
                 type="number"
                 min="1"
               />
@@ -1920,12 +1990,18 @@ async function deleteStockRow(id: string) {
             <UFormField label="Max rental days (0 = no limit)">
               <UInput
                 v-model.number="form.maxRentalDays"
+                class="w-full"
                 type="number"
                 min="0"
               />
             </UFormField>
             <UFormField label="Buffer days">
-              <UInput v-model.number="form.bufferDays" type="number" min="0" />
+              <UInput
+                v-model.number="form.bufferDays"
+                class="w-full"
+                type="number"
+                min="0"
+              />
             </UFormField>
           </div>
 
@@ -1937,6 +2013,7 @@ async function deleteStockRow(id: string) {
                 value-key="id"
                 label-key="nameTh"
                 placeholder="Select branch"
+                class="w-full"
               />
             </UFormField>
             <UFormField label="Storage inventory">
@@ -1953,22 +2030,32 @@ async function deleteStockRow(id: string) {
                     : 'Pick a branch first'
                 "
                 :disabled="!form.storageBranchId || inventoriesPending"
+                class="w-full"
               />
             </UFormField>
           </div>
 
           <div class="grid gap-4 md:grid-cols-2">
             <UFormField label="Storage location code (optional)">
-              <UInput v-model="form.storageLocationCode" placeholder="HQ-A1" />
+              <UInput
+                v-model="form.storageLocationCode"
+                class="w-full"
+                placeholder="HQ-A1"
+              />
             </UFormField>
             <UFormField label="Sort order">
-              <UInput v-model.number="form.sortOrder" type="number" />
+              <UInput
+                v-model.number="form.sortOrder"
+                class="w-full"
+                type="number"
+              />
             </UFormField>
           </div>
 
           <UFormField label="Storage location note">
             <UTextarea
               v-model="form.storageLocationNote"
+              class="w-full"
               :rows="2"
               placeholder="Shelf number, locker code, or other granular detail"
             />
@@ -1978,6 +2065,7 @@ async function deleteStockRow(id: string) {
             <UFormField label="Service cycle value">
               <UInput
                 v-model.number="form.serviceCycleValue"
+                class="w-full"
                 type="number"
                 min="0"
               />
@@ -1987,18 +2075,32 @@ async function deleteStockRow(id: string) {
                 v-model="form.serviceCycleUnit"
                 :items="serviceCycleOptions"
                 value-key="value"
+                class="w-full"
               />
             </UFormField>
             <UFormField label="Last serviced at">
-              <UInput v-model="form.lastServicedAt" type="date" />
+              <UInput
+                v-model="form.lastServicedAt"
+                class="w-full"
+                type="date"
+              />
             </UFormField>
             <UFormField label="Next service due">
-              <UInput v-model="form.nextServiceDueAt" type="date" />
+              <UInput
+                v-model="form.nextServiceDueAt"
+                class="w-full"
+                type="date"
+              />
             </UFormField>
           </div>
 
           <UFormField label="Spec summary (JSON object)">
-            <UTextarea v-model="specSummaryText" :rows="6" placeholder="{ }" />
+            <UTextarea
+              v-model="specSummaryText"
+              class="w-full"
+              :rows="6"
+              placeholder="{ }"
+            />
             <p v-if="specSummaryError" class="mt-1 text-xs text-error">
               {{ specSummaryError }}
             </p>
@@ -2007,6 +2109,7 @@ async function deleteStockRow(id: string) {
           <UCheckbox
             v-model="form.isHidden"
             label="Hidden from public storefront"
+            :disabled="!isSuperAdmin || isReadOnlyAdminMode"
           />
 
           <div class="flex flex-wrap gap-2">
@@ -2206,20 +2309,30 @@ async function deleteStockRow(id: string) {
                   value-key="value"
                   placeholder="Select product"
                   :disabled="availableProductOptions.length === 0"
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Match type">
-                <UInput v-model="newMatch.matchType" placeholder="compatible" />
+                <UInput
+                  v-model="newMatch.matchType"
+                  class="w-full"
+                  placeholder="compatible"
+                />
               </UFormField>
               <UFormField label="Sort order">
                 <UInput
                   v-model.number="newMatch.sortOrder"
+                  class="w-full"
                   type="number"
                   min="0"
                 />
               </UFormField>
               <UFormField label="Note">
-                <UInput v-model="newMatch.note" placeholder="Optional" />
+                <UInput
+                  v-model="newMatch.note"
+                  class="w-full"
+                  placeholder="Optional"
+                />
               </UFormField>
             </div>
             <div class="mt-3 flex justify-end">
@@ -2355,6 +2468,7 @@ async function deleteStockRow(id: string) {
                 <UFormField label="On hand">
                   <UInput
                     v-model.number="stockEditRows[row.id].onHand"
+                    class="w-full"
                     type="number"
                     :min="0"
                   />
@@ -2362,6 +2476,7 @@ async function deleteStockRow(id: string) {
                 <UFormField label="Available">
                   <UInput
                     v-model.number="stockEditRows[row.id].available"
+                    class="w-full"
                     type="number"
                     :min="0"
                   />
@@ -2369,6 +2484,7 @@ async function deleteStockRow(id: string) {
                 <UFormField label="Reserved">
                   <UInput
                     v-model.number="stockEditRows[row.id].reserved"
+                    class="w-full"
                     type="number"
                     :min="0"
                   />
@@ -2376,6 +2492,7 @@ async function deleteStockRow(id: string) {
                 <UFormField label="Incoming">
                   <UInput
                     v-model.number="stockEditRows[row.id].incoming"
+                    class="w-full"
                     type="number"
                     :min="0"
                   />
@@ -2383,12 +2500,17 @@ async function deleteStockRow(id: string) {
                 <UFormField label="Safety stock">
                   <UInput
                     v-model.number="stockEditRows[row.id].safetyStock"
+                    class="w-full"
                     type="number"
                     :min="0"
                   />
                 </UFormField>
                 <UFormField class="md:col-span-2" label="Notes">
-                  <UTextarea v-model="stockEditRows[row.id].notes" :rows="2" />
+                  <UTextarea
+                    v-model="stockEditRows[row.id].notes"
+                    class="w-full"
+                    :rows="2"
+                  />
                 </UFormField>
               </div>
               <div
@@ -2429,6 +2551,7 @@ async function deleteStockRow(id: string) {
                   value-key="id"
                   label-key="nameTh"
                   placeholder="Select branch"
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Inventory">
@@ -2445,6 +2568,7 @@ async function deleteStockRow(id: string) {
                       : 'Pick a branch first'
                   "
                   :disabled="!newStock.branchId || newStockInventoriesPending"
+                  class="w-full"
                 />
               </UFormField>
             </div>
@@ -2452,6 +2576,7 @@ async function deleteStockRow(id: string) {
               <UFormField label="On hand">
                 <UInput
                   v-model.number="newStock.onHand"
+                  class="w-full"
                   type="number"
                   :min="0"
                 />
@@ -2459,6 +2584,7 @@ async function deleteStockRow(id: string) {
               <UFormField label="Available">
                 <UInput
                   v-model.number="newStock.available"
+                  class="w-full"
                   type="number"
                   :min="0"
                 />
@@ -2466,6 +2592,7 @@ async function deleteStockRow(id: string) {
               <UFormField label="Reserved">
                 <UInput
                   v-model.number="newStock.reserved"
+                  class="w-full"
                   type="number"
                   :min="0"
                 />
@@ -2473,6 +2600,7 @@ async function deleteStockRow(id: string) {
               <UFormField label="Incoming">
                 <UInput
                   v-model.number="newStock.incoming"
+                  class="w-full"
                   type="number"
                   :min="0"
                 />
@@ -2480,13 +2608,14 @@ async function deleteStockRow(id: string) {
               <UFormField label="Safety">
                 <UInput
                   v-model.number="newStock.safetyStock"
+                  class="w-full"
                   type="number"
                   :min="0"
                 />
               </UFormField>
             </div>
             <UFormField class="mt-2" label="Notes">
-              <UTextarea v-model="newStock.notes" :rows="2" />
+              <UTextarea v-model="newStock.notes" class="w-full" :rows="2" />
             </UFormField>
             <div class="mt-3 flex justify-end">
               <UButton

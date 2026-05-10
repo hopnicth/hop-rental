@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countAdminActionRequiredItems,
+  fetchAdminRentalBookings,
   filterAdminActionRequiredRows,
   isAdminRentalBookingActionRequired,
   isAdminSaleOrderActionRequired,
@@ -10,9 +11,7 @@ import type {
   AdminSaleOrderRow,
 } from "../../app/types/admin-order";
 
-function saleOrder(
-  patch: Partial<AdminSaleOrderRow>,
-): AdminSaleOrderRow {
+function saleOrder(patch: Partial<AdminSaleOrderRow>): AdminSaleOrderRow {
   return {
     id: patch.id ?? crypto.randomUUID(),
     orderNumber: patch.orderNumber ?? "HOP-0001",
@@ -73,7 +72,9 @@ describe("admin order action-required queue", () => {
         saleOrder({ fulfillmentStatus: "ready_for_carrier_pickup" }),
       ),
     ).toBe(false);
-    expect(isAdminSaleOrderActionRequired(saleOrder({ status: "cancelled" }))).toBe(false);
+    expect(
+      isAdminSaleOrderActionRequired(saleOrder({ status: "cancelled" })),
+    ).toBe(false);
   });
 
   it("marks confirmed rental bookings as action required", () => {
@@ -86,7 +87,10 @@ describe("admin order action-required queue", () => {
   it("counts and filters only action-required sale orders and rentals", () => {
     const saleOrders = [
       saleOrder({ id: "sale-prepare" }),
-      saleOrder({ id: "sale-paid-ready", fulfillmentStatus: "ready_for_carrier_pickup" }),
+      saleOrder({
+        id: "sale-paid-ready",
+        fulfillmentStatus: "ready_for_carrier_pickup",
+      }),
     ];
     const rentalBookings = [
       rentalBooking({ id: "rental-confirmed" }),
@@ -98,5 +102,63 @@ describe("admin order action-required queue", () => {
       saleOrders: [saleOrders[0]],
       rentalBookings: [rentalBookings[0]],
     });
+  });
+});
+
+describe("admin rental booking list fetch", () => {
+  it("retries without walk_in_phone when the deployed DB has not run migration 057", async () => {
+    const selects: string[] = [];
+    const missingColumn = {
+      data: null,
+      error: {
+        code: "42703",
+        message: "column rental_bookings.walk_in_phone does not exist",
+      },
+    };
+    const legacyRow = {
+      id: "booking-1",
+      user_id: "user-1",
+      status: "confirmed",
+      product_name: "Camera",
+      start_date: "2026-05-01",
+      end_date: "2026-05-02",
+      rental_days: 1,
+      rental_total: 100,
+      deposit_amount: 0,
+      deposit_paid_amount: 0,
+      deposit_payment_status: "unpaid",
+      deposit_refund_status: "not_refunded",
+      currency_code: "THB",
+      created_at: "2026-05-01T00:00:00.000Z",
+    };
+    const results = [missingColumn, { data: [legacyRow], error: null }];
+
+    const client = {
+      from: () => ({
+        select: (select: string) => {
+          selects.push(select);
+          const result = results[selects.length - 1];
+          const query = {
+            order: () => query,
+            limit: () => query,
+            in: () => query,
+            gte: () => query,
+            lte: () => query,
+            or: () => query,
+            then: (resolve: (value: typeof result) => unknown) =>
+              Promise.resolve(result).then(resolve),
+          };
+          return query;
+        },
+      }),
+    };
+
+    const rows = await fetchAdminRentalBookings(client, {}, null);
+
+    expect(selects).toHaveLength(2);
+    expect(selects[0]).toContain("walk_in_phone");
+    expect(selects[1]).not.toContain("walk_in_phone");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].walkInPhone).toBeNull();
   });
 });

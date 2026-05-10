@@ -45,6 +45,9 @@ export const ADMIN_ORDER_LIST_SELECT =
 export const ADMIN_RENTAL_BOOKING_LIST_SELECT =
   "id, user_id, walk_in_phone, status, asset_id, asset_name, asset_thumbnail, product_name, thumbnail, hub_name, booker_name, booker_phone, start_date, end_date, rental_days, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, currency_code, created_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
 
+const ADMIN_RENTAL_BOOKING_LEGACY_LIST_SELECT =
+  "id, user_id, status, asset_id, asset_name, asset_thumbnail, product_name, thumbnail, hub_name, booker_name, booker_phone, start_date, end_date, rental_days, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, currency_code, created_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+
 const DEFAULT_PAGE_SIZE = 20;
 const FETCH_OVERSAMPLE_CAP = 2000;
 
@@ -283,14 +286,24 @@ export async function fetchAdminSaleOrders(
   return (data ?? []).map((row: unknown) => mapAdminSaleOrderRow(row));
 }
 
-export async function fetchAdminRentalBookings(
+function isMissingWalkInPhoneColumn(error: unknown): boolean {
+  const err = error as { code?: string | null; message?: string | null } | null;
+  return (
+    (err?.code === "42703" ||
+      err?.message?.includes("walk_in_phone") === true) &&
+    err.message?.includes("rental_bookings.walk_in_phone") === true
+  );
+}
+
+function buildAdminRentalBookingsQuery(
   adminClient: AnyClient,
+  select: string,
   filters: AdminOrderFilterParams,
   searchUserIds: Set<string> | null,
-): Promise<AdminRentalBookingRow[]> {
+) {
   let q = adminClient
     .from("rental_bookings")
-    .select(ADMIN_RENTAL_BOOKING_LIST_SELECT)
+    .select(select)
     .order("created_at", { ascending: false })
     .limit(FETCH_OVERSAMPLE_CAP);
 
@@ -314,7 +327,32 @@ export async function fetchAdminRentalBookings(
     }
   }
 
-  const { data, error } = await q;
+  return q;
+}
+
+export async function fetchAdminRentalBookings(
+  adminClient: AnyClient,
+  filters: AdminOrderFilterParams,
+  searchUserIds: Set<string> | null,
+): Promise<AdminRentalBookingRow[]> {
+  let { data, error } = await buildAdminRentalBookingsQuery(
+    adminClient,
+    ADMIN_RENTAL_BOOKING_LIST_SELECT,
+    filters,
+    searchUserIds,
+  );
+
+  if (isMissingWalkInPhoneColumn(error)) {
+    const legacyResult = await buildAdminRentalBookingsQuery(
+      adminClient,
+      ADMIN_RENTAL_BOOKING_LEGACY_LIST_SELECT,
+      filters,
+      searchUserIds,
+    );
+    data = legacyResult.data;
+    error = legacyResult.error;
+  }
+
   if (error) throw error;
 
   const rows = (data ?? []).map((row: unknown) =>

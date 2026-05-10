@@ -5,6 +5,7 @@ import {
   asHomeUploadKind,
   buildHomeMediaPath,
   extractHomeStoragePathFromPublicUrl,
+  processHomeImageUpload,
   processHomeSvgLogoUpload,
   removeHomeMediaByPublicUrl,
 } from "../../server/utils/home-media";
@@ -54,6 +55,32 @@ describe("processHomeSvgLogoUpload", () => {
         buffer: Buffer.from('<svg><script>alert("x")</script></svg>'),
       }),
     ).toThrow(/unsafe/i);
+  });
+});
+
+describe("processHomeImageUpload", () => {
+  it("normalizes banner-mobile uploads to a square 1:1 webp", async () => {
+    const input = await import("sharp").then(({ default: sharp }) =>
+      sharp({
+        create: {
+          width: 1200,
+          height: 1600,
+          channels: 3,
+          background: { r: 120, g: 160, b: 210 },
+        },
+      })
+        .png()
+        .toBuffer(),
+    );
+
+    const result = await processHomeImageUpload({
+      buffer: input,
+      kind: "banner-mobile",
+    });
+
+    expect(result.contentType).toBe("image/webp");
+    expect(result.width).toBe(1080);
+    expect(result.height).toBe(1080);
   });
 });
 

@@ -561,8 +561,9 @@ async function copyText(value: string, successTitle: string) {
             <div>
               <h3 class="text-lg font-semibold">Hero banners</h3>
               <p class="text-sm text-muted">
-                Fixed-height main banners for the top of Home with upload
-                support.
+                Fixed-height main banners for the top of Home. Desktop artwork
+                is required, and you can add a dedicated mobile image for phone
+                screens.
               </p>
             </div>
           </template>
@@ -576,36 +577,53 @@ async function copyText(value: string, successTitle: string) {
               <div class="space-y-4">
                 <div class="grid gap-4 sm:grid-cols-2">
                   <UFormField label="Title (TH)">
-                    <UInput v-model="item.titleTh" />
+                    <UInput v-model="item.titleTh" class="w-full" />
                   </UFormField>
                   <UFormField label="Title (EN)">
-                    <UInput v-model="item.titleEn" />
+                    <UInput v-model="item.titleEn" class="w-full" />
                   </UFormField>
                 </div>
 
                 <div class="grid gap-4 sm:grid-cols-2">
                   <UFormField label="Subtitle (TH)">
-                    <UTextarea v-model="item.subtitleTh" :rows="2" />
+                    <UTextarea
+                      v-model="item.subtitleTh"
+                      class="w-full"
+                      :rows="2"
+                    />
                   </UFormField>
                   <UFormField label="Subtitle (EN)">
-                    <UTextarea v-model="item.subtitleEn" :rows="2" />
+                    <UTextarea
+                      v-model="item.subtitleEn"
+                      class="w-full"
+                      :rows="2"
+                    />
                   </UFormField>
                 </div>
 
                 <div class="grid gap-4 sm:grid-cols-2">
                   <UFormField label="CTA (TH)">
-                    <UInput v-model="item.ctaLabelTh" />
+                    <UInput v-model="item.ctaLabelTh" class="w-full" />
                   </UFormField>
                   <UFormField label="CTA (EN)">
-                    <UInput v-model="item.ctaLabelEn" />
+                    <UInput v-model="item.ctaLabelEn" class="w-full" />
                   </UFormField>
                 </div>
 
+                <p class="text-sm text-muted">
+                  Desktop image is shown on `md` and larger screens. Mobile
+                  image is used on phones; if left empty, phones fall back to
+                  the desktop image.
+                </p>
+
                 <div class="grid gap-4 sm:grid-cols-2">
                   <div class="space-y-2">
-                    <UFormField label="Image URL">
-                      <UInput v-model="item.imageUrl" />
+                    <UFormField label="Desktop image URL">
+                      <UInput v-model="item.imageUrl" class="w-full" />
                     </UFormField>
+                    <p class="text-xs text-muted">
+                      Recommended for wide hero artwork on tablet/desktop.
+                    </p>
                     <input
                       :accept="uploadAcceptFor('banner')"
                       class="block w-full text-sm text-muted"
@@ -621,17 +639,25 @@ async function copyText(value: string, successTitle: string) {
                         )
                       "
                     />
-                    <img
-                      v-if="item.imageUrl"
-                      :src="item.imageUrl"
-                      alt="Banner preview"
-                      class="h-28 w-full rounded-xl border border-default object-cover"
-                    />
+                    <div v-if="item.imageUrl" class="space-y-1">
+                      <p class="text-xs font-medium text-muted">
+                        Desktop preview (wide)
+                      </p>
+                      <img
+                        :src="item.imageUrl"
+                        alt="Desktop banner preview"
+                        class="aspect-video w-full rounded-xl border border-default object-cover"
+                      />
+                    </div>
                   </div>
                   <div class="space-y-2">
-                    <UFormField label="Mobile image URL">
-                      <UInput v-model="item.mobileImageUrl" />
+                    <UFormField label="Mobile image URL (optional)">
+                      <UInput v-model="item.mobileImageUrl" class="w-full" />
                     </UFormField>
+                    <p class="text-xs text-muted">
+                      Used on phone screens (`md:hidden`) as a square `1:1`
+                      image. Leave empty to reuse the desktop image.
+                    </p>
                     <input
                       :accept="uploadAcceptFor('banner-mobile')"
                       class="block w-full text-sm text-muted"
@@ -649,12 +675,29 @@ async function copyText(value: string, successTitle: string) {
                         )
                       "
                     />
-                    <img
-                      v-if="item.mobileImageUrl"
-                      :src="item.mobileImageUrl"
-                      alt="Mobile banner preview"
-                      class="h-28 w-full rounded-xl border border-default object-cover"
-                    />
+                    <div
+                      v-if="item.mobileImageUrl || item.imageUrl"
+                      class="space-y-1"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <p class="text-xs font-medium text-muted">
+                          Mobile preview (phone · 1:1)
+                        </p>
+                        <UBadge
+                          v-if="!item.mobileImageUrl && item.imageUrl"
+                          color="warning"
+                          variant="soft"
+                          size="sm"
+                        >
+                          Using desktop fallback
+                        </UBadge>
+                      </div>
+                      <img
+                        :src="item.mobileImageUrl || item.imageUrl"
+                        alt="Mobile banner preview"
+                        class="aspect-square max-w-[220px] rounded-xl border border-default object-cover"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -662,7 +705,7 @@ async function copyText(value: string, successTitle: string) {
                   class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_120px]"
                 >
                   <UFormField label="Link URL">
-                    <UInput v-model="item.linkUrl" />
+                    <UInput v-model="item.linkUrl" class="w-full" />
                   </UFormField>
                   <UFormField label="Link target">
                     <USelectMenu
@@ -672,11 +715,13 @@ async function copyText(value: string, successTitle: string) {
                         { label: 'New tab', value: '_blank' },
                       ]"
                       value-key="value"
+                      class="w-full"
                     />
                   </UFormField>
                   <UFormField label="Sort order">
                     <UInput
                       v-model.number="item.sortOrder"
+                      class="w-full"
                       type="number"
                       min="0"
                     />
@@ -744,10 +789,10 @@ async function copyText(value: string, successTitle: string) {
                   />
                   <div class="grid flex-1 gap-4 sm:grid-cols-2">
                     <UFormField label="Brand name">
-                      <UInput v-model="item.name" />
+                      <UInput v-model="item.name" class="w-full" />
                     </UFormField>
                     <UFormField label="Link URL">
-                      <UInput v-model="item.linkUrl" />
+                      <UInput v-model="item.linkUrl" class="w-full" />
                     </UFormField>
                   </div>
                 </div>
@@ -757,7 +802,7 @@ async function copyText(value: string, successTitle: string) {
                 >
                   <div class="space-y-2">
                     <UFormField label="Image URL">
-                      <UInput v-model="item.imageUrl" />
+                      <UInput v-model="item.imageUrl" class="w-full" />
                     </UFormField>
                     <label
                       class="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-4 text-center transition"
@@ -824,11 +869,13 @@ async function copyText(value: string, successTitle: string) {
                         { label: 'New tab', value: '_blank' },
                       ]"
                       value-key="value"
+                      class="w-full"
                     />
                   </UFormField>
                   <UFormField label="Sort order">
                     <UInput
                       v-model.number="item.sortOrder"
+                      class="w-full"
                       type="number"
                       min="0"
                     />
@@ -917,11 +964,13 @@ async function copyText(value: string, successTitle: string) {
                       :items="promotionPageOptions"
                       value-key="value"
                       placeholder="Select promotion page"
+                      class="w-full"
                     />
                   </UFormField>
                   <UFormField label="Sort order">
                     <UInput
                       v-model.number="item.sortOrder"
+                      class="w-full"
                       type="number"
                       min="0"
                     />
@@ -934,6 +983,7 @@ async function copyText(value: string, successTitle: string) {
                         { label: 'New tab', value: '_blank' },
                       ]"
                       value-key="value"
+                      class="w-full"
                     />
                   </UFormField>
                 </div>
@@ -1031,11 +1081,13 @@ async function copyText(value: string, successTitle: string) {
                       :items="servicePageOptions"
                       value-key="value"
                       placeholder="Select service page"
+                      class="w-full"
                     />
                   </UFormField>
                   <UFormField label="Sort order">
                     <UInput
                       v-model.number="item.sortOrder"
+                      class="w-full"
                       type="number"
                       min="0"
                     />
@@ -1048,6 +1100,7 @@ async function copyText(value: string, successTitle: string) {
                         { label: 'New tab', value: '_blank' },
                       ]"
                       value-key="value"
+                      class="w-full"
                     />
                   </UFormField>
                 </div>
@@ -1147,7 +1200,7 @@ async function copyText(value: string, successTitle: string) {
                   v-model.number="item.sortOrder"
                   type="number"
                   min="0"
-                  class="w-28"
+                  class="w-full sm:w-28"
                 />
                 <UCheckbox v-model="item.isActive" label="Active" />
                 <UButton
@@ -1221,7 +1274,7 @@ async function copyText(value: string, successTitle: string) {
                   v-model.number="item.sortOrder"
                   type="number"
                   min="0"
-                  class="w-28"
+                  class="w-full sm:w-28"
                 />
                 <UCheckbox v-model="item.isActive" label="Active" />
                 <UButton
@@ -1283,6 +1336,7 @@ async function copyText(value: string, successTitle: string) {
                     { label: 'Partner logo', value: 'partner-logo' },
                   ]"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
 
@@ -1359,7 +1413,11 @@ async function copyText(value: string, successTitle: string) {
               />
 
               <UFormField label="Uploaded URL">
-                <UInput v-model="quickUpload.imageUrl" readonly />
+                <UInput
+                  v-model="quickUpload.imageUrl"
+                  class="w-full"
+                  readonly
+                />
               </UFormField>
 
               <div class="flex flex-wrap gap-2">
@@ -1415,7 +1473,10 @@ async function copyText(value: string, successTitle: string) {
           <template #header>
             <div>
               <h3 class="text-lg font-semibold">Create banner</h3>
-              <p class="text-sm text-muted">Add a new hero slide.</p>
+              <p class="text-sm text-muted">
+                Add a new hero slide with required desktop artwork and an
+                optional mobile version.
+              </p>
             </div>
           </template>
 
@@ -1428,36 +1489,53 @@ async function copyText(value: string, successTitle: string) {
           >
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField label="Title (TH)" required>
-                <UInput v-model="newBanner.titleTh" />
+                <UInput v-model="newBanner.titleTh" class="w-full" />
               </UFormField>
               <UFormField label="Title (EN)" required>
-                <UInput v-model="newBanner.titleEn" />
+                <UInput v-model="newBanner.titleEn" class="w-full" />
               </UFormField>
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField label="Subtitle (TH)" required>
-                <UTextarea v-model="newBanner.subtitleTh" :rows="2" />
+                <UTextarea
+                  v-model="newBanner.subtitleTh"
+                  class="w-full"
+                  :rows="2"
+                />
               </UFormField>
               <UFormField label="Subtitle (EN)" required>
-                <UTextarea v-model="newBanner.subtitleEn" :rows="2" />
+                <UTextarea
+                  v-model="newBanner.subtitleEn"
+                  class="w-full"
+                  :rows="2"
+                />
               </UFormField>
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2">
               <UFormField label="CTA (TH)" required>
-                <UInput v-model="newBanner.ctaLabelTh" />
+                <UInput v-model="newBanner.ctaLabelTh" class="w-full" />
               </UFormField>
               <UFormField label="CTA (EN)" required>
-                <UInput v-model="newBanner.ctaLabelEn" />
+                <UInput v-model="newBanner.ctaLabelEn" class="w-full" />
               </UFormField>
             </div>
 
+            <p class="text-sm text-muted">
+              Desktop image is required. Mobile image is optional and appears on
+              phone screens as a square `1:1` image; if omitted, the storefront
+              uses the desktop image.
+            </p>
+
             <div class="grid gap-4 sm:grid-cols-2">
               <div class="space-y-2">
-                <UFormField label="Image URL" required>
-                  <UInput v-model="newBanner.imageUrl" />
+                <UFormField label="Desktop image URL" required>
+                  <UInput v-model="newBanner.imageUrl" class="w-full" />
                 </UFormField>
+                <p class="text-xs text-muted">
+                  Recommended for wide hero artwork on tablet/desktop.
+                </p>
                 <input
                   :accept="uploadAcceptFor('banner')"
                   class="block w-full text-sm text-muted"
@@ -1473,18 +1551,26 @@ async function copyText(value: string, successTitle: string) {
                     )
                   "
                 />
-                <img
-                  v-if="newBanner.imageUrl"
-                  :src="newBanner.imageUrl"
-                  alt="New banner preview"
-                  class="h-28 w-full rounded-xl border border-default object-cover"
-                />
+                <div v-if="newBanner.imageUrl" class="space-y-1">
+                  <p class="text-xs font-medium text-muted">
+                    Desktop preview (wide)
+                  </p>
+                  <img
+                    :src="newBanner.imageUrl"
+                    alt="New desktop banner preview"
+                    class="aspect-video w-full rounded-xl border border-default object-cover"
+                  />
+                </div>
               </div>
 
               <div class="space-y-2">
-                <UFormField label="Mobile image URL">
-                  <UInput v-model="newBanner.mobileImageUrl" />
+                <UFormField label="Mobile image URL (optional)">
+                  <UInput v-model="newBanner.mobileImageUrl" class="w-full" />
                 </UFormField>
+                <p class="text-xs text-muted">
+                  Used on phone screens (`md:hidden`) as a square `1:1` image.
+                  Leave empty to reuse the desktop image.
+                </p>
                 <input
                   :accept="uploadAcceptFor('banner-mobile')"
                   class="block w-full text-sm text-muted"
@@ -1500,18 +1586,35 @@ async function copyText(value: string, successTitle: string) {
                     )
                   "
                 />
-                <img
-                  v-if="newBanner.mobileImageUrl"
-                  :src="newBanner.mobileImageUrl"
-                  alt="New mobile banner preview"
-                  class="h-28 w-full rounded-xl border border-default object-cover"
-                />
+                <div
+                  v-if="newBanner.mobileImageUrl || newBanner.imageUrl"
+                  class="space-y-1"
+                >
+                  <div class="flex items-center justify-between gap-2">
+                    <p class="text-xs font-medium text-muted">
+                      Mobile preview (phone · 1:1)
+                    </p>
+                    <UBadge
+                      v-if="!newBanner.mobileImageUrl && newBanner.imageUrl"
+                      color="warning"
+                      variant="soft"
+                      size="sm"
+                    >
+                      Using desktop fallback
+                    </UBadge>
+                  </div>
+                  <img
+                    :src="newBanner.mobileImageUrl || newBanner.imageUrl"
+                    alt="New mobile banner preview"
+                    class="aspect-square max-w-[220px] rounded-xl border border-default object-cover"
+                  />
+                </div>
               </div>
             </div>
 
             <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_120px]">
               <UFormField label="Link URL" required>
-                <UInput v-model="newBanner.linkUrl" />
+                <UInput v-model="newBanner.linkUrl" class="w-full" />
               </UFormField>
               <UFormField label="Link target">
                 <USelectMenu
@@ -1521,11 +1624,13 @@ async function copyText(value: string, successTitle: string) {
                     { label: 'New tab', value: '_blank' },
                   ]"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Sort order">
                 <UInput
                   v-model.number="newBanner.sortOrder"
+                  class="w-full"
                   type="number"
                   min="0"
                 />
@@ -1580,6 +1685,7 @@ async function copyText(value: string, successTitle: string) {
                     { label: 'Service', value: 'service' },
                   ]"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Content page" required>
@@ -1588,6 +1694,7 @@ async function copyText(value: string, successTitle: string) {
                   :items="newLinkCardPageOptions"
                   value-key="value"
                   placeholder="Select content page"
+                  class="w-full"
                 />
               </UFormField>
             </div>
@@ -1596,6 +1703,7 @@ async function copyText(value: string, successTitle: string) {
               <UFormField label="Sort order">
                 <UInput
                   v-model.number="newLinkCard.sortOrder"
+                  class="w-full"
                   type="number"
                   min="0"
                 />
@@ -1608,6 +1716,7 @@ async function copyText(value: string, successTitle: string) {
                     { label: 'New tab', value: '_blank' },
                   ]"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
             </div>
@@ -1670,12 +1779,12 @@ async function copyText(value: string, successTitle: string) {
             "
           >
             <UFormField label="Brand name" required>
-              <UInput v-model="newPartnerLogo.name" />
+              <UInput v-model="newPartnerLogo.name" class="w-full" />
             </UFormField>
 
             <div class="space-y-2">
               <UFormField label="Image URL" required>
-                <UInput v-model="newPartnerLogo.imageUrl" />
+                <UInput v-model="newPartnerLogo.imageUrl" class="w-full" />
               </UFormField>
               <label
                 class="flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed px-4 py-6 text-center transition"
@@ -1741,7 +1850,7 @@ async function copyText(value: string, successTitle: string) {
 
             <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_180px_120px]">
               <UFormField label="Link URL" required>
-                <UInput v-model="newPartnerLogo.linkUrl" />
+                <UInput v-model="newPartnerLogo.linkUrl" class="w-full" />
               </UFormField>
               <UFormField label="Link target">
                 <USelectMenu
@@ -1751,11 +1860,13 @@ async function copyText(value: string, successTitle: string) {
                     { label: 'New tab', value: '_blank' },
                   ]"
                   value-key="value"
+                  class="w-full"
                 />
               </UFormField>
               <UFormField label="Sort order">
                 <UInput
                   v-model.number="newPartnerLogo.sortOrder"
+                  class="w-full"
                   type="number"
                   min="0"
                 />
@@ -1817,12 +1928,14 @@ async function copyText(value: string, successTitle: string) {
                 v-model="newFeaturedProduct.productId"
                 :items="data?.productOptions ?? []"
                 value-key="value"
+                class="w-full"
               />
             </UFormField>
 
             <UFormField label="Sort order">
               <UInput
                 v-model.number="newFeaturedProduct.sortOrder"
+                class="w-full"
                 type="number"
                 min="0"
               />
@@ -1876,12 +1989,14 @@ async function copyText(value: string, successTitle: string) {
                 v-model="newFeaturedAsset.assetId"
                 :items="data?.assetOptions ?? []"
                 value-key="value"
+                class="w-full"
               />
             </UFormField>
 
             <UFormField label="Sort order">
               <UInput
                 v-model.number="newFeaturedAsset.sortOrder"
+                class="w-full"
                 type="number"
                 min="0"
               />

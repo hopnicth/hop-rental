@@ -322,6 +322,7 @@ function isRentalBookingIncomplete(booking: {
             v-model="filters.search"
             placeholder="Order #, name, phone, ID…"
             icon="bx:search"
+            class="w-full"
           />
         </UFormField>
 
@@ -331,15 +332,16 @@ function isRentalBookingIncomplete(booking: {
             :items="typeOptions"
             value-key="value"
             label-key="label"
+            class="w-full"
           />
         </UFormField>
 
         <UFormField label="Date from">
-          <UInput v-model="filters.dateFrom" type="date" />
+          <UInput v-model="filters.dateFrom" class="w-full" type="date" />
         </UFormField>
 
         <UFormField label="Date to">
-          <UInput v-model="filters.dateTo" type="date" />
+          <UInput v-model="filters.dateTo" class="w-full" type="date" />
         </UFormField>
 
         <UFormField label="Order status">
@@ -349,6 +351,7 @@ function isRentalBookingIncomplete(booking: {
             :items="orderStatusOptions"
             value-key="value"
             label-key="label"
+            class="w-full"
           />
         </UFormField>
 
@@ -359,6 +362,7 @@ function isRentalBookingIncomplete(booking: {
             :items="paymentStatusOptions"
             value-key="value"
             label-key="label"
+            class="w-full"
           />
         </UFormField>
 
@@ -369,6 +373,7 @@ function isRentalBookingIncomplete(booking: {
             :items="fulfillmentStatusOptions"
             value-key="value"
             label-key="label"
+            class="w-full"
           />
         </UFormField>
 
@@ -379,6 +384,7 @@ function isRentalBookingIncomplete(booking: {
             :items="rentalStatusOptions"
             value-key="value"
             label-key="label"
+            class="w-full"
           />
         </UFormField>
 
@@ -388,6 +394,7 @@ function isRentalBookingIncomplete(booking: {
             :items="branchOptions"
             value-key="value"
             label-key="label"
+            class="w-full"
           />
         </UFormField>
       </div>

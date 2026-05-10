@@ -23,9 +23,11 @@ interface LookupResponse {
 interface PosCatalogSku {
   id: string;
   productId: string;
+  code?: string;
   labelTh: string;
   labelEn: string;
   imageUrl: string | null;
+  price: number;
   depositAmount: number;
   dailyRate: number;
   weeklyRate: number;
@@ -37,6 +39,7 @@ interface PosCatalogSku {
 interface PosCatalogProduct {
   id: string;
   slug: string;
+  type: "rental" | "sale";
   nameTh: string;
   nameEn: string;
   brand: string | null;
@@ -50,12 +53,62 @@ interface PosCatalogResponse {
   items: PosCatalogProduct[];
 }
 
+interface BranchOption {
+  id: string;
+  code: string;
+  nameTh: string;
+  nameEn: string;
+  isActive: boolean;
+}
+
+interface PosSaleLine {
+  skuId: string;
+  productId: string;
+  code: string;
+  name: string;
+  unitPrice: number;
+  quantity: number;
+}
+
+interface PosHistoryItem {
+  id: string;
+  type: "sale" | "rental";
+  documentNo: string;
+  status: string;
+  createdAt: string;
+  customerName: string;
+  amount: number;
+  paymentStatus: string;
+  paymentMethod: string;
+  branchId: string;
+  branchName: string;
+}
+
+interface PosHistoryResponse {
+  date: string;
+  branchId: string | null;
+  items: PosHistoryItem[];
+  summary: {
+    totalAmount: number;
+    totalSales: number;
+    totalRentals: number;
+    transactionCount: number;
+    paymentBreakdown: Record<string, { count: number; amount: number }>;
+  };
+}
+
+type PosTransactionMode = "rental" | "sale";
+type ScannerPurpose = "customer" | "catalog";
+
 const DRAFT_KEY = "hop-admin-pos-draft:v1";
+const BRANCH_KEY = "hop-admin-pos-branch:v1";
 const PENDING_ID_KEY = "hop-admin-pos-pending-id:v1";
 const PENDING_BOOKING_KEY = "hop-admin-pos-pending-booking:v1";
 const toast = useToast();
+const { profile, ensureProfileLoaded } = useUserProfile();
 
 const isScannerOpen = ref(false);
+const scannerPurpose = ref<ScannerPurpose>("customer");
 const isOnline = ref(true);
 const search = ref("");
 const lookup = ref<LookupResponse | null>(null);
@@ -71,6 +124,10 @@ const idFile = ref<File | null>(null);
 const idPreview = ref<string | null>(null);
 const uploadingId = ref(false);
 const hasPendingIdDraft = ref(false);
+const transactionMode = ref<PosTransactionMode>("rental");
+const branches = ref<BranchOption[]>([]);
+const branchLoading = ref(false);
+const selectedBranchId = ref("");
 const catalogSearch = ref("");
 const catalogLoading = ref(false);
 const catalogProducts = ref<PosCatalogProduct[]>([]);
@@ -84,7 +141,19 @@ const depositNotes = ref("");
 const depositProofFile = ref<File | null>(null);
 const depositProofPreview = ref<string | null>(null);
 const creatingBooking = ref(false);
+const creatingSale = ref(false);
 const hasPendingBookingDraft = ref(false);
+const saleCart = ref<PosSaleLine[]>([]);
+const saleNotes = ref("");
+const historyDate = ref(todayBangkokDateInput());
+const historyLoading = ref(false);
+const posHistory = ref<PosHistoryResponse | null>(null);
+const cancellingHistoryKey = ref<string | null>(null);
+
+const transactionModeTabs = [
+  { label: "เช่า / จอง", value: "rental", icon: "bx:calendar-check" },
+  { label: "ขายขาด", value: "sale", icon: "bx:receipt" },
+];
 
 const depositProofFileName = computed(
   () => depositProofFile.value?.name ?? "ยังไม่ได้แนบหลักฐานมัดจำ",
@@ -92,6 +161,9 @@ const depositProofFileName = computed(
 
 const customer = computed(() => lookup.value?.customer ?? null);
 const idCardMissing = computed(() => !customer.value?.idCardUrl);
+const requiresIdCardForCheckout = computed(
+  () => transactionMode.value === "rental" && idCardMissing.value,
+);
 const activeBookings = computed(() => lookup.value?.bookings ?? []);
 const pickupCandidates = computed(() =>
   activeBookings.value.filter((b) => b.status === "confirmed"),
@@ -99,9 +171,14 @@ const pickupCandidates = computed(() =>
 const returnCandidates = computed(() =>
   activeBookings.value.filter((b) => b.status === "picked_up"),
 );
+const filteredCatalogProducts = computed(() =>
+  catalogProducts.value.filter((p) => p.type === transactionMode.value),
+);
 const selectedProduct = computed(
   () =>
-    catalogProducts.value.find((p) => p.id === selectedProductId.value) ?? null,
+    filteredCatalogProducts.value.find(
+      (p) => p.id === selectedProductId.value,
+    ) ?? null,
 );
 const selectedSku = computed(
   () =>
@@ -128,14 +205,52 @@ const bookingPricing = computed(() => {
     currencyCode: "THB",
   });
 });
+const rentalCheckoutTotal = computed(
+  () => (bookingPricing.value?.total ?? 0) + depositPaidAmount.value,
+);
+const saleCartTotal = computed(() =>
+  saleCart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
+);
 const canCreateBooking = computed(
   () =>
+    transactionMode.value === "rental" &&
     Boolean(customerPhone.value) &&
+    Boolean(selectedBranchId.value) &&
     Boolean(selectedProduct.value) &&
     Boolean(selectedSku.value) &&
     bookingDays.value > 0 &&
     !creatingBooking.value,
 );
+const canCreateSale = computed(
+  () =>
+    transactionMode.value === "sale" &&
+    Boolean(selectedBranchId.value) &&
+    saleCart.value.length > 0 &&
+    saleCartTotal.value > 0 &&
+    !creatingSale.value,
+);
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
+const accountingExportUrl = computed(() => {
+  const params = new URLSearchParams();
+  if (selectedBranchId.value) params.set("branchId", selectedBranchId.value);
+  return `/api/admin/pos/accounting-export${params.size ? `?${params}` : ""}`;
+});
+const historyPaymentBreakdown = computed(() =>
+  Object.entries(posHistory.value?.summary.paymentBreakdown ?? {}).sort(
+    (a, b) => a[0].localeCompare(b[0]),
+  ),
+);
+
+function todayBangkokDateInput() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
 
 function addDays(value: Date, days: number) {
   const next = new Date(value);
@@ -168,6 +283,7 @@ function persistDraft() {
 function restoreDraft() {
   if (!import.meta.client) return;
   isOnline.value = navigator.onLine;
+  selectedBranchId.value = localStorage.getItem(BRANCH_KEY) ?? "";
   const raw = localStorage.getItem(DRAFT_KEY);
   if (!raw) return;
   try {
@@ -184,7 +300,10 @@ function restoreDraft() {
 watch(draft, persistDraft, { deep: true });
 onMounted(() => {
   restoreDraft();
+  void ensureProfileLoaded(null, { force: true });
+  void loadBranches();
   void loadCatalog();
+  void loadPosHistory();
   window.addEventListener("online", () => (isOnline.value = true));
   window.addEventListener("offline", () => (isOnline.value = false));
 });
@@ -193,8 +312,28 @@ watch(selectedProductId, () => {
   selectedSkuId.value = selectedProduct.value?.skus[0]?.id ?? "";
 });
 
+watch(transactionMode, () => {
+  selectedProductId.value = "";
+  selectedSkuId.value = "";
+  depositPaidAmount.value =
+    transactionMode.value === "sale" ? saleCartTotal.value : 0;
+  void loadCatalog();
+});
+
+watch(selectedBranchId, (branchId) => {
+  if (import.meta.client) localStorage.setItem(BRANCH_KEY, branchId);
+  if (transactionMode.value === "sale") void loadCatalog();
+  void loadPosHistory();
+});
+
+watch(historyDate, () => {
+  void loadPosHistory();
+});
+
 watch(selectedSku, (sku) => {
-  if (sku) depositPaidAmount.value = sku.depositAmount;
+  if (sku && transactionMode.value === "rental") {
+    depositPaidAmount.value = sku.depositAmount;
+  }
 });
 
 function formatCurrency(value: number, currency = "THB") {
@@ -203,25 +342,132 @@ function formatCurrency(value: number, currency = "THB") {
   );
 }
 
+function formatTime(value: string) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("th-TH", {
+    timeZone: "Asia/Bangkok",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function formatPaymentMethod(value: string) {
+  const labels: Record<string, string> = {
+    cash: "เงินสด",
+    qr_transfer: "QR",
+    bank_transfer: "โอนบัญชี",
+    card: "บัตร",
+    credit_card: "บัตรเครดิต",
+    promptpay: "PromptPay",
+    company_credit: "เครดิตบริษัท",
+    other: "อื่น ๆ",
+    unknown: "ไม่ระบุ",
+  };
+  return labels[value] ?? value;
+}
+
+function historyActionKey(item: PosHistoryItem) {
+  return `${item.type}:${item.id}`;
+}
+
+function isHistoryItemCancelled(item: PosHistoryItem) {
+  return item.status === "cancelled" || item.paymentStatus === "cancelled";
+}
+
+function showPrintPlaceholder(
+  kind: "full" | "abbreviated",
+  item: PosHistoryItem,
+) {
+  toast.add({
+    title:
+      kind === "full" ? "พิมพ์ใบกำกับภาษี (Full)" : "พิมพ์ใบกำกับภาษีอย่างย่อ",
+    description: `Feature coming soon · ${item.documentNo}`,
+    color: "info",
+  });
+}
+
+async function cancelHistoryItem(item: PosHistoryItem) {
+  if (!isSuperAdmin.value || isHistoryItemCancelled(item)) return;
+  if (!confirm(`ยืนยันยกเลิกรายการ ${item.documentNo}?`)) return;
+  const key = historyActionKey(item);
+  cancellingHistoryKey.value = key;
+  try {
+    const result = await $fetch<{
+      ok: boolean;
+      inventoryReversalRequired?: boolean;
+      refundRequired?: boolean;
+    }>("/api/admin/pos/history/cancel", {
+      method: "POST",
+      body: { type: item.type, id: item.id },
+    });
+    toast.add({
+      title: "ยกเลิกรายการแล้ว",
+      description: result.inventoryReversalRequired
+        ? "รายการขายนี้เคยตัด stock แล้ว กรุณาตรวจสอบ/ปรับ stock คืนตามกระบวนการ"
+        : result.refundRequired
+          ? "รายการนี้มีเงินรับแล้ว กรุณาตรวจสอบการคืนเงิน/มัดจำ"
+          : item.documentNo,
+      color: "success",
+    });
+    await loadPosHistory();
+  } catch (e) {
+    toast.add({
+      title: "ยกเลิกรายการไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    cancellingHistoryKey.value = null;
+  }
+}
+
 function bookingTitle(booking: AdminRentalBookingRow) {
   return booking.assetName || booking.productName || booking.id;
+}
+
+function openScanner(purpose: ScannerPurpose) {
+  scannerPurpose.value = purpose;
+  isScannerOpen.value = true;
+}
+
+async function loadBranches() {
+  branchLoading.value = true;
+  try {
+    const response = await $fetch<{ items: BranchOption[] }>(
+      "/api/admin/pos/branches",
+    );
+    branches.value = response.items;
+    if (!selectedBranchId.value && response.items[0]) {
+      selectedBranchId.value = response.items[0].id;
+    }
+  } catch (e) {
+    toast.add({
+      title: "โหลดสาขา POS ไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    branchLoading.value = false;
+  }
 }
 
 async function loadCatalog() {
   catalogLoading.value = true;
   try {
+    const query: Record<string, string> = { mode: transactionMode.value };
+    if (catalogSearch.value.trim()) query.search = catalogSearch.value.trim();
+    if (selectedBranchId.value) query.branchId = selectedBranchId.value;
     const response = await $fetch<PosCatalogResponse>(
       "/api/admin/pos/catalog",
-      {
-        query: catalogSearch.value.trim()
-          ? { search: catalogSearch.value.trim() }
-          : {},
-      },
+      { query },
     );
     catalogProducts.value = response.items;
-    if (!selectedProductId.value && response.items[0]) {
-      selectedProductId.value = response.items[0].id;
-      selectedSkuId.value = response.items[0].skus[0]?.id ?? "";
+    const visibleItems = response.items.filter(
+      (p) => p.type === transactionMode.value,
+    );
+    if (!visibleItems.some((item) => item.id === selectedProductId.value)) {
+      selectedProductId.value = visibleItems[0]?.id ?? "";
+      selectedSkuId.value = visibleItems[0]?.skus[0]?.id ?? "";
     }
   } catch (e) {
     toast.add({
@@ -234,6 +480,28 @@ async function loadCatalog() {
   }
 }
 
+async function loadPosHistory() {
+  historyLoading.value = true;
+  try {
+    const query: Record<string, string> = { date: historyDate.value };
+    if (selectedBranchId.value) query.branchId = selectedBranchId.value;
+    posHistory.value = await $fetch<PosHistoryResponse>(
+      "/api/admin/pos/history",
+      {
+        query,
+      },
+    );
+  } catch (e) {
+    toast.add({
+      title: "โหลดประวัติ POS ไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    historyLoading.value = false;
+  }
+}
+
 async function lookupCustomer(term = search.value) {
   if (!term.trim()) return;
   loading.value = true;
@@ -242,7 +510,11 @@ async function lookupCustomer(term = search.value) {
       query: { search: term.trim() },
     });
     selectedBooking.value = lookup.value.bookings[0] ?? null;
-    if (lookup.value.customer && !lookup.value.customer.idCardUrl)
+    if (
+      transactionMode.value === "rental" &&
+      lookup.value.customer &&
+      !lookup.value.customer.idCardUrl
+    )
       idModalOpen.value = true;
   } catch (e) {
     toast.add({
@@ -256,7 +528,15 @@ async function lookupCustomer(term = search.value) {
 }
 
 function handleDecoded(payload: {
-  kind: "order" | "booking" | "customer" | "unknown";
+  kind:
+    | "order"
+    | "booking"
+    | "customer"
+    | "asset"
+    | "sku"
+    | "product"
+    | "barcode"
+    | "unknown";
   value: string;
   raw: string;
 }) {
@@ -264,8 +544,36 @@ function handleDecoded(payload: {
     navigateTo(`/admin/rental-bookings/${payload.value}`);
     return;
   }
+  if (
+    scannerPurpose.value === "catalog" ||
+    ["asset", "sku", "product", "barcode"].includes(payload.kind)
+  ) {
+    void handleCatalogScan(payload.value || payload.raw);
+    return;
+  }
   search.value = payload.value || payload.raw;
   void lookupCustomer(search.value);
+}
+
+async function handleCatalogScan(code: string) {
+  const term = code.trim();
+  if (!term) return;
+  catalogSearch.value = term;
+  await loadCatalog();
+  const product = filteredCatalogProducts.value[0];
+  const sku = product?.skus[0];
+  if (!product || !sku) {
+    toast.add({
+      title: "ไม่พบสินค้า/Asset จากโค้ดที่สแกน",
+      description: term,
+      color: "warning",
+    });
+    return;
+  }
+  selectedProductId.value = product.id;
+  selectedSkuId.value = sku.id;
+  if (product.type === "sale") addSaleSkuToCart(product, sku);
+  toast.add({ title: `เลือก ${sku.labelTh} แล้ว`, color: "success" });
 }
 
 function onIdFileChange(event: Event) {
@@ -287,6 +595,40 @@ function clearDepositProof() {
   depositProofFile.value = null;
   depositProofPreview.value = null;
 }
+
+function addSaleSkuToCart(
+  product = selectedProduct.value,
+  sku = selectedSku.value,
+) {
+  if (!product || !sku || product.type !== "sale") return;
+  const existing = saleCart.value.find((line) => line.skuId === sku.id);
+  if (existing) existing.quantity += 1;
+  else {
+    saleCart.value.push({
+      skuId: sku.id,
+      productId: product.id,
+      code: sku.code || sku.id,
+      name: sku.labelTh || product.nameTh,
+      unitPrice: sku.price,
+      quantity: 1,
+    });
+  }
+  depositPaidAmount.value = saleCartTotal.value;
+}
+
+function removeSaleLine(skuId: string) {
+  saleCart.value = saleCart.value.filter((line) => line.skuId !== skuId);
+  depositPaidAmount.value = saleCartTotal.value;
+}
+
+watch(
+  saleCart,
+  () => {
+    if (transactionMode.value === "sale")
+      depositPaidAmount.value = saleCartTotal.value;
+  },
+  { deep: true },
+);
 
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -440,8 +782,12 @@ async function createPosBooking() {
     bookerPhone: phone,
     productId: selectedProduct.value.id,
     skuId: selectedSku.value.id,
+    branchId: selectedBranchId.value,
     startDate: bookingStartDate.value,
     endDate: bookingEndDate.value,
+    checkoutTotalAmount: rentalCheckoutTotal.value,
+    checkoutPaidAmount: rentalCheckoutTotal.value,
+    checkoutPaymentMethod: depositPaymentMethod.value,
     depositPaidAmount: depositPaidAmount.value,
     depositPaymentMethod: depositPaymentMethod.value,
     depositPaymentStatus: depositPaidAmount.value > 0 ? "paid" : "unpaid",
@@ -460,6 +806,7 @@ async function createPosBooking() {
     lookup.value.bookings = [response.booking, ...lookup.value.bookings];
     selectedBooking.value = response.booking;
     if (phone) await lookupCustomer(phone);
+    await loadPosHistory();
     localStorage.removeItem(PENDING_BOOKING_KEY);
     hasPendingBookingDraft.value = false;
     toast.add({ title: "สร้างรายการเช่าจาก POS แล้ว", color: "success" });
@@ -480,6 +827,52 @@ async function createPosBooking() {
   }
 }
 
+async function createPosSale() {
+  if (!canCreateSale.value) return;
+  creatingSale.value = true;
+  progress.value = true;
+  const payload = {
+    userId: customer.value?.kind === "account" ? customer.value.userId : null,
+    walkInPhone: customerPhone.value || null,
+    customerName: customer.value?.fullName || draft.fullName || null,
+    branchId: selectedBranchId.value,
+    paymentMethod: depositPaymentMethod.value,
+    paidAmount: depositPaidAmount.value,
+    notes: saleNotes.value || depositNotes.value,
+    items: saleCart.value.map((line) => ({
+      skuId: line.skuId,
+      quantity: line.quantity,
+    })),
+  };
+
+  try {
+    const response = await $fetch<{
+      order: { id: string; order_number?: string; orderNumber?: string };
+    }>("/api/admin/pos/sales", { method: "POST", body: payload });
+    saleCart.value = [];
+    await loadPosHistory();
+    toast.add({
+      title: "บันทึกขายหน้าร้านสำเร็จ",
+      description: response.order.order_number || response.order.orderNumber,
+      color: "success",
+    });
+  } catch (e) {
+    localStorage.setItem(
+      "hop-admin-pos-pending-sale:v1",
+      JSON.stringify({ payload, createdAt: new Date().toISOString() }),
+    );
+    toast.add({
+      title: "บันทึกขายไม่สำเร็จ",
+      description:
+        "เก็บ draft ไว้ในเครื่องแล้ว กรุณาตรวจสอบเน็ต/stock แล้วลองใหม่",
+      color: "warning",
+    });
+  } finally {
+    creatingSale.value = false;
+    progress.value = false;
+  }
+}
+
 async function retryPendingBookingDraft() {
   if (!import.meta.client) return;
   const raw = localStorage.getItem(PENDING_BOOKING_KEY);
@@ -495,6 +888,7 @@ async function retryPendingBookingDraft() {
     lookup.value = lookup.value ?? { customer: null, bookings: [] };
     lookup.value.bookings = [response.booking, ...lookup.value.bookings];
     selectedBooking.value = response.booking;
+    await loadPosHistory();
     localStorage.removeItem(PENDING_BOOKING_KEY);
     hasPendingBookingDraft.value = false;
     toast.add({ title: "Retry สร้าง booking สำเร็จ", color: "success" });
@@ -513,32 +907,285 @@ async function retryPendingBookingDraft() {
           ค้นหาลูกค้าด้วยเบอร์/QR, ตรวจบัตรประชาชน, Pick-list, Pickup/Return
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <UBadge :color="isOnline ? 'success' : 'warning'" variant="soft">{{
           isOnline ? "Online" : "Offline draft mode"
         }}</UBadge>
         <UButton
-          icon="bx:qr-scan"
-          label="Scan QR"
-          @click="isScannerOpen = true"
+          icon="bx:barcode-reader"
+          label="Scan Product"
+          variant="soft"
+          @click="openScanner('catalog')"
+        />
+        <UButton
+          icon="bx:download"
+          label="Export CSV"
+          color="neutral"
+          variant="soft"
+          :to="accountingExportUrl"
+          target="_blank"
         />
       </div>
     </div>
 
     <UProgress v-if="progress" animation="carousel" />
 
+    <UCard>
+      <div class="grid gap-3 md:grid-cols-3">
+        <UFormField label="โหมดทำรายการ" class="md:col-span-1">
+          <UTabs
+            v-model="transactionMode"
+            :items="transactionModeTabs"
+            value-key="value"
+            :content="false"
+            class="w-full"
+          />
+        </UFormField>
+        <UFormField label="สาขา POS">
+          <select
+            v-model="selectedBranchId"
+            class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
+            :disabled="branchLoading"
+          >
+            <option value="" disabled>เลือกสาขา</option>
+            <option
+              v-for="branch in branches"
+              :key="branch.id"
+              :value="branch.id"
+            >
+              {{ branch.nameTh }} · {{ branch.code }}
+            </option>
+          </select>
+        </UFormField>
+        <div class="rounded-xl border border-default p-3 text-sm">
+          <p class="font-medium">ID Card Workflow</p>
+          <p class="text-muted">
+            {{
+              transactionMode === "rental"
+                ? "Rental ต้องมีบัตรประชาชน"
+                : "Sale ข้ามขั้นตอนบัตรประชาชน"
+            }}
+          </p>
+        </div>
+      </div>
+      <UAlert
+        class="mt-3"
+        :color="transactionMode === 'rental' ? 'warning' : 'success'"
+        variant="soft"
+        :title="
+          transactionMode === 'rental'
+            ? 'Rental/Booking Mode: ต้องระบุข้อมูลลูกค้า'
+            : 'Sale Mode: ข้อมูลลูกค้าเป็น Optional'
+        "
+        :description="
+          transactionMode === 'rental'
+            ? 'ต้องมีเบอร์/ข้อมูลลูกค้า และต้องมีบัตรประชาชนก่อน Pickup'
+            : 'สามารถขายหน้าร้านแบบ Walk-in ไม่ระบุลูกค้าได้ หรือกรอกข้อมูลลูกค้าไว้เพื่ออ้างอิงภายหลัง'
+        "
+      />
+    </UCard>
+
+    <UCard>
+      <template #header>
+        <div
+          class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
+        >
+          <div>
+            <h3 class="font-semibold">POS Transaction History</h3>
+            <p class="text-sm text-muted">
+              ประวัติรายการรายวันตามสาขา POS ที่เลือก ใช้วันที่จาก created_at
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <UInput v-model="historyDate" type="date" class="w-40" />
+            <UButton
+              icon="bx:refresh"
+              variant="soft"
+              :loading="historyLoading"
+              label="Refresh"
+              @click="loadPosHistory"
+            />
+          </div>
+        </div>
+      </template>
+
+      <div class="grid gap-3 md:grid-cols-4">
+        <div class="rounded-xl border border-default p-3">
+          <p class="text-xs text-muted">ยอดรวมรายวัน</p>
+          <p class="text-lg font-semibold">
+            {{ formatCurrency(posHistory?.summary.totalAmount ?? 0) }}
+          </p>
+        </div>
+        <div class="rounded-xl border border-default p-3">
+          <p class="text-xs text-muted">ขายขาด</p>
+          <p class="text-lg font-semibold">
+            {{ formatCurrency(posHistory?.summary.totalSales ?? 0) }}
+          </p>
+        </div>
+        <div class="rounded-xl border border-default p-3">
+          <p class="text-xs text-muted">เช่า / มัดจำ</p>
+          <p class="text-lg font-semibold">
+            {{ formatCurrency(posHistory?.summary.totalRentals ?? 0) }}
+          </p>
+        </div>
+        <div class="rounded-xl border border-default p-3">
+          <p class="text-xs text-muted">จำนวนรายการ</p>
+          <p class="text-lg font-semibold">
+            {{ posHistory?.summary.transactionCount ?? 0 }} รายการ
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-3 flex flex-wrap gap-2">
+        <UBadge
+          v-for="[method, row] in historyPaymentBreakdown"
+          :key="method"
+          variant="soft"
+          color="neutral"
+        >
+          {{ formatPaymentMethod(method) }} · {{ row.count }} ·
+          {{ formatCurrency(row.amount) }}
+        </UBadge>
+        <span
+          v-if="historyPaymentBreakdown.length === 0"
+          class="text-sm text-muted"
+        >
+          ยังไม่มีรายการชำระเงินในวันนี้
+        </span>
+      </div>
+
+      <div class="mt-4 overflow-x-auto rounded-xl border border-default">
+        <table class="min-w-full divide-y divide-default text-sm">
+          <thead class="bg-muted/40 text-left text-xs uppercase text-muted">
+            <tr>
+              <th class="px-3 py-2">เวลา</th>
+              <th class="px-3 py-2">เลขที่เอกสาร</th>
+              <th class="px-3 py-2">ประเภท</th>
+              <th class="px-3 py-2">ลูกค้า</th>
+              <th class="px-3 py-2 text-right">ยอดรวม</th>
+              <th class="px-3 py-2">ชำระเงิน</th>
+              <th class="px-3 py-2">สาขา</th>
+              <th class="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-default">
+            <tr v-if="historyLoading">
+              <td colspan="8" class="px-3 py-6 text-center text-muted">
+                กำลังโหลดประวัติ POS...
+              </td>
+            </tr>
+            <tr v-else-if="!posHistory?.items.length">
+              <td colspan="8" class="px-3 py-6 text-center text-muted">
+                ไม่พบรายการ POS ในวันที่เลือก
+              </td>
+            </tr>
+            <template v-else>
+              <tr
+                v-for="item in posHistory?.items ?? []"
+                :key="`${item.type}:${item.id}`"
+                class="hover:bg-elevated/50"
+              >
+                <td class="whitespace-nowrap px-3 py-2">
+                  {{ formatTime(item.createdAt) }}
+                </td>
+                <td class="whitespace-nowrap px-3 py-2 font-medium">
+                  {{ item.documentNo }}
+                </td>
+                <td class="px-3 py-2">
+                  <UBadge
+                    :color="
+                      isHistoryItemCancelled(item)
+                        ? 'error'
+                        : item.type === 'sale'
+                          ? 'primary'
+                          : 'warning'
+                    "
+                    variant="soft"
+                  >
+                    {{ item.type === "sale" ? "ขายขาด" : "เช่า" }} ·
+                    {{ item.status }}
+                  </UBadge>
+                </td>
+                <td class="px-3 py-2">{{ item.customerName }}</td>
+                <td
+                  class="whitespace-nowrap px-3 py-2 text-right font-semibold"
+                >
+                  {{ formatCurrency(item.amount) }}
+                </td>
+                <td class="px-3 py-2">
+                  <div class="space-y-1">
+                    <p>{{ formatPaymentMethod(item.paymentMethod) }}</p>
+                    <p class="text-xs text-muted">{{ item.paymentStatus }}</p>
+                  </div>
+                </td>
+                <td class="px-3 py-2">
+                  {{ item.branchName || item.branchId }}
+                </td>
+                <td class="px-3 py-2">
+                  <div class="flex flex-wrap justify-end gap-1">
+                    <UButton
+                      size="xs"
+                      variant="soft"
+                      color="neutral"
+                      icon="bx:printer"
+                      label="Full"
+                      @click="showPrintPlaceholder('full', item)"
+                    />
+                    <UButton
+                      size="xs"
+                      variant="soft"
+                      color="neutral"
+                      icon="bx:receipt"
+                      label="Abbrev"
+                      @click="showPrintPlaceholder('abbreviated', item)"
+                    />
+                    <UButton
+                      v-if="isSuperAdmin"
+                      size="xs"
+                      variant="soft"
+                      color="error"
+                      icon="bx:x-circle"
+                      label="Void"
+                      :loading="cancellingHistoryKey === historyActionKey(item)"
+                      :disabled="isHistoryItemCancelled(item)"
+                      @click="cancelHistoryItem(item)"
+                    />
+                  </div>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </UCard>
+
     <div class="grid gap-4 lg:grid-cols-3">
       <UCard class="lg:col-span-1">
-        <template #header
-          ><h3 class="font-semibold">
-            1) Customer lookup / New walk-in
-          </h3></template
-        >
+        <template #header>
+          <div>
+            <h3 class="font-semibold">
+              1)
+              {{
+                transactionMode === "rental"
+                  ? "Customer lookup / New walk-in"
+                  : "Customer info (Optional)"
+              }}
+            </h3>
+            <p class="text-sm text-muted">
+              {{
+                transactionMode === "rental"
+                  ? "Rental/Booking ต้องมีข้อมูลลูกค้าก่อนทำรายการ"
+                  : "Sale สามารถเว้นว่างได้ หากเป็นการขายหน้าร้านทั่วไป"
+              }}
+            </p>
+          </div>
+        </template>
         <div class="space-y-3">
           <UFormField label="เบอร์โทรศัพท์ หรือ Customer ID">
             <UInput
               v-model="search"
               icon="bx:search"
+              class="w-full"
               placeholder="08x-xxx-xxxx หรือ customer UUID"
               @keyup.enter="lookupCustomer()"
             />
@@ -549,19 +1196,38 @@ async function retryPendingBookingDraft() {
             label="ค้นหา"
             @click="lookupCustomer()"
           />
+          <UButton
+            block
+            icon="bx:qr-scan"
+            variant="soft"
+            label="Scan Customer"
+            @click="openScanner('customer')"
+          />
 
           <div class="border-t border-default pt-3">
-            <p class="mb-2 text-sm font-medium">ลูกค้าใหม่ (ไม่มี Account)</p>
-            <UFormField label="เบอร์โทรศัพท์ (Primary Key)"
-              ><UInput v-model="draft.phone"
+            <p class="mb-2 text-sm font-medium">
+              {{
+                transactionMode === "rental"
+                  ? "ลูกค้าใหม่ (ไม่มี Account)"
+                  : "ข้อมูลลูกค้าเพิ่มเติม (Optional)"
+              }}
+            </p>
+            <UFormField
+              :label="
+                transactionMode === 'rental'
+                  ? 'เบอร์โทรศัพท์ (จำเป็น)'
+                  : 'เบอร์โทรศัพท์ (Optional)'
+              "
+              ><UInput v-model="draft.phone" class="w-full"
             /></UFormField>
             <UFormField label="ชื่อ-นามสกุล"
-              ><UInput v-model="draft.fullName"
+              ><UInput v-model="draft.fullName" class="w-full"
             /></UFormField>
             <UFormField label="หมายเหตุ"
-              ><UTextarea v-model="draft.notes" :rows="2"
+              ><UTextarea v-model="draft.notes" class="w-full" :rows="2"
             /></UFormField>
             <UButton
+              v-if="transactionMode === 'rental'"
               class="mt-2"
               block
               variant="soft"
@@ -570,7 +1236,7 @@ async function retryPendingBookingDraft() {
               @click="idModalOpen = true"
             />
             <UButton
-              v-if="hasPendingIdDraft"
+              v-if="transactionMode === 'rental' && hasPendingIdDraft"
               class="mt-2"
               block
               color="warning"
@@ -584,10 +1250,32 @@ async function retryPendingBookingDraft() {
       </UCard>
 
       <UCard class="lg:col-span-2">
-        <template #header
-          ><h3 class="font-semibold">2) Customer & ID check</h3></template
-        >
-        <div v-if="customer" class="space-y-3">
+        <template #header>
+          <h3 class="font-semibold">
+            2)
+            {{
+              transactionMode === "rental"
+                ? "Customer & ID check"
+                : "Sale customer summary"
+            }}
+          </h3>
+        </template>
+        <UAlert
+          v-if="transactionMode === 'sale' && !customer"
+          color="success"
+          variant="soft"
+          :title="
+            customerPhone
+              ? 'จะบันทึกข้อมูลลูกค้า Optional จากฟอร์ม'
+              : 'ขายขาดแบบไม่ระบุลูกค้าได้'
+          "
+          :description="
+            customerPhone
+              ? 'ข้อมูลนี้ใช้เป็น reference ของรายการขาย แต่ไม่ใช่เงื่อนไขบังคับ'
+              : 'ระบบจะบันทึกเป็น POS Walk-in โดยไม่มีชื่อ/เบอร์ลูกค้า'
+          "
+        />
+        <div v-else-if="customer" class="space-y-3">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="font-semibold">
@@ -603,14 +1291,14 @@ async function retryPendingBookingDraft() {
               >
             </div>
             <UButton
-              v-if="idCardMissing"
+              v-if="transactionMode === 'rental' && idCardMissing"
               color="warning"
               icon="bx:id-card"
               label="เพิ่มข้อมูลบัตร"
               @click="idModalOpen = true"
             />
             <UButton
-              v-else
+              v-else-if="transactionMode === 'rental'"
               :to="customer.idCardUrl || undefined"
               target="_blank"
               color="success"
@@ -622,10 +1310,18 @@ async function retryPendingBookingDraft() {
         </div>
         <UAlert
           v-else
-          color="info"
+          :color="transactionMode === 'rental' ? 'info' : 'success'"
           variant="soft"
-          title="ยังไม่ได้เลือกลูกค้า"
-          description="ค้นหาด้วยเบอร์โทรศัพท์หรือสแกน QR จากหน้าโปรไฟล์/รายการเช่าของลูกค้า"
+          :title="
+            transactionMode === 'rental'
+              ? 'ยังไม่ได้เลือกลูกค้า'
+              : 'ยังไม่ระบุข้อมูลลูกค้า'
+          "
+          :description="
+            transactionMode === 'rental'
+              ? 'ค้นหาด้วยเบอร์โทรศัพท์หรือสแกน QR จากหน้าโปรไฟล์/รายการเช่าของลูกค้า'
+              : 'ยังสามารถบันทึกขายขาดได้ตามปกติ'
+          "
         />
       </UCard>
     </div>
@@ -634,13 +1330,21 @@ async function retryPendingBookingDraft() {
       <template #header>
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 class="font-semibold">3) สร้างรายการเช่าใหม่จาก POS</h3>
+            <h3 class="font-semibold">
+              3)
+              {{
+                transactionMode === "rental"
+                  ? "สร้างรายการเช่า"
+                  : "ขายขาดหน้าร้าน"
+              }}
+              จาก POS
+            </h3>
             <p class="text-sm text-muted">
-              เลือกสินค้า/SKU, วันที่เช่า และบันทึกเงินมัดจำพร้อมหลักฐาน
+              สแกน/ค้นหา SKU, เลือกสาขา และรับชำระเงินแบบรวมยอดในครั้งเดียว
             </p>
           </div>
           <UButton
-            v-if="hasPendingBookingDraft"
+            v-if="transactionMode === 'rental' && hasPendingBookingDraft"
             color="warning"
             variant="soft"
             icon="bx:refresh"
@@ -650,12 +1354,29 @@ async function retryPendingBookingDraft() {
         </div>
       </template>
 
+      <UAlert
+        class="mb-4"
+        :color="transactionMode === 'rental' ? 'warning' : 'primary'"
+        variant="soft"
+        :title="
+          transactionMode === 'rental'
+            ? 'Rental/Booking workspace'
+            : 'Sale workspace'
+        "
+        :description="
+          transactionMode === 'rental'
+            ? 'เลือก Asset, ระบุวันเช่า, รับมัดจำ และสร้าง Booking'
+            : 'เลือก SKU, เพิ่มเข้าตะกร้าขาย, รับชำระ และตัด Stock โดยไม่บังคับข้อมูลลูกค้า'
+        "
+      />
+
       <div class="grid gap-4 xl:grid-cols-3">
         <div class="space-y-3 xl:col-span-2">
           <div class="flex gap-2">
             <UInput
               v-model="catalogSearch"
               icon="bx:search"
+              class="w-full min-w-0 flex-1"
               placeholder="ค้นหาสินค้า / SKU"
               @keyup.enter="loadCatalog"
             />
@@ -665,14 +1386,28 @@ async function retryPendingBookingDraft() {
               label="ค้นหา"
               @click="loadCatalog"
             />
+            <UButton
+              icon="bx:barcode-reader"
+              variant="soft"
+              label="สแกน"
+              @click="openScanner('catalog')"
+            />
           </div>
 
           <UAlert
-            v-if="!catalogLoading && catalogProducts.length === 0"
+            v-if="!catalogLoading && filteredCatalogProducts.length === 0"
             color="warning"
             variant="soft"
-            title="ยังไม่มี Asset ที่พร้อมเช่าใน POS"
-            description="POS จะแสดงเฉพาะ Asset ที่สถานะ Active, ไม่ถูกซ่อน, เปิด Daily rate และมีราคาเช่ารายวันมากกว่า 0 บาท"
+            :title="
+              transactionMode === 'rental'
+                ? 'ยังไม่มี Asset ที่พร้อมเช่าใน POS'
+                : 'ยังไม่มี SKU สำหรับขายในสาขานี้'
+            "
+            :description="
+              transactionMode === 'rental'
+                ? 'POS จะแสดงเฉพาะ Asset ที่สถานะ Active, ไม่ถูกซ่อน, เปิด Daily rate และมีราคาเช่ารายวันมากกว่า 0 บาท'
+                : 'Sale POS จะแสดง SKU ที่ไม่ซ่อนและมี stock/branch stock พร้อมขาย'
+            "
           />
 
           <div class="grid gap-3 md:grid-cols-2">
@@ -683,11 +1418,11 @@ async function retryPendingBookingDraft() {
               >
                 <option value="" disabled>เลือกสินค้า</option>
                 <option
-                  v-for="product in catalogProducts"
+                  v-for="product in filteredCatalogProducts"
                   :key="product.id"
                   :value="product.id"
                 >
-                  {{ product.nameTh }}
+                  [{{ product.type }}] {{ product.nameTh }}
                   {{ product.brand ? `· ${product.brand}` : "" }}
                 </option>
               </select>
@@ -704,28 +1439,49 @@ async function retryPendingBookingDraft() {
                   :key="sku.id"
                   :value="sku.id"
                 >
-                  {{ sku.labelTh }} · {{ formatCurrency(sku.dailyRate) }}/วัน
+                  {{ sku.labelTh }} ·
+                  {{
+                    transactionMode === "rental"
+                      ? `${formatCurrency(sku.dailyRate)}/วัน`
+                      : formatCurrency(sku.price)
+                  }}
                 </option>
               </select>
             </UFormField>
 
-            <UFormField label="วันที่เริ่มเช่า">
-              <UInput v-model="bookingStartDate" type="date" />
+            <UFormField
+              v-if="transactionMode === 'rental'"
+              label="วันที่เริ่มเช่า"
+            >
+              <UInput v-model="bookingStartDate" class="w-full" type="date" />
             </UFormField>
-            <UFormField label="วันที่คืนสินค้า">
-              <UInput v-model="bookingEndDate" type="date" />
+            <UFormField
+              v-if="transactionMode === 'rental'"
+              label="วันที่คืนสินค้า"
+            >
+              <UInput v-model="bookingEndDate" class="w-full" type="date" />
             </UFormField>
           </div>
+          <UButton
+            v-if="transactionMode === 'sale'"
+            class="mt-3"
+            icon="bx:cart-add"
+            color="primary"
+            variant="soft"
+            :disabled="!selectedSku"
+            label="เพิ่มลงตะกร้าขาย"
+            @click="addSaleSkuToCart()"
+          />
         </div>
 
         <div class="space-y-3 rounded-xl border border-default p-3">
-          <div>
+          <div v-if="transactionMode === 'rental'">
             <p class="text-sm font-medium">ราคาเช่าอัตโนมัติ</p>
             <p class="text-xs text-muted">
               ใช้ logic tier day/week/month เดียวกับหน้าจองของลูกค้า
             </p>
           </div>
-          <div class="space-y-1 text-sm">
+          <div v-if="transactionMode === 'rental'" class="space-y-1 text-sm">
             <div class="flex justify-between">
               <span class="text-muted">จำนวนวัน</span>
               <span class="font-medium">{{ bookingDays || "—" }}</span>
@@ -739,7 +1495,13 @@ async function retryPendingBookingDraft() {
               </span>
             </div>
             <div class="flex justify-between">
-              <span class="text-muted">มัดจำตาม SKU</span>
+              <span class="text-muted">ยอดรวมรับชำระ</span>
+              <span class="font-semibold">
+                {{ formatCurrency(rentalCheckoutTotal) }}
+              </span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-muted">มัดจำตาม Asset</span>
               <span class="font-semibold">
                 {{
                   selectedSku ? formatCurrency(selectedSku.depositAmount) : "—"
@@ -748,10 +1510,54 @@ async function retryPendingBookingDraft() {
             </div>
           </div>
 
+          <div v-else class="space-y-3">
+            <p class="text-sm font-medium">ตะกร้าขายขาด</p>
+            <div v-if="saleCart.length === 0" class="text-sm text-muted">
+              ยังไม่มีสินค้าในตะกร้า — สแกน Barcode/QR
+              หรือค้นหาแล้วกดเพิ่มลงตะกร้า
+            </div>
+            <div
+              v-for="line in saleCart"
+              :key="line.skuId"
+              class="rounded-lg border border-default p-2 text-sm"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <p class="font-medium">{{ line.name }}</p>
+                  <p class="text-xs text-muted">
+                    {{ line.code }} · {{ formatCurrency(line.unitPrice) }}
+                  </p>
+                </div>
+                <UButton
+                  size="xs"
+                  color="error"
+                  variant="ghost"
+                  icon="bx:trash"
+                  @click="removeSaleLine(line.skuId)"
+                />
+              </div>
+              <UInput
+                v-model.number="line.quantity"
+                class="mt-2"
+                type="number"
+                min="1"
+              />
+            </div>
+            <div class="flex justify-between text-sm font-semibold">
+              <span>ยอดขายรวม</span>
+              <span>{{ formatCurrency(saleCartTotal) }}</span>
+            </div>
+          </div>
+
           <div class="grid gap-2 sm:grid-cols-2">
-            <UFormField label="รับมัดจำจริง">
+            <UFormField
+              :label="
+                transactionMode === 'rental' ? 'รับมัดจำจริง' : 'รับชำระจริง'
+              "
+            >
               <UInput
                 v-model.number="depositPaidAmount"
+                class="w-full"
                 type="number"
                 min="0"
               />
@@ -769,7 +1575,13 @@ async function retryPendingBookingDraft() {
               </select>
             </UFormField>
           </div>
-          <UFormField label="หลักฐานมัดจำ">
+          <UFormField
+            :label="
+              transactionMode === 'rental'
+                ? 'หลักฐานมัดจำ'
+                : 'หลักฐานการชำระเงิน (Optional)'
+            "
+          >
             <div class="space-y-2">
               <div class="grid gap-2 sm:grid-cols-2">
                 <label
@@ -829,19 +1641,42 @@ async function retryPendingBookingDraft() {
           </UFormField>
           <UTextarea
             v-model="depositNotes"
+            class="w-full"
             :rows="2"
-            placeholder="หมายเหตุเงินมัดจำ / เลขอ้างอิงสลิป"
+            :placeholder="
+              transactionMode === 'rental'
+                ? 'หมายเหตุเงินมัดจำ / เลขอ้างอิงสลิป'
+                : 'หมายเหตุการชำระเงิน / เลขอ้างอิงสลิป'
+            "
           />
           <UButton
+            v-if="transactionMode === 'rental'"
             block
             color="primary"
             icon="bx:plus-circle"
             :loading="creatingBooking"
-            :disabled="!canCreateBooking || idCardMissing"
-            label="สร้าง Booking และบันทึกมัดจำ"
+            :disabled="!canCreateBooking || requiresIdCardForCheckout"
+            label="สร้าง Booking และรับชำระรวม"
             @click="createPosBooking"
           />
-          <p v-if="idCardMissing" class="text-xs text-warning">
+          <UButton
+            v-else
+            block
+            color="primary"
+            icon="bx:receipt"
+            :loading="creatingSale"
+            :disabled="!canCreateSale"
+            label="บันทึกขายขาดและตัด Stock"
+            @click="createPosSale"
+          />
+          <UTextarea
+            v-if="transactionMode === 'sale'"
+            v-model="saleNotes"
+            class="w-full"
+            :rows="2"
+            placeholder="หมายเหตุการขาย / เลขอ้างอิง"
+          />
+          <p v-if="requiresIdCardForCheckout" class="text-xs text-warning">
             ต้องบันทึกบัตรประชาชนก่อนสร้าง/รับรายการเช่าหน้าร้าน
           </p>
         </div>
@@ -913,6 +1748,7 @@ async function retryPendingBookingDraft() {
           </div>
           <UTextarea
             v-model="fulfillmentNotes"
+            class="w-full"
             :rows="2"
             placeholder="หมายเหตุการรับ/คืน"
           />
@@ -1023,6 +1859,16 @@ async function retryPendingBookingDraft() {
 
     <AdminOrderQrScanner
       v-model:open="isScannerOpen"
+      :title="
+        scannerPurpose === 'catalog'
+          ? 'Scan product QR / barcode'
+          : 'Scan customer QR'
+      "
+      :description="
+        scannerPurpose === 'catalog'
+          ? 'สแกน asset:<code>, sku:<code>, product:<id>, barcode หรือ Barcode จริงเพื่อค้นหา/เพิ่มสินค้า'
+          : 'สแกน QR ของลูกค้า รายการเช่า หรือ booking'
+      "
       @decoded="handleDecoded"
     />
   </div>

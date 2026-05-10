@@ -13,7 +13,7 @@ const showSkeleton = computed(
 <template>
   <div
     v-if="showSkeleton"
-    class="relative h-[33vh] min-h-120 max-h-100 w-full overflow-hidden rounded-[0.2rem] bg-neutral-950 shadow-sm"
+    class="relative aspect-square w-full overflow-hidden rounded-[0.2rem] bg-neutral-950 shadow-sm md:h-[33vh] md:min-h-120 md:max-h-100 md:aspect-auto"
   >
     <USkeleton class="absolute inset-0 h-full w-full rounded-none" />
     <div class="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -36,7 +36,9 @@ const showSkeleton = computed(
         next: 'hidden md:inline-flex right-4 z-20 border border-white/15 bg-black/45 text-white shadow-lg backdrop-blur',
       }"
     >
-      <div class="relative h-[33vh] min-h-120 max-h-100 w-full overflow-hidden">
+      <div
+        class="relative aspect-square w-full overflow-hidden md:h-[33vh] md:min-h-120 md:max-h-100 md:aspect-auto"
+      >
         <NuxtImg
           :src="item.mobileImageUrl || item.imageUrl"
           :alt="item.title[lang]"

@@ -646,7 +646,7 @@ async function createProduct() {
               <div class="flex gap-2">
                 <UInput
                   :model-value="form.slug"
-                  class="flex-1"
+                  class="w-full min-w-0 flex-1"
                   placeholder="cordless-drill-dca-a1b2c3d4"
                   @update:model-value="setSlugManually"
                 />
@@ -679,11 +679,12 @@ async function createProduct() {
                 v-model="form.type"
                 :items="typeOptions"
                 value-key="value"
+                class="w-full"
               />
             </UFormField>
 
             <UFormField label="Brand">
-              <UInput v-model="form.brand" placeholder="DCA" />
+              <UInput v-model="form.brand" class="w-full" placeholder="DCA" />
             </UFormField>
           </div>
 
@@ -696,26 +697,27 @@ async function createProduct() {
                 v-model="form.shippingSize"
                 :items="shippingSizeOptions"
                 value-key="value"
+                class="w-full"
               />
             </UFormField>
           </div>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField label="Name (TH)" required>
-              <UInput v-model="form.nameTh" />
+              <UInput v-model="form.nameTh" class="w-full" />
             </UFormField>
 
             <UFormField label="Name (EN)" required>
-              <UInput v-model="form.nameEn" />
+              <UInput v-model="form.nameEn" class="w-full" />
             </UFormField>
           </div>
 
           <UFormField label="Description (TH)" required>
-            <UTextarea v-model="form.descriptionTh" :rows="3" />
+            <UTextarea v-model="form.descriptionTh" class="w-full" :rows="3" />
           </UFormField>
 
           <UFormField label="Description (EN)" required>
-            <UTextarea v-model="form.descriptionEn" :rows="3" />
+            <UTextarea v-model="form.descriptionEn" class="w-full" :rows="3" />
           </UFormField>
 
           <UFormField label="Main category" required>
@@ -769,6 +771,7 @@ async function createProduct() {
                       <UFormField label="Key" required>
                         <UInput
                           :model-value="mainCategoryForm.key"
+                          class="w-full"
                           placeholder="impact_drivers"
                           @update:model-value="setMainCategoryKey"
                         />
@@ -781,6 +784,7 @@ async function createProduct() {
                       <UFormField label="Sort order">
                         <UInput
                           v-model.number="mainCategoryForm.sortOrder"
+                          class="w-full"
                           type="number"
                           min="0"
                         />
@@ -791,6 +795,7 @@ async function createProduct() {
                       <UFormField label="Label (TH)" required>
                         <UInput
                           v-model="mainCategoryForm.labelTh"
+                          class="w-full"
                           placeholder="สว่านกระแทก"
                         />
                       </UFormField>
@@ -798,6 +803,7 @@ async function createProduct() {
                       <UFormField label="Label (EN)" required>
                         <UInput
                           v-model="mainCategoryForm.labelEn"
+                          class="w-full"
                           placeholder="Impact Drivers"
                         />
                       </UFormField>
@@ -806,6 +812,7 @@ async function createProduct() {
                     <UFormField label="Icon">
                       <UInput
                         v-model="mainCategoryForm.icon"
+                        class="w-full"
                         placeholder="bx:drill"
                       />
                     </UFormField>
@@ -813,6 +820,7 @@ async function createProduct() {
                     <UFormField label="Description (TH)">
                       <UTextarea
                         v-model="mainCategoryForm.descriptionTh"
+                        class="w-full"
                         :rows="2"
                       />
                     </UFormField>
@@ -820,6 +828,7 @@ async function createProduct() {
                     <UFormField label="Description (EN)">
                       <UTextarea
                         v-model="mainCategoryForm.descriptionEn"
+                        class="w-full"
                         :rows="2"
                       />
                     </UFormField>
@@ -978,7 +987,7 @@ async function createProduct() {
                   Format JSON
                 </UButton>
               </div>
-              <UTextarea v-model="specText" :rows="10" />
+              <UTextarea v-model="specText" class="w-full" :rows="10" />
             </div>
           </UFormField>
 
@@ -994,7 +1003,7 @@ async function createProduct() {
                   Format JSON
                 </UButton>
               </div>
-              <UTextarea v-model="detailBlocksText" :rows="10" />
+              <UTextarea v-model="detailBlocksText" class="w-full" :rows="10" />
             </div>
           </UFormField>
 

@@ -90,7 +90,9 @@ const { data, pending, error, refresh } = await useFetch<{
 });
 
 const groups = computed(() => data.value?.items ?? []);
-const mainCategoryOptions = computed(() => data.value?.mainCategoryOptions ?? []);
+const mainCategoryOptions = computed(
+  () => data.value?.mainCategoryOptions ?? [],
+);
 const selectItems = computed(() =>
   mainCategoryOptions.value.map((item) => ({
     value: item.value,
@@ -98,7 +100,8 @@ const selectItems = computed(() =>
   })),
 );
 const selectedGroup = computed(
-  () => groups.value.find((group) => group.id === selectedGroupId.value) ?? null,
+  () =>
+    groups.value.find((group) => group.id === selectedGroupId.value) ?? null,
 );
 const isEditingGroup = computed(() => Boolean(groupForm.id));
 const loadErrorMessage = computed(() =>
@@ -180,7 +183,9 @@ async function saveGroup() {
     );
     const groupId = isEditingGroup.value ? groupForm.id : response.item?.id;
     toast.add({
-      title: isEditingGroup.value ? "Home category updated" : "Home category created",
+      title: isEditingGroup.value
+        ? "Home category updated"
+        : "Home category created",
       color: "success",
       icon: "bx:check-circle",
     });
@@ -200,14 +205,22 @@ async function saveGroup() {
 async function deleteGroup(group: HomeCategoryGroup) {
   if (
     import.meta.client &&
-    !window.confirm(`Delete '${group.labelEn || group.mainCategoryKey}' and all options?`)
+    !window.confirm(
+      `Delete '${group.labelEn || group.mainCategoryKey}' and all options?`,
+    )
   ) {
     return;
   }
   deletingGroupId.value = group.id;
   try {
-    await $fetch(`/api/admin/home-categories/group/${group.id}`, { method: "DELETE" });
-    toast.add({ title: "Home category deleted", color: "success", icon: "bx:trash" });
+    await $fetch(`/api/admin/home-categories/group/${group.id}`, {
+      method: "DELETE",
+    });
+    toast.add({
+      title: "Home category deleted",
+      color: "success",
+      icon: "bx:trash",
+    });
     if (selectedGroupId.value === group.id) resetGroupForm();
     await refresh();
   } catch (deleteError) {
@@ -256,10 +269,16 @@ async function saveOption() {
 
 async function deleteOption(option: HomeCategoryOption) {
   if (!selectedGroup.value) return;
-  if (import.meta.client && !window.confirm(`Delete option '${option.labelEn}'?`)) return;
+  if (
+    import.meta.client &&
+    !window.confirm(`Delete option '${option.labelEn}'?`)
+  )
+    return;
   deletingOptionId.value = option.id;
   try {
-    await $fetch(`/api/admin/home-categories/option/${option.id}`, { method: "DELETE" });
+    await $fetch(`/api/admin/home-categories/option/${option.id}`, {
+      method: "DELETE",
+    });
     toast.add({ title: "Option deleted", color: "success", icon: "bx:trash" });
     if (editingOptionId.value === option.id) resetOptionForm();
     await refreshAndReselect(selectedGroup.value.id);
@@ -284,10 +303,16 @@ async function deleteOption(option: HomeCategoryOption) {
           <div>
             <h2 class="text-lg font-semibold">Home categories</h2>
             <p class="text-sm text-muted">
-              Editable category-card groups and dropdown options for the homepage.
+              Editable category-card groups and dropdown options for the
+              homepage.
             </p>
           </div>
-          <UButton icon="bx:refresh" variant="soft" :loading="pending" @click="refresh">
+          <UButton
+            icon="bx:refresh"
+            variant="soft"
+            :loading="pending"
+            @click="refresh"
+          >
             Refresh
           </UButton>
         </div>
@@ -319,23 +344,36 @@ async function deleteOption(option: HomeCategoryOption) {
           :key="group.id"
           type="button"
           class="w-full rounded-xl border p-3 text-left transition hover:border-primary"
-          :class="selectedGroupId === group.id ? 'border-primary bg-primary/5' : 'border-default'"
+          :class="
+            selectedGroupId === group.id
+              ? 'border-primary bg-primary/5'
+              : 'border-default'
+          "
           @click="selectGroup(group)"
         >
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0 space-y-1">
               <div class="flex flex-wrap items-center gap-2">
-                <UIcon v-if="group.icon" :name="group.icon" class="size-4 text-muted" />
+                <UIcon
+                  v-if="group.icon"
+                  :name="group.icon"
+                  class="size-4 text-muted"
+                />
                 <span class="font-medium">{{ group.labelEn }}</span>
                 <UBadge color="neutral" variant="soft" size="xs">
                   {{ group.mainCategoryKey }}
                 </UBadge>
-                <UBadge :color="group.isActive ? 'success' : 'warning'" variant="soft" size="xs">
+                <UBadge
+                  :color="group.isActive ? 'success' : 'warning'"
+                  variant="soft"
+                  size="xs"
+                >
                   {{ group.isActive ? "active" : "inactive" }}
                 </UBadge>
               </div>
               <p class="text-xs text-muted">
-                {{ group.labelTh }} · {{ group.options.length }} option(s) · sort
+                {{ group.labelTh }} · {{ group.options.length }} option(s) ·
+                sort
                 {{ group.sortOrder }}
               </p>
             </div>
@@ -361,7 +399,8 @@ async function deleteOption(option: HomeCategoryOption) {
             {{ isEditingGroup ? "Edit group" : "Create group" }}
           </h2>
           <p class="text-sm text-muted">
-            Groups map to existing main categories. Options become homepage dropdown rows.
+            Groups map to existing main categories. Options become homepage
+            dropdown rows.
           </p>
         </div>
       </template>
@@ -376,22 +415,31 @@ async function deleteOption(option: HomeCategoryOption) {
             />
           </UFormField>
           <UFormField label="Icon" :class="FIELD_CLASS">
-            <UInput v-model="groupForm.icon" placeholder="bx:wrench" />
+            <UInput
+              v-model="groupForm.icon"
+              class="w-full"
+              placeholder="bx:wrench"
+            />
           </UFormField>
           <UFormField label="Sort order" :class="FIELD_CLASS">
-            <UInput v-model.number="groupForm.sortOrder" type="number" min="0" />
+            <UInput
+              v-model.number="groupForm.sortOrder"
+              class="w-full"
+              type="number"
+              min="0"
+            />
           </UFormField>
           <UFormField label="Label TH" required :class="FIELD_CLASS">
-            <UInput v-model="groupForm.labelTh" />
+            <UInput v-model="groupForm.labelTh" class="w-full" />
           </UFormField>
           <UFormField label="Label EN" required :class="FIELD_CLASS">
-            <UInput v-model="groupForm.labelEn" />
+            <UInput v-model="groupForm.labelEn" class="w-full" />
           </UFormField>
           <UFormField label="Label CN" :class="FIELD_CLASS">
-            <UInput v-model="groupForm.labelCn" />
+            <UInput v-model="groupForm.labelCn" class="w-full" />
           </UFormField>
           <UFormField label="Label JP" :class="FIELD_CLASS">
-            <UInput v-model="groupForm.labelJp" />
+            <UInput v-model="groupForm.labelJp" class="w-full" />
           </UFormField>
         </div>
 
@@ -401,7 +449,12 @@ async function deleteOption(option: HomeCategoryOption) {
           <UButton type="submit" color="primary" :loading="savingGroup">
             {{ isEditingGroup ? "Save group" : "Create group" }}
           </UButton>
-          <UButton type="button" variant="soft" color="neutral" @click="resetGroupForm">
+          <UButton
+            type="button"
+            variant="soft"
+            color="neutral"
+            @click="resetGroupForm"
+          >
             Reset
           </UButton>
         </div>
@@ -413,7 +466,8 @@ async function deleteOption(option: HomeCategoryOption) {
           <div>
             <h3 class="text-base font-semibold">Options</h3>
             <p class="text-sm text-muted">
-              Search query fields are optional. If blank, the storefront uses the label.
+              Search query fields are optional. If blank, the storefront uses
+              the label.
             </p>
           </div>
 
@@ -429,7 +483,11 @@ async function deleteOption(option: HomeCategoryOption) {
                   <UBadge color="neutral" variant="soft" size="xs">
                     {{ option.optionKey }}
                   </UBadge>
-                  <UBadge :color="option.isActive ? 'success' : 'warning'" variant="soft" size="xs">
+                  <UBadge
+                    :color="option.isActive ? 'success' : 'warning'"
+                    variant="soft"
+                    size="xs"
+                  >
                     {{ option.isActive ? "active" : "inactive" }}
                   </UBadge>
                 </div>
@@ -438,7 +496,12 @@ async function deleteOption(option: HomeCategoryOption) {
                 </p>
               </div>
               <div class="flex gap-2">
-                <UButton size="xs" variant="soft" icon="bx:edit" @click="startEditOption(option)">
+                <UButton
+                  size="xs"
+                  variant="soft"
+                  icon="bx:edit"
+                  @click="startEditOption(option)"
+                >
                   Edit
                 </UButton>
                 <UButton
@@ -454,44 +517,75 @@ async function deleteOption(option: HomeCategoryOption) {
               </div>
             </div>
           </div>
-          <p v-else class="rounded-lg border border-dashed border-default p-3 text-sm text-muted">
+          <p
+            v-else
+            class="rounded-lg border border-dashed border-default p-3 text-sm text-muted"
+          >
             No options yet. Add one below.
           </p>
 
-          <form class="space-y-4 rounded-xl bg-(--ui-bg-elevated)/50 p-3" @submit.prevent="saveOption">
+          <form
+            class="space-y-4 rounded-xl bg-(--ui-bg-elevated)/50 p-3"
+            @submit.prevent="saveOption"
+          >
             <p class="text-sm font-medium">
               {{ editingOptionId ? "Edit option" : "Add option" }}
             </p>
             <div :class="ADMIN_FORM_GRID_CLASS">
               <UFormField label="Option key" required :class="FIELD_CLASS">
-                <UInput v-model="optionForm.optionKey" placeholder="s01" />
+                <UInput
+                  v-model="optionForm.optionKey"
+                  class="w-full"
+                  placeholder="s01"
+                />
               </UFormField>
               <UFormField label="Sort order" :class="FIELD_CLASS">
-                <UInput v-model.number="optionForm.sortOrder" type="number" min="0" />
+                <UInput
+                  v-model.number="optionForm.sortOrder"
+                  class="w-full"
+                  type="number"
+                  min="0"
+                />
               </UFormField>
               <UFormField label="Label TH" required :class="FIELD_CLASS">
-                <UInput v-model="optionForm.labelTh" />
+                <UInput v-model="optionForm.labelTh" class="w-full" />
               </UFormField>
               <UFormField label="Label EN" required :class="FIELD_CLASS">
-                <UInput v-model="optionForm.labelEn" />
+                <UInput v-model="optionForm.labelEn" class="w-full" />
               </UFormField>
               <UFormField label="Label CN" :class="FIELD_CLASS">
-                <UInput v-model="optionForm.labelCn" />
+                <UInput v-model="optionForm.labelCn" class="w-full" />
               </UFormField>
               <UFormField label="Label JP" :class="FIELD_CLASS">
-                <UInput v-model="optionForm.labelJp" />
+                <UInput v-model="optionForm.labelJp" class="w-full" />
               </UFormField>
               <UFormField label="Search query TH" :class="TEXTAREA_FIELD_CLASS">
-                <UTextarea v-model="optionForm.searchQueryTh" :rows="2" />
+                <UTextarea
+                  v-model="optionForm.searchQueryTh"
+                  class="w-full"
+                  :rows="2"
+                />
               </UFormField>
               <UFormField label="Search query EN" :class="TEXTAREA_FIELD_CLASS">
-                <UTextarea v-model="optionForm.searchQueryEn" :rows="2" />
+                <UTextarea
+                  v-model="optionForm.searchQueryEn"
+                  class="w-full"
+                  :rows="2"
+                />
               </UFormField>
               <UFormField label="Search query CN" :class="TEXTAREA_FIELD_CLASS">
-                <UTextarea v-model="optionForm.searchQueryCn" :rows="2" />
+                <UTextarea
+                  v-model="optionForm.searchQueryCn"
+                  class="w-full"
+                  :rows="2"
+                />
               </UFormField>
               <UFormField label="Search query JP" :class="TEXTAREA_FIELD_CLASS">
-                <UTextarea v-model="optionForm.searchQueryJp" :rows="2" />
+                <UTextarea
+                  v-model="optionForm.searchQueryJp"
+                  class="w-full"
+                  :rows="2"
+                />
               </UFormField>
             </div>
             <UCheckbox v-model="optionForm.isActive" label="Active" />

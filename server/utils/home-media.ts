@@ -13,7 +13,7 @@ export type HomeUploadKind =
 
 const HOME_IMAGE_CONFIG = {
   banner: { width: 1600, height: 900, fit: "cover", quality: 84 },
-  "banner-mobile": { width: 900, height: 1200, fit: "cover", quality: 84 },
+  "banner-mobile": { width: 1080, height: 1080, fit: "cover", quality: 84 },
   "link-card": { width: 1200, height: 800, fit: "cover", quality: 82 },
   "partner-logo": { width: 600, height: 240, fit: "contain", quality: 82 },
 } as const;

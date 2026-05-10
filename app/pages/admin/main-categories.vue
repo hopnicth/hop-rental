@@ -388,21 +388,38 @@ async function deleteItem(item: MainCategoryItem) {
 
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField label="Key" required>
-              <UInput v-model="form.key" placeholder="cordless_drills" />
+              <UInput
+                v-model="form.key"
+                class="w-full"
+                placeholder="cordless_drills"
+              />
             </UFormField>
 
             <UFormField label="Sort order">
-              <UInput v-model.number="form.sortOrder" type="number" min="0" />
+              <UInput
+                v-model.number="form.sortOrder"
+                class="w-full"
+                type="number"
+                min="0"
+              />
             </UFormField>
           </div>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField label="Label (TH)" required>
-              <UInput v-model="form.labelTh" placeholder="สว่านไร้สาย" />
+              <UInput
+                v-model="form.labelTh"
+                class="w-full"
+                placeholder="สว่านไร้สาย"
+              />
             </UFormField>
 
             <UFormField label="Label (EN)" required>
-              <UInput v-model="form.labelEn" placeholder="Cordless Drills" />
+              <UInput
+                v-model="form.labelEn"
+                class="w-full"
+                placeholder="Cordless Drills"
+              />
             </UFormField>
           </div>
 
@@ -431,15 +448,15 @@ async function deleteItem(item: MainCategoryItem) {
           </UFormField>
 
           <UFormField label="Icon">
-            <UInput v-model="form.icon" placeholder="bx:drill" />
+            <UInput v-model="form.icon" class="w-full" placeholder="bx:drill" />
           </UFormField>
 
           <UFormField label="Description (TH)">
-            <UTextarea v-model="form.descriptionTh" :rows="3" />
+            <UTextarea v-model="form.descriptionTh" class="w-full" :rows="3" />
           </UFormField>
 
           <UFormField label="Description (EN)">
-            <UTextarea v-model="form.descriptionEn" :rows="3" />
+            <UTextarea v-model="form.descriptionEn" class="w-full" :rows="3" />
           </UFormField>
 
           <UCheckbox

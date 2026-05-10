@@ -1,6 +1,6 @@
 # Database Admin Manual
 
-Last updated: 2026-05-08
+Last updated: 2026-05-10
 Audience: internal staff, data-entry, developers
 
 ## Purpose
@@ -61,12 +61,13 @@ Notes:
 
 ## System-managed tables
 
-| Table                    | Purpose                    | Edit manually?   |
-| ------------------------ | -------------------------- | ---------------- |
-| `inventory_change_log`   | stock audit trail          | No               |
-| `rental_bookings`        | booking transactions       | Usually no       |
-| `orders` / `order_items` | sale transactions          | Usually no       |
-| `addresses`              | customer/company addresses | No catalog setup |
+| Table                      | Purpose                    | Edit manually?         |
+| -------------------------- | -------------------------- | ---------------------- |
+| `inventory_change_log`     | stock audit trail          | No                     |
+| `rental_bookings`          | booking transactions       | Usually no             |
+| `orders` / `order_items`   | sale transactions          | Usually no             |
+| `addresses`                | customer/company addresses | No catalog setup       |
+| `admin_user_branch_access` | staff POS branch grants    | Use Super Admin UI/API |
 
 ## Rental operations tables
 
@@ -117,6 +118,16 @@ Notes:
 8. At handover, confirm pickup from POS so a `rental_booking_fulfillments` row is written and the booking moves to `picked_up`
 9. At return, confirm return from POS so another fulfillment row is written and the booking moves to `returned`
 
+## Setup order for a POS sale
+
+1. Confirm the staff user has POS access to the target branch, or use `super_admin`
+2. Open `/admin/pos`, choose **Sale Mode**, and select the branch
+3. Customer info is optional; use **Scan Customer** inside `1) Customer info (Optional)` only when a customer profile should be linked
+4. Search/scan sale SKUs; ensure `sku_branch_inventory` has a row for the selected branch
+5. Record payment method/status/amount, then create the sale
+6. Check **POS Transaction History** by date/branch for the daily summary and reconciliation
+7. Only `super_admin` can void/cancel a POS history row; stock reversal still requires the operational stock adjustment process
+
 ## Setup order for a homepage promotion or service card
 
 The home-rail promotion/service cards are pure references to `content_pages`.
@@ -127,6 +138,16 @@ There is no longer a way to type a title/excerpt/image directly on a card.
 3. Open `/admin/home-content` and use **Add promotion card** or **Add service card**
 4. Pick the content page from the picker; the rail card derives title, excerpt, image, and `/services/{slug}` or `/promotions/{slug}` link from it live
 5. To remove a card from the rail, delete the home-content card (the source page stays); to remove the page everywhere, delete the `content_pages` row (the linked card cascades)
+
+## Setup order for a homepage hero banner
+
+1. Open `/admin/home-content`
+2. In **Create banner**, fill localized title/subtitle/CTA fields
+3. Upload or paste the required desktop banner image into `image_url`
+4. Upload or paste a phone-specific banner image into `mobile_image_url` if the crop for small screens should differ
+5. If `mobile_image_url` is left empty, the storefront uses the desktop image as fallback on phones
+6. Set `link_url`, `link_target`, `sort_order`, and active state
+7. Save and verify `/` on both desktop and mobile widths
 
 ## Setup order for content listing filters
 
@@ -153,10 +174,13 @@ Notes:
 - `asset_matches` are recommended for discoverability but are not always required for booking.
 - `rental_bookings` must now satisfy `user_id IS NOT NULL OR walk_in_phone IS NOT NULL`.
 - POS catalog reads only active, non-hidden assets with `daily_enabled = true` and `daily_rate > 0`.
+- POS sale catalog reads sale SKUs from the selected branch; `inventory_kind` should exist on `sku_branch_inventory` after migration `060`.
+- Sale mode customer fields are optional; Rental/Booking mode still requires a customer account or walk-in phone.
 - ID-card files are stored under `catalog-media/customer-ids/`, deposit proofs under `catalog-media/deposit-proofs/`, and pickup signatures under `catalog-media/rental-fulfillment/`.
 - POS pickup/return are operational events, not generic status edits; use the dedicated POS or admin booking endpoints so audit rows stay intact.
 - Stock should be managed through admin endpoints, not direct DB writes, so audit logs remain correct.
 - Booking docs/checklists are stored separately from asset-level docs.
+- Homepage hero banners support a required desktop image plus an optional mobile-specific image; use the mobile field when the phone crop needs different artwork.
 - Homepage promotion/service rails read live data from `content_pages`; do not edit `home_link_cards` text fields directly.
 - Home category-card options are managed separately from content pages in `/admin/home-categories`; desktop sub-option selection sends `/search?q=...`, while mobile group icon cards use real `mainCategoryKey` values in `/search?category=...`.
 
@@ -175,6 +199,9 @@ Notes:
 - `047` adds `content_pages.main_category_key` for content listing filters
 - `056` adds walk-in customer capture and rental fulfillment audit events
 - `057` adds POS booking deposit fields + deposit proof storage
+- `058` adds atomic rental booking overlap protection
+- `059` adds full admin POS branch/sale/payment/scanner support
+- `060` restores `sku_branch_inventory.inventory_kind` for POS sale inventory logic
 
 ## Related docs
 

@@ -649,42 +649,72 @@ function formatIsoDate(value?: string) {
         <form class="space-y-4" @submit.prevent="saveBranch">
           <div class="grid gap-4 sm:grid-cols-3">
             <UFormField label="Branch code" required>
-              <UInput v-model="branchForm.code" placeholder="HQ" />
+              <UInput
+                v-model="branchForm.code"
+                class="w-full"
+                placeholder="HQ"
+              />
             </UFormField>
             <UFormField label="Name (TH)" required>
-              <UInput v-model="branchForm.nameTh" placeholder="สำนักงานใหญ่" />
+              <UInput
+                v-model="branchForm.nameTh"
+                class="w-full"
+                placeholder="สำนักงานใหญ่"
+              />
             </UFormField>
             <UFormField label="Name (EN)">
-              <UInput v-model="branchForm.nameEn" placeholder="Head Office" />
+              <UInput
+                v-model="branchForm.nameEn"
+                class="w-full"
+                placeholder="Head Office"
+              />
             </UFormField>
           </div>
 
           <UFormField label="Address (TH)">
-            <UTextarea v-model="branchForm.addressTh" :rows="2" />
+            <UTextarea
+              v-model="branchForm.addressTh"
+              class="w-full"
+              :rows="2"
+            />
           </UFormField>
           <UFormField label="Address (EN)">
-            <UTextarea v-model="branchForm.addressEn" :rows="2" />
+            <UTextarea
+              v-model="branchForm.addressEn"
+              class="w-full"
+              :rows="2"
+            />
           </UFormField>
 
           <div class="grid gap-4 sm:grid-cols-3">
             <UFormField label="Phone">
-              <UInput v-model="branchForm.phone" placeholder="0954792333" />
+              <UInput
+                v-model="branchForm.phone"
+                class="w-full"
+                placeholder="0954792333"
+              />
             </UFormField>
             <UFormField label="Email">
               <UInput
                 v-model="branchForm.email"
+                class="w-full"
                 type="email"
                 placeholder="info@hopnic.co.th"
               />
             </UFormField>
             <UFormField label="Sort order">
-              <UInput v-model.number="branchForm.sortOrder" type="number" />
+              <UInput
+                v-model.number="branchForm.sortOrder"
+                class="w-full"
+                type="number"
+              />
             </UFormField>
           </div>
 
           <UFormField label="Notes">
             <UTextarea
               v-model="branchForm.notes"
+              class="w-full"
               :rows="2"
               placeholder="Internal notes"
             />
@@ -826,10 +856,18 @@ function formatIsoDate(value?: string) {
         <form class="space-y-4" @submit.prevent="saveInventory">
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField label="Name" required>
-              <UInput v-model="inventoryForm.name" placeholder="Front Store" />
+              <UInput
+                v-model="inventoryForm.name"
+                class="w-full"
+                placeholder="Front Store"
+              />
             </UFormField>
             <UFormField label="Sort order">
-              <UInput v-model.number="inventoryForm.sortOrder" type="number" />
+              <UInput
+                v-model.number="inventoryForm.sortOrder"
+                class="w-full"
+                type="number"
+              />
             </UFormField>
           </div>
 
@@ -903,6 +941,7 @@ function formatIsoDate(value?: string) {
             placeholder="Search by SKU ID, product ID..."
             icon="bx:search"
             size="sm"
+            class="w-full"
           />
 
           <div
@@ -1017,6 +1056,7 @@ function formatIsoDate(value?: string) {
                 placeholder="Type SKU code or product name..."
                 icon="bx:search"
                 :loading="skuSearchPending"
+                class="w-full"
               />
             </UFormField>
 
@@ -1074,7 +1114,12 @@ function formatIsoDate(value?: string) {
 
           <div class="grid gap-4 sm:grid-cols-2">
             <UFormField label="Stock (on hand)" required>
-              <UInput v-model.number="stockForm.onHand" type="number" min="0" />
+              <UInput
+                v-model.number="stockForm.onHand"
+                class="w-full"
+                type="number"
+                min="0"
+              />
             </UFormField>
           </div>
 

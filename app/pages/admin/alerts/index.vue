@@ -121,18 +121,18 @@ function fmtTime(value: string | null): string {
           v-model="filters.resolved"
           :items="resolvedOptions"
           value-key="value"
-          class="w-32"
+          class="w-full sm:w-32"
         />
         <USelectMenu
           v-model="severityFilter"
           :items="severityOptions"
           value-key="value"
-          class="w-40"
+          class="w-full sm:w-40"
         />
         <UInput
           v-model="filters.kind"
           placeholder="Filter by kind…"
-          class="w-48"
+          class="w-full sm:w-48"
         />
         <UButton
           icon="i-lucide-refresh-cw"

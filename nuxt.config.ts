@@ -65,6 +65,8 @@ export default defineNuxtConfig({
         "/promotions/**",
         "/reviews",
         "/reviews/**",
+        "/user/forgot-password",
+        "/user/reset-password",
       ],
       saveRedirectToCookie: true,
     },

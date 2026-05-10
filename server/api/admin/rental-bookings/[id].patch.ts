@@ -1,9 +1,4 @@
-import {
-  createError,
-  defineEventHandler,
-  getRouterParam,
-  readBody,
-} from "h3";
+import { createError, defineEventHandler, getRouterParam, readBody } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_RENTAL_BOOKING_DETAIL_SELECT,
@@ -11,6 +6,11 @@ import {
   fetchAdminCustomerProfile,
   mapAdminRentalBookingDetail,
 } from "~~/server/utils/admin-orders";
+import {
+  assertRentalBookingAvailability,
+  isRentalBookingConflictError,
+  throwRentalBookingConflict,
+} from "~~/server/utils/rental-booking-availability";
 import type {
   AdminRentalBookingDetail,
   AdminRentalBookingPatchPayload,
@@ -29,8 +29,7 @@ export default defineEventHandler(
       });
     }
 
-    const body =
-      (await readBody<AdminRentalBookingPatchPayload>(event)) ?? {};
+    const body = (await readBody<AdminRentalBookingPatchPayload>(event)) ?? {};
 
     if (body.status === undefined) {
       throw createError({
@@ -41,7 +40,7 @@ export default defineEventHandler(
 
     const { data: current, error: currentError } = await adminClient
       .from("rental_bookings")
-      .select("status")
+      .select("status, asset_id, sku_id, start_date, end_date")
       .eq("id", id)
       .maybeSingle();
 
@@ -70,6 +69,16 @@ export default defineEventHandler(
       }
     }
 
+    if (to === "confirmed") {
+      await assertRentalBookingAvailability(adminClient, {
+        assetId: current.asset_id as string | null,
+        skuId: current.sku_id as string | null,
+        startDate: current.start_date,
+        endDate: current.end_date,
+        excludeBookingId: id,
+      });
+    }
+
     const { data: updated, error: updateError } = await adminClient
       .from("rental_bookings")
       .update({ status: to })
@@ -78,6 +87,9 @@ export default defineEventHandler(
       .single();
 
     if (updateError) {
+      if (isRentalBookingConflictError(updateError)) {
+        throwRentalBookingConflict();
+      }
       throw createError({
         statusCode: 500,
         statusMessage: updateError.message,

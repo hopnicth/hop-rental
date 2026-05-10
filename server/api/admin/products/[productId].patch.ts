@@ -1,9 +1,9 @@
 import { createError, defineEventHandler, getRouterParam, readBody } from "h3";
-import { requirePlatformAdmin } from "~~/server/utils/admin";
+import { requireSuperAdmin } from "~~/server/utils/admin";
 import { buildProductPayload } from "~~/server/utils/admin-catalog";
 
 export default defineEventHandler(async (event) => {
-  const { adminClient } = await requirePlatformAdmin(event);
+  const { adminClient } = await requireSuperAdmin(event);
   const productId = getRouterParam(event, "productId");
 
   if (!productId) {

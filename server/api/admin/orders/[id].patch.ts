@@ -42,7 +42,8 @@ function validateTransition<T extends string>(
 
 export default defineEventHandler(
   async (event): Promise<AdminSaleOrderDetail> => {
-    const { adminClient, userId } = await requirePlatformAdmin(event);
+    const { adminClient, userId, platformRole } =
+      await requirePlatformAdmin(event);
     const id = getRouterParam(event, "id");
 
     if (!id) {
@@ -71,8 +72,15 @@ export default defineEventHandler(
     }
 
     const update: Record<string, unknown> = {};
+    const isSuperAdmin = platformRole === "super_admin";
 
     if (body.status !== undefined) {
+      if (body.status === "cancelled" && !isSuperAdmin) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: "Super admin access required to cancel orders",
+        });
+      }
       validateTransition(
         ORDER_STATUS_TRANSITIONS,
         current.status as OrderStatus,
@@ -82,6 +90,12 @@ export default defineEventHandler(
       update.status = body.status;
     }
     if (body.paymentStatus !== undefined) {
+      if (!isSuperAdmin) {
+        throw createError({
+          statusCode: 403,
+          statusMessage: "Super admin access required to change payment status",
+        });
+      }
       validateTransition(
         ORDER_PAYMENT_STATUS_TRANSITIONS,
         current.payment_status as OrderPaymentStatus,
@@ -163,7 +177,7 @@ export default defineEventHandler(
       body.trackingCarrier !== undefined ||
       body.trackingNumber !== undefined ||
       body.trackingNote !== undefined;
-    if (trackingTouched) {
+    if (trackingTouched && isSuperAdmin) {
       await autoResolveOrderAlerts(adminClient, id, userId);
     }
     const alerts = await fetchAlertsForOrder(adminClient, id);

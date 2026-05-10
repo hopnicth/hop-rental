@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody } from "h3";
-import { requirePlatformAdmin } from "~~/server/utils/admin";
+import { requireSuperAdmin } from "~~/server/utils/admin";
 import {
   ADMIN_ASSET_DETAIL_SELECT,
   ADMIN_ASSET_DETAIL_SELECT_LEGACY,
@@ -47,7 +47,7 @@ function buildAssetSlug(input: {
 }
 
 export default defineEventHandler(async (event) => {
-  const { adminClient } = await requirePlatformAdmin(event);
+  const { adminClient } = await requireSuperAdmin(event);
   const body = (await readBody(event)) as Record<string, unknown>;
 
   const code = asOptionalString(body.code) ?? generateAssetCode();

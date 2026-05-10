@@ -539,6 +539,7 @@ watch(filterCategoryKey, (next) => {
           <UFormField label="Sort order">
             <UInput
               v-model.number="groupForm.sortOrder"
+              class="w-full"
               type="number"
               min="0"
             />
@@ -547,7 +548,11 @@ watch(filterCategoryKey, (next) => {
 
         <div class="grid gap-4 sm:grid-cols-2">
           <UFormField label="Key" required>
-            <UInput v-model="groupForm.key" placeholder="power_w" />
+            <UInput
+              v-model="groupForm.key"
+              class="w-full"
+              placeholder="power_w"
+            />
           </UFormField>
 
           <UFormField label="Filter type" required>
@@ -560,10 +565,18 @@ watch(filterCategoryKey, (next) => {
 
         <div class="grid gap-4 sm:grid-cols-2">
           <UFormField label="Label (TH)" required>
-            <UInput v-model="groupForm.labelTh" placeholder="กำลังไฟ (W)" />
+            <UInput
+              v-model="groupForm.labelTh"
+              class="w-full"
+              placeholder="กำลังไฟ (W)"
+            />
           </UFormField>
           <UFormField label="Label (EN)" required>
-            <UInput v-model="groupForm.labelEn" placeholder="Power (W)" />
+            <UInput
+              v-model="groupForm.labelEn"
+              class="w-full"
+              placeholder="Power (W)"
+            />
           </UFormField>
         </div>
 
@@ -584,7 +597,11 @@ watch(filterCategoryKey, (next) => {
           required
           help="Reads numeric value from products.spec[specKey] for min/max filtering."
         >
-          <UInput v-model="groupForm.specKey" placeholder="power_w" />
+          <UInput
+            v-model="groupForm.specKey"
+            class="w-full"
+            placeholder="power_w"
+          />
         </UFormField>
 
         <UCheckbox v-model="groupForm.isActive" label="Active" />
@@ -685,11 +702,16 @@ watch(filterCategoryKey, (next) => {
 
             <div class="grid gap-3 sm:grid-cols-2">
               <UFormField label="Key" required>
-                <UInput v-model="optionForm.key" placeholder="10w" />
+                <UInput
+                  v-model="optionForm.key"
+                  class="w-full"
+                  placeholder="10w"
+                />
               </UFormField>
               <UFormField label="Sort order">
                 <UInput
                   v-model.number="optionForm.sortOrder"
+                  class="w-full"
                   type="number"
                   min="0"
                 />
@@ -698,10 +720,18 @@ watch(filterCategoryKey, (next) => {
 
             <div class="grid gap-3 sm:grid-cols-2">
               <UFormField label="Label (TH)" required>
-                <UInput v-model="optionForm.labelTh" placeholder="10W" />
+                <UInput
+                  v-model="optionForm.labelTh"
+                  class="w-full"
+                  placeholder="10W"
+                />
               </UFormField>
               <UFormField label="Label (EN)" required>
-                <UInput v-model="optionForm.labelEn" placeholder="10 Watts" />
+                <UInput
+                  v-model="optionForm.labelEn"
+                  class="w-full"
+                  placeholder="10 Watts"
+                />
               </UFormField>
             </div>
 
