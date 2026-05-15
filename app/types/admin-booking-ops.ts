@@ -1,3 +1,8 @@
+import type {
+  AdminBookingFulfillmentStatus,
+  AdminIssuedDocumentSummary,
+} from "~/types/admin-documents";
+
 /**
  * Admin types for rental-booking checklists & documents (P5.5).
  * Used by `/admin/rental-bookings/[id]` page and the
@@ -111,6 +116,9 @@ export interface AssetChecklistTemplateSummary {
 export interface AdminBookingOpsPayload {
   checklists: AdminBookingChecklist[];
   documents: AdminBookingDocument[];
+  issuedDocuments: AdminIssuedDocumentSummary[];
+  noShowForfeitureDocuments: AdminIssuedDocumentSummary[];
+  fulfillmentStatus: AdminBookingFulfillmentStatus;
   templates: AssetChecklistTemplateSummary[];
 }
 

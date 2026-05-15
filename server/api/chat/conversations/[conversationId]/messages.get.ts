@@ -7,6 +7,10 @@ import {
 } from "~~/server/utils/chat";
 import type { ChatMessagesResponse } from "~~/app/types/chat";
 
+type ChatMessageRow = Record<string, unknown> & {
+  created_at?: string | null;
+};
+
 export default defineEventHandler(
   async (event): Promise<ChatMessagesResponse> => {
     const conversationId = getRouterParam(event, "conversationId");
@@ -41,9 +45,9 @@ export default defineEventHandler(
     if (error)
       throw createError({ statusCode: 500, statusMessage: error.message });
 
-    const rows = (data ?? []) as any[];
+    const rows = (data ?? []) as ChatMessageRow[];
     const pageRows = rows.slice(0, limit);
-    const oldest = pageRows[pageRows.length - 1] as any | undefined;
+    const oldest = pageRows[pageRows.length - 1];
 
     return {
       items: pageRows.reverse().map(mapChatMessageRow),

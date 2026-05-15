@@ -1,6 +1,6 @@
 # API Index
 
-Last updated: 2026-05-10
+Last updated: 2026-05-14
 Audience: developers, QA, future Augment sessions
 
 ## Purpose
@@ -22,6 +22,8 @@ Read this after `map.md` when debugging or implementing features.
 - Admin POS is branch-scoped: staff only see branches from `admin_user_branch_access.can_pos`; `super_admin` sees all active branches.
 - Public service-page contact actions read phone/email/Google Maps plus optional `line_id` / `line_url` from `service_providers`; only HTTPS `line.me` / `lin.ee` links should survive validation.
 - Shared rental date logic lives in `app/components/products/RentalBookingCalendar.vue`; storefront asset booking uses asset rules, while admin POS rental creation intentionally passes `bufferDays = 0`.
+- Customer rental booking detail/cancellation/manual Booking Deposit refund is implemented for the eligible self-service path. No-show is a separate admin lifecycle (`no_show`) for overdue confirmed pickups and now creates Booking Deposit disposition + financial recognition events. Late cancellation remains support-only after cutoff and separate from no-show.
+- `/admin/orders` is now the Sale Order Operations Queue. It is sale-order-only and uses authoritative `orders.shipping_mode` (`delivery`, `pickup`, or `NULL` legacy/unknown); do not infer pickup/delivery from address snapshots.
 
 ## Main read paths
 
@@ -38,8 +40,11 @@ Read this after `map.md` when debugging or implementing features.
 | Content pages                  | `useContentPages.ts`, `ContentRenderer.vue`            | `content_pages` (localized TipTap body) joined with `content_page_products`, `content_page_assets`                                                |
 | Dynamic filter groups          | `app/composables/useFilterGroups.ts`                   | `/api/filter-groups?main_category=...` → `filter_groups`, `filter_options`                                                                        |
 | Typed main categories          | `app/composables/useMainCategories.ts`                 | `/api/main-categories?entityType=...` → `main_categories.entity_types`                                                                            |
-| Admin order dashboard          | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`                                                                                                                     |
+| Admin sale order queue         | `app/composables/useAdminOrderQueue.ts`                | `/api/admin/orders/queue` → flat sale-order rows, queue counts, order-level pagination                                                            |
+| Legacy admin customer grouping | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`; retained for compatibility, not the main `/admin/orders` UI                                                        |
 | Admin POS workflow/history     | `app/pages/admin/pos.vue`                              | `/api/admin/customers/lookup`, `/api/admin/pos/*`, `users`, `walk_in_customers`, `assets`, `product_skus`, `orders`, `rental_bookings`            |
+| Customer rental detail/refund  | `app/pages/user/rentals/[bookingId].vue`               | `/api/user/rental-bookings/[id]`, `rental_bookings`, `rental_booking_cancellation_events`, `payment_refunds`, `official_documents`                |
+| Admin refund queue             | `app/pages/admin/refunds.vue`                          | `/api/admin/refunds*`, `payment_refunds`, `rental_booking_deposit_proofs`, `official_documents`                                                   |
 | Cookie consent                 | `app/composables/useCookieConsent.ts`                  | `hop-rental-cookie-consent` cookie (versioned, 180-day TTL)                                                                                       |
 | Search/filter guideline        | `SEARCH_AND_FILTER_GUIDELINE.md`                       | Current `/search` rules + future multi-type search direction                                                                                      |
 
@@ -146,34 +151,41 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 
 ## Main write paths
 
-| Action                             | Main code                                                        | Writes to                                |
-| ---------------------------------- | ---------------------------------------------------------------- | ---------------------------------------- |
-| Add sale item                      | `useCart().addToCart()`                                          | `carts`, `cart_items`                    |
-| Create booking draft               | `useBooking().addBooking()`                                      | `rental_bookings`                        |
-| Confirm booking                    | `useBooking().updateBookingStatus()`                             | `rental_bookings`                        |
-| Submit sale order                  | `useOrders().submitOrder()`                                      | `orders`, `order_items`                  |
-| Chat messages/read state           | `/api/chat/conversations/*`, `/api/chat/messages/*`              | `chat_messages`, `chat_participants`     |
-| Chat unread counts (badge init)    | `/api/chat/unread-counts.get.ts`                                 | reads `chat_participants` only           |
-| Chat attachment upload/access      | `/api/chat/messages/*/attachments`, `/api/chat/attachments/*`    | `chat_attachments` + private storage     |
-| Chat client state + realtime       | `useChat()` (`app/composables/useChat.ts`)                       | shared `useState`, Supabase realtime     |
-| Admin order update                 | `/api/admin/orders/[id].patch.ts`                                | `orders`                                 |
-| Admin booking update               | `/api/admin/rental-bookings/[id].patch.ts`                       | `rental_bookings`                        |
-| Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables           |
-| Admin POS booking creation         | `/api/admin/pos/bookings.post.ts`                                | `rental_bookings`, `walk_in_customers`   |
-| Admin POS sale creation            | `/api/admin/pos/sales.post.ts`                                   | `orders`, `order_items`, stock RPC       |
-| Admin POS history cancel           | `/api/admin/pos/history/cancel.post.ts`                          | `orders` / `rental_bookings` status      |
-| Admin customer ID-card upload      | `/api/admin/customers/id-card.post.ts`                           | `users`, `walk_in_customers`, storage    |
-| Admin booking deposit proof upload | `/api/admin/rental-bookings/[id]/deposit-proof.post.ts`          | `rental_booking_deposit_proofs`, storage |
-| Admin booking fulfillment          | `/api/admin/rental-bookings/[id]/fulfillment.post.ts`            | `rental_booking_fulfillments`, storage   |
-| Admin homepage content CRUD/upload | `/api/admin/home-content/*`                                      | `home_*` tables + `catalog-media` bucket |
-| Admin content pages CRUD/upload    | `/api/admin/content/*`                                           | `content_pages` + `catalog-media` bucket |
-| Admin Home category-card CRUD      | `/api/admin/home-categories/*`                                   | `home_category_card_groups/options`      |
+| Action                             | Main code                                                        | Writes to                                                                                                                       |
+| ---------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Add sale item                      | `useCart().addToCart()`                                          | `carts`, `cart_items`                                                                                                           |
+| Create booking draft               | `useBooking().addBooking()`                                      | `rental_bookings`                                                                                                               |
+| Confirm booking                    | `useBooking().updateBookingStatus()`                             | `rental_bookings`                                                                                                               |
+| Submit sale order                  | `useOrders().submitOrder()`                                      | `orders`, `order_items`; persists `shipping_mode` and optional `pickup_branch_id` for future queue rows                         |
+| Chat messages/read state           | `/api/chat/conversations/*`, `/api/chat/messages/*`              | `chat_messages`, `chat_participants`                                                                                            |
+| Chat unread counts (badge init)    | `/api/chat/unread-counts.get.ts`                                 | reads `chat_participants` only                                                                                                  |
+| Chat attachment upload/access      | `/api/chat/messages/*/attachments`, `/api/chat/attachments/*`    | `chat_attachments` + private storage                                                                                            |
+| Chat client state + realtime       | `useChat()` (`app/composables/useChat.ts`)                       | shared `useState`, Supabase realtime                                                                                            |
+| Admin order update                 | `/api/admin/orders/[id].patch.ts`                                | `orders`                                                                                                                        |
+| Admin booking update               | `/api/admin/rental-bookings/[id].patch.ts`                       | `rental_bookings`                                                                                                               |
+| Admin booking ops                  | `/api/admin/rental-bookings/[id]/ops.get.ts` + nested ops routes | booking docs/checklists tables                                                                                                  |
+| Admin POS booking creation         | `/api/admin/pos/bookings.post.ts`                                | `rental_bookings`, `walk_in_customers`                                                                                          |
+| Admin POS sale creation            | `/api/admin/pos/sales.post.ts`                                   | `orders`, `order_items`, stock RPC                                                                                              |
+| Admin POS history cancel           | `/api/admin/pos/history/cancel.post.ts`                          | `orders` / `rental_bookings` status                                                                                             |
+| Admin customer ID-card upload      | `/api/admin/customers/id-card.post.ts`                           | `users`, `walk_in_customers`, storage                                                                                           |
+| Admin booking deposit proof upload | `/api/admin/rental-bookings/[id]/deposit-proof.post.ts`          | `rental_booking_deposit_proofs`, storage                                                                                        |
+| Admin booking fulfillment          | `/api/admin/rental-bookings/[id]/fulfillment.post.ts`            | `rental_booking_fulfillments`, storage                                                                                          |
+| Admin homepage content CRUD/upload | `/api/admin/home-content/*`                                      | `home_*` tables + `catalog-media` bucket                                                                                        |
+| Admin content pages CRUD/upload    | `/api/admin/content/*`                                           | `content_pages` + `catalog-media` bucket                                                                                        |
+| Admin Home category-card CRUD      | `/api/admin/home-categories/*`                                   | `home_category_card_groups/options`                                                                                             |
+| Customer eligible rental cancel    | `POST /api/user/rental-bookings/[id]/cancel`                     | `rental_bookings`, cancellation events, `payment_refunds`, documents                                                            |
+| Customer rental document issue     | `POST /api/user/rental-bookings/[id]/documents/[documentType]`   | `official_documents`, `document_events`                                                                                         |
+| Admin refund status transitions    | `POST /api/admin/refunds/[id]/*`                                 | `payment_refunds`, refund confirmation documents                                                                                |
+| Admin refund proof upload/link     | `POST /api/admin/refunds/[id]/proof`                             | `rental_booking_deposit_proofs`, storage, `payment_refunds.refund_proof_id`                                                     |
+| Admin rental no-show               | `POST /api/admin/rental-bookings/[id]/mark-no-show`              | `rental_bookings`, `rental_booking_no_show_events`, `rental_booking_deposit_disposition_events`, `financial_recognition_events` |
 
 ## Important customer routes
 
 - `/user/cart`
 - `/user/orders`
 - `/user/rentals`
+- `/user/rentals/[bookingId]`
+- `/user/documents/[id]/print`
 - `/asset/[slug]`
 
 ## Important admin routes
@@ -190,15 +202,20 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `/admin/home-categories`
 - `/admin/content`
 - `/admin/messages`, `/admin/messages/[id]`
+- `/admin/refunds`
 
 ## Important admin server areas
 
 - `server/utils/admin-orders.ts`
+- `server/utils/admin-order-queue.ts`
 - `server/utils/admin-bookings-ops.ts`
 - `server/api/admin/orders/*`
 - `server/api/admin/pos/*`
 - `server/api/admin/customers/*`
 - `server/api/admin/rental-bookings/*`
+- `server/api/admin/refunds/*`
+- `server/api/user/rental-bookings/*`
+- `server/api/user/documents/*`
 - `server/api/admin/assets/*`
 - `server/api/admin/products/*`
 - `server/utils/admin-pos.ts`
@@ -210,6 +227,49 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `server/api/admin/content/*`
 - `server/utils/content-pages.ts`
 - `server/utils/content-media.ts`
+- `server/utils/admin-refunds.ts`
+- `server/utils/customer-rental-booking-detail.ts`
+- `server/utils/rental-booking-cancellation.ts`
+
+### Admin sale order queue API map
+
+| Route                             | Role                | Purpose                                                                                                                       |
+| --------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/orders/queue`     | staff + super_admin | Sale-order-only operations queue for `/admin/orders`; accepts `queue`, `search`, date/status filters, `page`, and `pageSize`. |
+| `GET /api/admin/orders/customers` | staff + super_admin | Legacy customer-grouped sale+rental list retained for compatibility; not the main admin orders UI.                            |
+
+Queue values are `action_required`, `delivery`, `pickup`, `awaiting_payment`, and `all`. Summary counts are returned by the API (`actionRequired`, `delivery`, `pickup`, `awaitingPayment`, `all`) and must not be derived from current page items. Legacy rows with `shipping_mode IS NULL` may appear in `action_required`/`all` but must not be guessed into delivery/pickup tabs.
+
+### Customer cancellation / refund API map
+
+| Route                                                          | Role                | Purpose                                                                                                        |
+| -------------------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `GET /api/user/rental-bookings/[id]`                           | authenticated owner | Customer-safe rental detail with cancellation/refund/doc/proof state.                                          |
+| `POST /api/user/rental-bookings/[id]/cancel`                   | authenticated owner | Eligible self-service cancellation; validates refund destination, creates cancellation event + refund request. |
+| `POST /api/user/rental-bookings/[id]/documents/[documentType]` | authenticated owner | Issues allowed customer rental documents from immutable snapshots.                                             |
+| `GET /api/user/documents/[id]`                                 | authenticated owner | Loads a customer-owned official document snapshot for print/view.                                              |
+| `GET /api/user/rental-bookings/[id]/refund-proof`              | authenticated owner | Returns customer-safe refund proof access; no raw storage bucket/path exposure.                                |
+| `POST /api/user/rental-bookings/refund-proof-status`           | authenticated owner | Batch proof-availability metadata for order/history UI.                                                        |
+| `POST /api/user/rental-bookings/refund-tracking-status`        | authenticated owner | Batch refund tracking/document/proof metadata for cancelled rental history UI.                                 |
+
+### Admin refund API map
+
+| Route                                                 | Role                | Purpose                                                                                                    |
+| ----------------------------------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/refunds?status&limit`                 | staff + super_admin | List Booking Deposit refund requests; response includes `items` plus all-status `summary`.                 |
+| `GET /api/admin/refunds/summary`                      | staff + super_admin | Lightweight counts for admin nav badge; unresolved = pending review + processing + needs customer contact. |
+| `GET /api/admin/refunds/[id]`                         | staff + super_admin | Load hydrated refund detail.                                                                               |
+| `POST /api/admin/refunds/[id]/start-processing`       | staff + super_admin | Transition refund to `processing`.                                                                         |
+| `POST /api/admin/refunds/[id]/needs-customer-contact` | staff + super_admin | Transition refund to `needs_customer_contact`.                                                             |
+| `POST /api/admin/refunds/[id]/mark-refunded`          | staff + super_admin | Mark manual refund complete and reconcile refund confirmation when proof is linked.                        |
+| `POST /api/admin/refunds/[id]/mark-failed`            | staff + super_admin | Mark refund failed with admin note.                                                                        |
+| `POST /api/admin/refunds/[id]/proof`                  | staff + super_admin | Upload/link refund proof file; accepts image/PDF up to 10MB.                                               |
+
+### Admin rental no-show API map
+
+| Route                                               | Role                | Purpose                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/admin/rental-bookings/[id]/mark-no-show` | staff + super_admin | Manually marks overdue `confirmed` rental booking as `no_show`, records no-show event/metadata, creates Booking Deposit disposition + financial recognition events, sets Booking Deposit refund outcome to forfeited/refund-not-applicable, and does not create `payment_refunds`, receipts, or notices. |
 
 ### Admin POS API map
 
@@ -374,6 +434,39 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `/admin/content` now exposes Line ID / Line URL fields for service-provider contact data.
 - Storefront sanitizes Line links to HTTPS `line.me` / `lin.ee` hosts before rendering the contact action.
 
+### `067` through `080` rental payment/document/foundation migrations
+
+- `067` adds rental deposit refund amount/notes compatibility fields.
+- `068` adds document foundation tables: `system_configs`, `branch_document_settings`, `customer_tax_profiles`, `document_sequences`, `official_documents`, `document_events`, and `payment_allocations`.
+- `069` adds legal agreement versioning and immutable acceptance evidence tables.
+- `070` through `073` harden security/account/KYC/rental fulfillment foundations.
+- `074` and `075` add rental payment-line and `booking_deposit` semantics.
+- `076` adds booking-deposit payment attempt/agreement foundation.
+- `077` through `079` add mixed-checkout foundation/finalization and booking-deposit column guards.
+- `080` adds rental handover item foundation.
+- Excessive-cancellation restriction is documented in `HOPNIC_POS_V2_Master_Implementation_Plan.md` but is not implemented by these migrations yet.
+
+### `081` and `082` customer cancellation/refund foundation
+
+- `081` adds the customer cancellation/refund foundation: `rental_booking_cancellation_events`, `payment_refunds`, cancellation summary fields, refund source/provenance fields, and customer restriction support fields.
+- `082` hardens the customer cancellation API path with transaction/idempotency guards and RPC support for cancellation + refund request creation.
+- Runtime supports eligible customer self-service cancellation and manual Booking Deposit refund operations. Late cancellation remains support-only after cutoff.
+- Backend bank-account validation normalizes limited formatting characters, then requires 6-25 digits; frontend keeps the customer-entered bank-account display/model digits-only for smoother UX.
+
+### `084` rental booking no-show lifecycle foundation
+
+- Adds `no_show` to `rental_booking_status` and adds `rental_booking_no_show_events` plus mirrored `rental_bookings.no_show_*` metadata.
+- Admin endpoint `POST /api/admin/rental-bookings/[id]/mark-no-show` marks overdue confirmed bookings as no-show manually; no cron/auto conversion exists.
+- No-show records Booking Deposit as forfeited/refund-not-applicable on `rental_bookings` and deliberately creates no `payment_refunds` row.
+- Availability blocking remains `confirmed` + `picked_up`; `no_show` does not block future rental availability.
+
+### `085` Booking Deposit terms + forfeiture event chain foundation
+
+- Allows `booking_deposit_terms` in `agreement_versions` and `agreement_acceptance_logs` so Booking Deposit wording can be governed by canonical published agreement versions.
+- Extends `rental_booking_deposit_agreements` with optional canonical `agreement_version_id`, `agreement_acceptance_log_id`, and hash references while retaining the booking/payment-specific snapshot.
+- Adds `rental_booking_deposit_disposition_events` as the authoritative terminal Booking Deposit outcome table and `financial_recognition_events` for non-VAT/non-WHT forfeiture income recognition.
+- Runtime no-show integration creates the no-show operational event → deposit disposition event → financial recognition event chain idempotently. Receipt issuance, notices, tax invoice conversion blocking, admin-agreed cancellation forfeiture, POS V2, and customer/admin document UI remain future work.
+
 ### Chat realtime + client conventions
 
 - Supabase Realtime `postgres_changes` are RLS-filtered server-side; the client must call `supabase.realtime.setAuth(accessToken)` before/while subscribing or no events are delivered. `useChat` does this in `subscribe()` and re-applies on `onAuthStateChange`.
@@ -423,6 +516,9 @@ Planned alignment:
 16. If `/search` filters flicker or disappear after clearing an option, check whether UI-added dynamic groups are being stored only inside active filter values; see `SEARCH_AND_FILTER_GUIDELINE.md`.
 17. If POS catalog errors mention `inventory_kind`, apply migration `060` and confirm `sku_branch_inventory` rows exist for the selected branch.
 18. If a staff user sees no POS branches/history, check `admin_user_branch_access.can_pos`; `super_admin` bypasses this grant table.
+19. If customer cancellation rejects a bank account, backend code is `REFUND_BANK_ACCOUNT_NUMBER_INVALID`; expected canonical format is 6-25 digits.
+20. If admin refund badge looks stale, check `/api/admin/refunds/summary` and `useAdminRefundWork()` realtime subscription to `payment_refunds`.
+21. If refund confirmation appears too early, verify `payment_refunds.status = refunded` and `refund_proof_id` is linked; proof gating is intentional.
 
 ## Cross refs
 

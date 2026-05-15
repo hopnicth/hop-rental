@@ -2,6 +2,15 @@
 
 Last updated: 2026-05-10
 
+Status: **DONE for legacy `/admin/pos` functional rollout / PARTIAL for documents** as of 2026-05-13.
+
+Reality sync:
+
+- Legacy `/admin/pos` rental/sale modes, branch-scoped catalog, scanner, daily transaction history, sale creation, rental booking creation, pickup fulfillment, return fulfillment, and accounting CSV are code-present.
+- Print/tax buttons in legacy POS history remain placeholders. Official receipts/tax invoices/WHT are not delivered here.
+- Operational rental pickup/return document issuance now lives in admin rental booking detail and reuses the `official_documents` foundation; POS history document integration is still parked.
+- The current printing standard is A5 browser print first. The older carbon-paper receipt/tax-invoice notes below are historical and superseded by `docs/printing-document-standard.md` unless explicitly re-approved.
+
 ## Scope Delivered in Code
 
 - POS scanner now supports customer QR, asset/SKU/product payloads, browser `BarcodeDetector` where available, ZXing fallback for 1D/2D barcodes, and `qr-scanner` fallback for QR.

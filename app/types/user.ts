@@ -25,6 +25,19 @@ export type BillingCycle = "cash" | "EOM" | "15th" | "25th" | "upon_delivery";
 /** Role within a customer organization — stored in `company_members.role` */
 export type CompanyRole = "b2b_admin" | "b2b_user";
 
+/** Customer tax profile owner kind — stored in `customer_tax_profiles.customer_kind` */
+export type CustomerTaxProfileCustomerKind = "person" | "company";
+
+/** Branch classification — stored in `customer_tax_profiles.branch_type` */
+export type CustomerTaxProfileBranchType = "none" | "head_office" | "branch";
+
+/** Review workflow status — stored in `customer_tax_profiles.review_status` */
+export type CustomerTaxProfileReviewStatus =
+  | "draft"
+  | "pending_review"
+  | "approved"
+  | "rejected";
+
 // ─── Table Interfaces ───────────────────────────────────────
 
 /**
@@ -48,7 +61,7 @@ export interface UserProfile {
   membershipLevel: MembershipLevel;
   /** B2C KYC verification status */
   kycStatus: KycStatus;
-  /** URL to uploaded ID card image (Supabase Storage) */
+  /** Private Storage path for uploaded ID card, or legacy URL if present */
   idCardUrl: string | null;
   /** URL of PDPA terms document the user agreed to */
   pdpaConsentUrl: string | null;
@@ -56,6 +69,23 @@ export interface UserProfile {
   pdpaConsentedAt: string | null;
   /** Reason for KYC rejection (set by admin) */
   kycRejectionReason: string | null;
+  /** Non-destructive lifecycle state for account deletion/deactivation flows */
+  accountStatus:
+    | "active"
+    | "deactivated"
+    | "deletion_requested"
+    | "anonymized"
+    | "deleted";
+  /** Timestamp when temporary account deactivation was requested */
+  deactivationRequestedAt: string | null;
+  /** Timestamp when account deletion was requested */
+  deletionRequestedAt: string | null;
+  /** Timestamp when account was soft-deleted */
+  deletedAt: string | null;
+  /** Timestamp when account PII was anonymized */
+  anonymizedAt: string | null;
+  /** Timestamp of latest lifecycle transition */
+  lifecycleUpdatedAt: string | null;
   /** ISO date string */
   createdAt: string;
   /** ISO date string */
@@ -103,8 +133,12 @@ export interface Company {
 export interface KycDocument {
   /** Document name / label */
   name: string;
-  /** URL to the uploaded file (Supabase Storage) */
-  url: string;
+  /** Legacy public URL or private path from older records; new uploads omit this. */
+  url?: string;
+  /** MIME type for server-side private uploads. */
+  mimeType?: string;
+  /** File size in bytes for server-side private uploads. */
+  fileSize?: number;
   /** ISO date string — when the document was uploaded */
   uploadedAt: string;
 }
@@ -148,6 +182,41 @@ export interface CompanyMember {
   invitedBy: string | null;
   /** ISO date string */
   joinedAt: string;
+}
+
+/**
+ * Default personal tax invoice profile for the current authenticated user.
+ * Maps to `public.customer_tax_profiles` when `customer_user_id` is set.
+ */
+export interface CustomerTaxProfile {
+  id: string;
+  customerKind: CustomerTaxProfileCustomerKind;
+  legalName: string;
+  taxId: string;
+  taxIdNormalized: string;
+  branchType: CustomerTaxProfileBranchType;
+  branchCode: string;
+  billingAddress: string;
+  phone: string;
+  email: string;
+  reviewStatus: CustomerTaxProfileReviewStatus;
+  reviewedAt: string | null;
+  rejectionReason: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Client-editable fields for the current user's default tax profile. */
+export interface CustomerTaxProfileInput {
+  customerKind: CustomerTaxProfileCustomerKind;
+  legalName: string;
+  taxId: string;
+  branchType: CustomerTaxProfileBranchType;
+  branchCode: string;
+  billingAddress: string;
+  phone: string;
+  email: string;
 }
 
 // ─── Active Context ─────────────────────────────────────────

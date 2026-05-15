@@ -11,6 +11,31 @@ import type {
 
 const CHAT_CONVERSATION_LIST_MAX = 50;
 
+type ChatParticipantRow = {
+  conversation_id?: string | null;
+  participant_role?: string | null;
+  last_read_at?: string | null;
+};
+
+type ChatConversationRow = {
+  id?: string | null;
+  subject_type?: string | null;
+  subject_id?: string | null;
+  customer_id?: string | null;
+  status?: string | null;
+  last_message_id?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  closed_at?: string | null;
+  archived_at?: string | null;
+};
+
+type ChatCustomerRow = {
+  id?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+};
+
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
@@ -25,7 +50,7 @@ export default defineEventHandler(
       Math.max(1, Number.isFinite(requested) ? requested : 30),
     );
 
-    let participantRows: any[] = [];
+    let participantRows: ChatParticipantRow[] = [];
     let request = adminClient
       .from("chat_conversations")
       .select(
@@ -42,7 +67,7 @@ export default defineEventHandler(
         .is("left_at", null);
       if (error)
         throw createError({ statusCode: 500, statusMessage: error.message });
-      participantRows = data ?? [];
+      participantRows = (data ?? []) as ChatParticipantRow[];
       const conversationIds = participantRows.map((row) => row.conversation_id);
       if (conversationIds.length === 0) return { items: [], pageSize: limit };
       request = request.in("id", conversationIds);
@@ -62,12 +87,12 @@ export default defineEventHandler(
     }
 
     const rows = conversationRows ?? [];
-    const ids = rows.map((row: any) => String(row.id));
+    const ids = rows.map((row) => String((row as ChatConversationRow).id));
     const lastMessageIds = rows
-      .map((row: any) => stringOrNull(row.last_message_id))
+      .map((row) => stringOrNull((row as ChatConversationRow).last_message_id))
       .filter(Boolean) as string[];
     const customerIds = rows
-      .map((row: any) => stringOrNull(row.customer_id))
+      .map((row) => stringOrNull((row as ChatConversationRow).customer_id))
       .filter(Boolean) as string[];
 
     if (isChatAdmin(platformRole) && ids.length > 0) {
@@ -78,14 +103,14 @@ export default defineEventHandler(
         .in("conversation_id", ids);
       if (error)
         throw createError({ statusCode: 500, statusMessage: error.message });
-      participantRows = data ?? [];
+      participantRows = (data ?? []) as ChatParticipantRow[];
     }
 
     const participantByConversation = new Map(
       participantRows.map((row) => [String(row.conversation_id), row]),
     );
 
-    const lastMessageById = new Map<string, any>();
+    const lastMessageById = new Map<string, unknown>();
     if (lastMessageIds.length > 0) {
       const { data, error } = await adminClient
         .from("chat_messages")
@@ -130,7 +155,7 @@ export default defineEventHandler(
       });
     }
 
-    const customerById = new Map<string, any>();
+    const customerById = new Map<string, ChatCustomerRow>();
     if (customerIds.length > 0) {
       const { data, error } = await adminClient
         .from("users")
@@ -141,46 +166,48 @@ export default defineEventHandler(
       for (const row of data ?? []) customerById.set(String(row.id), row);
     }
 
-    const items: ChatConversationDto[] = rows.map((row: any) => {
-      const participant = participantByConversation.get(String(row.id));
-      const lastMessageRow = stringOrNull(row.last_message_id)
-        ? lastMessageById.get(String(row.last_message_id))
-        : null;
-      const lastMessage = lastMessageRow
-        ? mapChatMessageRow(lastMessageRow)
-        : null;
-      const lastReadAt = stringOrNull(participant?.last_read_at);
-      const unreadCount = unreadCountByConversation.get(String(row.id)) ?? 0;
-      const customer = stringOrNull(row.customer_id)
-        ? customerById.get(String(row.customer_id))
-        : null;
+    const items: ChatConversationDto[] = (rows as ChatConversationRow[]).map(
+      (row) => {
+        const participant = participantByConversation.get(String(row.id));
+        const lastMessageRow = stringOrNull(row.last_message_id)
+          ? lastMessageById.get(String(row.last_message_id))
+          : null;
+        const lastMessage = lastMessageRow
+          ? mapChatMessageRow(lastMessageRow)
+          : null;
+        const lastReadAt = stringOrNull(participant?.last_read_at);
+        const unreadCount = unreadCountByConversation.get(String(row.id)) ?? 0;
+        const customer = stringOrNull(row.customer_id)
+          ? customerById.get(String(row.customer_id))
+          : null;
 
-      return {
-        id: String(row.id),
-        subjectType: String(
-          row.subject_type ?? "general",
-        ) as ChatConversationDto["subjectType"],
-        subjectId: stringOrNull(row.subject_id),
-        customerId: stringOrNull(row.customer_id),
-        status: String(row.status ?? "open") as ChatConversationDto["status"],
-        lastMessageId: stringOrNull(row.last_message_id),
-        createdAt: String(row.created_at ?? ""),
-        updatedAt: String(row.updated_at ?? ""),
-        closedAt: stringOrNull(row.closed_at),
-        archivedAt: stringOrNull(row.archived_at),
-        participantRole: participant?.participant_role ?? null,
-        lastReadAt,
-        unreadCount,
-        customer: customer
-          ? {
-              id: String(customer.id),
-              fullName: stringOrNull(customer.full_name),
-              phone: stringOrNull(customer.phone),
-            }
-          : null,
-        lastMessage,
-      };
-    });
+        return {
+          id: String(row.id),
+          subjectType: String(
+            row.subject_type ?? "general",
+          ) as ChatConversationDto["subjectType"],
+          subjectId: stringOrNull(row.subject_id),
+          customerId: stringOrNull(row.customer_id),
+          status: String(row.status ?? "open") as ChatConversationDto["status"],
+          lastMessageId: stringOrNull(row.last_message_id),
+          createdAt: String(row.created_at ?? ""),
+          updatedAt: String(row.updated_at ?? ""),
+          closedAt: stringOrNull(row.closed_at),
+          archivedAt: stringOrNull(row.archived_at),
+          participantRole: participant?.participant_role ?? null,
+          lastReadAt,
+          unreadCount,
+          customer: customer
+            ? {
+                id: String(customer.id),
+                fullName: stringOrNull(customer.full_name),
+                phone: stringOrNull(customer.phone),
+              }
+            : null,
+          lastMessage,
+        };
+      },
+    );
 
     return { items, pageSize: limit };
   },

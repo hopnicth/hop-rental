@@ -4,15 +4,26 @@ type WishlistToggleResponse = {
   wishlisted: boolean;
   productIds: string[];
 };
+type AuthUserLike = { id?: string; sub?: string } | null;
+
+function getAuthUserId(user: AuthUserLike): string | null {
+  if (!user) return null;
+  if (typeof user.id === "string" && user.id.length > 0) return user.id;
+  if (typeof user.sub === "string" && user.sub.length > 0) return user.sub;
+  return null;
+}
 
 export function useWishlist() {
   const user = useSupabaseUser();
   const productIds = useState<string[]>("wishlist:productIds", () => []);
   const loading = useState<boolean>("wishlist:loading", () => false);
-  const loadedForUser = useState<string | null>("wishlist:loadedForUser", () => null);
+  const loadedForUser = useState<string | null>(
+    "wishlist:loadedForUser",
+    () => null,
+  );
   const togglingIds = useState<string[]>("wishlist:togglingIds", () => []);
 
-  const userId = computed(() => user.value?.id ?? (user.value as any)?.sub ?? null);
+  const userId = computed(() => getAuthUserId(user.value as AuthUserLike));
   const count = computed(() => productIds.value.length);
 
   function setProductState(productId: string, wishlisted: boolean) {
@@ -51,10 +62,13 @@ export function useWishlist() {
     setProductState(productId, !wasWishlisted);
 
     try {
-      const result = await $fetch<WishlistToggleResponse>("/api/user/wishlist", {
-        method: "POST",
-        body: { productId },
-      });
+      const result = await $fetch<WishlistToggleResponse>(
+        "/api/user/wishlist",
+        {
+          method: "POST",
+          body: { productId },
+        },
+      );
       productIds.value = result.productIds ?? productIds.value;
       loadedForUser.value = userId.value;
       return result.wishlisted;

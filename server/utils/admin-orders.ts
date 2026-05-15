@@ -1,4 +1,5 @@
 import { getQuery, type H3Event } from "h3";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   AdminCustomerCard,
   AdminCustomerSummary,
@@ -26,11 +27,10 @@ import type {
   RentalBookingStatus,
   RentalPricingBreakdownRow,
 } from "~~/app/types/rental-booking";
+import type { RentalPaymentLine } from "~~/app/types/rental-payment-line";
 import type { ShippingBreakdown } from "~~/app/utils/shipping";
 
-type AnyClient = {
-  from: (table: string) => any;
-};
+type AnyClient = Pick<SupabaseClient, "from">;
 
 export interface AdminUserProfileSummary {
   fullName: string | null;
@@ -42,11 +42,84 @@ export interface AdminUserProfileSummary {
 export const ADMIN_ORDER_LIST_SELECT =
   "id, order_number, user_id, status, payment_status, fulfillment_status, checkout_mode, payment_method, grand_total, currency_code, address_snapshot, created_at, order_items(count)";
 
+const ADMIN_RENTAL_BOOKING_LIST_FIELDS = [
+  "id",
+  "user_id",
+  "walk_in_phone",
+  "status",
+  "asset_id",
+  "asset_name",
+  "asset_thumbnail",
+  "product_name",
+  "thumbnail",
+  "hub_name",
+  "booker_name",
+  "booker_phone",
+  "start_date",
+  "end_date",
+  "rental_days",
+  "rental_total",
+  "deposit_amount",
+  "deposit_paid_amount",
+  "deposit_payment_method",
+  "deposit_payment_status",
+  "deposit_refund_status",
+  "deposit_refund_amount",
+  "deposit_refund_notes",
+  "currency_code",
+  "created_at",
+];
+
+const ADMIN_RENTAL_BOOKING_ASSET_LIST_SELECT =
+  "asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+
+function buildAdminRentalBookingListSelect(fields: string[]): string {
+  return [...fields, ADMIN_RENTAL_BOOKING_ASSET_LIST_SELECT].join(", ");
+}
+
 export const ADMIN_RENTAL_BOOKING_LIST_SELECT =
-  "id, user_id, walk_in_phone, status, asset_id, asset_name, asset_thumbnail, product_name, thumbnail, hub_name, booker_name, booker_phone, start_date, end_date, rental_days, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, currency_code, created_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+  buildAdminRentalBookingListSelect(ADMIN_RENTAL_BOOKING_LIST_FIELDS);
+
+const ADMIN_RENTAL_BOOKING_LIST_SELECT_WITHOUT_REFUND_FIELDS =
+  buildAdminRentalBookingListSelect(
+    ADMIN_RENTAL_BOOKING_LIST_FIELDS.filter(
+      (field) =>
+        field !== "deposit_refund_amount" && field !== "deposit_refund_notes",
+    ),
+  );
 
 const ADMIN_RENTAL_BOOKING_LEGACY_LIST_SELECT =
-  "id, user_id, status, asset_id, asset_name, asset_thumbnail, product_name, thumbnail, hub_name, booker_name, booker_phone, start_date, end_date, rental_days, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, currency_code, created_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+  buildAdminRentalBookingListSelect(
+    ADMIN_RENTAL_BOOKING_LIST_FIELDS.filter(
+      (field) => field !== "walk_in_phone",
+    ),
+  );
+
+const ADMIN_RENTAL_BOOKING_LEGACY_LIST_SELECT_WITHOUT_REFUND_FIELDS =
+  buildAdminRentalBookingListSelect(
+    ADMIN_RENTAL_BOOKING_LIST_FIELDS.filter(
+      (field) =>
+        field !== "walk_in_phone" &&
+        field !== "deposit_refund_amount" &&
+        field !== "deposit_refund_notes",
+    ),
+  );
+
+const ADMIN_RENTAL_BOOKING_LIST_SELECT_FALLBACKS = [
+  ADMIN_RENTAL_BOOKING_LIST_SELECT,
+  ADMIN_RENTAL_BOOKING_LEGACY_LIST_SELECT,
+  ADMIN_RENTAL_BOOKING_LIST_SELECT_WITHOUT_REFUND_FIELDS,
+  ADMIN_RENTAL_BOOKING_LEGACY_LIST_SELECT_WITHOUT_REFUND_FIELDS,
+] as const;
+
+const ADMIN_RENTAL_BOOKING_LIST_COMPATIBILITY_COLUMNS = [
+  "rental_bookings.walk_in_phone",
+  "walk_in_phone",
+  "rental_bookings.deposit_refund_amount",
+  "deposit_refund_amount",
+  "rental_bookings.deposit_refund_notes",
+  "deposit_refund_notes",
+] as const;
 
 const DEFAULT_PAGE_SIZE = 20;
 const FETCH_OVERSAMPLE_CAP = 2000;
@@ -183,6 +256,11 @@ export function mapAdminRentalBookingRow(row: unknown): AdminRentalBookingRow {
     depositRefundStatus: String(
       r.deposit_refund_status ?? "not_refunded",
     ) as AdminRentalBookingRow["depositRefundStatus"],
+    depositRefundAmount: Number(r.deposit_refund_amount ?? 0),
+    depositRefundNotes:
+      typeof r.deposit_refund_notes === "string"
+        ? r.deposit_refund_notes
+        : null,
     currencyCode: String(r.currency_code ?? "THB"),
     storageBranchId: branchId,
     storageBranchName: branchName,
@@ -286,13 +364,57 @@ export async function fetchAdminSaleOrders(
   return (data ?? []).map((row: unknown) => mapAdminSaleOrderRow(row));
 }
 
-function isMissingWalkInPhoneColumn(error: unknown): boolean {
-  const err = error as { code?: string | null; message?: string | null } | null;
+export function isMissingRentalBookingColumn(
+  error: unknown,
+  columns: readonly string[],
+): boolean {
+  const err = error as {
+    code?: string | null;
+    message?: string | null;
+    details?: string | null;
+    hint?: string | null;
+  } | null;
+  const text = [err?.message, err?.details, err?.hint]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     (err?.code === "42703" ||
-      err?.message?.includes("walk_in_phone") === true) &&
-    err.message?.includes("rental_bookings.walk_in_phone") === true
+      err?.code === "PGRST204" ||
+      /does not exist|could not find/i.test(text)) &&
+    columns.some((column) => text.includes(column))
   );
+}
+
+function isMissingRentalBookingListCompatibilityColumn(
+  error: unknown,
+): boolean {
+  return isMissingRentalBookingColumn(
+    error,
+    ADMIN_RENTAL_BOOKING_LIST_COMPATIBILITY_COLUMNS,
+  );
+}
+
+type AdminRentalBookingListQueryResult = {
+  data: unknown[] | null;
+  error: unknown;
+};
+
+export async function fetchAdminRentalBookingListRows(
+  buildQuery: (
+    select: string,
+  ) => PromiseLike<AdminRentalBookingListQueryResult>,
+): Promise<unknown[]> {
+  let lastError: unknown = null;
+  for (const select of ADMIN_RENTAL_BOOKING_LIST_SELECT_FALLBACKS) {
+    const { data, error } = await buildQuery(select);
+    if (!error) return data ?? [];
+
+    lastError = error;
+    if (!isMissingRentalBookingListCompatibilityColumn(error)) throw error;
+  }
+
+  throw lastError;
 }
 
 function buildAdminRentalBookingsQuery(
@@ -335,25 +457,9 @@ export async function fetchAdminRentalBookings(
   filters: AdminOrderFilterParams,
   searchUserIds: Set<string> | null,
 ): Promise<AdminRentalBookingRow[]> {
-  let { data, error } = await buildAdminRentalBookingsQuery(
-    adminClient,
-    ADMIN_RENTAL_BOOKING_LIST_SELECT,
-    filters,
-    searchUserIds,
+  const data = await fetchAdminRentalBookingListRows((select) =>
+    buildAdminRentalBookingsQuery(adminClient, select, filters, searchUserIds),
   );
-
-  if (isMissingWalkInPhoneColumn(error)) {
-    const legacyResult = await buildAdminRentalBookingsQuery(
-      adminClient,
-      ADMIN_RENTAL_BOOKING_LEGACY_LIST_SELECT,
-      filters,
-      searchUserIds,
-    );
-    data = legacyResult.data;
-    error = legacyResult.error;
-  }
-
-  if (error) throw error;
 
   const rows = (data ?? []).map((row: unknown) =>
     mapAdminRentalBookingRow(row),
@@ -411,12 +517,19 @@ export async function fetchAdminUserProfiles(
   userIds: string[],
 ): Promise<Map<string, AdminUserProfileSummary>> {
   const map = new Map<string, AdminUserProfileSummary>();
-  if (userIds.length === 0) return map;
+  const profileUserIds = Array.from(
+    new Set(
+      userIds
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0 && isUuid(id)),
+    ),
+  );
+  if (profileUserIds.length === 0) return map;
 
   const { data, error } = await adminClient
     .from("users")
     .select("id, full_name, phone, kyc_status, id_card_url")
-    .in("id", userIds);
+    .in("id", profileUserIds);
 
   if (error) throw error;
 
@@ -504,7 +617,38 @@ export const ADMIN_ORDER_ITEMS_SELECT =
   "id, product_id, sku_id, name, thumbnail, unit_price, original_unit_price, discount_percent, quantity, line_total";
 
 export const ADMIN_RENTAL_BOOKING_DETAIL_SELECT =
-  "id, user_id, walk_in_phone, status, asset_id, asset_code, asset_name, asset_thumbnail, asset_snapshot, product_id, sku_id, product_name, matched_product_id, matched_product_name, thumbnail, hub_id, hub_name, start_date, end_date, rental_days, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, pricing_breakdown, booker_name, booker_phone, created_at, updated_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+  "id, user_id, walk_in_phone, status, asset_id, asset_code, asset_name, asset_thumbnail, asset_snapshot, product_id, sku_id, product_name, matched_product_id, matched_product_name, thumbnail, hub_id, hub_name, start_date, end_date, rental_days, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, no_show_at, no_show_marked_by_user_id, no_show_reason, no_show_source_event_id, pricing_breakdown, booker_name, booker_phone, created_at, updated_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+
+function mapRentalPaymentLine(row: unknown): RentalPaymentLine {
+  const r = asRow(row);
+  return {
+    lineType: String(
+      r.line_type ?? "rental_fee",
+    ) as RentalPaymentLine["lineType"],
+    taxCategory: String(
+      r.tax_category ?? "non_taxable",
+    ) as RentalPaymentLine["taxCategory"],
+    descriptionTh: String(r.description_th ?? ""),
+    descriptionEn: String(r.description_en ?? ""),
+    grossAmount: Number(r.gross_amount ?? 0),
+    whtApplicable: Boolean(r.wht_applicable),
+    whtRate: Number(r.wht_rate ?? 0),
+    whtAmount: Number(r.wht_amount ?? 0),
+    netPayableAmount: Number(r.net_payable_amount ?? 0),
+    isRefundable: Boolean(r.is_refundable),
+    whtCertificateRequired: Boolean(r.wht_certificate_required),
+    appliesToSecurityDeposit: Boolean(r.applies_to_security_deposit),
+    reducesRemainingSecurityDeposit: Boolean(
+      r.reduces_remaining_security_deposit,
+    ),
+    status: String(r.status ?? "active") as RentalPaymentLine["status"],
+    source: String(r.source ?? "system") as RentalPaymentLine["source"],
+    metadata:
+      r.metadata && typeof r.metadata === "object" && !Array.isArray(r.metadata)
+        ? (r.metadata as Record<string, unknown>)
+        : {},
+  };
+}
 
 const EMPTY_ADDRESS_SNAPSHOT: OrderAddressSnapshot = {
   title: "",
@@ -634,6 +778,14 @@ export function mapAdminRentalBookingDetail(
           | RentalPricingBreakdownRow
           | Record<string, never>)
       : {};
+  const rentalPaymentLinesSource = Array.isArray(r.rental_payment_lines)
+    ? r.rental_payment_lines
+    : Array.isArray(r.rental_booking_payment_lines)
+      ? r.rental_booking_payment_lines
+      : [];
+  const rentalPaymentLines = rentalPaymentLinesSource.map((line) =>
+    mapRentalPaymentLine(line),
+  );
 
   return {
     id: String(r.id ?? ""),
@@ -683,7 +835,24 @@ export function mapAdminRentalBookingDetail(
     depositRefundStatus: String(
       r.deposit_refund_status ?? "not_refunded",
     ) as AdminRentalBookingDetail["depositRefundStatus"],
+    depositRefundAmount: Number(r.deposit_refund_amount ?? 0),
+    depositRefundNotes:
+      typeof r.deposit_refund_notes === "string"
+        ? r.deposit_refund_notes
+        : null,
+    noShowAt: typeof r.no_show_at === "string" ? r.no_show_at : null,
+    noShowMarkedByUserId:
+      typeof r.no_show_marked_by_user_id === "string"
+        ? r.no_show_marked_by_user_id
+        : null,
+    noShowReason:
+      typeof r.no_show_reason === "string" ? r.no_show_reason : null,
+    noShowSourceEventId:
+      typeof r.no_show_source_event_id === "string"
+        ? r.no_show_source_event_id
+        : null,
     pricingBreakdown,
+    rentalPaymentLines,
     storageBranchId: branchId,
     storageBranchName: branchName,
     bookerName: typeof r.booker_name === "string" ? r.booker_name : null,

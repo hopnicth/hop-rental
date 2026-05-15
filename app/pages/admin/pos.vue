@@ -10,7 +10,32 @@ import {
   decomposeRentalDuration,
   type RentalPricingBreakdown,
 } from "~/utils/rental-pricing";
-import type { RentalDepositPaymentMethod } from "~/types/rental-booking";
+import { calculateInclusiveRentalDays } from "~/utils/rental-dates";
+import type {
+  RentalDepositPaymentMethod,
+  RentalDepositRefundStatus,
+} from "~/types/rental-booking";
+import type {
+  AdminBookingChecklist,
+  AdminBookingChecklistItem,
+  AdminBookingOpsPayload,
+  RentalChecklistKind,
+  RentalChecklistStatus,
+  UpdateChecklistItemPayload,
+} from "~/types/admin-booking-ops";
+import {
+  buildPosRentalFulfillmentPayload,
+  normalizePosRentalFulfillmentError,
+  requiresReturnRefundProof,
+} from "~/utils/admin-rental-fulfillment";
+import type {
+  RentalPaymentLine,
+  RentalPaymentLineSummary,
+} from "~/types/rental-payment-line";
+import {
+  calculateRentalPaymentLines,
+  summarizeRentalPaymentLines,
+} from "~/utils/rental-payment-lines";
 
 definePageMeta({
   layout: "admin",
@@ -85,6 +110,8 @@ interface PosHistoryItem {
   amount: number;
   rentalTotal?: number;
   depositPaidAmount?: number;
+  depositRefundStatus?: string;
+  depositRefundAmount?: number;
   paymentStatus: string;
   paymentMethod: string;
   depositPaymentMethod?: string | null;
@@ -130,6 +157,19 @@ interface RentalBookingCalendarPayload {
   isValid: boolean;
 }
 
+interface PosBlockingBooking {
+  bookingId: string;
+  skuId?: string;
+  assetId?: string;
+  startDate: string;
+  returnDate: string;
+  status: string;
+}
+
+interface PosBookingBlocksResponse {
+  items: PosBlockingBooking[];
+}
+
 type PosTransactionMode = "rental" | "sale";
 type ScannerPurpose = "customer" | "catalog";
 
@@ -137,6 +177,7 @@ const DRAFT_KEY = "hop-admin-pos-draft:v1";
 const BRANCH_KEY = "hop-admin-pos-branch:v1";
 const PENDING_ID_KEY = "hop-admin-pos-pending-id:v1";
 const PENDING_BOOKING_KEY = "hop-admin-pos-pending-booking:v1";
+const BOOKING_CALENDAR_BLOCK_REFRESH_MS = 15_000;
 const toast = useToast();
 const { profile, ensureProfileLoaded } = useUserProfile();
 
@@ -148,14 +189,30 @@ const lookup = ref<LookupResponse | null>(null);
 const loading = ref(false);
 const progress = ref(false);
 const selectedBooking = ref<AdminRentalBookingRow | null>(null);
-const signature = ref<string | null>(null);
+const bookingOps = ref<AdminBookingOpsPayload | null>(null);
+const bookingOpsLoading = ref(false);
+const checklistBusy = ref(false);
+const pickupSignature = ref<string | null>(null);
+const returnSignature = ref<string | null>(null);
 const fulfillmentNotes = ref("");
+const fulfillmentErrorMessage = ref<string | null>(null);
+const fulfillmentSubmittingType = ref<"pickup" | "return" | null>(null);
+const refundForm = reactive({
+  status: "pending" as RentalDepositRefundStatus,
+  amount: 0,
+  notes: "",
+});
+const refundProofFile = ref<File | null>(null);
+const refundProofPreview = ref<string | null>(null);
+const refundProofUploadedUrl = ref<string | null>(null);
+const refundProofUploading = ref(false);
 
 const draft = reactive({ phone: "", fullName: "", notes: "" });
 const idModalOpen = ref(false);
 const idFile = ref<File | null>(null);
 const idPreview = ref<string | null>(null);
 const uploadingId = ref(false);
+const viewingIdCard = ref(false);
 const hasPendingIdDraft = ref(false);
 const transactionMode = ref<PosTransactionMode>("rental");
 const branches = ref<BranchOption[]>([]);
@@ -170,6 +227,8 @@ const selectedSkuId = ref("");
 const bookingStartDate = ref("");
 const bookingEndDate = ref("");
 const bookingCalendarValid = ref(false);
+const bookingCalendarBlocks = ref<PosBlockingBooking[]>([]);
+const bookingCalendarBlocksLoading = ref(false);
 const rentalDepositPaidAmount = ref(0);
 const salePaidAmount = ref(0);
 const depositPaidAmount = computed({
@@ -195,7 +254,9 @@ const saleNotes = ref("");
 const historyDate = ref(todayBangkokDateInput());
 const historyLoading = ref(false);
 const posHistory = ref<PosHistoryResponse | null>(null);
+const showIncompleteOnly = ref(false);
 const cancellingHistoryKey = ref<string | null>(null);
+const openingFulfillmentHistoryKey = ref<string | null>(null);
 const depositConfirmOpen = ref(false);
 const depositEditOpen = ref(false);
 const depositEditSaving = ref(false);
@@ -214,6 +275,8 @@ const depositEdit = reactive({
   notes: "",
 });
 let catalogSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let bookingCalendarBlockTimer: ReturnType<typeof setInterval> | null = null;
+let bookingCalendarBlockRequestId = 0;
 
 const transactionModeTabs = [
   { label: "เช่า (Rental)", value: "rental", icon: "bx:calendar-check" },
@@ -226,16 +289,145 @@ const PRODUCT_IMAGE_PLACEHOLDER =
 const depositProofFileName = computed(
   () => depositProofFile.value?.name ?? "ยังไม่ได้แนบหลักฐานมัดจำ",
 );
+const refundProofFileName = computed(
+  () => refundProofFile.value?.name ?? "ยังไม่ได้แนบหลักฐานคืนมัดจำ",
+);
 
 const customer = computed(() => lookup.value?.customer ?? null);
-const idCardMissing = computed(() => !customer.value?.idCardUrl);
+const customerHasIdCardDocument = computed(() =>
+  Boolean(customer.value?.idCardUrl),
+);
+const customerKycVerified = computed(
+  () =>
+    customer.value?.kind === "account" &&
+    customer.value.kycStatus === "verified",
+);
+const idCardMissing = computed(() => {
+  if (!customer.value) return true;
+  if (customerKycVerified.value) return false;
+  return !customerHasIdCardDocument.value;
+});
+const customerDocumentBlockReason = computed(() => {
+  if (transactionMode.value !== "rental") return null;
+  const current = customer.value;
+  if (!current) return "กรุณาค้นหาหรือบันทึกข้อมูลลูกค้าก่อน";
+  if (current.kind === "account") {
+    if (current.kycStatus === "verified") return null;
+    if (!current.idCardUrl) return "ต้องบันทึกบัตรประชาชนก่อน";
+    if (current.kycStatus === "rejected")
+      return "KYC ไม่ผ่าน กรุณาตรวจสอบเอกสาร";
+    return "รอผล KYC หรือยังไม่ได้ยืนยันเอกสาร";
+  }
+  return current.idCardUrl ? null : "ต้องบันทึกบัตรประชาชนก่อน";
+});
 const requiresIdCardForCheckout = computed(
-  () => transactionMode.value === "rental" && idCardMissing.value,
+  () =>
+    transactionMode.value === "rental" &&
+    Boolean(customerDocumentBlockReason.value),
 );
 const activeBookings = computed(() => lookup.value?.bookings ?? []);
 const pickupCandidates = computed(() =>
-  activeBookings.value.filter((b) => b.status === "confirmed"),
+  activeBookings.value
+    .filter((booking) => booking.status === "confirmed")
+    .sort((a, b) => a.startDate.localeCompare(b.startDate)),
 );
+const activeWorkflowKind = computed<RentalChecklistKind | null>(() => {
+  if (selectedBooking.value?.status === "confirmed") return "pickup";
+  if (
+    selectedBooking.value?.status === "picked_up" ||
+    selectedBooking.value?.status === "returned"
+  )
+    return "return";
+  return null;
+});
+const workflowChecklists = computed(() => {
+  const kind = activeWorkflowKind.value;
+  if (!kind) return [];
+  return (bookingOps.value?.checklists ?? []).filter((c) => c.kind === kind);
+});
+const workflowTemplates = computed(() => {
+  const kind = activeWorkflowKind.value;
+  if (!kind) return [];
+  return (bookingOps.value?.templates ?? []).filter((t) => t.kind === kind);
+});
+const primaryWorkflowChecklist = computed<AdminBookingChecklist | null>(
+  () =>
+    workflowChecklists.value.find((c) => c.status === "completed") ??
+    workflowChecklists.value.find((c) => c.status === "in_progress") ??
+    workflowChecklists.value.find((c) => c.status === "draft") ??
+    workflowChecklists.value.find((c) => c.status !== "cancelled") ??
+    workflowChecklists.value[0] ??
+    null,
+);
+const workflowChecklistProgress = computed(() =>
+  primaryWorkflowChecklist.value
+    ? checklistProgress(primaryWorkflowChecklist.value)
+    : { done: 0, total: 0 },
+);
+const isWorkflowChecklistReady = computed(() => {
+  const checklist = primaryWorkflowChecklist.value;
+  if (!activeWorkflowKind.value || !checklist) return false;
+  return (
+    checklist.status === "completed" &&
+    requiredChecklistItemsAnswered(checklist)
+  );
+});
+const canConfirmPickup = computed(
+  () =>
+    selectedBooking.value?.status === "confirmed" &&
+    !confirmPickupDisabledReason.value,
+);
+const canConfirmReturn = computed(
+  () =>
+    selectedBooking.value?.status === "picked_up" &&
+    !confirmReturnDisabledReason.value,
+);
+const returnRefundProofRequired = computed(
+  () =>
+    selectedBooking.value?.status === "picked_up" &&
+    requiresReturnRefundProof(refundForm.amount, refundForm.status),
+);
+const confirmPickupDisabledReason = computed(() => {
+  const booking = selectedBooking.value;
+  if (!booking) return "เลือกรายการจองก่อน";
+  if (booking.status !== "confirmed")
+    return "Pickup ได้เฉพาะรายการสถานะ confirmed";
+  if (customerDocumentBlockReason.value)
+    return customerDocumentBlockReason.value;
+  const checklist = primaryWorkflowChecklist.value;
+  if (bookingOpsLoading.value) return "กำลังโหลด Checklist";
+  if (!checklist) return "ต้องสร้าง Pickup Checklist ก่อน";
+  if (checklist.status !== "completed")
+    return `Checklist ยังเป็น ${checklist.status}`;
+  if (!requiredChecklistItemsAnswered(checklist))
+    return "ต้องตอบรายการบังคับใน Checklist ให้ครบ";
+  if (!pickupSignature.value) return "กรุณาเซ็นชื่อรับสินค้า";
+  if (booking.depositPaymentStatus !== "paid")
+    return "ต้องชำระมัดจำ/ค่าเช่าให้เป็น paid ก่อน";
+  return null;
+});
+const confirmReturnDisabledReason = computed(() => {
+  const booking = selectedBooking.value;
+  if (!booking) return "เลือกรายการจองก่อน";
+  if (booking.status !== "picked_up")
+    return "Return ได้เฉพาะรายการสถานะ picked_up";
+  const checklist = primaryWorkflowChecklist.value;
+  if (bookingOpsLoading.value) return "กำลังโหลด Checklist";
+  if (!checklist) return "ต้องสร้าง Return Checklist ก่อน";
+  if (checklist.status !== "completed")
+    return `Checklist ยังเป็น ${checklist.status}`;
+  if (!requiredChecklistItemsAnswered(checklist))
+    return "ต้องตอบรายการบังคับใน Checklist ให้ครบ";
+  if (!returnSignature.value) return "กรุณาเซ็นชื่อคืนสินค้า";
+  if (refundForm.amount > booking.depositPaidAmount)
+    return "Refund Amount ต้องไม่เกินยอดมัดจำที่รับจริง";
+  if (returnRefundProofRequired.value && !refundProofUploadedUrl.value) {
+    return refundProofFile.value
+      ? "กรุณากดอัปโหลด Refund Slip ก่อน Confirm Return"
+      : "ต้องแนบและอัปโหลด Refund Slip ก่อน Confirm Return";
+  }
+  return null;
+});
 const filteredCatalogProducts = computed(() =>
   catalogProducts.value.filter((p) => p.type === transactionMode.value),
 );
@@ -285,8 +477,24 @@ const bookingPricing = computed(() => {
     currencyCode: "THB",
   });
 });
+const rentalPaymentLines = computed<RentalPaymentLine[]>(() =>
+  calculateRentalPaymentLines({
+    customerKind: "individual",
+    rentalDays: bookingDays.value,
+    rentalFeeAmount: bookingPricing.value?.total ?? 0,
+    depositAmount: defaultDepositAmount.value,
+    source: "cart_preview",
+    metadata: {
+      previewSurface: "admin_pos",
+      actualDepositPaidAmount: rentalDepositPaidAmount.value,
+    },
+  }),
+);
+const rentalPaymentSummary = computed<RentalPaymentLineSummary>(() =>
+  summarizeRentalPaymentLines(rentalPaymentLines.value),
+);
 const rentalCheckoutTotal = computed(
-  () => (bookingPricing.value?.total ?? 0) + rentalDepositPaidAmount.value,
+  () => rentalPaymentSummary.value.netPayableTotal,
 );
 const saleCartTotal = computed(() =>
   saleCart.value.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0),
@@ -368,6 +576,23 @@ const historyPaymentBreakdown = computed(() =>
     (a, b) => a[0].localeCompare(b[0]),
   ),
 );
+const filteredHistoryItems = computed(() => {
+  const items = posHistory.value?.items ?? [];
+  if (!showIncompleteOnly.value) return items;
+  return items.filter(
+    (item) =>
+      item.type === "rental" &&
+      ["confirmed", "picked_up"].includes(item.status),
+  );
+});
+const incompleteHistoryCount = computed(
+  () =>
+    (posHistory.value?.items ?? []).filter(
+      (item) =>
+        item.type === "rental" &&
+        ["confirmed", "picked_up"].includes(item.status),
+    ).length,
+);
 const selectedBranch = computed(
   () =>
     branches.value.find((branch) => branch.id === selectedBranchId.value) ??
@@ -403,13 +628,7 @@ function todayBangkokDateInput() {
 }
 
 function diffDateInputDays(start: string, end: string) {
-  if (!start || !end) return 0;
-  const startDate = new Date(`${start}T00:00:00.000Z`);
-  const endDate = new Date(`${end}T00:00:00.000Z`);
-  return Math.max(
-    0,
-    Math.round((endDate.getTime() - startDate.getTime()) / 86_400_000),
-  );
+  return calculateInclusiveRentalDays(start, end);
 }
 
 function persistDraft() {
@@ -437,6 +656,37 @@ function restoreDraft() {
   );
 }
 
+function syncOnlineStatus() {
+  if (!import.meta.client) return;
+  isOnline.value = navigator.onLine;
+}
+
+function refreshBookingCalendarBlocksSilently() {
+  if (transactionMode.value !== "rental" || !selectedSkuId.value) return;
+  void loadBookingCalendarBlocks(selectedSkuId.value, { silent: true });
+}
+
+function refreshBookingCalendarBlocksWhenVisible() {
+  if (!import.meta.client || document.visibilityState === "visible") {
+    refreshBookingCalendarBlocksSilently();
+  }
+}
+
+function startBookingCalendarBlockRefresh() {
+  if (!import.meta.client || bookingCalendarBlockTimer) return;
+  bookingCalendarBlockTimer = setInterval(() => {
+    if (document.visibilityState === "visible") {
+      refreshBookingCalendarBlocksSilently();
+    }
+  }, BOOKING_CALENDAR_BLOCK_REFRESH_MS);
+}
+
+function stopBookingCalendarBlockRefresh() {
+  if (!bookingCalendarBlockTimer) return;
+  clearInterval(bookingCalendarBlockTimer);
+  bookingCalendarBlockTimer = null;
+}
+
 watch(draft, persistDraft, { deep: true });
 onMounted(() => {
   restoreDraft();
@@ -444,8 +694,26 @@ onMounted(() => {
   void loadBranches();
   void loadCatalog();
   void loadPosHistory();
-  window.addEventListener("online", () => (isOnline.value = true));
-  window.addEventListener("offline", () => (isOnline.value = false));
+  window.addEventListener("online", syncOnlineStatus);
+  window.addEventListener("offline", syncOnlineStatus);
+  window.addEventListener("focus", refreshBookingCalendarBlocksSilently);
+  document.addEventListener(
+    "visibilitychange",
+    refreshBookingCalendarBlocksWhenVisible,
+  );
+  startBookingCalendarBlockRefresh();
+});
+
+onUnmounted(() => {
+  if (!import.meta.client) return;
+  window.removeEventListener("online", syncOnlineStatus);
+  window.removeEventListener("offline", syncOnlineStatus);
+  window.removeEventListener("focus", refreshBookingCalendarBlocksSilently);
+  document.removeEventListener(
+    "visibilitychange",
+    refreshBookingCalendarBlocksWhenVisible,
+  );
+  stopBookingCalendarBlockRefresh();
 });
 
 watch(selectedProductId, () => {
@@ -458,6 +726,7 @@ watch(transactionMode, () => {
   bookingStartDate.value = "";
   bookingEndDate.value = "";
   bookingCalendarValid.value = false;
+  bookingCalendarBlocks.value = [];
   void loadCatalog();
 });
 
@@ -482,7 +751,22 @@ watch(selectedSkuId, () => {
   bookingStartDate.value = "";
   bookingEndDate.value = "";
   bookingCalendarValid.value = false;
+  void loadBookingCalendarBlocks();
 });
+
+watch(
+  () => selectedBooking.value?.id,
+  (bookingId) => {
+    bookingOps.value = null;
+    pickupSignature.value = null;
+    returnSignature.value = null;
+    fulfillmentNotes.value = "";
+    fulfillmentErrorMessage.value = null;
+    clearRefundProof();
+    syncRefundFormFromBooking(selectedBooking.value);
+    if (bookingId) void loadBookingOps(bookingId);
+  },
+);
 
 function handlePosBookingCalendarChange(
   payload: RentalBookingCalendarPayload,
@@ -512,6 +796,17 @@ function formatTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function scrollToPosSection(
+  elementId: string,
+  block: ScrollLogicalPosition = "start",
+) {
+  if (!import.meta.client) return false;
+  const element = document.getElementById(elementId);
+  if (!element) return false;
+  element.scrollIntoView({ behavior: "smooth", block });
+  return true;
 }
 
 function formatPaymentMethod(value: string) {
@@ -592,6 +887,137 @@ function bookingTitle(booking: AdminRentalBookingRow) {
   return booking.assetName || booking.productName || booking.id;
 }
 
+function printFormUrl(bookingId: string, type: "pickup" | "return") {
+  return `/admin/rental-bookings/${bookingId}/print?type=${type}`;
+}
+
+function preferredSelectedBooking(bookings: AdminRentalBookingRow[]) {
+  return (
+    bookings.find((booking) => booking.status === "confirmed") ??
+    bookings.find((booking) => booking.status === "picked_up") ??
+    bookings[0] ??
+    null
+  );
+}
+
+function checklistKindLabel(kind: RentalChecklistKind | null) {
+  if (kind === "pickup") return "Pickup";
+  if (kind === "return") return "Return";
+  return "Checklist";
+}
+
+function checklistStatusColor(status: RentalChecklistStatus) {
+  const colors: Record<RentalChecklistStatus, string> = {
+    draft: "neutral",
+    in_progress: "warning",
+    completed: "success",
+    cancelled: "error",
+  };
+  return colors[status];
+}
+
+function checklistProgress(checklist: AdminBookingChecklist) {
+  const total = checklist.items.length;
+  const done = checklist.items.filter(
+    (item) => item.checked === true || item.resultStatus !== "pending",
+  ).length;
+  return { done, total };
+}
+
+function requiredChecklistItemsAnswered(checklist: AdminBookingChecklist) {
+  return checklist.items
+    .filter((item) => item.isRequired)
+    .every((item) => item.checked === true || item.resultStatus !== "pending");
+}
+
+async function createWorkflowChecklist(kind = activeWorkflowKind.value) {
+  const booking = selectedBooking.value;
+  if (!booking || !kind) return;
+  checklistBusy.value = true;
+  try {
+    const template = workflowTemplates.value[0] ?? null;
+    const body = template
+      ? { templateId: template.id }
+      : { kind, name: `POS ${checklistKindLabel(kind)} Checklist` };
+    bookingOps.value = await $fetch<AdminBookingOpsPayload>(
+      `/api/admin/rental-bookings/${booking.id}/checklists`,
+      { method: "POST", body },
+    );
+    const created = workflowChecklists.value.find(
+      (checklist) => checklist.status === "draft",
+    );
+    if (created) await setWorkflowChecklistStatus(created, "in_progress");
+    toast.add({ title: "สร้าง Checklist แล้ว", color: "success" });
+  } catch (e) {
+    toast.add({
+      title: "สร้าง Checklist ไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    checklistBusy.value = false;
+  }
+}
+
+async function setWorkflowChecklistStatus(
+  checklist: AdminBookingChecklist,
+  status: RentalChecklistStatus,
+) {
+  if (!selectedBooking.value) return;
+  checklistBusy.value = true;
+  try {
+    bookingOps.value = await $fetch<AdminBookingOpsPayload>(
+      `/api/admin/rental-bookings/${selectedBooking.value.id}/checklists/${checklist.id}`,
+      { method: "PATCH", body: { status } },
+    );
+  } catch (e) {
+    toast.add({
+      title: "อัปเดต Checklist ไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    checklistBusy.value = false;
+  }
+}
+
+async function completeWorkflowChecklist(checklist: AdminBookingChecklist) {
+  if (!requiredChecklistItemsAnswered(checklist)) {
+    toast.add({
+      title: "กรุณาตรวจรายการที่บังคับให้ครบก่อน",
+      color: "warning",
+    });
+    return;
+  }
+  await setWorkflowChecklistStatus(checklist, "completed");
+}
+
+async function patchWorkflowChecklistItem(
+  checklist: AdminBookingChecklist,
+  item: AdminBookingChecklistItem,
+  body: UpdateChecklistItemPayload,
+) {
+  if (!selectedBooking.value) return;
+  checklistBusy.value = true;
+  try {
+    if (checklist.status === "draft") {
+      await setWorkflowChecklistStatus(checklist, "in_progress");
+    }
+    bookingOps.value = await $fetch<AdminBookingOpsPayload>(
+      `/api/admin/rental-bookings/${selectedBooking.value.id}/checklists/${checklist.id}/items/${item.id}`,
+      { method: "PATCH", body },
+    );
+  } catch (e) {
+    toast.add({
+      title: "บันทึกผล Checklist ไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    checklistBusy.value = false;
+  }
+}
+
 function openScanner(purpose: ScannerPurpose) {
   scannerPurpose.value = purpose;
   isScannerOpen.value = true;
@@ -635,6 +1061,9 @@ async function loadCatalog() {
     if (!visibleItems.some((item) => item.id === selectedProductId.value)) {
       selectedProductId.value = visibleItems[0]?.id ?? "";
       selectedSkuId.value = visibleItems[0]?.skus[0]?.id ?? "";
+    }
+    if (transactionMode.value === "rental" && selectedSkuId.value) {
+      void loadBookingCalendarBlocks(selectedSkuId.value, { silent: true });
     }
   } catch (e) {
     toast.add({
@@ -690,6 +1119,132 @@ async function loadPosHistory() {
   }
 }
 
+async function loadBookingCalendarBlocks(
+  assetId = selectedSkuId.value,
+  options: { silent?: boolean } = {},
+) {
+  if (transactionMode.value !== "rental" || !assetId) {
+    bookingCalendarBlocks.value = [];
+    return;
+  }
+  const requestId = ++bookingCalendarBlockRequestId;
+  if (!options.silent) bookingCalendarBlocksLoading.value = true;
+  try {
+    const response = await $fetch<PosBookingBlocksResponse>(
+      "/api/admin/pos/booking-blocks",
+      { query: { assetId, t: Date.now() } },
+    );
+    if (
+      requestId === bookingCalendarBlockRequestId &&
+      assetId === selectedSkuId.value
+    ) {
+      bookingCalendarBlocks.value = response.items;
+    }
+  } catch (e) {
+    if (!options.silent) {
+      bookingCalendarBlocks.value = [];
+      toast.add({
+        title: "โหลดวันจองที่ถูกบล็อกไม่สำเร็จ",
+        description: e instanceof Error ? e.message : "Unknown error",
+        color: "warning",
+      });
+    }
+  } finally {
+    if (requestId === bookingCalendarBlockRequestId) {
+      bookingCalendarBlocksLoading.value = false;
+    }
+  }
+}
+
+function syncRefundFormFromBooking(booking: AdminRentalBookingRow | null) {
+  const paidAmount = Math.max(0, Number(booking?.depositPaidAmount ?? 0));
+  const existingAmount = Math.max(
+    0,
+    Number(booking?.depositRefundAmount ?? paidAmount),
+  );
+  refundForm.amount = existingAmount || paidAmount;
+  refundForm.status =
+    paidAmount > 0
+      ? booking?.depositRefundStatus === "refunded" ||
+        booking?.depositRefundStatus === "forfeited" ||
+        booking?.depositRefundStatus === "pending"
+        ? booking.depositRefundStatus
+        : "pending"
+      : "not_applicable";
+  refundForm.notes = booking?.depositRefundNotes ?? "";
+}
+
+async function loadBookingOps(bookingId = selectedBooking.value?.id) {
+  if (!bookingId) return;
+  bookingOpsLoading.value = true;
+  try {
+    bookingOps.value = await $fetch<AdminBookingOpsPayload>(
+      `/api/admin/rental-bookings/${bookingId}/ops`,
+    );
+  } catch (e) {
+    toast.add({
+      title: "โหลด Checklist ไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    bookingOpsLoading.value = false;
+  }
+}
+
+function mergeBookingDetail(detail: AdminRentalBookingDetail) {
+  const existing = selectedBooking.value;
+  const detailCustomer = detail.customer
+    ? {
+        ...detail.customer,
+        kind: detail.userId ? ("account" as const) : ("walk_in" as const),
+        phone:
+          detail.customer.phone || detail.bookerPhone || detail.walkInPhone,
+      }
+    : null;
+  const merged: AdminRentalBookingRow = {
+    ...(existing ?? ({} as AdminRentalBookingRow)),
+    id: detail.id,
+    userId: detail.userId,
+    walkInPhone: detail.walkInPhone,
+    status: detail.status,
+    assetName: detail.assetName,
+    productName: detail.productName,
+    thumbnail: detail.assetThumbnail || existing?.thumbnail || null,
+    startDate: detail.startDate,
+    endDate: detail.endDate,
+    rentalDays: detail.rentalDays,
+    rentalTotal: detail.rentalTotal,
+    depositAmount: detail.depositAmount,
+    depositPaidAmount: detail.depositPaidAmount,
+    depositPaymentMethod: detail.depositPaymentMethod,
+    depositPaymentStatus: detail.depositPaymentStatus,
+    depositRefundStatus: detail.depositRefundStatus,
+    depositRefundAmount: detail.depositRefundAmount,
+    depositRefundNotes: detail.depositRefundNotes,
+    currencyCode: detail.currencyCode,
+    storageBranchId: detail.storageBranchId,
+    storageBranchName: detail.storageBranchName,
+    hubName: detail.hubName,
+    bookerName: detail.bookerName,
+    bookerPhone: detail.bookerPhone,
+    createdAt: existing?.createdAt ?? detail.createdAt,
+  };
+
+  const existingBookings = lookup.value?.bookings ?? [];
+  const bookings = existingBookings.some((booking) => booking.id === merged.id)
+    ? existingBookings.map((booking) =>
+        booking.id === merged.id ? merged : booking,
+      )
+    : [merged, ...existingBookings];
+  lookup.value = {
+    customer: detailCustomer ?? lookup.value?.customer ?? null,
+    bookings,
+  };
+  selectedBooking.value = merged;
+  syncRefundFormFromBooking(merged);
+}
+
 async function lookupCustomer(term = search.value) {
   if (!term.trim()) return;
   loading.value = true;
@@ -697,11 +1252,11 @@ async function lookupCustomer(term = search.value) {
     lookup.value = await $fetch<LookupResponse>("/api/admin/customers/lookup", {
       query: { search: term.trim() },
     });
-    selectedBooking.value = lookup.value.bookings[0] ?? null;
+    selectedBooking.value = preferredSelectedBooking(lookup.value.bookings);
     if (
       transactionMode.value === "rental" &&
       lookup.value.customer &&
-      !lookup.value.customer.idCardUrl
+      idCardMissing.value
     )
       idModalOpen.value = true;
   } catch (e) {
@@ -782,6 +1337,22 @@ function onDepositProofChange(event: Event) {
 function clearDepositProof() {
   depositProofFile.value = null;
   depositProofPreview.value = null;
+}
+
+function onRefundProofChange(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0] ?? null;
+  refundProofFile.value = file;
+  refundProofUploadedUrl.value = null;
+  refundProofPreview.value = file?.type.startsWith("image/")
+    ? URL.createObjectURL(file)
+    : null;
+  (event.target as HTMLInputElement).value = "";
+}
+
+function clearRefundProof() {
+  refundProofFile.value = null;
+  refundProofPreview.value = null;
+  refundProofUploadedUrl.value = null;
 }
 
 function addSaleSkuToCart(
@@ -880,6 +1451,13 @@ watch(
   { deep: true },
 );
 
+watch(
+  () => refundForm.amount,
+  () => {
+    refundProofUploadedUrl.value = null;
+  },
+);
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -958,52 +1536,128 @@ async function submitIdCard() {
   }
 }
 
+async function viewCustomerIdCard() {
+  const current = customer.value;
+  if (!current) return;
+
+  const query: Record<string, string> = {};
+  if (current.kind === "account" && current.userId)
+    query.userId = current.userId;
+  if (current.phone) query.phone = current.phone;
+  if (!query.userId && !query.phone) {
+    toast.add({ title: "ไม่พบข้อมูลลูกค้าสำหรับเปิดบัตร", color: "warning" });
+    return;
+  }
+
+  viewingIdCard.value = true;
+  try {
+    const response = await $fetch<{ signedUrl: string }>(
+      "/api/admin/customers/id-card/signed-url",
+      { query },
+    );
+    if (import.meta.client)
+      window.open(response.signedUrl, "_blank", "noopener");
+  } catch (e) {
+    toast.add({
+      title: "เปิดบัตรประชาชนไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "กรุณาอัปโหลดบัตรใหม่",
+      color: "error",
+    });
+  } finally {
+    viewingIdCard.value = false;
+  }
+}
+
 async function applyFulfillment(eventType: "pickup" | "return") {
   const booking = selectedBooking.value;
   if (!booking) return;
-  if (eventType === "pickup" && !signature.value) {
-    toast.add({ title: "กรุณาให้ลูกค้าเซ็นรับของก่อน", color: "warning" });
+  const disabledReason =
+    eventType === "pickup"
+      ? confirmPickupDisabledReason.value
+      : confirmReturnDisabledReason.value;
+  fulfillmentErrorMessage.value = null;
+  if (disabledReason) {
+    fulfillmentErrorMessage.value = disabledReason;
+    toast.add({ title: disabledReason, color: "warning" });
     return;
   }
-  const previous = booking.status;
-  booking.status = eventType === "pickup" ? "picked_up" : "returned";
+
   progress.value = true;
+  fulfillmentSubmittingType.value = eventType;
   try {
     const detail = await $fetch<AdminRentalBookingDetail>(
-      `/api/admin/rental-bookings/${booking.id}/fulfillment`,
+      `/api/admin/rental-bookings/${booking.id}/${eventType}`,
       {
         method: "POST",
-        body: {
+        body: buildPosRentalFulfillmentPayload({
+          bookingId: booking.id,
           eventType,
-          signatureDataUrl: signature.value,
+          signatureDataUrl:
+            eventType === "pickup"
+              ? String(pickupSignature.value)
+              : String(returnSignature.value),
           notes: fulfillmentNotes.value,
-        },
+          branchId: selectedBranchId.value || booking.storageBranchId || null,
+          refundAmount: refundForm.amount,
+          refundStatus: refundForm.status,
+          refundNotes: refundForm.notes,
+          refundProofUrl: refundProofUploadedUrl.value,
+        }),
       },
     );
-    booking.status = detail.status;
+    mergeBookingDetail(detail);
     toast.add({
       title: eventType === "pickup" ? "Pickup complete" : "Return complete",
       color: "success",
     });
-    signature.value = null;
-  } catch {
-    booking.status = previous;
+    fulfillmentErrorMessage.value = null;
+    if (eventType === "pickup") {
+      pickupSignature.value = null;
+      returnSignature.value = null;
+    } else {
+      returnSignature.value = null;
+    }
+    if (eventType === "return") clearRefundProof();
+    await Promise.all([loadPosHistory(), loadBookingOps(detail.id)]);
+  } catch (error) {
+    const normalized = normalizePosRentalFulfillmentError(error, eventType);
+    if (normalized.statusCode) {
+      fulfillmentErrorMessage.value = normalized.message;
+      toast.add({
+        title: eventType === "pickup" ? "Pickup ไม่สำเร็จ" : "Return ไม่สำเร็จ",
+        description: normalized.message,
+        color: "error",
+      });
+      return;
+    }
+
     localStorage.setItem(
       `hop-admin-fulfillment-retry:${booking.id}`,
       JSON.stringify({
         eventType,
         notes: fulfillmentNotes.value,
-        signature: signature.value,
+        branchId: selectedBranchId.value || booking.storageBranchId || null,
+        signature:
+          eventType === "pickup"
+            ? pickupSignature.value
+            : returnSignature.value,
+        refundAmount: refundForm.amount,
+        refundStatus: refundForm.status,
+        refundNotes: refundForm.notes,
+        refundProofUrl: refundProofUploadedUrl.value,
         createdAt: new Date().toISOString(),
       }),
     );
+    fulfillmentErrorMessage.value =
+      "ยังติดต่อเซิร์ฟเวอร์ไม่ได้ ระบบบันทึกข้อมูลสำหรับ Retry ไว้ในเครื่องแล้ว";
     toast.add({
-      title: "API ช้า/เน็ตไม่เสถียร",
-      description: "บันทึกงานไว้ในเครื่องแล้ว กรุณา Retry ภายหลัง",
+      title: "เชื่อมต่อเซิร์ฟเวอร์ไม่สำเร็จ",
+      description: "บันทึกงานไว้ในเครื่องแล้ว กรุณา Retry เมื่อระบบกลับมาปกติ",
       color: "warning",
     });
   } finally {
     progress.value = false;
+    fulfillmentSubmittingType.value = null;
   }
 }
 
@@ -1019,6 +1673,34 @@ async function uploadDepositProof(bookingId: string) {
     method: "POST",
     body: fd,
   });
+}
+
+async function uploadRefundProof(bookingId = selectedBooking.value?.id) {
+  const file = refundProofFile.value;
+  if (!bookingId || !file) return;
+  refundProofUploading.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("amount", String(refundForm.amount));
+    fd.append("paymentMethod", "bank_transfer");
+    fd.append("proofKind", "refund");
+    if (refundForm.notes) fd.append("notes", refundForm.notes);
+    const response = await $fetch<{ fileUrl: string }>(
+      `/api/admin/rental-bookings/${bookingId}/deposit-proof`,
+      { method: "POST", body: fd },
+    );
+    refundProofUploadedUrl.value = response.fileUrl;
+    toast.add({ title: "อัปโหลด Refund Slip แล้ว", color: "success" });
+  } catch (e) {
+    toast.add({
+      title: "อัปโหลด Refund Slip ไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    refundProofUploading.value = false;
+  }
 }
 
 function requestCreatePosBooking() {
@@ -1045,6 +1727,46 @@ function openDepositEdit(item: PosHistoryItem) {
   depositEdit.notes = "";
   depositAdjustmentReason.value = "";
   depositEditOpen.value = true;
+}
+
+async function openFulfillmentFromHistory(item: PosHistoryItem) {
+  if (
+    item.type !== "rental" ||
+    !["confirmed", "picked_up"].includes(item.status) ||
+    isHistoryItemCancelled(item)
+  )
+    return;
+  const key = historyActionKey(item);
+  openingFulfillmentHistoryKey.value = key;
+  progress.value = true;
+  try {
+    const detail = await $fetch<AdminRentalBookingDetail>(
+      `/api/admin/rental-bookings/${item.id}`,
+    );
+    mergeBookingDetail(detail);
+    await loadBookingOps(detail.id);
+    await nextTick();
+    scrollToPosSection("pos-fulfillment-section");
+  } catch (e) {
+    toast.add({
+      title: "เปิด workflow รับ/คืนสินค้าไม่สำเร็จ",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    openingFulfillmentHistoryKey.value = null;
+    progress.value = false;
+  }
+}
+
+async function handlePostCreateNavigation(bookingId: string) {
+  await nextTick();
+  const didScroll = scrollToPosSection("payment-section", "center");
+  if (didScroll) return;
+  const createdHistoryItem = (posHistory.value?.items ?? []).find(
+    (item) => item.type === "rental" && item.id === bookingId,
+  );
+  if (createdHistoryItem) openDepositEdit(createdHistoryItem);
 }
 
 function requestDepositEditSave() {
@@ -1139,7 +1861,12 @@ async function createPosBooking() {
     lookup.value.bookings = [response.booking, ...lookup.value.bookings];
     selectedBooking.value = response.booking;
     if (phone) await lookupCustomer(phone);
-    await loadPosHistory();
+    selectedBooking.value =
+      lookup.value?.bookings.find(
+        (booking) => booking.id === response.booking.id,
+      ) ?? response.booking;
+    await Promise.all([loadPosHistory(), loadBookingCalendarBlocks()]);
+    await handlePostCreateNavigation(response.booking.id);
     localStorage.removeItem(PENDING_BOOKING_KEY);
     hasPendingBookingDraft.value = false;
     toast.add({ title: "สร้างรายการเช่าจาก POS แล้ว", color: "success" });
@@ -1229,7 +1956,8 @@ async function retryPendingBookingDraft() {
     lookup.value = lookup.value ?? { customer: null, bookings: [] };
     lookup.value.bookings = [response.booking, ...lookup.value.bookings];
     selectedBooking.value = response.booking;
-    await loadPosHistory();
+    await Promise.all([loadPosHistory(), loadBookingCalendarBlocks()]);
+    await handlePostCreateNavigation(response.booking.id);
     localStorage.removeItem(PENDING_BOOKING_KEY);
     hasPendingBookingDraft.value = false;
     toast.add({ title: "Retry สร้าง booking สำเร็จ", color: "success" });
@@ -1263,8 +1991,9 @@ async function retryPendingBookingDraft() {
           label="Export CSV"
           color="neutral"
           variant="soft"
-          :to="accountingExportUrl"
+          :href="accountingExportUrl"
           target="_blank"
+          rel="noopener noreferrer"
         />
       </div>
     </div>
@@ -1324,6 +2053,16 @@ async function retryPendingBookingDraft() {
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <UInput v-model="historyDate" type="date" class="w-40" />
+            <UButton
+              :color="showIncompleteOnly ? 'warning' : 'neutral'"
+              :variant="showIncompleteOnly ? 'solid' : 'soft'"
+              :label="
+                showIncompleteOnly
+                  ? 'แสดงทั้งหมด'
+                  : `Incomplete (${incompleteHistoryCount})`
+              "
+              @click="showIncompleteOnly = !showIncompleteOnly"
+            />
             <UButton
               icon="bx:refresh"
               variant="soft"
@@ -1400,14 +2139,18 @@ async function retryPendingBookingDraft() {
                 กำลังโหลดประวัติ POS...
               </td>
             </tr>
-            <tr v-else-if="!posHistory?.items.length">
+            <tr v-else-if="!filteredHistoryItems.length">
               <td colspan="8" class="px-3 py-6 text-center text-muted">
-                ไม่พบรายการ POS ในวันที่เลือก
+                {{
+                  showIncompleteOnly
+                    ? "ไม่พบรายการจองที่ยังไม่เสร็จสิ้นในวันที่เลือก"
+                    : "ไม่พบรายการ POS ในวันที่เลือก"
+                }}
               </td>
             </tr>
             <template v-else>
               <tr
-                v-for="item in posHistory?.items ?? []"
+                v-for="item in filteredHistoryItems"
                 :key="`${item.type}:${item.id}`"
                 class="hover:bg-elevated/50"
               >
@@ -1442,6 +2185,10 @@ async function retryPendingBookingDraft() {
                   <div class="space-y-1">
                     <p>{{ formatPaymentMethod(item.paymentMethod) }}</p>
                     <p class="text-xs text-muted">{{ item.paymentStatus }}</p>
+                    <p v-if="item.type === 'rental'" class="text-xs text-muted">
+                      Refund {{ item.depositRefundStatus || "not_refunded" }} ·
+                      {{ formatCurrency(item.depositRefundAmount ?? 0) }}
+                    </p>
                   </div>
                 </td>
                 <td class="px-3 py-2">
@@ -1464,6 +2211,36 @@ async function retryPendingBookingDraft() {
                       icon="bx:receipt"
                       label="Abbrev"
                       @click="showPrintPlaceholder('abbreviated', item)"
+                    />
+                    <UButton
+                      v-if="
+                        item.type === 'rental' && item.status === 'confirmed'
+                      "
+                      size="xs"
+                      variant="soft"
+                      color="primary"
+                      icon="bx:package"
+                      label="Pickup"
+                      :loading="
+                        openingFulfillmentHistoryKey === historyActionKey(item)
+                      "
+                      :disabled="isHistoryItemCancelled(item)"
+                      @click="openFulfillmentFromHistory(item)"
+                    />
+                    <UButton
+                      v-if="
+                        item.type === 'rental' && item.status === 'picked_up'
+                      "
+                      size="xs"
+                      variant="soft"
+                      color="success"
+                      icon="bx:undo"
+                      label="Return"
+                      :loading="
+                        openingFulfillmentHistoryKey === historyActionKey(item)
+                      "
+                      :disabled="isHistoryItemCancelled(item)"
+                      @click="openFulfillmentFromHistory(item)"
                     />
                     <UButton
                       v-if="item.type === 'rental'"
@@ -1650,6 +2427,22 @@ async function retryPendingBookingDraft() {
                 variant="soft"
                 >{{ customer.kind }}</UBadge
               >
+              <UBadge
+                v-if="customer.kind === 'account'"
+                class="ml-2"
+                :color="customerKycVerified ? 'success' : 'warning'"
+                variant="soft"
+              >
+                KYC {{ customer.kycStatus || "pending" }}
+              </UBadge>
+              <p
+                v-if="
+                  transactionMode === 'rental' && customerDocumentBlockReason
+                "
+                class="mt-2 text-xs text-warning"
+              >
+                {{ customerDocumentBlockReason }}
+              </p>
             </div>
             <UButton
               v-if="transactionMode === 'rental' && idCardMissing"
@@ -1659,13 +2452,23 @@ async function retryPendingBookingDraft() {
               @click="idModalOpen = true"
             />
             <UButton
-              v-else-if="transactionMode === 'rental'"
-              :to="customer.idCardUrl || undefined"
-              target="_blank"
+              v-else-if="
+                transactionMode === 'rental' && customerHasIdCardDocument
+              "
               color="success"
               variant="soft"
               icon="bx:check-shield"
-              label="มีบัตรประชาชนแล้ว"
+              :loading="viewingIdCard"
+              :label="
+                customerKycVerified ? 'ดูบัตร / KYC Verified' : 'ดูบัตรประชาชน'
+              "
+              @click="viewCustomerIdCard"
+            />
+            <UBadge
+              v-else-if="transactionMode === 'rental' && customerKycVerified"
+              color="success"
+              variant="soft"
+              label="KYC Verified"
             />
           </div>
         </div>
@@ -1819,7 +2622,8 @@ async function retryPendingBookingDraft() {
               :min-days="selectedProduct?.rentalMinDays ?? 1"
               :max-days="selectedProduct?.rentalMaxDays ?? 0"
               :buffer-days="0"
-              :loading="creatingBooking"
+              :blocking-bookings="bookingCalendarBlocks"
+              :loading="creatingBooking || bookingCalendarBlocksLoading"
               @change="handlePosBookingCalendarChange"
             />
             <UAlert
@@ -1891,7 +2695,10 @@ async function retryPendingBookingDraft() {
           />
         </div>
 
-        <div :class="['space-y-3 rounded-xl border p-3', modeAccentClass]">
+        <div
+          id="payment-section"
+          :class="['space-y-3 rounded-xl border p-3', modeAccentClass]"
+        >
           <AdminPosTotalSummary
             :mode="transactionMode"
             :rental-days="bookingDays"
@@ -1900,6 +2707,8 @@ async function retryPendingBookingDraft() {
             :default-deposit-amount="defaultDepositAmount"
             :current-deposit-amount="depositPaidAmount"
             :is-deposit-adjusted="isRentalDepositAdjusted"
+            :payment-lines="rentalPaymentLines"
+            :payment-summary="rentalPaymentSummary"
             :sale-cart-count="saleCart.length"
             :sale-cart-total="saleCartTotal"
           />
@@ -2105,7 +2914,7 @@ async function retryPendingBookingDraft() {
             placeholder="หมายเหตุการขาย / เลขอ้างอิง"
           />
           <p v-if="requiresIdCardForCheckout" class="text-xs text-warning">
-            ต้องบันทึกบัตรประชาชนก่อนสร้าง/รับรายการเช่าหน้าร้าน
+            {{ customerDocumentBlockReason }}
           </p>
         </div>
       </div>
@@ -2116,9 +2925,9 @@ async function retryPendingBookingDraft() {
         <template #header
           ><h3 class="font-semibold">4) Pre-booked Pick-list</h3></template
         >
-        <div v-if="activeBookings.length" class="space-y-2">
+        <div v-if="pickupCandidates.length" class="space-y-2">
           <button
-            v-for="booking in activeBookings"
+            v-for="booking in pickupCandidates"
             :key="booking.id"
             class="w-full rounded-xl border p-3 text-left hover:bg-elevated"
             :class="
@@ -2140,12 +2949,31 @@ async function retryPendingBookingDraft() {
             </div>
           </button>
         </div>
+        <div
+          v-else-if="activeBookings.length"
+          class="space-y-2 text-sm text-muted"
+        >
+          <p>
+            พบรายการจองของลูกค้าคนนี้ แต่ยังไม่มีรายการสถานะ confirmed สำหรับ
+            pickup
+          </p>
+          <div class="flex flex-wrap gap-2">
+            <UBadge
+              v-for="booking in activeBookings"
+              :key="booking.id"
+              variant="soft"
+              color="neutral"
+            >
+              {{ bookingTitle(booking) }} · {{ booking.status }}
+            </UBadge>
+          </div>
+        </div>
         <p v-else class="text-sm text-muted">
           ไม่มีรายการจองล่วงหน้าสำหรับลูกค้านี้
         </p>
       </UCard>
 
-      <UCard>
+      <UCard id="pos-fulfillment-section">
         <template #header
           ><h3 class="font-semibold">5) Pickup / Return</h3></template
         >
@@ -2163,10 +2991,19 @@ async function retryPendingBookingDraft() {
               · มัดจำ
               {{
                 formatCurrency(
-                  selectedBooking.depositAmount,
+                  selectedBooking.depositPaidAmount,
                   selectedBooking.currencyCode,
                 )
               }}
+              <span class="text-xs text-muted">
+                (รับจริงจาก POS / ยอดตั้งต้น
+                {{
+                  formatCurrency(
+                    selectedBooking.depositAmount,
+                    selectedBooking.currencyCode,
+                  )
+                }})
+              </span>
             </p>
             <p class="text-muted">
               Pick-list:
@@ -2180,26 +3017,486 @@ async function retryPendingBookingDraft() {
             :rows="2"
             placeholder="หมายเหตุการรับ/คืน"
           />
-          <DigitalSignaturePad
-            v-if="pickupCandidates.some((b) => b.id === selectedBooking?.id)"
-            v-model="signature"
+
+          <div
+            v-if="activeWorkflowKind"
+            class="space-y-3 rounded-xl border border-default p-3 text-sm"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="font-semibold">
+                  {{ checklistKindLabel(activeWorkflowKind) }} Checklist
+                </p>
+                <p class="text-xs text-muted">
+                  บันทึกลง rental_booking_checklists / items ก่อนยืนยันขั้นตอน
+                </p>
+              </div>
+              <UBadge color="neutral" variant="soft">
+                Template {{ workflowTemplates.length }} · List
+                {{ workflowChecklists.length }}
+              </UBadge>
+            </div>
+
+            <UProgress
+              v-if="bookingOpsLoading || checklistBusy"
+              animation="carousel"
+            />
+
+            <div v-if="primaryWorkflowChecklist" class="space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <UBadge
+                    :color="
+                      checklistStatusColor(
+                        primaryWorkflowChecklist.status,
+                      ) as any
+                    "
+                    variant="soft"
+                  >
+                    {{ primaryWorkflowChecklist.status }}
+                  </UBadge>
+                  <span class="font-medium">
+                    {{
+                      primaryWorkflowChecklist.templateName ||
+                      activeWorkflowKind
+                    }}
+                  </span>
+                  <span class="text-xs text-muted">
+                    {{ workflowChecklistProgress.done }} /
+                    {{ workflowChecklistProgress.total }} checked
+                  </span>
+                </div>
+                <div class="flex flex-wrap gap-1">
+                  <UButton
+                    v-if="primaryWorkflowChecklist.status === 'draft'"
+                    size="xs"
+                    color="warning"
+                    variant="soft"
+                    :loading="checklistBusy"
+                    label="Start"
+                    @click="
+                      setWorkflowChecklistStatus(
+                        primaryWorkflowChecklist,
+                        'in_progress',
+                      )
+                    "
+                  />
+                  <UButton
+                    v-if="primaryWorkflowChecklist.status !== 'completed'"
+                    size="xs"
+                    color="success"
+                    variant="soft"
+                    :loading="checklistBusy"
+                    label="Complete Checklist"
+                    @click="completeWorkflowChecklist(primaryWorkflowChecklist)"
+                  />
+                </div>
+              </div>
+
+              <div class="space-y-2">
+                <div
+                  v-for="item in primaryWorkflowChecklist.items"
+                  :key="item.id"
+                  class="rounded-lg border border-default/70 bg-elevated/40 p-2"
+                >
+                  <div class="flex flex-wrap items-start gap-2">
+                    <UCheckbox
+                      :model-value="item.checked === true"
+                      :disabled="
+                        checklistBusy ||
+                        primaryWorkflowChecklist.status === 'completed' ||
+                        primaryWorkflowChecklist.status === 'cancelled'
+                      "
+                      @update:model-value="
+                        (value: boolean) =>
+                          patchWorkflowChecklistItem(
+                            primaryWorkflowChecklist,
+                            item,
+                            {
+                              checked: value,
+                              resultStatus: value ? 'passed' : 'pending',
+                            },
+                          )
+                      "
+                    />
+                    <div class="min-w-0 flex-1">
+                      <p class="font-medium">
+                        {{ item.label }}
+                        <span v-if="item.isRequired" class="text-error">*</span>
+                      </p>
+                      <p v-if="item.instruction" class="text-xs text-muted">
+                        {{ item.instruction }}
+                      </p>
+                      <div class="mt-1 flex flex-wrap gap-1">
+                        <UBadge color="neutral" variant="soft">
+                          {{ item.resultStatus }}
+                        </UBadge>
+                        <UButton
+                          size="xs"
+                          variant="ghost"
+                          :color="
+                            item.resultStatus === 'failed' ? 'error' : 'neutral'
+                          "
+                          :disabled="checklistBusy"
+                          label="Fail"
+                          @click="
+                            patchWorkflowChecklistItem(
+                              primaryWorkflowChecklist,
+                              item,
+                              {
+                                checked: false,
+                                resultStatus:
+                                  item.resultStatus === 'failed'
+                                    ? 'pending'
+                                    : 'failed',
+                              },
+                            )
+                          "
+                        />
+                        <UButton
+                          size="xs"
+                          variant="ghost"
+                          :color="
+                            item.resultStatus === 'not_applicable'
+                              ? 'info'
+                              : 'neutral'
+                          "
+                          :disabled="checklistBusy"
+                          label="N/A"
+                          @click="
+                            patchWorkflowChecklistItem(
+                              primaryWorkflowChecklist,
+                              item,
+                              {
+                                resultStatus:
+                                  item.resultStatus === 'not_applicable'
+                                    ? 'pending'
+                                    : 'not_applicable',
+                              },
+                            )
+                          "
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <UInput
+                    v-if="item.responseType === 'text'"
+                    :model-value="item.responseText ?? ''"
+                    class="mt-2"
+                    size="sm"
+                    placeholder="Response"
+                    @blur="
+                      (event: FocusEvent) =>
+                        patchWorkflowChecklistItem(
+                          primaryWorkflowChecklist,
+                          item,
+                          {
+                            responseText: (event.target as HTMLInputElement)
+                              .value,
+                          },
+                        )
+                    "
+                  />
+                  <UInput
+                    v-else-if="item.responseType === 'number'"
+                    :model-value="item.responseNumber ?? ''"
+                    class="mt-2"
+                    type="number"
+                    size="sm"
+                    placeholder="Response"
+                    @blur="
+                      (event: FocusEvent) =>
+                        patchWorkflowChecklistItem(
+                          primaryWorkflowChecklist,
+                          item,
+                          {
+                            responseNumber: Number(
+                              (event.target as HTMLInputElement).value,
+                            ),
+                          },
+                        )
+                    "
+                  />
+                  <UTextarea
+                    :model-value="item.remark ?? ''"
+                    class="mt-2"
+                    :rows="1"
+                    size="sm"
+                    placeholder="หมายเหตุ Checklist"
+                    @blur="
+                      (event: FocusEvent) =>
+                        patchWorkflowChecklistItem(
+                          primaryWorkflowChecklist,
+                          item,
+                          {
+                            remark: (event.target as HTMLTextAreaElement).value,
+                          },
+                        )
+                    "
+                  />
+                </div>
+                <p
+                  v-if="primaryWorkflowChecklist.items.length === 0"
+                  class="text-xs text-warning"
+                >
+                  Checklist นี้ไม่มี item — ใช้เป็นบันทึกยืนยันแบบ ad-hoc
+                </p>
+              </div>
+            </div>
+
+            <div v-else class="space-y-2">
+              <UAlert
+                color="warning"
+                variant="soft"
+                title="ยังไม่มี Checklist สำหรับขั้นตอนนี้"
+                :description="
+                  workflowTemplates.length
+                    ? 'กดสร้างจาก template ของ asset นี้ก่อนทำรายการ'
+                    : 'ไม่พบ template ของ asset นี้ ระบบจะสร้าง ad-hoc checklist ให้บันทึก workflow ได้'
+                "
+              />
+              <UButton
+                color="primary"
+                variant="soft"
+                icon="bx:list-check"
+                :loading="checklistBusy"
+                :label="`สร้าง ${checklistKindLabel(activeWorkflowKind)} Checklist`"
+                @click="createWorkflowChecklist()"
+              />
+            </div>
+
+            <p v-if="!isWorkflowChecklistReady" class="text-xs text-warning">
+              ต้องตอบรายการบังคับและกด Complete Checklist ก่อน Confirm
+              {{ checklistKindLabel(activeWorkflowKind) }}
+            </p>
+          </div>
+
+          <div
+            v-if="
+              selectedBooking.status === 'picked_up' ||
+              selectedBooking.status === 'returned'
+            "
+            class="space-y-3 rounded-xl border border-success/40 bg-success/5 p-3 text-sm"
+          >
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p class="font-semibold">Deposit Refund</p>
+                <p class="text-xs text-muted">
+                  คำนวณจาก deposit_paid_amount ของ booking
+                </p>
+              </div>
+              <UBadge color="success" variant="soft">
+                Refund
+                {{
+                  formatCurrency(
+                    refundForm.amount,
+                    selectedBooking.currencyCode,
+                  )
+                }}
+              </UBadge>
+            </div>
+            <div class="grid gap-2 sm:grid-cols-3">
+              <div class="rounded-lg border border-default p-2">
+                <p class="text-xs text-muted">มัดจำที่รับจริง</p>
+                <p class="font-semibold">
+                  {{
+                    formatCurrency(
+                      selectedBooking.depositPaidAmount,
+                      selectedBooking.currencyCode,
+                    )
+                  }}
+                </p>
+              </div>
+              <UFormField label="Refund Amount">
+                <UInput
+                  v-model.number="refundForm.amount"
+                  type="number"
+                  min="0"
+                  :max="selectedBooking.depositPaidAmount"
+                  :disabled="selectedBooking.status === 'returned'"
+                />
+              </UFormField>
+              <UFormField label="Refund Status">
+                <select
+                  v-model="refundForm.status"
+                  class="w-full rounded-lg border border-default bg-default px-3 py-2 text-sm"
+                  :disabled="selectedBooking.status === 'returned'"
+                >
+                  <option value="pending">รอคืนเงิน</option>
+                  <option value="refunded">คืนเงินแล้ว</option>
+                  <option value="forfeited">ริบมัดจำ</option>
+                  <option value="not_applicable">ไม่เกี่ยวข้อง</option>
+                </select>
+              </UFormField>
+            </div>
+            <UTextarea
+              v-model="refundForm.notes"
+              :rows="2"
+              :disabled="selectedBooking.status === 'returned'"
+              placeholder="หมายเหตุ/เลขอ้างอิงการคืนเงินมัดจำสำหรับบัญชี"
+            />
+            <div
+              v-if="
+                selectedBooking.status === 'picked_up' &&
+                returnRefundProofRequired
+              "
+              class="space-y-2 rounded-lg border border-default p-2"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="font-medium">Refund Slip</p>
+                  <p class="text-xs text-muted">
+                    ต้องอัปโหลดหลักฐานการคืนเงินก่อน Confirm Return
+                  </p>
+                </div>
+                <UBadge
+                  :color="refundProofUploadedUrl ? 'success' : 'warning'"
+                  variant="soft"
+                >
+                  {{ refundProofUploadedUrl ? "Uploaded" : "Required" }}
+                </UBadge>
+              </div>
+              <div class="grid gap-2 sm:grid-cols-2">
+                <label
+                  for="refund-proof-upload"
+                  class="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-default bg-white px-3 py-2 text-sm font-medium text-default shadow-sm"
+                >
+                  <UIcon name="bx:upload" />
+                  เลือก Refund Slip
+                </label>
+                <input
+                  id="refund-proof-upload"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  class="sr-only"
+                  @change="onRefundProofChange"
+                />
+                <UButton
+                  icon="bx:cloud-upload"
+                  color="success"
+                  variant="soft"
+                  label="อัปโหลด Slip"
+                  :loading="refundProofUploading"
+                  :disabled="!refundProofFile || refundProofUploading"
+                  @click="uploadRefundProof()"
+                />
+              </div>
+              <div
+                class="flex items-center justify-between gap-2 text-xs text-muted"
+              >
+                <span>{{ refundProofFileName }}</span>
+                <UButton
+                  v-if="refundProofFile || refundProofUploadedUrl"
+                  size="xs"
+                  variant="ghost"
+                  color="neutral"
+                  label="ล้างไฟล์"
+                  @click="clearRefundProof"
+                />
+              </div>
+              <img
+                v-if="refundProofPreview"
+                :src="refundProofPreview"
+                alt="Refund slip preview"
+                class="max-h-40 rounded-lg border object-contain"
+              />
+              <UButton
+                v-if="refundProofUploadedUrl"
+                size="xs"
+                variant="link"
+                color="success"
+                :href="refundProofUploadedUrl"
+                target="_blank"
+                rel="noopener noreferrer"
+                label="เปิดหลักฐานที่อัปโหลดแล้ว"
+              />
+            </div>
+            <p
+              v-if="refundForm.amount > selectedBooking.depositPaidAmount"
+              class="text-xs text-error"
+            >
+              Refund Amount ต้องไม่เกินยอดมัดจำที่รับจริง
+            </p>
+          </div>
+
+          <div v-if="selectedBooking.status === 'confirmed'" class="space-y-2">
+            <p class="text-sm font-medium">Pickup Signature</p>
+            <DigitalSignaturePad
+              v-model="pickupSignature"
+              hint="ให้ลูกค้าเซ็นรับของบนหน้าจอนี้"
+            />
+          </div>
+          <div
+            v-else-if="selectedBooking.status === 'picked_up'"
+            class="space-y-2"
+          >
+            <p class="text-sm font-medium">Return Signature</p>
+            <DigitalSignaturePad
+              v-model="returnSignature"
+              hint="ให้ลูกค้าเซ็นยืนยันการคืนสินค้าบนหน้าจอนี้"
+            />
+          </div>
+          <UAlert
+            v-if="fulfillmentErrorMessage"
+            color="error"
+            variant="soft"
+            title="ยืนยันรายการไม่สำเร็จ"
+            :description="fulfillmentErrorMessage"
           />
+          <p
+            v-if="
+              selectedBooking.status === 'confirmed' &&
+              confirmPickupDisabledReason
+            "
+            class="text-xs text-warning"
+          >
+            ยังยืนยันรับสินค้าไม่ได้: {{ confirmPickupDisabledReason }}
+          </p>
           <div class="flex flex-wrap gap-2">
             <UButton
+              v-if="selectedBooking.status === 'confirmed'"
+              :loading="fulfillmentSubmittingType === 'pickup'"
               :disabled="
-                selectedBooking.status !== 'confirmed' || idCardMissing
+                !canConfirmPickup || Boolean(fulfillmentSubmittingType)
               "
               color="primary"
               icon="bx:package"
               label="Confirm Pickup"
+              :title="confirmPickupDisabledReason || 'พร้อม Confirm Pickup'"
               @click="applyFulfillment('pickup')"
             />
             <UButton
-              :disabled="selectedBooking.status !== 'picked_up'"
+              v-if="selectedBooking.status === 'picked_up'"
+              :loading="fulfillmentSubmittingType === 'return'"
+              :disabled="
+                !canConfirmReturn || Boolean(fulfillmentSubmittingType)
+              "
               color="success"
               icon="bx:undo"
               label="Confirm Return"
+              :title="confirmReturnDisabledReason || 'พร้อม Confirm Return'"
               @click="applyFulfillment('return')"
+            />
+            <UButton
+              v-if="
+                selectedBooking.status === 'picked_up' ||
+                selectedBooking.status === 'returned'
+              "
+              variant="soft"
+              color="neutral"
+              icon="bx:printer"
+              label="Print Pickup Form"
+              :to="printFormUrl(selectedBooking.id, 'pickup')"
+              target="_blank"
+            />
+            <UButton
+              v-if="selectedBooking.status === 'returned'"
+              variant="soft"
+              color="neutral"
+              icon="bx:printer"
+              label="Print Return Form"
+              :to="printFormUrl(selectedBooking.id, 'return')"
+              target="_blank"
             />
             <UButton
               variant="ghost"
@@ -2208,8 +3505,20 @@ async function retryPendingBookingDraft() {
               label="เปิด Detail"
             />
           </div>
+          <p
+            v-if="
+              selectedBooking.status === 'picked_up' &&
+              confirmReturnDisabledReason
+            "
+            class="text-xs text-warning"
+          >
+            ยังยืนยันคืนสินค้าไม่ได้: {{ confirmReturnDisabledReason }}
+          </p>
         </div>
-        <p v-else class="text-sm text-muted">เลือกรายการจาก Pick-list ก่อน</p>
+        <p v-else class="text-sm text-muted">
+          เลือกรายการจาก Pick-list หรือกด Return จาก POS Transaction History
+          ก่อน
+        </p>
       </UCard>
     </div>
 
@@ -2220,7 +3529,7 @@ async function retryPendingBookingDraft() {
             color="warning"
             variant="soft"
             title="ต้องมีรูปบัตรประชาชนก่อนทำ Pickup"
-            description="ไฟล์จะถูกเก็บใน catalog-media/customer-ids/ และผูกกับ Profile หรือเบอร์ Walk-in"
+            description="ไฟล์จะถูกเก็บแบบ private ใน kyc-documents และเปิดดูผ่านลิงก์ชั่วคราวสำหรับแอดมินเท่านั้น"
           />
           <div class="grid gap-2 sm:grid-cols-2">
             <label
@@ -2249,7 +3558,7 @@ async function retryPendingBookingDraft() {
             <input
               id="customer-id-upload"
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/jpeg,image/png"
               class="sr-only"
               @change="onIdFileChange"
             />

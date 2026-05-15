@@ -112,7 +112,18 @@ export default defineEventHandler(async (event) => {
     linkCards: (linkCardsResult.data ?? []).map((row) => {
       const sectionKey =
         row.section_key === "service" ? "service" : "promotion";
-      const page = (row as { content_page?: any }).content_page ?? null;
+      const page =
+        (
+          row as {
+            content_page?: {
+              slug?: string | null;
+              is_active?: boolean | null;
+              title_th?: string | null;
+              title_en?: string | null;
+              image_url?: string | null;
+            } | null;
+          }
+        ).content_page ?? null;
       const pageBase = sectionKey === "service" ? "/services" : "/promotions";
       const linkUrlFromPage = page?.slug ? `${pageBase}/${page.slug}` : "";
 

@@ -8,8 +8,7 @@ import {
 
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requireSuperAdmin(event);
-  const client = adminClient as any;
-  const { data, error } = await client
+  const { data, error } = await adminClient
     .from("public_contact_settings")
     .select("support_phone, line_url, updated_at")
     .eq("id", true)

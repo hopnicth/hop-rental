@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { AuthError } from "@supabase/supabase-js";
 import {
+  formatAuthErrorMeta,
+  isLikelyAuthServerError,
+  normalizeAuthError,
+} from "~/utils/auth-errors";
+import {
   getPasswordPolicyChecks,
   isPasswordPolicyMet,
   PASSWORD_POLICY_DESCRIPTION,
@@ -16,6 +21,7 @@ const toast = useToast();
 
 type AuthMode = "password" | "magic";
 type AccountMode = "in" | "up";
+type AuthIntent = "sign-in" | "sign-up" | "magic-link" | "oauth";
 
 const accountMode = ref<AccountMode>("in");
 const authMode = ref<AuthMode>("password");
@@ -23,7 +29,10 @@ const loading = ref(false);
 const email = ref("");
 const password = ref("");
 const confirmPassword = ref("");
-const formError = ref<string | null>(null);
+const formErrorTitle = ref<string | null>(null);
+const formErrorDescription = ref<string | null>(null);
+const showPassword = ref(false);
+const showConfirmPassword = ref(false);
 const touched = reactive({
   email: false,
   password: false,
@@ -82,8 +91,32 @@ function markAllTouched() {
   touched.confirmPassword = true;
 }
 
-function friendlyAuthError(error: AuthError): string {
-  const message = error.message.toLowerCase();
+function clearFormError() {
+  formErrorTitle.value = null;
+  formErrorDescription.value = null;
+}
+
+function passwordVisibilityLabel(isVisible: boolean) {
+  return isVisible ? t("auth.hidePassword") : t("auth.showPassword");
+}
+
+function toastTitleForIntent(intent: AuthIntent) {
+  switch (intent) {
+    case "sign-up":
+      return t("auth.signUpError");
+    case "magic-link":
+      return t("auth.magicLinkError");
+    case "oauth":
+      return t("auth.oauthError");
+    default:
+      return t("auth.loginError");
+  }
+}
+
+function friendlyAuthError(error: unknown, intent: AuthIntent): string {
+  const details = normalizeAuthError(error);
+  const message = details.message.toLowerCase();
+
   if (message.includes("invalid login credentials")) {
     return "ไม่พบอีเมลนี้ในระบบ หรือรหัสผ่านไม่ถูกต้อง";
   }
@@ -96,15 +129,61 @@ function friendlyAuthError(error: AuthError): string {
   if (message.includes("rate limit") || message.includes("too many")) {
     return "มีการพยายามเข้าสู่ระบบหลายครั้ง กรุณารอสักครู่แล้วลองใหม่";
   }
-  return "ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง";
+
+  if (intent === "sign-up" && isLikelyAuthServerError(details)) {
+    return t("auth.signUpServerError");
+  }
+
+  if (intent === "magic-link") {
+    return t("auth.magicLinkError");
+  }
+
+  if (intent === "oauth") {
+    return t("auth.oauthError");
+  }
+
+  return intent === "sign-up"
+    ? "ไม่สามารถสมัครสมาชิกได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง"
+    : "ไม่สามารถเข้าสู่ระบบได้ กรุณาตรวจสอบข้อมูลและลองใหม่อีกครั้ง";
 }
 
-function showError(error: AuthError) {
-  formError.value = friendlyAuthError(error);
+function authErrorDescription(
+  error: unknown,
+  intent: AuthIntent,
+  title: string,
+) {
+  const details = normalizeAuthError(error);
+  const parts: string[] = [];
+
+  if (
+    (intent === "sign-up" || isLikelyAuthServerError(details)) &&
+    details.message !== title
+  ) {
+    parts.push(details.message);
+  }
+
+  if (intent === "sign-up" && isLikelyAuthServerError(details)) {
+    parts.push(t("auth.signUpServerErrorHint"));
+  }
+
+  const meta = formatAuthErrorMeta(details);
+  if (meta) parts.push(meta);
+
+  return parts.length > 0 ? parts.join(" • ") : null;
+}
+
+function showError(error: AuthError, intent: AuthIntent) {
+  const title = friendlyAuthError(error, intent);
+  const description = authErrorDescription(error, intent, title);
+
+  formErrorTitle.value = title;
+  formErrorDescription.value = description;
+
+  console.error(`[auth:${intent}]`, normalizeAuthError(error));
+
   toast.add({
-    title:
-      accountMode.value === "in" ? t("auth.loginError") : t("auth.signUpError"),
-    description: formError.value,
+    title: toastTitleForIntent(intent),
+    description: description ?? title,
     icon: "bx:error-circle",
     color: "error",
   });
@@ -115,7 +194,7 @@ async function signInWithPassword() {
     email: normalizedEmail.value,
     password: password.value,
   });
-  if (error) return showError(error);
+  if (error) return showError(error, "sign-in");
   toast.add({
     title: t("auth.loginSuccess"),
     icon: "bx:check-circle",
@@ -132,15 +211,16 @@ async function signUpWithEmail() {
       emailRedirectTo: `${window.location.origin}/user/confirm?redirect=${encodeURIComponent(redirectTarget.value)}`,
     },
   });
-  if (error) return showError(error);
+  if (error) return showError(error, "sign-up");
   if (
     data.user &&
     (!data.user.identities || data.user.identities.length === 0)
   ) {
-    formError.value = "อีเมลนี้ถูกใช้งานแล้ว กรุณาเข้าสู่ระบบแทน";
+    formErrorTitle.value = "อีเมลนี้ถูกใช้งานแล้ว กรุณาเข้าสู่ระบบแทน";
+    formErrorDescription.value = null;
     toast.add({
       title: t("auth.signUpError"),
-      description: formError.value,
+      description: formErrorTitle.value,
       color: "error",
     });
     return;
@@ -160,7 +240,7 @@ async function sendMagicLink() {
       emailRedirectTo: `${window.location.origin}/user/confirm?redirect=${encodeURIComponent(redirectTarget.value)}`,
     },
   });
-  if (error) return showError(error);
+  if (error) return showError(error, "magic-link");
   toast.add({
     title: "ส่งลิงก์เข้าสู่ระบบแล้ว",
     description: "กรุณาตรวจสอบอีเมลและกดลิงก์เพื่อเข้าสู่ระบบ",
@@ -178,12 +258,12 @@ async function signInWithGoogle() {
     },
   });
   loading.value = false;
-  if (error) showError(error);
+  if (error) showError(error, "oauth");
 }
 
 async function onSubmit() {
   if (loading.value) return;
-  formError.value = null;
+  clearFormError();
   markAllTouched();
   if (!canSubmit.value) return;
 
@@ -250,11 +330,12 @@ async function onSubmit() {
         />
 
         <UAlert
-          v-if="formError"
+          v-if="formErrorTitle"
           color="error"
           variant="soft"
           icon="bx:error-circle"
-          :title="formError"
+          :title="formErrorTitle"
+          :description="formErrorDescription || undefined"
         />
 
         <UFormField
@@ -282,7 +363,7 @@ async function onSubmit() {
           >
             <UInput
               v-model="password"
-              type="password"
+              :type="showPassword ? 'text' : 'password'"
               icon="bx:lock-alt"
               :placeholder="t('auth.passwordPlaceholder')"
               :autocomplete="
@@ -291,7 +372,20 @@ async function onSubmit() {
               size="lg"
               class="w-full"
               @blur="touched.password = true"
-            />
+            >
+              <template #trailing>
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  :icon="showPassword ? 'bx:hide' : 'bx:show'"
+                  :aria-label="passwordVisibilityLabel(showPassword)"
+                  :title="passwordVisibilityLabel(showPassword)"
+                  @click.prevent="showPassword = !showPassword"
+                />
+              </template>
+            </UInput>
           </UFormField>
           <div v-if="accountMode === 'in'" class="-mt-3 text-right">
             <UButton
@@ -342,14 +436,27 @@ async function onSubmit() {
           >
             <UInput
               v-model="confirmPassword"
-              type="password"
+              :type="showConfirmPassword ? 'text' : 'password'"
               icon="bx:lock-alt"
               :placeholder="t('auth.confirmPasswordPlaceholder')"
               autocomplete="new-password"
               size="lg"
               class="w-full"
               @blur="touched.confirmPassword = true"
-            />
+            >
+              <template #trailing>
+                <UButton
+                  type="button"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  :icon="showConfirmPassword ? 'bx:hide' : 'bx:show'"
+                  :aria-label="passwordVisibilityLabel(showConfirmPassword)"
+                  :title="passwordVisibilityLabel(showConfirmPassword)"
+                  @click.prevent="showConfirmPassword = !showConfirmPassword"
+                />
+              </template>
+            </UInput>
           </UFormField>
         </template>
         <template v-else-if="accountMode === 'up'">

@@ -74,7 +74,7 @@ export function useGlobalSearch() {
     const trimmed = q.trim();
     if (!trimmed) return [];
 
-    const rpc = await (supabase as any).rpc("autocomplete_assets", {
+    const rpc = await supabase.rpc("autocomplete_assets", {
       prefix: trimmed,
       p_limit: 8,
     });

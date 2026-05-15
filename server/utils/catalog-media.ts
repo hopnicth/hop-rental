@@ -13,6 +13,27 @@ type DocumentKind = "manual" | "catalog" | "datasheet" | "guide" | "other";
 type CatalogMediaTarget =
   | { kind: "product"; productId: string }
   | { kind: "sku"; productId: string; skuId: string };
+type QueryError = { message: string } | null;
+type UpdateResult = { error: QueryError };
+type UpdateRequest = PromiseLike<UpdateResult> & {
+  eq(column: string, value: string): UpdateRequest;
+};
+type CatalogStorageClient = {
+  from(bucket: string): {
+    upload(
+      path: string,
+      buffer: Buffer,
+      options: { contentType: string; upsert: boolean },
+    ): Promise<UpdateResult>;
+    getPublicUrl(path: string): { data: { publicUrl: string } };
+  };
+};
+type CatalogMediaAdminClient = {
+  from(table: "products" | "product_skus"): {
+    update(payload: Record<string, unknown>): UpdateRequest;
+  };
+  storage: CatalogStorageClient;
+};
 
 function fail422(message: string): never {
   throw createError({ statusCode: 422, statusMessage: message });
@@ -160,7 +181,7 @@ export function upsertCatalogMediaGalleryItem(
 }
 
 export async function syncCatalogTargetMediaGallery(input: {
-  adminClient: any;
+  adminClient: CatalogMediaAdminClient;
   target: CatalogMediaTarget;
   mediaGallery: unknown;
   useProductImages?: boolean;
@@ -192,7 +213,11 @@ export async function syncCatalogTargetMediaGallery(input: {
   if (error) throw error;
 }
 
-async function uploadVariant(adminClient: any, path: string, buffer: Buffer) {
+async function uploadVariant(
+  adminClient: CatalogMediaAdminClient,
+  path: string,
+  buffer: Buffer,
+) {
   const { error } = await adminClient.storage
     .from(CATALOG_MEDIA_BUCKET)
     .upload(path, buffer, {
@@ -205,7 +230,7 @@ async function uploadVariant(adminClient: any, path: string, buffer: Buffer) {
 }
 
 export async function processCatalogImageUpload(input: {
-  adminClient: any;
+  adminClient: CatalogMediaAdminClient;
   target: CatalogMediaTarget;
   mediaId: string;
   buffer: Buffer;

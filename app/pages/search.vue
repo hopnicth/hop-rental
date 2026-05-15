@@ -244,29 +244,36 @@ function syncFiltersToQuery() {
   if (!import.meta.client || isApplyingRouteQuery.value) return;
   const next = { ...route.query };
 
-  q.value.trim() ? (next.q = q.value.trim()) : delete next.q;
-  activeScope.value !== "all"
-    ? (next.scope = activeScope.value)
-    : delete next.scope;
-  selectedCategory.value !== "all"
-    ? (next.category = selectedCategory.value)
-    : delete next.category;
-  selectedType.value !== "all"
-    ? (next.type = selectedType.value)
-    : delete next.type;
-  selectedBrands.value.length > 0
-    ? (next.brands = [...selectedBrands.value])
-    : delete next.brands;
-  minPrice.value !== null
-    ? (next.min = String(minPrice.value))
-    : delete next.min;
-  maxPrice.value !== null && maxPrice.value > 0
-    ? (next.max = String(maxPrice.value))
-    : delete next.max;
-  inStockOnly.value ? (next.stock = "1") : delete next.stock;
+  if (q.value.trim()) next.q = q.value.trim();
+  else delete next.q;
+
+  if (activeScope.value !== "all") next.scope = activeScope.value;
+  else delete next.scope;
+
+  if (selectedCategory.value !== "all") next.category = selectedCategory.value;
+  else delete next.category;
+
+  if (selectedType.value !== "all") next.type = selectedType.value;
+  else delete next.type;
+
+  if (selectedBrands.value.length > 0) next.brands = [...selectedBrands.value];
+  else delete next.brands;
+
+  if (minPrice.value !== null) next.min = String(minPrice.value);
+  else delete next.min;
+
+  if (maxPrice.value !== null && maxPrice.value > 0) {
+    next.max = String(maxPrice.value);
+  } else {
+    delete next.max;
+  }
+
+  if (inStockOnly.value) next.stock = "1";
+  else delete next.stock;
 
   const dynamic = writeDynamicFilters(selectedDynamicFilters.value);
-  dynamic ? (next.df = dynamic) : delete next.df;
+  if (dynamic) next.df = dynamic;
+  else delete next.df;
 
   if (!queryObjectsEqual(route.query, next)) {
     isSyncingToQuery.value = true;

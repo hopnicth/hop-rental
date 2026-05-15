@@ -12,6 +12,26 @@ import type {
 type RealtimeChannel = ReturnType<
   ReturnType<typeof useSupabaseClient>["channel"]
 >;
+type ChatNuxtApp = ReturnType<typeof useNuxtApp> & {
+  __chatRealtimeAuthSynced?: boolean;
+};
+type RealtimeAuthCapable = {
+  realtime?: {
+    setAuth?: (token: string | null) => void;
+  };
+};
+type AuthUserLike = {
+  id?: string;
+  sub?: string;
+} | null;
+type RealtimeMessageRow = {
+  conversation_id?: string | null;
+  sender_id?: string | null;
+};
+type RealtimeMessagePayload = {
+  eventType?: string;
+  new?: RealtimeMessageRow | null;
+};
 
 const STORAGE_KEY = "chat:unread-snapshot";
 const SNAPSHOT_TTL_MS = 24 * 60 * 60 * 1000;
@@ -78,20 +98,32 @@ function writeCachedSnapshot(snapshot: CachedUnreadSnapshot) {
   }
 }
 
+function getAuthUserId(user: AuthUserLike): string | null {
+  if (!user) return null;
+  if (typeof user.id === "string" && user.id.length > 0) return user.id;
+  if (typeof user.sub === "string" && user.sub.length > 0) return user.sub;
+  return null;
+}
+
 export function useChat() {
   const supabase = useSupabaseClient();
   const supabaseUser = useSupabaseUser();
   const supabaseSession = useSupabaseSession();
-  const nuxtApp = useNuxtApp();
-  if (import.meta.client && !(nuxtApp as any).__chatRealtimeAuthSynced) {
-    (nuxtApp as any).__chatRealtimeAuthSynced = true;
+  const nuxtApp = useNuxtApp() as ChatNuxtApp;
+  const realtimeClient = supabase as typeof supabase & RealtimeAuthCapable;
+  if (import.meta.client && !nuxtApp.__chatRealtimeAuthSynced) {
+    nuxtApp.__chatRealtimeAuthSynced = true;
     try {
       supabase.auth.onAuthStateChange((_event, session) => {
         try {
-          (supabase as any).realtime?.setAuth?.(session?.access_token ?? null);
-        } catch {}
+          realtimeClient.realtime?.setAuth?.(session?.access_token ?? null);
+        } catch {
+          // Ignore realtime auth sync failures; polling still keeps chat usable.
+        }
       });
-    } catch {}
+    } catch {
+      // Ignore auth state listener setup failures in non-critical environments.
+    }
   }
   const conversations = useState<ChatConversationDto[]>(
     "chat:conversations",
@@ -380,8 +412,7 @@ export function useChat() {
   async function subscribe(conversationId?: string | null) {
     if (import.meta.server) return;
     let userId =
-      supabaseUser.value?.id ??
-      (supabaseUser.value as any)?.sub ??
+      getAuthUserId(supabaseUser.value as AuthUserLike) ??
       supabaseSession.value?.user?.id ??
       null;
     let accessToken: string | null = null;
@@ -394,8 +425,10 @@ export function useChat() {
     }
     if (accessToken) {
       try {
-        (supabase as any).realtime?.setAuth?.(accessToken);
-      } catch {}
+        realtimeClient.realtime?.setAuth?.(accessToken);
+      } catch {
+        // Ignore realtime auth sync failures; the channel will still reconnect.
+      }
     }
     const channelName = conversationId
       ? `chat-conversation-${conversationId}`
@@ -418,7 +451,7 @@ export function useChat() {
           ? { filter: `conversation_id=eq.${conversationId}` }
           : {}),
       },
-      (payload: any) => {
+      (payload: RealtimeMessagePayload) => {
         const eventType = String(payload?.eventType ?? "");
         const newRow = payload?.new ?? null;
         const targetConversationId =

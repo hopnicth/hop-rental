@@ -18,6 +18,9 @@ logs
 .fleet
 .idea
 
+# Local Supabase CLI temp state
+supabase/.temp/
+
 # Local env files
 .env
 .env.*

@@ -34,6 +34,27 @@ export interface CartItem
   addedAt: string;
 }
 
+export type CartCheckoutStateValue =
+  | "none"
+  | "active_unpaid"
+  | "expired"
+  | "paid_or_finalized"
+  | "blocked_review";
+
+export interface CartCheckoutState {
+  state: CartCheckoutStateValue;
+  sessionId?: string | null;
+  checkoutKind?: "mixed" | "rental_deposit_only" | "sale_only" | null;
+  sessionStatus?: string | null;
+  attemptId?: string | null;
+  attemptStatus?: string | null;
+  method?: "promptpay" | "credit_card" | null;
+  expiresAt?: string | null;
+  saleItemCartLineIds: string[];
+  bookingIds: string[];
+  shippingIncluded?: boolean;
+}
+
 /**
  * The whole cart — persisted in localStorage (all users) and
  * mirrored to Supabase `carts` + `cart_items` for logged-in users.

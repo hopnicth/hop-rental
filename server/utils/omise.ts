@@ -52,6 +52,17 @@ function formBody(entries: Record<string, string | number | null | undefined>) {
   return body;
 }
 
+function metadataEntries(
+  metadata?: Record<string, string | number | null | undefined>,
+) {
+  return Object.fromEntries(
+    Object.entries(metadata ?? {}).map(([key, value]) => [
+      `metadata[${key}]`,
+      value,
+    ]),
+  );
+}
+
 async function omiseRequest<T>(
   event: H3Event,
   path: string,
@@ -113,6 +124,7 @@ export async function createOmiseCardCharge(
     currency: string;
     cardToken: string;
     returnUri: string;
+    metadata?: Record<string, string | number | null | undefined>;
   },
 ): Promise<NormalizedGatewayCharge> {
   const charge = await omiseRequest<OmiseChargeResponse>(event, "/charges", {
@@ -124,6 +136,7 @@ export async function createOmiseCardCharge(
       return_uri: input.returnUri,
       "metadata[order_id]": input.orderId,
       "metadata[payment_attempt_id]": input.paymentAttemptId,
+      ...metadataEntries(input.metadata),
     }),
   });
   return normalizeOmiseCharge(charge);
@@ -138,6 +151,7 @@ export async function createOmisePromptPayCharge(
     currency: string;
     returnUri: string;
     expiresAt?: string | null;
+    metadata?: Record<string, string | number | null | undefined>;
   },
 ): Promise<NormalizedGatewayCharge> {
   const source = await omiseRequest<Record<string, unknown>>(
@@ -169,6 +183,7 @@ export async function createOmisePromptPayCharge(
       expires_at: input.expiresAt ?? undefined,
       "metadata[order_id]": input.orderId,
       "metadata[payment_attempt_id]": input.paymentAttemptId,
+      ...metadataEntries(input.metadata),
     }),
   });
   return normalizeOmiseCharge(charge);

@@ -34,13 +34,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 
   if (allowedPlatformRoles.length > 0) {
-    const { profile, ensureProfileLoaded } = useUserProfile();
-
-    // Admin access must reflect the current DB role, not a stale client-side
-    // profile cached before staff/super_admin promotion.
-    await ensureProfileLoaded(resolvedAuthUser.id, { force: true });
-
-    const currentPlatformRole = profile.value?.platformRole ?? null;
+    const currentPlatformRole = await fetchCurrentPlatformRole();
     if (
       !currentPlatformRole ||
       !allowedPlatformRoles.includes(currentPlatformRole)
@@ -64,6 +58,28 @@ export default defineNuxtRouteMiddleware(async (to) => {
     }
   }
 });
+
+type UserProfileRoleResponse = {
+  profile?: {
+    id?: unknown;
+    platform_role?: unknown;
+    platformRole?: unknown;
+  } | null;
+};
+
+async function fetchCurrentPlatformRole(): Promise<string | null> {
+  try {
+    const response = await $fetch<UserProfileRoleResponse>("/api/user", {
+      headers: import.meta.server ? useRequestHeaders(["cookie"]) : undefined,
+    });
+    const profile = response.profile;
+    if (!profile) return null;
+    const role = profile.platform_role ?? profile.platformRole;
+    return typeof role === "string" ? role : null;
+  } catch {
+    return null;
+  }
+}
 
 function showForbiddenToast() {
   if (import.meta.server) return;

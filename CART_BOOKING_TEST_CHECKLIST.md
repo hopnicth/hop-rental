@@ -3,6 +3,12 @@
 Last updated: 2026-05-07
 Purpose: manual smoke checklist for the current sale + rental + home-CMS flow
 
+Reality sync — 2026-05-13:
+
+- This checklist is **partially outdated** for confirmed rental cancellation. Current cancellation/refund/restriction work is design-locked but not implemented end-to-end.
+- Do not treat the old “Cancel a confirmed booking” smoke item as proof that customer cancellation provenance/refund/restriction logic exists.
+- Keep using this checklist for cart, draft booking, mixed sale/rental cart, shipping/pickup, and admin sanity checks until it is rewritten.
+
 ## Expected baseline
 
 - Sale items and rental drafts coexist in `/user/cart`

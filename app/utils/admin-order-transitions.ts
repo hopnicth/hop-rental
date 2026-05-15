@@ -48,4 +48,5 @@ export const RENTAL_BOOKING_STATUS_TRANSITIONS: Record<
   picked_up: ["returned"],
   returned: [],
   cancelled: [],
+  no_show: [],
 };

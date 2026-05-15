@@ -1,6 +1,6 @@
 # Database Admin Manual
 
-Last updated: 2026-05-10
+Last updated: 2026-05-11
 Audience: internal staff, data-entry, developers
 
 ## Purpose
@@ -15,6 +15,141 @@ In this document:
 - internal admin = HOPNIC `staff` or `super_admin`
 - organization admin = customer-side `b2b_admin`
 - `/admin/home-content` remains `super_admin` only
+
+Backoffice access is controlled by `public.users.platform_role` only.
+Customer-company access is controlled separately by `public.company_members.role`.
+Do not treat `b2b_admin` as HOPNIC backoffice access.
+
+## Role administration quick reference
+
+### Platform roles for `/admin`
+
+Use `public.users.platform_role`:
+
+| Value         | Use                                                           |
+| ------------- | ------------------------------------------------------------- |
+| `customer`    | Normal storefront/customer account; no `/admin` access        |
+| `staff`       | Internal HOPNIC staff; can access most admin/POS pages        |
+| `super_admin` | Internal highest privilege; can access super-admin-only pages |
+
+Check role by email:
+
+```sql
+select au.email, au.id, u.platform_role
+from auth.users au
+left join public.users u on u.id = au.id
+where lower(au.email) = lower('hopnic.th@gmail.com');
+```
+
+Ensure the `public.users` row exists:
+
+```sql
+insert into public.users (id, full_name, avatar_url)
+select
+  au.id,
+  coalesce(au.raw_user_meta_data ->> 'full_name', au.raw_user_meta_data ->> 'name'),
+  au.raw_user_meta_data ->> 'avatar_url'
+from auth.users au
+where lower(au.email) = lower('hopnic.th@gmail.com')
+on conflict (id) do nothing;
+```
+
+Grant super admin:
+
+```sql
+update public.users
+set platform_role = 'super_admin'
+where id = (
+  select id from auth.users
+  where lower(email) = lower('hopnic.th@gmail.com')
+);
+```
+
+Grant staff:
+
+```sql
+update public.users
+set platform_role = 'staff'
+where id = (
+  select id from auth.users
+  where lower(email) = lower('staff@example.com')
+);
+```
+
+Revoke backoffice access:
+
+```sql
+update public.users
+set platform_role = 'customer'
+where id = (
+  select id from auth.users
+  where lower(email) = lower('user@example.com')
+);
+```
+
+### Organization roles for B2B
+
+Use `public.company_members.role`:
+
+| Value       | Use                             |
+| ----------- | ------------------------------- |
+| `b2b_user`  | Company member                  |
+| `b2b_admin` | Company-side organization admin |
+
+Check memberships:
+
+```sql
+select au.email, c.id as company_id, c.name as company_name, cm.role
+from auth.users au
+join public.company_members cm on cm.user_id = au.id
+join public.companies c on c.id = cm.company_id
+where lower(au.email) = lower('user@example.com');
+```
+
+Add/update membership:
+
+```sql
+insert into public.company_members (user_id, company_id, role)
+values (
+  (select id from auth.users where lower(email) = lower('member@example.com')),
+  '<COMPANY_ID>',
+  'b2b_user'
+)
+on conflict (user_id, company_id)
+do update set role = excluded.role;
+```
+
+Promote to organization admin:
+
+```sql
+update public.company_members
+set role = 'b2b_admin'
+where user_id = (
+  select id from auth.users
+  where lower(email) = lower('admin@example.com')
+)
+and company_id = '<COMPANY_ID>';
+```
+
+Remove membership:
+
+```sql
+delete from public.company_members
+where user_id = (
+  select id from auth.users
+  where lower(email) = lower('member@example.com')
+)
+and company_id = '<COMPANY_ID>';
+```
+
+### Debug `/admin` redirect in development
+
+If a known admin is redirected to `/user/account`:
+
+1. Open `/api/user` in the same browser session.
+2. Confirm `profile.platform_role` is `staff` or `super_admin`.
+3. If `/api/user` returns `401`, auth cookies are not reaching Nitro; restart Nuxt and verify local cookie settings.
+4. If `/api/user` is correct but `/admin` redirects, restart `npm run dev`, clear localhost site data, and sign in again.
 
 ## Environment requirement
 
@@ -180,7 +315,7 @@ Notes:
 - POS catalog reads only active, non-hidden assets with `daily_enabled = true` and `daily_rate > 0`.
 - POS sale catalog reads sale SKUs from the selected branch; `inventory_kind` should exist on `sku_branch_inventory` after migration `060`.
 - Sale mode customer fields are optional; Rental/Booking mode still requires a customer account or walk-in phone.
-- ID-card files are stored under `catalog-media/customer-ids/`, deposit proofs under `catalog-media/deposit-proofs/`, and pickup signatures under `catalog-media/rental-fulfillment/`.
+- POS customer ID-card files are stored privately under `kyc-documents`; admin viewing must use signed URLs. Deposit proofs and pickup signatures use operational storage paths under the media/document storage configured by their endpoints.
 - POS pickup/return are operational events, not generic status edits; use the dedicated POS or admin booking endpoints so audit rows stay intact.
 - Stock should be managed through admin endpoints, not direct DB writes, so audit logs remain correct.
 - Booking docs/checklists are stored separately from asset-level docs.

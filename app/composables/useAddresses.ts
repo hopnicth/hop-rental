@@ -10,6 +10,8 @@ import type { Address } from "~/types/user";
 const addresses = ref<Address[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const currentAddressUserId = ref<string | null>(null);
+const lastHydratedAddressUserId = ref<string | null | undefined>(undefined);
 
 /** Map snake_case DB row → camelCase Address */
 function mapRow(row: Record<string, unknown>): Address {
@@ -72,15 +74,22 @@ export function useAddresses() {
 
   /** Fetch addresses — personal + company (filtered by RLS) */
   async function fetchAddresses(): Promise<void> {
-    const userId = await resolveUserId();
-    if (!userId) {
-      addresses.value = [];
-      return;
-    }
-
     loading.value = true;
     error.value = null;
     try {
+      const userId = await resolveUserId();
+      if (!userId) {
+        addresses.value = [];
+        currentAddressUserId.value = null;
+        lastHydratedAddressUserId.value = null;
+        return;
+      }
+
+      if (currentAddressUserId.value !== userId) {
+        addresses.value = [];
+      }
+      currentAddressUserId.value = userId;
+
       const { data, error: dbError } = await supabase
         .from("addresses")
         .select("*")
@@ -89,13 +98,25 @@ export function useAddresses() {
 
       if (dbError) {
         error.value = dbError.message;
+        lastHydratedAddressUserId.value = undefined;
+        return;
+      }
+      // `resolveUserId()` may get the authenticated user from Supabase before
+      // `useSupabaseUser()` has hydrated. Do not drop valid address rows just
+      // because the reactive user ref is still momentarily null.
+      if (user.value?.id && user.value.id !== userId) {
+        addresses.value = [];
+        currentAddressUserId.value = user.value.id;
+        lastHydratedAddressUserId.value = undefined;
         return;
       }
       addresses.value = (data ?? []).map((r: Record<string, unknown>) =>
         mapRow(r),
       );
+      lastHydratedAddressUserId.value = userId;
     } catch (e) {
       error.value = e instanceof Error ? e.message : "Unknown error";
+      lastHydratedAddressUserId.value = undefined;
     } finally {
       loading.value = false;
     }
@@ -183,6 +204,21 @@ export function useAddresses() {
     addresses.value.filter((a) => a.companyId !== null),
   );
 
+  if (import.meta.client) {
+    watch(
+      () => user.value?.id ?? null,
+      (newId, oldId) => {
+        if (newId === oldId) return;
+        addresses.value = [];
+        error.value = null;
+        currentAddressUserId.value = newId;
+        lastHydratedAddressUserId.value = undefined;
+        loading.value = false;
+        if (newId) void fetchAddresses();
+      },
+    );
+  }
+
   return {
     /** All addresses visible to the user (RLS-filtered) */
     addresses: computed(() => addresses.value),
@@ -192,6 +228,16 @@ export function useAddresses() {
     companyAddresses,
     /** Loading state */
     loading: computed(() => loading.value),
+    /** Current authenticated user represented by the address cache */
+    currentUserId: computed(() => currentAddressUserId.value),
+    isHydratedForCurrentUser: computed(() => {
+      const reactiveUserId = user.value?.id ?? null;
+      return (
+        !loading.value &&
+        currentAddressUserId.value === reactiveUserId &&
+        lastHydratedAddressUserId.value === reactiveUserId
+      );
+    }),
     /** Error message */
     error: computed(() => error.value),
     /** Fetch all addresses */

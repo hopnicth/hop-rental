@@ -4,7 +4,8 @@ export type RentalBookingStatus =
   | "confirmed"
   | "picked_up"
   | "returned"
-  | "cancelled";
+  | "cancelled"
+  | "no_show";
 
 export type RentalDepositPaymentMethod =
   | "cash"
@@ -19,6 +20,15 @@ export type RentalDepositPaymentStatus =
   | "paid"
   | "refunded"
   | "partial_refund";
+
+export type RentalBookingDepositPaymentStatus =
+  | "unpaid"
+  | "pending"
+  | "paid"
+  | "failed"
+  | "expired"
+  | "cancelled"
+  | "paid_confirm_failed";
 
 export type RentalDepositRefundStatus =
   | "not_refunded"
@@ -108,9 +118,20 @@ export interface RentalBooking
   deposit_payment_method?: RentalDepositPaymentMethod | null;
   deposit_payment_status?: RentalDepositPaymentStatus;
   deposit_refund_status?: RentalDepositRefundStatus;
+  deposit_refund_amount?: number;
   deposit_paid_at?: string | null;
   deposit_refunded_at?: string | null;
+  deposit_refund_notes?: string | null;
   deposit_notes?: string | null;
+  booking_deposit_payment_status?: RentalBookingDepositPaymentStatus;
+  booking_deposit_paid_amount?: number;
+  booking_deposit_paid_at?: string | null;
+  booking_deposit_payment_attempt_id?: string | null;
+  booking_deposit_policy_version?: string | null;
+  booking_deposit_terms_accepted_at?: string | null;
+  booking_deposit_terms_version?: string | null;
+  booking_deposit_confirm_failed_at?: string | null;
+  booking_deposit_confirm_failure_reason?: string | null;
   status: RentalBookingStatus;
   created_at: string;
   updated_at: string;

@@ -7,7 +7,6 @@ type BadgeColor = "neutral" | "info" | "warning" | "success" | "error";
 
 const { t, locale } = useI18n();
 const route = useRoute();
-const toast = useToast();
 const { isLoggedIn } = useAuthSession();
 const {
   bookingItems,
@@ -15,7 +14,6 @@ const {
   bookingTotalDeposit,
   bookingTotalRental,
   loading,
-  updateBookingStatus,
 } = useBooking();
 
 watchEffect(() => {
@@ -67,6 +65,7 @@ function statusColor(status: BookingStatus): BadgeColor {
   if (status === "picked_up") return "info";
   if (status === "returned") return "neutral";
   if (status === "draft") return "warning";
+  if (status === "no_show") return "warning";
   return "error";
 }
 
@@ -80,6 +79,7 @@ function bookingTitle(booking: BookingItem): string {
 
 // ── QR Code modal ──
 const qrTarget = ref<BookingItem | null>(null);
+const refundProofByBookingId = ref<Record<string, boolean>>({});
 const isQrModalOpen = computed({
   get: () => qrTarget.value !== null,
   set: (open: boolean) => {
@@ -91,58 +91,74 @@ function openQr(booking: BookingItem) {
   qrTarget.value = booking;
 }
 
-// ── Cancel booking flow ──
-function todayDateString(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function detailPath(booking: BookingItem): string {
+  return `/user/rentals/${encodeURIComponent(booking.bookingId)}`;
+}
+function cancelRefundPath(booking: BookingItem): string {
+  return `${detailPath(booking)}#cancel-refund`;
+}
+function refundProofPath(booking: BookingItem): string {
+  return `${detailPath(booking)}#refund-proof`;
+}
+function bangkokLocalDate(value = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: "Asia/Bangkok",
+  }).format(value);
+}
+function addDays(date: string, days: number): string {
+  const dt = new Date(`${date}T00:00:00.000Z`);
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+function canRequestCancellationRefund(booking: BookingItem): boolean {
+  if (
+    booking.status !== "confirmed" ||
+    booking.deposit <= 0 ||
+    !booking.startDate
+  )
+    return false;
+  return bangkokLocalDate() <= addDays(booking.startDate, -3);
+}
+function hasRefundProof(booking: BookingItem): boolean {
+  return refundProofByBookingId.value[booking.bookingId] === true;
+}
+async function goToDetail(booking: BookingItem) {
+  await navigateTo(detailPath(booking));
+}
+async function goToCancelRefund(booking: BookingItem) {
+  await navigateTo(cancelRefundPath(booking));
+}
+async function goToRefundProof(booking: BookingItem) {
+  await navigateTo(refundProofPath(booking));
 }
 
-function canCancelBooking(booking: BookingItem): boolean {
-  if (booking.status === "cancelled") return false;
-  return todayDateString() < booking.startDate;
-}
-
-const cancelTarget = ref<BookingItem | null>(null);
-const cancelling = ref(false);
-const isCancelModalOpen = computed({
-  get: () => cancelTarget.value !== null,
-  set: (open: boolean) => {
-    if (!open && !cancelling.value) cancelTarget.value = null;
-  },
-});
-
-function openCancel(booking: BookingItem) {
-  cancelTarget.value = booking;
-}
-
-async function confirmCancel() {
-  const target = cancelTarget.value;
-  if (!target || cancelling.value) return;
-
-  cancelling.value = true;
-  try {
-    const ok = await updateBookingStatus(target.bookingId, "cancelled");
-    if (ok) {
-      toast.add({
-        title: t("rentalsPage.cancelSuccess"),
-        icon: "bx:check-circle",
-        color: "success",
-      });
-      cancelTarget.value = null;
-    } else {
-      toast.add({
-        title: t("rentalsPage.cancelFailed"),
-        icon: "bx:error-circle",
-        color: "error",
-      });
+watch(
+  () => sortedBookings.value.map((booking) => booking.bookingId).join(","),
+  async () => {
+    const bookingIds = sortedBookings.value.map((booking) => booking.bookingId);
+    if (bookingIds.length === 0) {
+      refundProofByBookingId.value = {};
+      return;
     }
-  } finally {
-    cancelling.value = false;
-  }
-}
+    try {
+      const res = await $fetch<{
+        items: Array<{ bookingId: string; exists: boolean }>;
+      }>("/api/user/rental-bookings/refund-proof-status", {
+        method: "POST",
+        body: { bookingIds },
+      });
+      refundProofByBookingId.value = Object.fromEntries(
+        res.items.map((item) => [item.bookingId, item.exists]),
+      );
+    } catch {
+      refundProofByBookingId.value = {};
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -298,71 +314,39 @@ async function confirmCancel() {
                 @click="openQr(booking)"
               />
               <UButton
-                :label="t('rentalsPage.cancelBooking')"
+                type="button"
+                :label="t('rentalsPage.detailAction')"
+                icon="bx:detail"
+                size="sm"
+                color="primary"
+                variant="solid"
+                @click="goToDetail(booking)"
+              />
+              <UButton
+                v-if="canRequestCancellationRefund(booking)"
+                type="button"
+                :label="t('rentalsPage.cancelRefundAction')"
                 icon="bx:x-circle"
                 size="sm"
                 color="error"
-                variant="ghost"
-                :disabled="!canCancelBooking(booking)"
-                :title="
-                  canCancelBooking(booking)
-                    ? undefined
-                    : t('rentalsPage.cancelDisabledHint')
-                "
-                @click="openCancel(booking)"
+                variant="outline"
+                @click="goToCancelRefund(booking)"
+              />
+              <UButton
+                v-if="hasRefundProof(booking)"
+                type="button"
+                :label="t('rentalsPage.detail.viewRefundProof')"
+                icon="bx:file"
+                size="sm"
+                color="success"
+                variant="outline"
+                @click="goToRefundProof(booking)"
               />
             </div>
           </div>
         </div>
       </UCard>
     </div>
-
-    <UModal
-      v-model:open="isCancelModalOpen"
-      :title="t('rentalsPage.cancelConfirmTitle')"
-      :description="t('rentalsPage.cancelConfirmDesc')"
-      :dismissible="!cancelling"
-    >
-      <template #body>
-        <div v-if="cancelTarget" class="space-y-2 text-sm">
-          <div class="text-center">
-            <UIcon
-              name="bx:error-circle"
-              class="mx-auto mb-2 text-4xl text-error"
-            />
-          </div>
-          <p class="font-semibold">{{ bookingTitle(cancelTarget) }}</p>
-          <p class="text-xs text-muted">
-            {{ t("rentalsPage.reference", { id: cancelTarget.bookingId }) }}
-          </p>
-          <p>
-            <span class="font-medium">{{
-              t("rentalsPage.pickupDateLabel")
-            }}</span
-            >: {{ cancelTarget.startDate }}
-          </p>
-        </div>
-      </template>
-      <template #footer>
-        <div class="flex w-full justify-center gap-2">
-          <UButton
-            :label="t('rentalsPage.cancelKeep')"
-            color="neutral"
-            variant="ghost"
-            :disabled="cancelling"
-            @click="cancelTarget = null"
-          />
-          <UButton
-            :label="t('rentalsPage.cancelConfirm')"
-            color="error"
-            icon="bx:trash"
-            :loading="cancelling"
-            :disabled="cancelling"
-            @click="confirmCancel"
-          />
-        </div>
-      </template>
-    </UModal>
 
     <UModal v-model:open="isQrModalOpen" :title="t('rentalsPage.qrModalTitle')">
       <template #body>

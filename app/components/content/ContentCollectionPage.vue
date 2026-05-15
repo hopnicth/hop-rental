@@ -181,8 +181,10 @@ watch(
 watch([selectedCategory, selectedServiceArea], ([category, area]) => {
   if (!import.meta.client) return;
   const next = { ...route.query };
-  category ? (next.category = category) : delete next.category;
-  area ? (next.area = area) : delete next.area;
+  if (category) next.category = category;
+  else delete next.category;
+  if (area) next.area = area;
+  else delete next.area;
   if (!queryObjectsEqual(route.query, next)) {
     void router.replace({ query: next });
   }
@@ -207,28 +209,66 @@ watch([selectedCategory, selectedServiceArea], ([category, area]) => {
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-1.5">
               <h2 class="text-sm font-semibold">{{ t("search.filters") }}</h2>
-              <UBadge v-if="activeServiceFilterCount > 0" color="primary" variant="soft" size="sm">
+              <UBadge
+                v-if="activeServiceFilterCount > 0"
+                color="primary"
+                variant="soft"
+                size="sm"
+              >
                 {{ activeServiceFilterCount }}
               </UBadge>
             </div>
-            <UButton v-if="activeServiceFilterCount > 0" variant="ghost" color="neutral" size="xs" :label="t('search.clearAll')" @click="clearServiceFilters" />
+            <UButton
+              v-if="activeServiceFilterCount > 0"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              :label="t('search.clearAll')"
+              @click="clearServiceFilters"
+            />
           </div>
         </template>
 
         <div v-if="activeServiceFilterCount > 0" class="flex flex-wrap gap-1.5">
-          <UButton v-if="selectedCategory" :label="'ประเภทบริการ: ' + selectedCategoryLabel" icon="i-lucide-x" variant="soft" color="primary" size="xs" @click="selectedCategory = ''" />
-          <UButton v-if="selectedServiceArea" :label="'พื้นที่ให้บริการ: ' + selectedServiceAreaLabel" icon="i-lucide-x" variant="soft" color="primary" size="xs" @click="selectedServiceArea = ''" />
+          <UButton
+            v-if="selectedCategory"
+            :label="'ประเภทบริการ: ' + selectedCategoryLabel"
+            icon="i-lucide-x"
+            variant="soft"
+            color="primary"
+            size="xs"
+            @click="selectedCategory = ''"
+          />
+          <UButton
+            v-if="selectedServiceArea"
+            :label="'พื้นที่ให้บริการ: ' + selectedServiceAreaLabel"
+            icon="i-lucide-x"
+            variant="soft"
+            color="primary"
+            size="xs"
+            @click="selectedServiceArea = ''"
+          />
         </div>
 
         <div class="grid gap-3 md:grid-cols-2">
           <div>
             <p class="mb-1 text-xs font-medium text-muted">ประเภทบริการ</p>
-            <USelect v-model="selectedCategoryInput" :items="categorySelectItems" value-key="value" class="w-full" />
+            <USelect
+              v-model="selectedCategoryInput"
+              :items="categorySelectItems"
+              value-key="value"
+              class="w-full"
+            />
           </div>
 
           <div>
             <p class="mb-1 text-xs font-medium text-muted">พื้นที่ให้บริการ</p>
-            <USelect v-model="selectedServiceAreaInput" :items="serviceAreaSelectItems" value-key="value" class="w-full" />
+            <USelect
+              v-model="selectedServiceAreaInput"
+              :items="serviceAreaSelectItems"
+              value-key="value"
+              class="w-full"
+            />
           </div>
         </div>
       </UCard>

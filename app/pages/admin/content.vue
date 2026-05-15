@@ -258,7 +258,7 @@ function formatFileSize(sizeBytes?: number) {
 
 function removeKycDocument(key: string) {
   const next = { ...form.serviceProvider.kycDocuments };
-  delete next[key];
+  Reflect.deleteProperty(next, key);
   form.serviceProvider.kycDocuments = next;
 }
 

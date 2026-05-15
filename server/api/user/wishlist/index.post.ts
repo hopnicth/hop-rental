@@ -1,5 +1,8 @@
 import { createError, defineEventHandler, readBody } from "h3";
-import { serverSupabaseServiceRole, serverSupabaseUser } from "#supabase/server";
+import {
+  serverSupabaseServiceRole,
+  serverSupabaseUser,
+} from "#supabase/server";
 import {
   getAuthUserId,
   isMissingWishlistTable,
@@ -11,19 +14,23 @@ export default defineEventHandler(async (event) => {
   const authUser = await serverSupabaseUser(event);
   const userId = getAuthUserId(authUser);
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Authentication required" });
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Authentication required",
+    });
   }
 
   const body = (await readBody(event)) as Record<string, unknown>;
   const productId = requireWishlistProductId(body.productId);
-  const client = serverSupabaseServiceRole(event) as any;
+  const client = serverSupabaseServiceRole(event);
 
   const { data: product, error: productError } = await client
     .from("products")
     .select("id, is_hidden")
     .eq("id", productId)
     .maybeSingle();
-  if (productError) throw createError({ statusCode: 500, statusMessage: productError.message });
+  if (productError)
+    throw createError({ statusCode: 500, statusMessage: productError.message });
   if (!product || product.is_hidden === true) {
     throw createError({ statusCode: 404, statusMessage: "Product not found" });
   }
@@ -37,9 +44,15 @@ export default defineEventHandler(async (event) => {
 
   if (existingError) {
     if (isMissingWishlistTable(existingError)) {
-      throw createError({ statusCode: 503, statusMessage: "Migration 054 is required" });
+      throw createError({
+        statusCode: 503,
+        statusMessage: "Migration 054 is required",
+      });
     }
-    throw createError({ statusCode: 500, statusMessage: existingError.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: existingError.message,
+    });
   }
 
   const wishlisted = !existing;
@@ -49,10 +62,15 @@ export default defineEventHandler(async (event) => {
         .delete()
         .eq("user_id", userId)
         .eq("product_id", productId)
-    : await client.from("user_wishlist").insert({ user_id: userId, product_id: productId });
+    : await client
+        .from("user_wishlist")
+        .insert({ user_id: userId, product_id: productId });
 
   if (mutation.error) {
-    throw createError({ statusCode: 500, statusMessage: mutation.error.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: mutation.error.message,
+    });
   }
 
   const { data: rows } = await client

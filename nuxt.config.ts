@@ -22,7 +22,14 @@ export default defineNuxtConfig({
   runtimeConfig: {
     omiseSecretKey: process.env.OMISE_SECRET_KEY ?? "",
     omiseWebhookSecret: process.env.OMISE_WEBHOOK_SECRET ?? "",
+    mixedCheckoutEnabled:
+      process.env.NUXT_MIXED_CHECKOUT_ENABLED === "true" ||
+      process.env.MIXED_CHECKOUT_ENABLED === "true",
     public: {
+      mixedCheckoutEnabled:
+        process.env.NUXT_PUBLIC_MIXED_CHECKOUT_ENABLED === "true" ||
+        process.env.NUXT_MIXED_CHECKOUT_ENABLED === "true" ||
+        process.env.MIXED_CHECKOUT_ENABLED === "true",
       omisePublicKey:
         process.env.NUXT_PUBLIC_OMISE_PUBLIC_KEY ??
         process.env.OMISE_PUBLIC_KEY ??
@@ -73,7 +80,9 @@ export default defineNuxtConfig({
     cookieOptions: {
       maxAge: 60 * 60 * 5, // 5 hours — match idle timeout
       sameSite: "lax",
-      secure: true,
+      // Local development runs on http://localhost, where Secure cookies are
+      // not sent back to Nitro APIs. Keep Secure enabled for deployed HTTPS.
+      secure: process.env.NODE_ENV === "production",
     },
   },
 

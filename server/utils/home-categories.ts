@@ -19,7 +19,7 @@ function normalizeKey(value: unknown, field: string): string {
   const key = raw
     .trim()
     .toLowerCase()
-    .replace(/[^a-z0-9_\-]+/g, "_")
+    .replace(/[^a-z0-9_-]+/g, "_")
     .replace(/_{2,}/g, "_")
     .replace(/^_+|_+$/g, "");
   if (!key) fail422(`${field} is required`);
@@ -91,6 +91,9 @@ export function mapHomeCategoryGroup(row: Record<string, unknown>) {
     isActive: row.is_active !== false,
     options: options
       .map((opt) => mapHomeCategoryOption(opt as Record<string, unknown>))
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.labelTh.localeCompare(b.labelTh)),
+      .sort(
+        (a, b) =>
+          a.sortOrder - b.sortOrder || a.labelTh.localeCompare(b.labelTh),
+      ),
   };
 }

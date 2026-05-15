@@ -630,13 +630,6 @@ const galleryItems = computed(() =>
   })),
 );
 
-function parseCsv(value: string): string[] {
-  return value
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-}
-
 function formatCurrency(value: number): string {
   return formatter.format(value);
 }
@@ -773,7 +766,9 @@ function fillFormFromDetail(d: Detail) {
 
 function resetStockState() {
   stockItems.value = [];
-  for (const key of Object.keys(stockEditRows)) delete stockEditRows[key];
+  for (const key of Object.keys(stockEditRows)) {
+    Reflect.deleteProperty(stockEditRows, key);
+  }
   newStock.branchId = "";
   newStock.inventoryId = "";
   newStock.onHand = 0;
@@ -829,7 +824,9 @@ async function loadStock(id: string) {
       `/api/admin/assets/${encodeURIComponent(id)}/stock`,
     );
     stockItems.value = result.items ?? [];
-    for (const key of Object.keys(stockEditRows)) delete stockEditRows[key];
+    for (const key of Object.keys(stockEditRows)) {
+      Reflect.deleteProperty(stockEditRows, key);
+    }
   } catch (err) {
     toast.add({
       title: "Failed to load stock",
@@ -1418,7 +1415,7 @@ function startEditStock(row: StockItem) {
 }
 
 function cancelEditStock(id: string) {
-  delete stockEditRows[id];
+  Reflect.deleteProperty(stockEditRows, id);
 }
 
 async function updateStockRow(id: string) {
@@ -1444,7 +1441,7 @@ async function updateStockRow(id: string) {
     stockItems.value = stockItems.value.map((row) =>
       row.id === id ? result.item : row,
     );
-    delete stockEditRows[id];
+    Reflect.deleteProperty(stockEditRows, id);
     toast.add({
       title: "Stock updated",
       color: "success",
@@ -1472,7 +1469,7 @@ async function deleteStockRow(id: string) {
       { method: "DELETE" },
     );
     stockItems.value = stockItems.value.filter((row) => row.id !== id);
-    delete stockEditRows[id];
+    Reflect.deleteProperty(stockEditRows, id);
     toast.add({
       title: "Stock row removed",
       color: "success",

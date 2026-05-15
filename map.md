@@ -7,12 +7,14 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 
 1. `map.md` — this file
 2. `PROJECT_SUMMARY.md` — current system snapshot
-3. `API_INDEX.md` — routes, composables, endpoints, debug rules
-4. `SEARCH_AND_FILTER_GUIDELINE.md` — search/filter state, URL persistence, multi-type search direction
-5. `ADMIN_MVP_ACTION_PLAN.md` / `ASSET_ACTION_PLAN.md` — active backlog + decisions
-6. `DATABASE_ADMIN_MANUAL.md` — admin data setup rules
-7. `ROLE_MATRIX.md` — permission model
-8. `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
+3. `HOPNIC_POS_V2_Master_Implementation_Plan.md` — canonical POS/customer rental phase control plan
+4. `docs/customer-rental-booking-cancellation-refund-design.md` — Phase C.1 customer documents/cancellation/manual refund design lock
+5. `API_INDEX.md` — routes, composables, endpoints, debug rules
+6. `SEARCH_AND_FILTER_GUIDELINE.md` — search/filter state, URL persistence, multi-type search direction
+7. `ADMIN_MVP_ACTION_PLAN.md` / `ASSET_ACTION_PLAN.md` — active backlog + decisions
+8. `DATABASE_ADMIN_MANUAL.md` — admin data setup rules
+9. `ROLE_MATRIX.md` — permission model
+10. `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
 
 ## Current product state
 
@@ -22,12 +24,15 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Sale orders and rental bookings both have customer history pages.
 - Internal backoffice lives under `/admin` and is gated by `public.users.platform_role`.
 - Admin now has product, asset, branch/inventory, order, rental-booking, and POS sale/rental operations surfaces.
+- Customer rental booking detail/cancellation/manual Booking Deposit refund is design-locked for future Phase C.1, but not implemented yet.
 
 ## Most important docs by task
 
 ### If you need current business/technical context
 
 - Read `PROJECT_SUMMARY.md`
+- Read `HOPNIC_POS_V2_Master_Implementation_Plan.md`
+- For customer rental documents/cancellation/manual refund work, read `docs/customer-rental-booking-cancellation-refund-design.md`
 
 ### If you need routes, APIs, composables, or migration-sensitive behavior
 
@@ -77,6 +82,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Global UI colors/radius are overridden in `app/assets/css/main.css`; keep HOP tokens and the unified `0.2rem` radius unless product direction changes.
 - Rental bookings can now be rooted by `asset_id` alone; `product_id` / `sku_id` may be null in newer schemas.
 - Booking cancellation is soft-delete via `status = 'cancelled'`.
+- Excessive-cancellation restriction is a locked design rule only; future implementation must add cancellation provenance before counting customer cancellations.
 - Booker name + phone are captured on rental submission and should be preferred over account phone when present.
 - Order tracking info belongs on sale orders and is customer-visible after admin update.
 - For PostgREST `ILIKE` filters, use `*term*`, not `%term%`.

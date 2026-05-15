@@ -1,7 +1,15 @@
 import { createError, defineEventHandler, getRouterParam } from "h3";
 import { requirePlatformAdminReadAccess } from "~~/server/utils/admin";
 
-function mapAssetMatch(row: Record<string, any>) {
+type AssetMatchRow = Record<string, unknown> & {
+  product?: {
+    name_th?: string | null;
+    slug?: string | null;
+    is_hidden?: boolean | null;
+  } | null;
+};
+
+function mapAssetMatch(row: AssetMatchRow) {
   return {
     id: String(row.id ?? ""),
     assetId: String(row.asset_id ?? ""),
@@ -21,13 +29,18 @@ export default defineEventHandler(async (event) => {
   const assetId = getRouterParam(event, "id");
 
   if (!assetId) {
-    throw createError({ statusCode: 400, statusMessage: "asset id is required" });
+    throw createError({
+      statusCode: 400,
+      statusMessage: "asset id is required",
+    });
   }
 
   const [matchesResult, productsResult] = await Promise.all([
     adminClient
       .from("asset_matches")
-      .select("id, asset_id, product_id, match_type, sort_order, note, updated_at, product:products(slug, name_th, is_hidden)")
+      .select(
+        "id, asset_id, product_id, match_type, sort_order, note, updated_at, product:products(slug, name_th, is_hidden)",
+      )
       .eq("asset_id", assetId)
       .order("sort_order", { ascending: true })
       .order("updated_at", { ascending: false }),
@@ -38,10 +51,16 @@ export default defineEventHandler(async (event) => {
   ]);
 
   if (matchesResult.error) {
-    throw createError({ statusCode: 500, statusMessage: matchesResult.error.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: matchesResult.error.message,
+    });
   }
   if (productsResult.error) {
-    throw createError({ statusCode: 500, statusMessage: productsResult.error.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: productsResult.error.message,
+    });
   }
 
   return {

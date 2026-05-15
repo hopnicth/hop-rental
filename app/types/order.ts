@@ -73,6 +73,8 @@ export interface OrderRecord {
 export interface CreateOrderParams {
   checkoutMode: OrderCheckoutMode;
   paymentMethod?: OrderPaymentMethod;
+  shippingMode?: "delivery" | "pickup";
+  pickupBranchId?: string | null;
   address: Address;
   items: Array<{
     productId: string;

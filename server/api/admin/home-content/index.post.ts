@@ -14,8 +14,17 @@ import {
   buildHomePartnerLogoPayload,
 } from "~~/server/utils/admin-home";
 
+type CuratedLimitClient = {
+  from(table: "home_featured_products" | "home_featured_assets"): {
+    select(
+      columns: string,
+      options: { count: "exact"; head: true },
+    ): Promise<{ count: number | null; error: { message: string } | null }>;
+  };
+};
+
 async function assertCuratedLimit(
-  adminClient: any,
+  adminClient: CuratedLimitClient,
   table: "home_featured_products" | "home_featured_assets",
   label: string,
 ) {

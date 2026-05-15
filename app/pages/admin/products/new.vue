@@ -183,7 +183,7 @@ const mainCategoryForm = reactive<MainCategoryForm>({
   sortOrder: 0,
 });
 
-const { data, pending, error, refresh } = await useFetch<{
+const { data, error, refresh } = await useFetch<{
   items: MainCategoryItem[];
   meta?: AdminApiMeta;
 }>("/api/admin/main-categories", {

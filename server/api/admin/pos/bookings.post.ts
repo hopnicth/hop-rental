@@ -1,10 +1,14 @@
 import { createError, defineEventHandler, readBody } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
 import {
-  ADMIN_RENTAL_BOOKING_LIST_SELECT,
+  fetchAdminRentalBookingListRows,
   mapAdminRentalBookingRow,
 } from "~~/server/utils/admin-orders";
 import { decomposeRentalDuration } from "~~/app/utils/rental-pricing";
+import {
+  calculateInclusiveRentalDays,
+  toExclusiveEndDate,
+} from "~~/app/utils/rental-dates";
 import type { AdminRentalBookingRow } from "~~/app/types/admin-order";
 import type {
   RentalDepositPaymentMethod,
@@ -22,6 +26,11 @@ import {
   isRentalBookingConflictError,
   throwRentalBookingConflict,
 } from "~~/server/utils/rental-booking-availability";
+import {
+  computeRentalBookingPaymentLines,
+  isMissingRentalPaymentLinesTable,
+  rentalPaymentLineInsertRows,
+} from "~~/server/utils/rental-payment-lines";
 
 interface PosBookingPayload {
   userId?: string | null;
@@ -67,6 +76,18 @@ function money(value: unknown): number {
   return posMoney(value);
 }
 
+function errorMessage(error: unknown): string {
+  return error && typeof error === "object" && "message" in error
+    ? String((error as { message?: unknown }).message ?? "Unknown error")
+    : "Unknown error";
+}
+
+function warnMissingPaymentLineTable(error: unknown): void {
+  console.warn("[admin-pos] rental_booking_payment_lines unavailable", {
+    message: errorMessage(error),
+  });
+}
+
 function parseDate(value: string, field: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw createError({
@@ -78,13 +99,13 @@ function parseDate(value: string, field: string): Date {
 }
 
 function diffDays(startDate: string, endDate: string): number {
-  const start = parseDate(startDate, "startDate");
-  const end = parseDate(endDate, "endDate");
-  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+  parseDate(startDate, "startDate");
+  parseDate(endDate, "endDate");
+  const days = calculateInclusiveRentalDays(startDate, endDate);
   if (days <= 0) {
     throw createError({
       statusCode: 422,
-      statusMessage: "endDate must be after startDate",
+      statusMessage: "endDate must be on or after startDate",
     });
   }
   return days;
@@ -103,7 +124,7 @@ export default defineEventHandler(
     const assetId = asText(body.assetId || body.skuId || body.productId);
     const branchId = asText(body.branchId);
     const startDate = asText(body.startDate);
-    const endDate = asText(body.endDate);
+    const customerReturnDate = asText(body.endDate);
 
     if (!userId && !walkInPhone) {
       throw createError({
@@ -123,7 +144,14 @@ export default defineEventHandler(
         statusMessage: "Branch is required",
       });
     }
-    const rentalDays = diffDays(startDate, endDate);
+    const rentalDays = diffDays(startDate, customerReturnDate);
+    const exclusiveEndDate = toExclusiveEndDate(customerReturnDate);
+    if (!exclusiveEndDate) {
+      throw createError({
+        statusCode: 422,
+        statusMessage: "endDate must be YYYY-MM-DD",
+      });
+    }
 
     const { data: branch, error: branchError } = await adminClient
       .from("store_branches")
@@ -216,22 +244,37 @@ export default defineEventHandler(
     const assetName = a.name_th || a.name_en || a.code || a.id;
     const matchedProductId = primaryMatchedProductId(a);
     const branchName = String(branch.name_th ?? branch.name_en ?? "");
-    const checkoutTotalAmount = money(body.checkoutTotalAmount);
-    const checkoutPaidAmount = money(body.checkoutPaidAmount);
     const checkoutMethod = asText(body.checkoutPaymentMethod);
     const checkoutPaymentMethod = PAYMENT_METHODS.has(checkoutMethod)
       ? (checkoutMethod as RentalDepositPaymentMethod)
       : depositPaymentMethod;
+    const { lines: paymentLines, summary: paymentSummary } =
+      computeRentalBookingPaymentLines({
+        customerKind: "individual",
+        rentalDays,
+        rentalFeeAmount: pricingBreakdown.total,
+        depositAmount: money(a.deposit_amount),
+        source: "pos_booking_create",
+        metadata: {
+          bookingChannel: "admin_pos",
+          defaultDepositAmount: money(a.deposit_amount),
+          actualDepositPaidAmount: paidAmount,
+          checkoutPaymentMethod,
+        },
+      });
+    const recomputedCheckoutTotal = paymentSummary.netPayableTotal;
 
     await assertRentalBookingAvailability(adminClient, {
       assetId: a.id,
       startDate,
-      endDate,
+      endDate: exclusiveEndDate,
     });
 
-    const { data: inserted, error: insertError } = await adminClient
+    const bookingId = crypto.randomUUID();
+    const { error: insertError } = await adminClient
       .from("rental_bookings")
       .insert({
+        id: bookingId,
         user_id: userId || null,
         walk_in_phone: userId ? null : walkInPhone,
         product_id: null,
@@ -249,7 +292,7 @@ export default defineEventHandler(
         hub_id: String(branch.id),
         hub_name: branchName,
         start_date: startDate,
-        end_date: endDate,
+        end_date: exclusiveEndDate,
         rental_days: rentalDays,
         pricing_model: "daily",
         currency_code: currencyCode,
@@ -269,17 +312,14 @@ export default defineEventHandler(
           paidAmount > 0 ? "not_refunded" : "not_applicable",
         deposit_paid_at: paidAmount > 0 ? new Date().toISOString() : null,
         deposit_notes: asText(body.depositNotes) || null,
-        checkout_total_amount:
-          checkoutTotalAmount || pricingBreakdown.total + paidAmount,
-        checkout_paid_amount: checkoutPaidAmount || paidAmount,
+        checkout_total_amount: recomputedCheckoutTotal,
+        checkout_paid_amount: recomputedCheckoutTotal,
         checkout_payment_method: checkoutPaymentMethod,
         pos_branch_id: String(branch.id),
         pos_branch_code: String(branch.code ?? ""),
         pos_branch_name: branchName,
         pos_staff_user_id: adminUserId,
-      })
-      .select(ADMIN_RENTAL_BOOKING_LIST_SELECT)
-      .single();
+      });
     if (insertError) {
       if (isRentalBookingConflictError(insertError)) {
         throwRentalBookingConflict();
@@ -287,6 +327,47 @@ export default defineEventHandler(
       throw createError({
         statusCode: 500,
         statusMessage: insertError.message,
+      });
+    }
+
+    const paymentLineRows = rentalPaymentLineInsertRows(
+      bookingId,
+      paymentLines,
+    );
+    if (paymentLineRows.length > 0) {
+      const { error: paymentLinesError } = await adminClient
+        .from("rental_booking_payment_lines")
+        .insert(paymentLineRows);
+      if (paymentLinesError) {
+        if (isMissingRentalPaymentLinesTable(paymentLinesError)) {
+          warnMissingPaymentLineTable(paymentLinesError);
+        } else {
+          throw createError({
+            statusCode: 500,
+            statusMessage: paymentLinesError.message,
+          });
+        }
+      }
+    }
+
+    let inserted: AdminRentalBookingRow;
+    try {
+      const rows = await fetchAdminRentalBookingListRows((select) =>
+        adminClient
+          .from("rental_bookings")
+          .select(select)
+          .eq("id", bookingId)
+          .limit(1),
+      );
+      const row = rows[0];
+      if (!row) {
+        throw new Error("Inserted booking could not be loaded");
+      }
+      inserted = mapAdminRentalBookingRow(row);
+    } catch (error) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: errorMessage(error),
       });
     }
 
@@ -311,9 +392,8 @@ export default defineEventHandler(
             depositPaidAmount: paidAmount,
             depositPaymentMethod,
             depositPaymentStatus,
-            checkoutTotalAmount:
-              checkoutTotalAmount || pricingBreakdown.total + paidAmount,
-            checkoutPaidAmount: checkoutPaidAmount || paidAmount,
+            checkoutTotalAmount: recomputedCheckoutTotal,
+            checkoutPaidAmount: recomputedCheckoutTotal,
           },
           change_summary: `POS booking deposit override ${defaultDepositAmount} -> ${paidAmount}`,
           reason: asText(body.depositAdjustmentReason) || null,
@@ -323,6 +403,6 @@ export default defineEventHandler(
       }
     }
 
-    return { booking: mapAdminRentalBookingRow(inserted) };
+    return { booking: inserted };
   },
 );

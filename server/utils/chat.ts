@@ -5,15 +5,34 @@ import {
 } from "#supabase/server";
 import { CHAT_INITIAL_PAGE_SIZE, CHAT_MAX_PAGE_SIZE } from "./chat-constraints";
 
-type AnyClient = { from: (table: string) => any; storage?: any };
 type PlatformRole = "customer" | "staff" | "super_admin";
+type QueryError = { message: string };
+type SupabaseRow = Record<string, unknown>;
+type MaybeSingleResult<T extends SupabaseRow> = Promise<{
+  data: T | null;
+  error: QueryError | null;
+}>;
+type SelectBuilder<T extends SupabaseRow> = {
+  select(columns: string): SelectBuilder<T>;
+  eq(column: string, value: unknown): SelectBuilder<T>;
+  is(column: string, value: unknown): SelectBuilder<T>;
+  maybeSingle(): MaybeSingleResult<T>;
+};
+type AnyClient = {
+  from(table: string): SelectBuilder<SupabaseRow>;
+  storage?: unknown;
+};
+type AuthUserRow = { sub?: string; id?: string };
+type UserProfileRow = SupabaseRow & { platform_role?: string | null };
+type ChatMessageRow = SupabaseRow & { conversation_id?: string | null };
 
 function fail(statusCode: number, statusMessage: string): never {
   throw createError({ statusCode, statusMessage });
 }
 
 function getAuthUserId(authUser: unknown): string | null {
-  const row = authUser && typeof authUser === "object" ? (authUser as any) : {};
+  const row: AuthUserRow =
+    authUser && typeof authUser === "object" ? (authUser as AuthUserRow) : {};
   return typeof row.sub === "string"
     ? row.sub
     : typeof row.id === "string"
@@ -41,7 +60,7 @@ export async function requireChatUser(event: H3Event) {
   return {
     userId,
     platformRole: String(
-      (data as any).platform_role ?? "customer",
+      (data as UserProfileRow).platform_role ?? "customer",
     ) as PlatformRole,
     adminClient,
   };
@@ -93,11 +112,11 @@ export async function loadAccessibleChatMessage(
 
   await ensureChatConversationAccess(
     adminClient,
-    String((data as any).conversation_id),
+    String((data as ChatMessageRow).conversation_id),
     userId,
     platformRole,
   );
-  return data as any;
+  return data as ChatMessageRow;
 }
 
 export function parseChatMessagePage(event: H3Event) {

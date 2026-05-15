@@ -8,9 +8,30 @@ import {
 } from "~~/server/utils/payment-core";
 import type { NormalizedGatewayCharge } from "~~/server/utils/omise";
 
+type QueryError = { message?: string; code?: string; details?: string } | null;
+type WriteResult = { error: QueryError };
+type SingleResult = Promise<{ data: AnyRecord | null; error: QueryError }>;
+type SelectRequest = {
+  eq(column: string, value: unknown): SelectRequest;
+  maybeSingle(): SingleResult;
+};
+type UpdateRequest = {
+  eq(column: string, value: unknown): UpdateRequest;
+  neq(column: string, value: unknown): Promise<WriteResult>;
+  select(columns: string): { single(): SingleResult };
+};
+type DeleteRequest = {
+  eq(column: string, value: unknown): Promise<WriteResult>;
+};
+type TableClient = {
+  insert(payload: unknown): Promise<WriteResult>;
+  update(payload: Record<string, unknown>): UpdateRequest;
+  select(columns: string): SelectRequest;
+  delete(): DeleteRequest;
+};
 type AnyClient = {
-  from: (table: string) => any;
-  rpc?: (fn: string, args?: Record<string, unknown>) => any;
+  from: (table: string) => TableClient;
+  rpc?: (fn: string, args?: Record<string, unknown>) => Promise<WriteResult>;
 };
 type AnyRecord = Record<string, unknown>;
 
@@ -27,7 +48,7 @@ export function assertOrderPayable(order: AnyRecord): void {
 }
 
 export function buildPaymentReturnUri(
-  event: { node: { req: { headers: any } } },
+  event: { node: { req: { headers: Record<string, string | undefined> } } },
   orderId: string,
 ): string {
   const proto = event.node.req.headers["x-forwarded-proto"] ?? "http";
@@ -54,7 +75,12 @@ export async function recordPaymentAlert(
   client: AnyClient,
   input: {
     orderId?: string | null;
+    bookingId?: string | null;
     paymentAttemptId?: string | null;
+    rentalBookingPaymentAttemptId?: string | null;
+    mixedCheckoutSessionId?: string | null;
+    mixedPaymentAttemptId?: string | null;
+    mixedPaymentAllocationId?: string | null;
     kind: string;
     audience: "admin" | "user";
     severity: "info" | "warning" | "error" | "critical";
@@ -64,7 +90,13 @@ export async function recordPaymentAlert(
 ) {
   await client.from("payment_alerts").insert({
     order_id: input.orderId ?? null,
+    booking_id: input.bookingId ?? null,
     payment_attempt_id: input.paymentAttemptId ?? null,
+    rental_booking_payment_attempt_id:
+      input.rentalBookingPaymentAttemptId ?? null,
+    mixed_checkout_session_id: input.mixedCheckoutSessionId ?? null,
+    mixed_payment_attempt_id: input.mixedPaymentAttemptId ?? null,
+    mixed_payment_allocation_id: input.mixedPaymentAllocationId ?? null,
     kind: input.kind,
     audience: input.audience,
     severity: input.severity,
@@ -140,7 +172,7 @@ export async function applyGatewayResult(
  * Idempotent inventory deduction triggered after a paid transition.
  * Failures are surfaced as admin alerts but never block the payment flow.
  */
-async function applyOrderInventory(
+export async function applyOrderInventory(
   client: AnyClient,
   orderId: string,
   paymentAttemptId: string,

@@ -52,7 +52,26 @@ export function buildBranchPayload(body: Record<string, unknown>) {
 }
 
 export async function resolveActiveStoreBranch(
-  adminClient: { from: (table: string) => any },
+  adminClient: {
+    from(table: "store_branches"): {
+      select(columns: string): {
+        eq(
+          column: string,
+          value: unknown,
+        ): {
+          eq(
+            column: string,
+            value: unknown,
+          ): {
+            single(): Promise<{
+              data: unknown;
+              error: { message: string } | null;
+            }>;
+          };
+        };
+      };
+    };
+  },
   branchId: string,
 ) {
   const { data, error } = await adminClient

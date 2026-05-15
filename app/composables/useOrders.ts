@@ -186,28 +186,6 @@ function upsertOrderInStore(order: OrderRecord): void {
   ordersStore.value.unshift(order);
 }
 
-function deriveInitialOrderStatus(): OrderStatus {
-  return "submitted";
-}
-
-function deriveInitialPaymentStatus(
-  params: CreateOrderParams,
-): OrderPaymentStatus {
-  if (params.checkoutMode === "quotation") {
-    return "not_applicable";
-  }
-
-  return params.paymentMethod === "company_credit"
-    ? "pending_review"
-    : "awaiting_payment";
-}
-
-function deriveInitialFulfillmentStatus(
-  params: CreateOrderParams,
-): OrderFulfillmentStatus {
-  return params.checkoutMode === "quotation" ? "not_applicable" : "unfulfilled";
-}
-
 export function useOrders() {
   const supabase = useSupabaseClient();
   const user = useSupabaseUser();
@@ -218,36 +196,6 @@ export function useOrders() {
       data: { user: authUser },
     } = await supabase.auth.getUser();
     return authUser?.id ?? null;
-  }
-
-  async function resolveOrderCartId(
-    userId: string,
-    requestedCartId: string | null | undefined,
-  ): Promise<string | null> {
-    if (requestedCartId) {
-      const { data: requestedCart, error: requestedCartError } = await supabase
-        .from("carts")
-        .select("id")
-        .eq("id", requestedCartId)
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (!requestedCartError && requestedCart?.id) {
-        return requestedCart.id as string;
-      }
-    }
-
-    const { data: ownedCart, error: ownedCartError } = await supabase
-      .from("carts")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (ownedCartError) {
-      return null;
-    }
-
-    return (ownedCart?.id as string | undefined) ?? null;
   }
 
   async function fetchOrders(): Promise<void> {
@@ -294,76 +242,42 @@ export function useOrders() {
       throw new Error("At least one sale item is required to submit an order.");
     }
 
-    const subtotal = params.items.reduce(
-      (sum, item) => sum + item.unitPrice * item.quantity,
-      0,
-    );
-    const discountTotal = params.items.reduce(
-      (sum, item) =>
-        sum +
-        Math.max(0, item.originalUnitPrice - item.unitPrice) * item.quantity,
-      0,
-    );
-    const shippingCost = Math.max(0, Number(params.shippingCost) || 0);
-    const shippingBreakdown = params.shippingBreakdown ?? {};
-    const grandTotal = subtotal + shippingCost;
-    const resolvedCartId = await resolveOrderCartId(userId, params.cartId);
+    const idempotencyKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `order_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-    const orderInsert = {
-      user_id: userId,
-      company_id: params.companyId ?? null,
-      cart_id: resolvedCartId,
-      checkout_mode: params.checkoutMode,
-      payment_method:
-        params.checkoutMode === "quotation"
-          ? null
-          : (params.paymentMethod ?? null),
-      status: deriveInitialOrderStatus(),
-      payment_status: deriveInitialPaymentStatus(params),
-      fulfillment_status: deriveInitialFulfillmentStatus(params),
-      address_id: params.address.id ? params.address.id : null,
-      address_snapshot: mapAddressToSnapshot(params.address),
-      subtotal,
-      discount_total: discountTotal,
-      shipping_cost: shippingCost,
-      shipping_breakdown: shippingBreakdown,
-      grand_total: grandTotal,
-      currency_code: "THB",
-      notes: params.notes ?? null,
-    };
+    const response = await $fetch<{
+      order?: Record<string, unknown>;
+      idempotent?: boolean;
+    }>("/api/orders", {
+      method: "POST",
+      body: {
+        idempotencyKey,
+        checkoutMode: params.checkoutMode,
+        paymentMethod:
+          params.checkoutMode === "payment" ? params.paymentMethod : null,
+        shippingMode: params.shippingMode ?? "delivery",
+        pickupBranchId: params.pickupBranchId ?? null,
+        companyId: params.companyId ?? null,
+        cartId: params.cartId ?? null,
+        address: {
+          id: params.address.id || null,
+          ...mapAddressToSnapshot(params.address),
+        },
+        items: params.items.map((item) => ({
+          skuId: item.skuId,
+          quantity: item.quantity,
+        })),
+        notes: params.notes ?? null,
+      },
+    });
 
-    const { data: orderRow, error: orderError } = await supabase
-      .from("orders")
-      .insert(orderInsert)
-      .select("*")
-      .single();
-
-    if (orderError) {
-      throw new Error(orderError.message);
+    if (!response.order) {
+      throw new Error("Order created but no order data was returned.");
     }
 
-    const order = mapRowToOrder(orderRow as Record<string, unknown>);
-    const itemRows = params.items.map((item) => ({
-      order_id: order.id,
-      product_id: item.productId,
-      sku_id: item.skuId,
-      name: item.name,
-      thumbnail: item.thumbnail,
-      unit_price: item.unitPrice,
-      original_unit_price: item.originalUnitPrice,
-      discount_percent: item.discountPercent,
-      quantity: item.quantity,
-      line_total: item.unitPrice * item.quantity,
-    }));
-
-    const { error: itemsError } = await supabase
-      .from("order_items")
-      .insert(itemRows);
-
-    if (itemsError) {
-      await supabase.from("orders").delete().eq("id", order.id);
-      throw new Error(itemsError.message);
-    }
+    const order = mapRowToOrder(response.order);
 
     upsertOrderInStore(order);
     return order;

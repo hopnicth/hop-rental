@@ -17,6 +17,11 @@ import type {
   AssetDocumentVisibility,
   RentalBookingDocumentType,
 } from "~~/app/types/admin-booking-ops";
+import { mapIssuedDocumentSummary } from "~~/server/utils/admin-documents";
+import {
+  FORFEITURE_RECEIPT_DOCUMENT_TYPE,
+  NO_SHOW_FORFEITURE_NOTICE_DOCUMENT_TYPE,
+} from "~~/server/utils/rental-booking-no-show-documents";
 
 export const BOOKING_DOCS_BUCKET = "catalog-media";
 
@@ -208,19 +213,141 @@ export async function fetchAssetChecklistTemplates(
   });
 }
 
+export async function fetchIssuedOperationalDocuments(
+  adminClient: SupabaseClient,
+  bookingId: string,
+) {
+  const { data, error } = await adminClient
+    .from("official_documents")
+    .select(
+      "id, document_type, document_no, status, branch_id, source_type, source_id, issued_at, subtotal, vat_amount, total_amount, currency_code, template_key, template_version, snapshot, print_count, last_printed_at, created_at, updated_at",
+    )
+    .eq("source_type", "rental_booking")
+    .eq("source_id", bookingId)
+    .in("document_type", ["rental_pickup_form", "rental_return_form"])
+    .order("issued_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((raw) =>
+    mapIssuedDocumentSummary(raw as Record<string, unknown>),
+  );
+}
+
+export async function fetchIssuedNoShowForfeitureDocuments(
+  adminClient: SupabaseClient,
+  bookingId: string,
+) {
+  const { data: noShowEvents, error: noShowError } = await adminClient
+    .from("rental_booking_no_show_events")
+    .select("id")
+    .eq("booking_id", bookingId);
+  if (noShowError) throw new Error(noShowError.message);
+  const noShowIds = (noShowEvents ?? [])
+    .map((row: Record<string, unknown>) => toStr(row.id))
+    .filter(Boolean);
+
+  const { data: dispositions, error: dispositionError } = await adminClient
+    .from("rental_booking_deposit_disposition_events")
+    .select("id")
+    .eq("booking_id", bookingId)
+    .eq("source_event_type", "no_show");
+  if (dispositionError) throw new Error(dispositionError.message);
+  const dispositionIds = (dispositions ?? [])
+    .map((row: Record<string, unknown>) => toStr(row.id))
+    .filter(Boolean);
+
+  let recognitionIds: string[] = [];
+  if (dispositionIds.length > 0) {
+    const { data: recognitions, error: recognitionError } = await adminClient
+      .from("financial_recognition_events")
+      .select("id")
+      .eq("source_type", "rental_booking_deposit_disposition_event")
+      .eq("recognition_type", "booking_deposit_forfeiture_income")
+      .in("source_id", dispositionIds);
+    if (recognitionError) throw new Error(recognitionError.message);
+    recognitionIds = (recognitions ?? [])
+      .map((row: Record<string, unknown>) => toStr(row.id))
+      .filter(Boolean);
+  }
+
+  const results: Record<string, unknown>[] = [];
+  if (noShowIds.length > 0) {
+    const { data, error } = await adminClient
+      .from("official_documents")
+      .select(
+        "id, document_type, document_no, status, branch_id, source_type, source_id, issued_at, subtotal, vat_amount, total_amount, currency_code, template_key, template_version, snapshot, print_count, last_printed_at, created_at, updated_at",
+      )
+      .eq("source_type", "rental_booking_no_show_event")
+      .eq("document_type", NO_SHOW_FORFEITURE_NOTICE_DOCUMENT_TYPE)
+      .in("source_id", noShowIds);
+    if (error) throw new Error(error.message);
+    results.push(...((data ?? []) as Record<string, unknown>[]));
+  }
+  if (recognitionIds.length > 0) {
+    const { data, error } = await adminClient
+      .from("official_documents")
+      .select(
+        "id, document_type, document_no, status, branch_id, source_type, source_id, issued_at, subtotal, vat_amount, total_amount, currency_code, template_key, template_version, snapshot, print_count, last_printed_at, created_at, updated_at",
+      )
+      .eq("source_type", "financial_recognition_event")
+      .eq("document_type", FORFEITURE_RECEIPT_DOCUMENT_TYPE)
+      .in("source_id", recognitionIds);
+    if (error) throw new Error(error.message);
+    results.push(...((data ?? []) as Record<string, unknown>[]));
+  }
+  return results
+    .sort((a, b) => toStr(b.issued_at).localeCompare(toStr(a.issued_at)))
+    .map((raw) => mapIssuedDocumentSummary(raw));
+}
+
+export async function fetchBookingFulfillmentStatus(
+  adminClient: SupabaseClient,
+  bookingId: string,
+) {
+  const { data, error } = await adminClient
+    .from("rental_booking_fulfillments")
+    .select("event_type")
+    .eq("booking_id", bookingId)
+    .in("event_type", ["pickup", "return"]);
+  if (error) throw new Error(error.message);
+  const eventTypes = new Set(
+    (data ?? []).map((row: Record<string, unknown>) => toStr(row.event_type)),
+  );
+  return {
+    pickupExists: eventTypes.has("pickup"),
+    returnExists: eventTypes.has("return"),
+  };
+}
+
 export async function loadBookingOpsPayload(
   adminClient: SupabaseClient,
   bookingId: string,
   assetId: string | null,
 ): Promise<AdminBookingOpsPayload> {
-  const [checklists, documents, templates] = await Promise.all([
+  const [
+    checklists,
+    documents,
+    templates,
+    issuedDocuments,
+    noShowForfeitureDocuments,
+    fulfillmentStatus,
+  ] = await Promise.all([
     fetchBookingChecklists(adminClient, bookingId),
     fetchBookingDocuments(adminClient, bookingId),
     assetId
       ? fetchAssetChecklistTemplates(adminClient, assetId)
       : Promise.resolve([] as AssetChecklistTemplateSummary[]),
+    fetchIssuedOperationalDocuments(adminClient, bookingId),
+    fetchIssuedNoShowForfeitureDocuments(adminClient, bookingId),
+    fetchBookingFulfillmentStatus(adminClient, bookingId),
   ]);
-  return { checklists, documents, templates };
+  return {
+    checklists,
+    documents,
+    issuedDocuments,
+    noShowForfeitureDocuments,
+    fulfillmentStatus,
+    templates,
+  };
 }
 
 export function buildBookingDocumentPath(

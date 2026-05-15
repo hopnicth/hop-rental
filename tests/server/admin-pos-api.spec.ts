@@ -1,8 +1,31 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+type MockClient = {
+  from?: (table: string) => unknown;
+  rpc?: (
+    name: string,
+    params?: Record<string, unknown>,
+  ) => Promise<{ error: { message?: string } | null }>;
+} | null;
+
+type QueryChain<T = unknown> = {
+  select: (...args: unknown[]) => QueryChain<T>;
+  in: (...args: unknown[]) => QueryChain<T>;
+  eq: (...args: unknown[]) => QueryChain<T>;
+  order: (...args: unknown[]) => QueryChain<T>;
+  limit: (...args: unknown[]) => QueryChain<T>;
+  gte: (...args: unknown[]) => QueryChain<T>;
+  lte: (...args: unknown[]) => QueryChain<T>;
+  lt: (...args: unknown[]) => QueryChain<T>;
+  gt: (...args: unknown[]) => QueryChain<T>;
+  not: (...args: unknown[]) => QueryChain<T>;
+  or: (...args: unknown[]) => QueryChain<T>;
+  then: (resolve: (value: T) => unknown) => Promise<unknown>;
+};
+
 const mockState = vi.hoisted(() => ({
-  superAdminClient: null as any,
-  platformAdminClient: null as any,
+  superAdminClient: null as MockClient,
+  platformAdminClient: null as MockClient,
   body: {} as Record<string, unknown>,
   query: {} as Record<string, unknown>,
   routerParams: {} as Record<string, string>,
@@ -10,7 +33,7 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock("h3", () => ({
-  defineEventHandler: (handler: any) => handler,
+  defineEventHandler: (handler: (event: unknown) => unknown) => handler,
   readBody: async () => mockState.body,
   getQuery: () => mockState.query,
   getRouterParam: (_event: unknown, name: string) =>
@@ -18,7 +41,7 @@ vi.mock("h3", () => ({
   setHeader: (_event: unknown, name: string, value: string) => {
     mockState.headers.push({ name, value });
   },
-  createError: (opts: any) =>
+  createError: (opts: { statusMessage?: string; statusCode?: number }) =>
     Object.assign(new Error(opts.statusMessage), opts),
 }));
 
@@ -47,6 +70,9 @@ const branchAccessPatch = (
 ).default;
 const posSalePost = (await import("../../server/api/admin/pos/sales.post"))
   .default;
+const posBookingPost = (
+  await import("../../server/api/admin/pos/bookings.post")
+).default;
 const accountingExportGet = (
   await import("../../server/api/admin/pos/accounting-export.get")
 ).default;
@@ -63,8 +89,8 @@ const catalogGet = (await import("../../server/api/admin/pos/catalog.get"))
 const { posMediaGalleryPrimaryUrl } =
   await import("../../server/utils/admin-pos");
 
-function queryResult(result: any) {
-  const chain: any = {
+function queryResult<T>(result: T): QueryChain<T> {
+  const chain: QueryChain<T> = {
     select: () => chain,
     in: () => chain,
     eq: () => chain,
@@ -73,9 +99,10 @@ function queryResult(result: any) {
     gte: () => chain,
     lte: () => chain,
     lt: () => chain,
+    gt: () => chain,
     not: () => chain,
     or: () => chain,
-    then: (resolve: (value: any) => unknown) =>
+    then: (resolve: (value: T) => unknown) =>
       Promise.resolve(result).then(resolve),
   };
   return chain;
@@ -112,7 +139,7 @@ describe("admin POS catalog API", () => {
       branchId: "branch-hq",
     };
     const result = { data: [], error: null };
-    const query: any = {
+    const query: QueryChain<typeof result> = {
       select: () => query,
       eq: () => query,
       gt: () => query,
@@ -172,6 +199,8 @@ describe("admin POS history API", () => {
                       checkout_paid_amount: 700,
                       checkout_payment_method: "qr_transfer",
                       deposit_payment_status: "paid",
+                      deposit_refund_status: "pending",
+                      deposit_refund_amount: 150,
                       pos_branch_id: "branch-hq",
                       pos_branch_name: "HQ",
                     },
@@ -188,6 +217,8 @@ describe("admin POS history API", () => {
       type: "rental",
       amount: 700,
       status: "confirmed",
+      depositRefundStatus: "pending",
+      depositRefundAmount: 150,
     });
     expect(result.summary).toMatchObject({
       totalAmount: 1900,
@@ -254,8 +285,8 @@ beforeEach(() => {
 
 describe("admin rental booking deposit API", () => {
   it("updates deposit amount and writes an audit log", async () => {
-    const updates: any[] = [];
-    const logs: any[] = [];
+    const updates: Record<string, unknown>[] = [];
+    const logs: Record<string, unknown>[] = [];
     let rentalBookingCall = 0;
     mockState.routerParams = { id: "booking-1" };
     mockState.body = {
@@ -268,7 +299,7 @@ describe("admin rental booking deposit API", () => {
       from: (table: string) => {
         if (table === "rental_booking_deposit_action_logs") {
           return {
-            insert: async (payload: any) => {
+            insert: async (payload: Record<string, unknown>) => {
               logs.push(payload);
               return { error: null };
             },
@@ -299,7 +330,7 @@ describe("admin rental booking deposit API", () => {
           };
         }
         return {
-          update: (payload: any) => {
+          update: (payload: Record<string, unknown>) => {
             updates.push(payload);
             return {
               eq: () => ({
@@ -513,7 +544,7 @@ describe("admin POS sale API", () => {
   });
 
   it("allows paid POS sales without customer information", async () => {
-    const insertedOrders: any[] = [];
+    const insertedOrders: Record<string, unknown>[] = [];
     mockState.body = {
       branchId: "b1",
       paymentMethod: "cash",
@@ -567,7 +598,7 @@ describe("admin POS sale API", () => {
           };
         if (table === "orders")
           return {
-            insert: (payload: any) => {
+            insert: (payload: Record<string, unknown>) => {
               insertedOrders.push(payload);
               return {
                 select: () => ({
@@ -653,6 +684,120 @@ describe("admin POS sale API", () => {
   });
 });
 
+describe("admin POS rental booking API", () => {
+  it("stores same-day customer return dates as one-day exclusive DB ranges", async () => {
+    const insertedBookings: Record<string, unknown>[] = [];
+    mockState.body = {
+      walkInPhone: "0812345678",
+      bookerName: "Walk In",
+      assetId: "asset-1",
+      branchId: "b1",
+      startDate: "2026-05-21",
+      endDate: "2026-05-21",
+      depositPaidAmount: 3000,
+      depositPaymentMethod: "cash",
+    };
+    mockState.platformAdminClient = {
+      from: (table: string) => {
+        if (table === "store_branches")
+          return {
+            select: () => {
+              const chain = {
+                eq: () => chain,
+                single: async () => ({ data: branchRow, error: null }),
+              };
+              return chain;
+            },
+          };
+        if (table === "assets")
+          return {
+            select: () => {
+              const chain = {
+                eq: () => chain,
+                maybeSingle: async () => ({
+                  data: {
+                    id: "asset-1",
+                    code: "CAM",
+                    slug: "camera",
+                    name_th: "Camera",
+                    name_en: "Camera",
+                    thumbnail_url: "thumb.jpg",
+                    status: "active",
+                    is_hidden: false,
+                    currency_code: "THB",
+                    daily_rate: 100,
+                    weekly_rate: 0,
+                    monthly_rate: 0,
+                    daily_enabled: true,
+                    weekly_enabled: false,
+                    monthly_enabled: false,
+                    deposit_amount: 3000,
+                    min_rental_days: 1,
+                    max_rental_days: 0,
+                    matches: [],
+                  },
+                  error: null,
+                }),
+              };
+              return chain;
+            },
+          };
+        if (table === "walk_in_customers")
+          return { upsert: async () => ({ error: null }) };
+        if (table === "rental_booking_payment_lines")
+          return { insert: async () => ({ error: null }) };
+        if (table === "rental_bookings")
+          return {
+            select: (select: string) => {
+              const chain = {
+                in: () => chain,
+                lt: () => chain,
+                gt: () => chain,
+                limit: () => chain,
+                eq: () => chain,
+                is: () => chain,
+                neq: () => chain,
+                then: (resolve: (value: unknown) => unknown) =>
+                  Promise.resolve(
+                    select === "id"
+                      ? { data: [], error: null }
+                      : {
+                          data: [
+                            {
+                              ...insertedBookings[0],
+                              asset: {
+                                storage_branch_id: "b1",
+                                store_branches: branchRow,
+                              },
+                            },
+                          ],
+                          error: null,
+                        },
+                  ).then(resolve),
+              };
+              return chain;
+            },
+            insert: async (payload: Record<string, unknown>) => {
+              insertedBookings.push(payload);
+              return { error: null };
+            },
+          };
+        return { insert: async () => ({ error: null }) };
+      },
+    };
+
+    const result = await posBookingPost({});
+
+    expect(insertedBookings[0]).toMatchObject({
+      start_date: "2026-05-21",
+      end_date: "2026-05-22",
+      rental_days: 1,
+      rental_total: 100,
+    });
+    expect(result.booking.rentalDays).toBe(1);
+  });
+});
+
 describe("admin POS accounting CSV export", () => {
   it("exports sale and rental rows with accounting headers", async () => {
     mockState.platformAdminClient = {
@@ -696,6 +841,8 @@ describe("admin POS accounting CSV export", () => {
                     checkout_total_amount: 214,
                     checkout_paid_amount: 214,
                     checkout_payment_method: "qr_transfer",
+                    deposit_refund_status: "refunded",
+                    deposit_refund_amount: 100,
                     pos_branch_name: "BKK",
                   },
                 ],
@@ -712,6 +859,8 @@ describe("admin POS accounting CSV export", () => {
     expect(csv).toContain("Date,Branch,Document Type");
     expect(csv).toContain("POS Sale");
     expect(csv).toContain("POS Rental");
+    expect(csv).toContain("Refund Status,Refund Amount");
+    expect(csv).toContain("refunded,100.00");
     expect(csv).toContain("7.00");
   });
 });

@@ -3,12 +3,13 @@ import {
   serverSupabaseServiceRole,
   serverSupabaseUser,
 } from "#supabase/server";
+import { getAuthUserId } from "~~/server/utils/user-wishlist";
 
 const ALLOWED_PLATFORM_ROLES = ["staff", "super_admin"] as const;
 
 export async function requirePlatformAdmin(event: H3Event) {
   const authUser = await serverSupabaseUser(event);
-  const userId = typeof authUser?.sub === "string" ? authUser.sub : null;
+  const userId = getAuthUserId(authUser);
 
   if (!userId) {
     throw createError({

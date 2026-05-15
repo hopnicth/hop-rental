@@ -5,6 +5,22 @@ import {
   mapContentPageRow,
 } from "~~/server/utils/content-pages";
 
+type ProductOptionRow = {
+  id?: string | null;
+  slug?: string | null;
+  name_th?: string | null;
+  is_hidden?: boolean | null;
+};
+
+type AssetOptionRow = {
+  id?: string | null;
+  code?: string | null;
+  slug?: string | null;
+  name_th?: string | null;
+  status?: string | null;
+  is_hidden?: boolean | null;
+};
+
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requireSuperAdmin(event);
   const query = getQuery(event);
@@ -54,17 +70,21 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const productOptions = (productsResult.data ?? []).map((row: any) => ({
-    value: row.id as string,
+  const productOptions = (
+    (productsResult.data ?? []) as ProductOptionRow[]
+  ).map((row) => ({
+    value: row.id ?? "",
     label: `${row.name_th ?? row.slug}`,
     isHidden: row.is_hidden === true,
   }));
 
-  const assetOptions = (assetsResult.data ?? []).map((row: any) => ({
-    value: row.id as string,
-    label: `${row.code ?? ""} · ${row.name_th ?? row.slug}`.trim(),
-    isHidden: row.is_hidden === true || row.status !== "active",
-  }));
+  const assetOptions = ((assetsResult.data ?? []) as AssetOptionRow[]).map(
+    (row) => ({
+      value: row.id ?? "",
+      label: `${row.code ?? ""} · ${row.name_th ?? row.slug}`.trim(),
+      isHidden: row.is_hidden === true || row.status !== "active",
+    }),
+  );
 
   return {
     items: (pagesResult.data ?? []).map(mapContentPageRow),

@@ -40,8 +40,53 @@ describe("rental booking availability", () => {
     ).resolves.toBeUndefined();
 
     expect(calls).toContainEqual(["eq", "asset_id", "asset-1"]);
+    expect(calls).toContainEqual(["in", "status", ["confirmed", "picked_up"]]);
     expect(calls).toContainEqual(["lt", "start_date", "2026-05-12"]);
     expect(calls).toContainEqual(["gt", "end_date", "2026-05-10"]);
+  });
+
+  it("does not include no_show in blocking availability statuses", async () => {
+    const { client, calls } = mockClient({ data: [], error: null });
+
+    await assertRentalBookingAvailability(client, {
+      assetId: "asset-1",
+      startDate: "2026-05-10",
+      endDate: "2026-05-12",
+    });
+
+    const statusCall = calls.find(
+      (call) => call[0] === "in" && call[1] === "status",
+    );
+    expect(statusCall?.[2]).toEqual(["confirmed", "picked_up"]);
+    expect(statusCall?.[2]).not.toContain("no_show");
+  });
+
+  it("checks same-day customer rentals as one-day internal half-open ranges", async () => {
+    const { client, calls } = mockClient({ data: [], error: null });
+
+    await expect(
+      assertRentalBookingAvailability(client, {
+        assetId: "asset-1",
+        startDate: "2026-05-21",
+        endDate: "2026-05-22",
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(calls).toContainEqual(["lt", "start_date", "2026-05-22"]);
+    expect(calls).toContainEqual(["gt", "end_date", "2026-05-21"]);
+  });
+
+  it("allows adjacent internal half-open ranges", async () => {
+    const { client, calls } = mockClient({ data: [], error: null });
+
+    await assertRentalBookingAvailability(client, {
+      assetId: "asset-1",
+      startDate: "2026-05-22",
+      endDate: "2026-05-23",
+    });
+
+    expect(calls).toContainEqual(["lt", "start_date", "2026-05-23"]);
+    expect(calls).toContainEqual(["gt", "end_date", "2026-05-22"]);
   });
 
   it("rejects an overlapping blocking booking", async () => {
@@ -52,6 +97,18 @@ describe("rental booking availability", () => {
         assetId: "asset-1",
         startDate: "2026-05-10",
         endDate: "2026-05-12",
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("rejects same-day-equivalent internal overlaps", async () => {
+    const { client } = mockClient({ data: [{ id: "booking-1" }], error: null });
+
+    await expect(
+      assertRentalBookingAvailability(client, {
+        assetId: "asset-1",
+        startDate: "2026-05-21",
+        endDate: "2026-05-22",
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
   });

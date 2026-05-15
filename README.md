@@ -93,9 +93,12 @@ npm run build
 - Admin POS can create `confirmed` rental bookings directly for account customers or walk-ins.
 - Admin POS can create Sale-mode orders without customer info; customer scan/search is optional and lives inside the customer info card.
 - POS transaction history is daily/branch-scoped; only `super_admin` can void/cancel rows.
+- `/admin/orders` is the sale-order-only operations queue with delivery, pickup, awaiting-payment, action-required, and all-order views.
+- Legacy sale orders with unknown fulfillment stay visible in action-required/all views; do not infer delivery vs pickup from address data.
 - Rental bookings must have either `user_id` or `walk_in_phone`.
 - Rental booking status now includes `picked_up` and `returned` for fulfillment tracking.
 - Booking cancellation is soft-delete via `status = 'cancelled'`.
+- Excessive customer cancellation restriction is design-locked in `HOPNIC_POS_V2_Master_Implementation_Plan.md` but not implemented yet; do not infer qualifying cancellations from `status = 'cancelled'` alone.
 - Booker name + phone are captured on rental submission.
 - Rental booking form blocks invalid date ranges, shows lead-time/min/max hints, and scrolls back to missing booker contact fields after submit attempts.
 - Admin POS rental mode reuses the same booking calendar/pricing summary as storefront booking, but intentionally does not enforce asset buffer days.

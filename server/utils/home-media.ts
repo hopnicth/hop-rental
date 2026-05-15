@@ -4,6 +4,13 @@ import { CATALOG_MEDIA_BUCKET } from "./catalog-media";
 
 export const HOME_MEDIA_BUCKET = CATALOG_MEDIA_BUCKET;
 export const HOME_MEDIA_PREFIX = "home-content";
+type StorageAdminClient = {
+  storage: {
+    from(bucket: string): {
+      remove(paths: string[]): Promise<{ error: unknown }>;
+    };
+  };
+};
 
 export type HomeUploadKind =
   | "banner"
@@ -114,7 +121,10 @@ export function extractHomeStoragePathFromPublicUrl(
   }
 }
 
-export async function removeHomeMediaPath(adminClient: any, path: unknown) {
+export async function removeHomeMediaPath(
+  adminClient: StorageAdminClient,
+  path: unknown,
+) {
   if (typeof path !== "string" || !path.startsWith(`${HOME_MEDIA_PREFIX}/`)) {
     return false;
   }
@@ -135,7 +145,7 @@ export async function removeHomeMediaPath(adminClient: any, path: unknown) {
 }
 
 export async function removeHomeMediaByPublicUrl(
-  adminClient: any,
+  adminClient: StorageAdminClient,
   publicUrl: unknown,
 ) {
   const path = extractHomeStoragePathFromPublicUrl(publicUrl);

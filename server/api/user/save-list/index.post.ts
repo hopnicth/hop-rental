@@ -1,5 +1,8 @@
 import { createError, defineEventHandler, readBody } from "h3";
-import { serverSupabaseServiceRole, serverSupabaseUser } from "#supabase/server";
+import {
+  serverSupabaseServiceRole,
+  serverSupabaseUser,
+} from "#supabase/server";
 import { getAuthUserId } from "~~/server/utils/user-wishlist";
 import {
   groupSaveListItems,
@@ -13,13 +16,16 @@ export default defineEventHandler(async (event) => {
   const authUser = await serverSupabaseUser(event);
   const userId = getAuthUserId(authUser);
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Authentication required" });
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Authentication required",
+    });
   }
 
   const body = (await readBody(event)) as Record<string, unknown>;
   const itemType = requireSaveListItemType(body.itemType);
   const itemId = requireSaveListItemId(body.itemId);
-  const client = serverSupabaseServiceRole(event) as any;
+  const client = serverSupabaseServiceRole(event);
 
   if (itemType === "asset") {
     const { data: asset, error } = await client
@@ -27,7 +33,8 @@ export default defineEventHandler(async (event) => {
       .select("id, status, is_hidden")
       .eq("id", itemId)
       .maybeSingle();
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+    if (error)
+      throw createError({ statusCode: 500, statusMessage: error.message });
     if (!asset || asset.status !== "active" || asset.is_hidden === true) {
       throw createError({ statusCode: 404, statusMessage: "Asset not found" });
     }
@@ -37,9 +44,17 @@ export default defineEventHandler(async (event) => {
       .select("id, content_type, is_active")
       .eq("id", itemId)
       .maybeSingle();
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-    if (!service || service.content_type !== "service" || service.is_active !== true) {
-      throw createError({ statusCode: 404, statusMessage: "Service not found" });
+    if (error)
+      throw createError({ statusCode: 500, statusMessage: error.message });
+    if (
+      !service ||
+      service.content_type !== "service" ||
+      service.is_active !== true
+    ) {
+      throw createError({
+        statusCode: 404,
+        statusMessage: "Service not found",
+      });
     }
   }
 
@@ -54,9 +69,15 @@ export default defineEventHandler(async (event) => {
 
   if (existingError) {
     if (isMissingSaveListTable(existingError)) {
-      throw createError({ statusCode: 503, statusMessage: "Migration 055 is required" });
+      throw createError({
+        statusCode: 503,
+        statusMessage: "Migration 055 is required",
+      });
     }
-    throw createError({ statusCode: 500, statusMessage: existingError.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: existingError.message,
+    });
   }
 
   const saved = !existing;
@@ -75,7 +96,10 @@ export default defineEventHandler(async (event) => {
       });
 
   if (mutation.error) {
-    throw createError({ statusCode: 500, statusMessage: mutation.error.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: mutation.error.message,
+    });
   }
 
   const { data: rows } = await client
@@ -84,5 +108,10 @@ export default defineEventHandler(async (event) => {
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  return { itemType, itemId, saved, ...groupSaveListItems(mapSaveListItems(rows)) };
+  return {
+    itemType,
+    itemId,
+    saved,
+    ...groupSaveListItems(mapSaveListItems(rows)),
+  };
 });

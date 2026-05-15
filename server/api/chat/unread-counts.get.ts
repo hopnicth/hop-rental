@@ -8,13 +8,25 @@ import type {
 
 const CHAT_UNREAD_LIST_MAX = 100;
 
+type ChatParticipantRow = {
+  conversation_id?: string | null;
+  last_read_at?: string | null;
+};
+
+type ChatConversationRow = {
+  id?: string | null;
+  customer_id?: string | null;
+  updated_at?: string | null;
+  status?: string | null;
+};
+
 export default defineEventHandler(
   async (event): Promise<ChatUnreadCountsResponse> => {
     const { userId, platformRole, adminClient } = await requireChatUser(event);
     const fetchedAt = new Date().toISOString();
 
-    let participantRows: any[] = [];
-    let conversationRows: any[] = [];
+    let participantRows: ChatParticipantRow[] = [];
+    let conversationRows: ChatConversationRow[] = [];
 
     if (isChatAdmin(platformRole)) {
       const { data, error } = await adminClient
@@ -26,9 +38,9 @@ export default defineEventHandler(
       if (error) {
         throw createError({ statusCode: 500, statusMessage: error.message });
       }
-      conversationRows = data ?? [];
+      conversationRows = (data ?? []) as ChatConversationRow[];
 
-      const ids = conversationRows.map((row: any) => String(row.id));
+      const ids = conversationRows.map((row) => String(row.id));
       if (ids.length > 0) {
         const { data: parts, error: partsError } = await adminClient
           .from("chat_participants")
@@ -41,7 +53,7 @@ export default defineEventHandler(
             statusMessage: partsError.message,
           });
         }
-        participantRows = parts ?? [];
+        participantRows = (parts ?? []) as ChatParticipantRow[];
       }
     } else {
       const { data, error } = await adminClient
@@ -53,7 +65,7 @@ export default defineEventHandler(
       if (error) {
         throw createError({ statusCode: 500, statusMessage: error.message });
       }
-      participantRows = data ?? [];
+      participantRows = (data ?? []) as ChatParticipantRow[];
 
       const ids = participantRows.map((row) => String(row.conversation_id));
       if (ids.length > 0) {
@@ -67,11 +79,11 @@ export default defineEventHandler(
             statusMessage: convError.message,
           });
         }
-        conversationRows = convs ?? [];
+        conversationRows = (convs ?? []) as ChatConversationRow[];
       }
     }
 
-    const ids = conversationRows.map((row: any) => String(row.id));
+    const ids = conversationRows.map((row) => String(row.id));
     if (ids.length === 0) {
       return { items: [], totalUnread: 0, fetchedAt };
     }
@@ -106,7 +118,7 @@ export default defineEventHandler(
       userId,
     });
 
-    const items: ChatUnreadEntry[] = conversationRows.map((row: any) => ({
+    const items: ChatUnreadEntry[] = conversationRows.map((row) => ({
       conversationId: String(row.id),
       customerId:
         typeof row.customer_id === "string" && row.customer_id.length > 0

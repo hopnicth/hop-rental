@@ -5,12 +5,11 @@
  * Features:
  *  - KYC status badge (pending/verified/rejected)
  *  - Rejection reason display
- *  - PDPA consent checkbox with timestamp
- *  - UFileUpload for ID card (jpeg/png/pdf, max 5MB)
+ *  - Detailed PDPA/KYC consent with timestamp
+ *  - UFileUpload for ID card via owner-checked server API
  *
  * Reuses:
  *  - useUserProfile() → profile, fetchProfile
- *  - useSupabaseClient() → storage upload + users table update
  *  - i18n keys: user.*
  */
 
@@ -23,6 +22,62 @@ const { profile, loading, fetchProfile } = useUserProfile();
 // ── PDPA consent state ──
 const pdpaAccepted = ref(false);
 const uploading = ref(false);
+const savingConsent = ref(false);
+
+const consentSections = computed(() => [
+  {
+    title: t("user.kycConsentDataCollectedTitle"),
+    items: [
+      t("user.kycConsentDataCollectedIndividual"),
+      t("user.kycConsentDataCollectedContact"),
+      t("user.kycConsentDataCollectedDocuments"),
+      t("user.kycConsentDataCollectedTransactions"),
+    ],
+  },
+  {
+    title: t("user.kycConsentPurposeTitle"),
+    items: [
+      t("user.kycConsentPurposeIdentity"),
+      t("user.kycConsentPurposeRisk"),
+      t("user.kycConsentPurposeDocuments"),
+      t("user.kycConsentPurposeFraud"),
+      t("user.kycConsentPurposeLegal"),
+    ],
+  },
+  {
+    title: t("user.kycConsentCertificationTitle"),
+    items: [
+      t("user.kycConsentCertificationTrue"),
+      t("user.kycConsentCertificationRights"),
+      t("user.kycConsentCertificationNoFraud"),
+    ],
+  },
+  {
+    title: t("user.kycConsentDisclosureTitle"),
+    items: [
+      t("user.kycConsentDisclosureShipping"),
+      t("user.kycConsentDisclosurePayment"),
+      t("user.kycConsentDisclosureAccounting"),
+      t("user.kycConsentDisclosureLegal"),
+      t("user.kycConsentDisclosureGovernment"),
+    ],
+  },
+  {
+    title: t("user.kycConsentRightsTitle"),
+    items: [
+      t("user.kycConsentRightsAccess"),
+      t("user.kycConsentRightsCorrect"),
+      t("user.kycConsentRightsWithdraw"),
+      t("user.kycConsentRightsDelete"),
+      t("user.kycConsentRightsObject"),
+    ],
+  },
+]);
+
+const hasPdpaConsent = computed(() => Boolean(profile.value?.pdpaConsentedAt));
+const canUploadKycDocument = computed(
+  () => Boolean(user.value && hasPdpaConsent.value) && !uploading.value,
+);
 
 // Sync PDPA checkbox with profile
 watch(
@@ -59,6 +114,16 @@ const kycLabel = computed(() => {
 async function handleIdCardUpload(file: File | File[] | null | undefined) {
   if (!file || Array.isArray(file) || !user.value) return;
 
+  if (!hasPdpaConsent.value) {
+    toast.add({
+      title: t("user.kycConsentRequiredTitle"),
+      description: t("user.kycConsentRequiredDesc"),
+      icon: "bx:lock",
+      color: "warning",
+    });
+    return;
+  }
+
   // Validate size
   if (file.size > 5 * 1024 * 1024) {
     toast.add({
@@ -71,37 +136,26 @@ async function handleIdCardUpload(file: File | File[] | null | undefined) {
 
   uploading.value = true;
   try {
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `kyc/${user.value.id}/id-card.${ext}`;
+    const body = new FormData();
+    body.append("file", file);
 
-    const { error: uploadErr } = await supabase.storage
-      .from("kyc-documents")
-      .upload(path, file, { upsert: true });
+    await $fetch("/api/user/kyc/id-card", {
+      method: "POST",
+      body,
+    });
 
-    if (uploadErr) throw uploadErr;
-
-    const { data: urlData } = supabase.storage
-      .from("kyc-documents")
-      .getPublicUrl(path);
-
-    // Update user record
-    const { error: dbErr } = await supabase
-      .from("users")
-      .update({ id_card_url: urlData.publicUrl })
-      .eq("id", user.value.id);
-
-    if (dbErr) throw dbErr;
-
-    await fetchProfile();
+    await fetchProfile(true);
     toast.add({
-      title: t("user.saveSuccess"),
+      title: t("user.kycUploadSuccess"),
+      description: t("user.kycUploadSuccessDesc"),
       icon: "bx:check-circle",
       color: "success",
     });
   } catch (e) {
     console.error("Upload error:", e);
     toast.add({
-      title: t("user.saveError"),
+      title: t("user.kycUploadError"),
+      description: e instanceof Error ? e.message : undefined,
       icon: "bx:error-circle",
       color: "error",
     });
@@ -114,7 +168,7 @@ async function handleIdCardUpload(file: File | File[] | null | undefined) {
 async function handlePdpaConsent() {
   if (!user.value || !pdpaAccepted.value) return;
 
-  uploading.value = true;
+  savingConsent.value = true;
   try {
     const { error: dbErr } = await supabase
       .from("users")
@@ -126,20 +180,21 @@ async function handlePdpaConsent() {
 
     if (dbErr) throw dbErr;
 
-    await fetchProfile();
+    await fetchProfile(true);
     toast.add({
-      title: t("user.saveSuccess"),
+      title: t("user.kycConsentSaveSuccess"),
       icon: "bx:check-circle",
       color: "success",
     });
-  } catch {
+  } catch (e) {
     toast.add({
-      title: t("user.saveError"),
+      title: t("user.kycConsentSaveError"),
+      description: e instanceof Error ? e.message : undefined,
       icon: "bx:error-circle",
       color: "error",
     });
   } finally {
-    uploading.value = false;
+    savingConsent.value = false;
   }
 }
 </script>
@@ -210,14 +265,14 @@ async function handlePdpaConsent() {
               :dropzone="true"
               :interactive="true"
               :preview="false"
-              :disabled="uploading"
+              :disabled="!canUploadKycDocument"
               @update:model-value="handleIdCardUpload"
             />
           </div>
 
           <!-- No file yet — show full upload area -->
           <UFileUpload
-            v-else
+            v-if="!profile?.idCardUrl"
             accept="image/jpeg,image/png,application/pdf"
             :label="t('user.uploadIdCard')"
             :description="t('user.kycFileTypes')"
@@ -226,15 +281,70 @@ async function handlePdpaConsent() {
             :dropzone="true"
             :interactive="true"
             :preview="false"
-            :disabled="uploading"
+            :disabled="!canUploadKycDocument"
             class="min-h-40"
             @update:model-value="handleIdCardUpload"
           />
+
+          <UAlert
+            v-if="!hasPdpaConsent"
+            class="mt-3"
+            color="warning"
+            variant="soft"
+            icon="bx:lock"
+            :title="t('user.kycConsentRequiredTitle')"
+            :description="t('user.kycConsentRequiredDesc')"
+          />
+
+          <UAlert
+            v-if="uploading"
+            class="mt-3"
+            color="info"
+            variant="soft"
+            icon="bx:loader-alt"
+            :title="t('user.kycUploadInProgressTitle')"
+            :description="t('user.kycUploadInProgressDesc')"
+          />
         </div>
 
-        <!-- PDPA Consent -->
+        <!-- PDPA / KYC Consent -->
         <div class="rounded-lg border p-4">
-          <p class="mb-3 text-sm font-medium">{{ t("user.pdpaConsent") }}</p>
+          <div class="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p class="text-sm font-medium">
+                {{ t("user.kycConsentFullTitle") }}
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                {{ t("user.kycConsentFullSubtitle") }}
+              </p>
+            </div>
+            <UBadge
+              v-if="profile?.pdpaConsentedAt"
+              color="success"
+              variant="subtle"
+              :label="t('user.verified')"
+            />
+          </div>
+
+          <div
+            class="mb-4 max-h-96 space-y-4 overflow-y-auto rounded-lg border bg-elevated/30 p-4 text-sm"
+          >
+            <p class="text-muted">{{ t("user.kycConsentFullIntro") }}</p>
+            <div
+              v-for="section in consentSections"
+              :key="section.title"
+              class="space-y-2"
+            >
+              <h3 class="font-semibold">{{ section.title }}</h3>
+              <ul class="list-disc space-y-1 ps-5 text-muted">
+                <li v-for="item in section.items" :key="item">{{ item }}</li>
+              </ul>
+            </div>
+            <div class="rounded-lg bg-primary/5 p-3 text-default">
+              {{ t("user.kycConsentRetentionDesc") }}
+            </div>
+            <p class="font-medium">{{ t("user.kycConsentAcceptanceText") }}</p>
+          </div>
 
           <!-- Already consented -->
           <div
@@ -242,7 +352,7 @@ async function handlePdpaConsent() {
             class="flex items-center gap-2 text-sm text-success"
           >
             <UIcon name="bx:check-circle" class="text-lg" />
-            <span>{{ t("user.pdpaCheckbox") }}</span>
+            <span>{{ t("user.kycConsentAcceptanceText") }}</span>
             <UBadge
               color="success"
               variant="subtle"
@@ -254,21 +364,17 @@ async function handlePdpaConsent() {
 
           <!-- Not yet consented -->
           <div v-else class="space-y-3">
-            <label class="flex cursor-pointer items-start gap-2">
-              <input
-                v-model="pdpaAccepted"
-                type="checkbox"
-                class="mt-0.5 h-4 w-4 rounded border-gray-300"
-              />
-              <span class="text-sm">{{ t("user.pdpaCheckbox") }}</span>
-            </label>
+            <UCheckbox
+              v-model="pdpaAccepted"
+              :label="t('user.kycConsentCheckboxDetailed')"
+            />
 
             <UButton
               :label="t('user.pdpaConsent')"
               icon="bx:check"
               color="primary"
-              :disabled="!pdpaAccepted || uploading"
-              :loading="uploading"
+              :disabled="!pdpaAccepted || savingConsent || uploading"
+              :loading="savingConsent"
               @click="handlePdpaConsent"
             />
           </div>

@@ -21,6 +21,19 @@ const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const VARIANT_WIDTHS = { thumbnail: 300, card: 800, large: 1600 } as const;
 const MAX_BYTES = 15 * 1024 * 1024;
 
+type StorageAdminClient = {
+  storage: {
+    from(bucket: string): {
+      upload(
+        path: string,
+        buffer: Buffer,
+        options: { contentType: string; upsert: boolean },
+      ): Promise<{ error: { message?: string } | null }>;
+      getPublicUrl(path: string): { data: { publicUrl: string } };
+    };
+  };
+};
+
 function readTextPart(
   parts: Awaited<ReturnType<typeof readMultipartFormData>>,
   name: string,
@@ -29,7 +42,11 @@ function readTextPart(
   return raw ? Buffer.from(raw).toString("utf8").trim() : "";
 }
 
-async function uploadVariant(adminClient: any, path: string, buffer: Buffer) {
+async function uploadVariant(
+  adminClient: StorageAdminClient,
+  path: string,
+  buffer: Buffer,
+) {
   const { error } = await adminClient.storage
     .from(CATALOG_MEDIA_BUCKET)
     .upload(path, buffer, { contentType: "image/webp", upsert: true });
@@ -101,7 +118,12 @@ export default defineEventHandler(async (event) => {
       })
       .webp({ quality: variant === "thumbnail" ? 78 : 82 })
       .toBuffer({ resolveWithObject: true });
-    const path = buildBlockImagePath(id, located.blocks[located.index].key, imageId, variant);
+    const path = buildBlockImagePath(
+      id,
+      located.blocks[located.index].key,
+      imageId,
+      variant,
+    );
     variants[variant] = await uploadVariant(adminClient, path, data);
   }
 

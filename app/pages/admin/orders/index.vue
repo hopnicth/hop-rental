@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import AdminOrderQrScanner from "~/components/admin/AdminOrderQrScanner.vue";
 import type {
+  AdminSaleOrderQueueRow,
+  AdminSaleOrderQueueView,
+} from "~/types/admin-order";
+import type {
   OrderFulfillmentStatus,
   OrderPaymentStatus,
   OrderStatus,
 } from "~/types/order";
-import type { RentalBookingStatus } from "~/types/rental-booking";
 
 definePageMeta({
   layout: "admin",
@@ -20,47 +23,73 @@ type BadgeColor =
   | "success"
   | "error"
   | "primary";
+type SummaryKey =
+  | "actionRequired"
+  | "delivery"
+  | "pickup"
+  | "awaitingPayment"
+  | "all";
 
 const router = useRouter();
 const toast = useToast();
-
+const isScannerOpen = ref(false);
 const {
   filters,
   items,
+  summary,
   total,
-  actionRequiredCount,
+  page,
+  pageSize,
   hasMore,
   loading,
-  loadingMore,
   error,
   refresh,
-  loadMore,
+  goToPage,
   resetFilters,
-} = useAdminOrders();
+} = useAdminOrderQueue();
 
-// ── Branch filter options (rental only) ──
-const { data: branchData } = await useFetch<{
-  items: Array<{
-    id: string;
-    code: string;
-    nameTh: string;
-    nameEn: string;
-    isActive: boolean;
-  }>;
-}>("/api/admin/branches", { key: "admin-orders-branches" });
-
-const branchOptions = computed(() => [
-  { value: "", label: "All branches" },
-  ...(branchData.value?.items ?? [])
-    .filter((b) => b.isActive)
-    .map((b) => ({ value: b.id, label: `${b.nameTh} · ${b.code}` })),
-]);
-
-// ── Filter dropdown options ──
-const typeOptions = [
-  { value: "all", label: "All" },
-  { value: "sale", label: "Sale orders" },
-  { value: "rental", label: "Rental bookings" },
+const queueCards: Array<{
+  value: AdminSaleOrderQueueView;
+  label: string;
+  helper: string;
+  summaryKey: SummaryKey;
+  icon: string;
+}> = [
+  {
+    value: "action_required",
+    label: "ต้องจัดการ",
+    helper: "ชำระแล้วและยังต้องเตรียมส่งมอบ",
+    summaryKey: "actionRequired",
+    icon: "bx:task",
+  },
+  {
+    value: "delivery",
+    label: "ต้องจัดส่ง",
+    helper: "คำสั่งซื้อที่ต้องจัดส่งให้ลูกค้า",
+    summaryKey: "delivery",
+    icon: "bx:package",
+  },
+  {
+    value: "pickup",
+    label: "ลูกค้ารับเอง",
+    helper: "คำสั่งซื้อที่เตรียมรับที่สาขา",
+    summaryKey: "pickup",
+    icon: "bx:store",
+  },
+  {
+    value: "awaiting_payment",
+    label: "รอชำระ",
+    helper: "รอชำระเงินหรือตรวจสอบยอด",
+    summaryKey: "awaitingPayment",
+    icon: "bx:credit-card",
+  },
+  {
+    value: "all",
+    label: "ทั้งหมด",
+    helper: "คำสั่งซื้อขายทั้งหมดตามตัวกรอง",
+    summaryKey: "all",
+    icon: "bx:list-ul",
+  },
 ];
 
 const orderStatusOptions: Array<{ value: OrderStatus; label: string }> = [
@@ -90,116 +119,29 @@ const fulfillmentStatusOptions: Array<{
   { value: "not_applicable", label: "N/A" },
   { value: "unfulfilled", label: "Unfulfilled" },
   { value: "preparing", label: "Preparing" },
-  { value: "ready_for_carrier_pickup", label: "Ready for pickup" },
+  { value: "ready_for_carrier_pickup", label: "Ready for carrier pickup" },
   { value: "shipped", label: "Shipped" },
   { value: "delivered", label: "Delivered" },
   { value: "returned", label: "Returned" },
   { value: "cancelled", label: "Cancelled" },
 ];
 
-const rentalStatusOptions: Array<{
-  value: RentalBookingStatus;
-  label: string;
-}> = [
-  { value: "draft", label: "Draft" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "picked_up", label: "Picked up" },
-  { value: "returned", label: "Returned" },
-  { value: "cancelled", label: "Cancelled" },
-];
-
-const orderQueueTabs = [
-  { value: "all", label: "All" },
-  { value: "action_required", label: "ต้องจัดการ" },
-] as const;
-
-const actionRequiredBadgeLabel = computed(() =>
-  actionRequiredCount.value > 99 ? "99+" : String(actionRequiredCount.value),
+const activeQueue = computed(() => filters.queue ?? "action_required");
+const visibleRangeStart = computed(() =>
+  total.value === 0 ? 0 : page.value * pageSize.value + 1,
+);
+const visibleRangeEnd = computed(() =>
+  Math.min(total.value, page.value * pageSize.value + items.value.length),
 );
 
-function setOrderQueueView(view: "all" | "action_required") {
-  if (filters.view === view) return;
-  filters.view = view;
+function setQueue(queue: AdminSaleOrderQueueView): void {
+  filters.queue = queue;
 }
 
-// ── Auto-refetch on filter change (debounced for search) ──
-let searchTimer: ReturnType<typeof setTimeout> | null = null;
-watch(
-  () => filters.search,
-  () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => void refresh(), 300);
-  },
-);
-
-watch(
-  [
-    () => filters.type,
-    () => filters.view,
-    () => filters.orderStatus,
-    () => filters.paymentStatus,
-    () => filters.fulfillmentStatus,
-    () => filters.rentalStatus,
-    () => filters.dateFrom,
-    () => filters.dateTo,
-    () => filters.branchId,
-  ],
-  () => void refresh(),
-  { deep: true },
-);
-
-if (import.meta.client) {
-  onMounted(() => {
-    void refresh();
-  });
+function summaryCount(card: { summaryKey: SummaryKey }): number {
+  return summary.value[card.summaryKey];
 }
 
-// ── QR scanner ──
-const isScannerOpen = ref(false);
-
-function handleDecoded(payload: {
-  raw: string;
-  kind: "order" | "booking" | "customer" | "unknown";
-  value: string;
-}): void {
-  if (payload.kind === "order") {
-    const target = items.value
-      .flatMap((c) => c.saleOrders)
-      .find((o) => o.orderNumber === payload.value);
-    if (target) {
-      void router.push(`/admin/orders/${target.id}`);
-      return;
-    }
-    filters.search = payload.value;
-    toast.add({
-      title: "Order not in current page",
-      description: `Searching for order ${payload.value}…`,
-      color: "info",
-    });
-    return;
-  }
-  if (payload.kind === "booking") {
-    void router.push(`/admin/rental-bookings/${payload.value}`);
-    return;
-  }
-  if (payload.kind === "customer") {
-    filters.search = payload.value;
-    toast.add({
-      title: "Customer scanned",
-      description: `Filtering by customer ${payload.value}…`,
-      color: "info",
-    });
-    return;
-  }
-  filters.search = payload.raw;
-  toast.add({
-    title: "QR scanned",
-    description: `Searching for "${payload.raw}"…`,
-    color: "info",
-  });
-}
-
-// ── Formatting helpers ──
 function formatCurrency(value: number, currency = "THB"): string {
   return new Intl.NumberFormat("th-TH", {
     style: "currency",
@@ -216,10 +158,16 @@ function formatDate(value: string): string {
   });
 }
 
+function statusLabel(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
 function emptyStateMessage(): string {
-  return filters.view === "action_required"
-    ? "No orders currently need preparation."
-    : "No customers match the current filters.";
+  if (activeQueue.value === "delivery") return "ไม่มีคำสั่งซื้อที่ต้องจัดส่ง";
+  if (activeQueue.value === "pickup") return "ไม่มีคำสั่งซื้อที่ลูกค้ารับเอง";
+  if (activeQueue.value === "awaiting_payment") return "ไม่มีคำสั่งซื้อรอชำระ";
+  if (activeQueue.value === "all") return "ไม่พบคำสั่งซื้อที่ตรงกับตัวกรอง";
+  return "ไม่มีคำสั่งซื้อที่ต้องจัดการ";
 }
 
 function orderStatusColor(status: OrderStatus): BadgeColor {
@@ -248,22 +196,55 @@ function fulfillmentStatusColor(status: OrderFulfillmentStatus): BadgeColor {
   return "neutral";
 }
 
-function rentalStatusColor(status: RentalBookingStatus): BadgeColor {
-  if (status === "confirmed") return "success";
-  if (status === "picked_up") return "info";
-  if (status === "returned") return "primary";
-  if (status === "draft") return "warning";
-  return "error";
+function fulfillmentColor(order: AdminSaleOrderQueueRow): BadgeColor {
+  if (order.fulfillmentMethod === "delivery") return "primary";
+  if (order.fulfillmentMethod === "pickup") return "info";
+  return "warning";
 }
 
-function isSaleOrderIncomplete(order: { status: OrderStatus }): boolean {
-  return order.status !== "completed" && order.status !== "cancelled";
+function fulfillmentLabel(order: AdminSaleOrderQueueRow): string {
+  if (order.fulfillmentMethod === "delivery") return "Delivery";
+  if (order.fulfillmentMethod === "pickup") return "รับเอง";
+  return "วิธีส่งมอบไม่ระบุ";
 }
 
-function isRentalBookingIncomplete(booking: {
-  status: RentalBookingStatus;
-}): boolean {
-  return booking.status === "draft";
+function fulfillmentDetail(order: AdminSaleOrderQueueRow): string {
+  if (order.fulfillmentMethod === "delivery") {
+    return order.addressTitle || "ไม่มีชื่อที่อยู่";
+  }
+  if (order.fulfillmentMethod === "pickup") {
+    return order.pickupBranch?.name || "ยังไม่ระบุสาขา";
+  }
+  return "Legacy / ตรวจสอบข้อมูลคำสั่งซื้อ";
+}
+
+function handleDecoded(payload: {
+  raw: string;
+  kind: string;
+  value: string;
+}): void {
+  if (payload.kind === "order") {
+    const target = items.value.find(
+      (order) => order.orderNumber === payload.value,
+    );
+    if (target) {
+      void router.push(`/admin/orders/${target.id}`);
+      return;
+    }
+    filters.search = payload.value;
+    toast.add({
+      title: "Order not in current page",
+      description: `Searching for ${payload.value}…`,
+      color: "info",
+    });
+    return;
+  }
+  filters.search = payload.kind === "customer" ? payload.value : payload.raw;
+  toast.add({
+    title: "QR scanned",
+    description: "Searching sale order queue…",
+    color: "info",
+  });
 }
 </script>
 
@@ -271,9 +252,9 @@ function isRentalBookingIncomplete(booking: {
   <div class="space-y-4">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <h2 class="text-xl font-semibold">Orders & Bookings</h2>
+        <h2 class="text-xl font-semibold">คำสั่งซื้อ</h2>
         <p class="text-sm text-muted">
-          Customer-grouped view of sale orders and rental bookings.
+          ติดตามคำสั่งซื้อที่ต้องชำระ จัดส่ง หรือเตรียมให้ลูกค้ารับสินค้า
         </p>
       </div>
       <div class="flex flex-wrap gap-2">
@@ -294,56 +275,61 @@ function isRentalBookingIncomplete(booking: {
       </div>
     </div>
 
+    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <button
+        v-for="card in queueCards"
+        :key="card.value"
+        type="button"
+        class="rounded-2xl border p-4 text-left transition hover:border-primary hover:bg-primary/5"
+        :class="
+          activeQueue === card.value
+            ? 'border-primary bg-primary/10 shadow-sm'
+            : 'border-default bg-default'
+        "
+        @click="setQueue(card.value)"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold">{{ card.label }}</p>
+            <p class="mt-1 text-xs text-muted">{{ card.helper }}</p>
+          </div>
+          <UIcon :name="card.icon" class="text-xl text-primary" />
+        </div>
+        <p class="mt-4 text-3xl font-bold tabular-nums">
+          {{ summaryCount(card) }}
+        </p>
+      </button>
+    </div>
+
     <div class="flex flex-wrap gap-2">
       <UButton
-        v-for="tab in orderQueueTabs"
-        :key="tab.value"
-        color="primary"
+        v-for="tab in queueCards"
+        :key="`tab-${tab.value}`"
         size="sm"
-        :variant="filters.view === tab.value ? 'solid' : 'soft'"
-        @click="setOrderQueueView(tab.value)"
+        color="primary"
+        :variant="activeQueue === tab.value ? 'solid' : 'soft'"
+        @click="setQueue(tab.value)"
       >
-        <span class="inline-flex items-center gap-1.5">
-          <span>{{ tab.label }}</span>
-          <span
-            v-if="tab.value === 'action_required' && actionRequiredCount > 0"
-            class="inline-flex min-w-5 items-center justify-center rounded-full bg-error px-1.5 text-[10px] font-bold leading-5 text-white"
-          >
-            {{ actionRequiredBadgeLabel }}
-          </span>
-        </span>
+        {{ tab.label }}
       </UButton>
     </div>
 
     <UCard>
-      <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+      <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <UFormField label="Search">
           <UInput
             v-model="filters.search"
-            placeholder="Order #, name, phone, ID…"
+            placeholder="Order #, customer, phone…"
             icon="bx:search"
             class="w-full"
           />
         </UFormField>
-
-        <UFormField label="Type">
-          <USelectMenu
-            v-model="filters.type"
-            :items="typeOptions"
-            value-key="value"
-            label-key="label"
-            class="w-full"
-          />
-        </UFormField>
-
         <UFormField label="Date from">
           <UInput v-model="filters.dateFrom" class="w-full" type="date" />
         </UFormField>
-
         <UFormField label="Date to">
           <UInput v-model="filters.dateTo" class="w-full" type="date" />
         </UFormField>
-
         <UFormField label="Order status">
           <USelectMenu
             v-model="filters.orderStatus"
@@ -354,7 +340,6 @@ function isRentalBookingIncomplete(booking: {
             class="w-full"
           />
         </UFormField>
-
         <UFormField label="Payment status">
           <USelectMenu
             v-model="filters.paymentStatus"
@@ -365,33 +350,11 @@ function isRentalBookingIncomplete(booking: {
             class="w-full"
           />
         </UFormField>
-
-        <UFormField label="Fulfillment">
+        <UFormField label="Fulfillment status">
           <USelectMenu
             v-model="filters.fulfillmentStatus"
             multiple
             :items="fulfillmentStatusOptions"
-            value-key="value"
-            label-key="label"
-            class="w-full"
-          />
-        </UFormField>
-
-        <UFormField label="Rental status">
-          <USelectMenu
-            v-model="filters.rentalStatus"
-            multiple
-            :items="rentalStatusOptions"
-            value-key="value"
-            label-key="label"
-            class="w-full"
-          />
-        </UFormField>
-
-        <UFormField label="Storage branch (rental only)">
-          <USelectMenu
-            v-model="filters.branchId"
-            :items="branchOptions"
             value-key="value"
             label-key="label"
             class="w-full"
@@ -406,10 +369,20 @@ function isRentalBookingIncomplete(booking: {
       variant="soft"
       icon="bx:error-circle"
       :title="error"
-    />
+    >
+      <template #actions>
+        <UButton
+          label="Retry"
+          size="xs"
+          color="error"
+          variant="soft"
+          @click="refresh()"
+        />
+      </template>
+    </UAlert>
 
     <div v-if="loading && items.length === 0" class="space-y-3">
-      <USkeleton v-for="i in 3" :key="i" class="h-32 w-full" />
+      <USkeleton v-for="i in 5" :key="i" class="h-20 w-full" />
     </div>
 
     <div
@@ -419,62 +392,44 @@ function isRentalBookingIncomplete(booking: {
       {{ emptyStateMessage() }}
     </div>
 
-    <div v-else class="space-y-3">
-      <UCard v-for="card in items" :key="card.customer.userId">
-        <div
-          class="flex flex-col gap-2 border-b border-default pb-3 sm:flex-row sm:items-start sm:justify-between"
-        >
-          <div class="space-y-1">
-            <p class="font-semibold">
-              {{ card.customer.fullName || "(no name)" }}
-            </p>
+    <UCard v-else>
+      <template #header>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="font-semibold">Sale Order Operations Queue</p>
             <p class="text-xs text-muted">
-              {{ card.customer.email || "—" }}
-              <span v-if="card.customer.phone">
-                · {{ card.customer.phone }}</span
-              >
-            </p>
-            <p class="text-xs text-muted">
-              User ID: {{ card.customer.userId }}
+              Showing {{ visibleRangeStart }}–{{ visibleRangeEnd }} of
+              {{ total }} orders
             </p>
           </div>
-          <div class="text-left sm:text-right">
-            <p class="text-xs text-muted">Latest activity</p>
-            <p class="text-sm font-medium">
-              {{ formatDate(card.customer.latestActivityAt) }}
-            </p>
-            <div class="mt-1 flex flex-wrap gap-1 sm:justify-end">
-              <UBadge color="primary" variant="soft" size="sm">
-                Sale × {{ card.customer.saleCount }}
-              </UBadge>
-              <UBadge color="info" variant="soft" size="sm">
-                Rental × {{ card.customer.rentalCount }}
-              </UBadge>
-            </div>
-          </div>
+          <UBadge v-if="loading" color="primary" variant="soft">
+            Updating…
+          </UBadge>
         </div>
+      </template>
 
+      <div class="hidden md:block">
         <div
-          v-if="card.saleOrders.length > 0"
-          class="space-y-2 border-b border-default py-3"
+          class="grid grid-cols-[1.1fr_1.1fr_1.3fr_1.1fr_0.9fr] gap-4 border-b border-default pb-2 text-xs font-semibold uppercase tracking-wide text-muted"
         >
-          <p class="text-xs font-semibold uppercase tracking-wide text-muted">
-            Sale orders ({{ card.saleOrders.length }})
-          </p>
+          <span>Order</span>
+          <span>Customer</span>
+          <span>Fulfillment</span>
+          <span>Status</span>
+          <span class="text-right">Amount</span>
+        </div>
+        <div
+          class="max-h-[calc(100vh-28rem)] min-h-72 overflow-y-auto divide-y divide-default"
+        >
           <div
-            v-for="order in card.saleOrders"
+            v-for="order in items"
             :key="order.id"
-            class="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-start sm:justify-between"
-            :class="
-              isSaleOrderIncomplete(order)
-                ? 'border-error/60 bg-error/5'
-                : 'border-default'
-            "
+            class="grid grid-cols-[1.1fr_1.1fr_1.3fr_1.1fr_0.9fr] gap-4 py-3 text-sm"
           >
             <div class="space-y-1">
               <NuxtLink
                 :to="`/admin/orders/${order.id}`"
-                class="font-medium text-primary hover:underline"
+                class="font-semibold text-primary hover:underline"
               >
                 {{ order.orderNumber }}
               </NuxtLink>
@@ -483,58 +438,60 @@ function isRentalBookingIncomplete(booking: {
                   order.itemCount === 1 ? "" : "s"
                 }}
               </p>
-              <a
-                v-if="card.customer.phone"
-                :href="`tel:${card.customer.phone}`"
-                class="inline-flex items-center gap-1 text-sm font-medium text-default hover:text-primary"
-                @click.stop
-              >
-                <UIcon name="bx:phone" class="text-base" />
-                {{ card.customer.phone }}
-              </a>
-              <div class="flex flex-wrap gap-1 pt-1">
-                <UBadge
-                  :color="orderStatusColor(order.status)"
-                  variant="subtle"
-                  size="sm"
-                >
-                  {{ order.status }}
-                </UBadge>
-                <UBadge
-                  :color="paymentStatusColor(order.paymentStatus)"
-                  variant="subtle"
-                  size="sm"
-                >
-                  {{ order.paymentStatus }}
-                </UBadge>
-                <UBadge
-                  :color="fulfillmentStatusColor(order.fulfillmentStatus)"
-                  variant="subtle"
-                  size="sm"
-                >
-                  {{ order.fulfillmentStatus }}
-                </UBadge>
-                <UBadge color="neutral" variant="soft" size="sm">
-                  {{ order.checkoutMode }}
-                </UBadge>
-              </div>
             </div>
-            <div
-              class="flex flex-col gap-2 sm:items-end sm:justify-between sm:text-right"
-            >
-              <div>
-                <p class="text-sm font-semibold text-primary">
-                  {{ formatCurrency(order.grandTotal, order.currencyCode) }}
-                </p>
-                <p v-if="order.addressTitle" class="text-xs text-muted">
-                  {{ order.addressTitle }}
-                </p>
-              </div>
+            <div class="space-y-1">
+              <p class="font-medium">
+                {{ order.customer.name || "(no name)" }}
+              </p>
+              <a
+                v-if="order.customer.phone"
+                :href="`tel:${order.customer.phone}`"
+                class="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
+              >
+                <UIcon name="bx:phone" />{{ order.customer.phone }}
+              </a>
+              <p v-else class="text-xs text-muted">No phone</p>
+            </div>
+            <div class="space-y-1">
+              <UBadge :color="fulfillmentColor(order)" variant="soft" size="sm">
+                {{ fulfillmentLabel(order) }}
+              </UBadge>
+              <p class="line-clamp-2 text-xs text-muted">
+                {{ fulfillmentDetail(order) }}
+              </p>
+            </div>
+            <div class="flex flex-wrap gap-1 self-start">
+              <UBadge
+                :color="paymentStatusColor(order.paymentStatus)"
+                variant="subtle"
+                size="sm"
+              >
+                {{ statusLabel(order.paymentStatus) }}
+              </UBadge>
+              <UBadge
+                :color="fulfillmentStatusColor(order.fulfillmentStatus)"
+                variant="subtle"
+                size="sm"
+              >
+                {{ statusLabel(order.fulfillmentStatus) }}
+              </UBadge>
+              <UBadge
+                :color="orderStatusColor(order.orderStatus)"
+                variant="soft"
+                size="sm"
+              >
+                {{ statusLabel(order.orderStatus) }}
+              </UBadge>
+            </div>
+            <div class="space-y-2 text-right">
+              <p class="font-semibold text-primary">
+                {{ formatCurrency(order.grandTotal, order.currencyCode) }}
+              </p>
               <UButton
                 size="xs"
                 icon="bx:right-arrow-alt"
                 trailing
-                label="View detail"
+                label="ดูรายละเอียด"
                 color="primary"
                 variant="soft"
                 :to="`/admin/orders/${order.id}`"
@@ -542,129 +499,98 @@ function isRentalBookingIncomplete(booking: {
             </div>
           </div>
         </div>
+      </div>
 
-        <div v-if="card.rentalBookings.length > 0" class="space-y-2 pt-3">
-          <p class="text-xs font-semibold uppercase tracking-wide text-muted">
-            Rental bookings ({{ card.rentalBookings.length }})
-          </p>
-          <div
-            v-for="booking in card.rentalBookings"
-            :key="booking.id"
-            class="flex flex-col gap-2 rounded-xl border p-3 sm:flex-row sm:items-start sm:justify-between"
-            :class="
-              isRentalBookingIncomplete(booking)
-                ? 'border-error/60 bg-error/5'
-                : 'border-default'
-            "
-          >
-            <div class="space-y-1">
+      <div class="space-y-3 md:hidden">
+        <div
+          v-for="order in items"
+          :key="`mobile-${order.id}`"
+          class="rounded-2xl border border-default p-3"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
               <NuxtLink
-                :to="`/admin/rental-bookings/${booking.id}`"
-                class="font-medium text-primary hover:underline"
+                :to="`/admin/orders/${order.id}`"
+                class="font-semibold text-primary hover:underline"
               >
-                {{ booking.assetName || booking.productName }}
+                {{ order.orderNumber }}
               </NuxtLink>
               <p class="text-xs text-muted">
-                {{ booking.startDate }} → {{ booking.endDate }} ·
-                {{ booking.rentalDays }} day{{
-                  booking.rentalDays === 1 ? "" : "s"
-                }}
+                {{ formatDate(order.createdAt) }}
               </p>
-              <p class="text-xs text-muted">Booking {{ booking.id }}</p>
-              <div class="space-y-0.5">
-                <a
-                  :href="`tel:${booking.bookerPhone || card.customer.phone}`"
-                  class="inline-flex items-center gap-1 text-sm font-medium text-default hover:text-primary"
-                  @click.stop
-                >
-                  <UIcon name="bx:phone" class="text-base" />
-                  {{
-                    booking.bookerPhone ||
-                    card.customer.phone ||
-                    "No phone on file"
-                  }}
-                </a>
-                <p
-                  v-if="booking.bookerName || booking.bookerPhone"
-                  class="text-xs text-muted"
-                >
-                  Booker:
-                  {{ booking.bookerName || "—" }}
-                  <template v-if="booking.bookerPhone && card.customer.phone">
-                    · Acct: {{ card.customer.phone }}
-                  </template>
-                </p>
-              </div>
-              <div class="flex flex-wrap gap-1 pt-1">
-                <UBadge
-                  :color="rentalStatusColor(booking.status)"
-                  variant="subtle"
-                  size="sm"
-                >
-                  {{ booking.status }}
-                </UBadge>
-                <UBadge
-                  v-if="booking.storageBranchName"
-                  color="neutral"
-                  variant="soft"
-                  size="sm"
-                >
-                  {{ booking.storageBranchName }}
-                </UBadge>
-                <UBadge
-                  v-if="booking.hubName"
-                  color="info"
-                  variant="soft"
-                  size="sm"
-                >
-                  Pickup: {{ booking.hubName }}
-                </UBadge>
-              </div>
             </div>
-            <div
-              class="flex flex-col gap-2 sm:items-end sm:justify-between sm:text-right"
-            >
-              <div>
-                <p class="text-sm font-semibold text-primary">
-                  {{
-                    formatCurrency(booking.rentalTotal, booking.currencyCode)
-                  }}
-                </p>
-                <p class="text-xs text-muted">
-                  Deposit:
-                  {{
-                    formatCurrency(booking.depositAmount, booking.currencyCode)
-                  }}
-                </p>
-              </div>
-              <UButton
-                size="xs"
-                icon="bx:right-arrow-alt"
-                trailing
-                label="View detail"
-                color="primary"
-                variant="soft"
-                :to="`/admin/rental-bookings/${booking.id}`"
-              />
-            </div>
+            <p class="text-right text-sm font-semibold text-primary">
+              {{ formatCurrency(order.grandTotal, order.currencyCode) }}
+            </p>
           </div>
+          <div class="mt-2 space-y-1 text-sm">
+            <p>{{ order.customer.name || "(no name)" }}</p>
+            <a
+              v-if="order.customer.phone"
+              :href="`tel:${order.customer.phone}`"
+              class="inline-flex items-center gap-1 text-xs text-muted hover:text-primary"
+            >
+              <UIcon name="bx:phone" />{{ order.customer.phone }}
+            </a>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-1">
+            <UBadge
+              :color="paymentStatusColor(order.paymentStatus)"
+              variant="subtle"
+              size="sm"
+            >
+              {{ statusLabel(order.paymentStatus) }}
+            </UBadge>
+            <UBadge
+              :color="fulfillmentStatusColor(order.fulfillmentStatus)"
+              variant="subtle"
+              size="sm"
+            >
+              {{ statusLabel(order.fulfillmentStatus) }}
+            </UBadge>
+            <UBadge :color="fulfillmentColor(order)" variant="soft" size="sm">
+              {{ fulfillmentLabel(order) }}
+            </UBadge>
+          </div>
+          <p class="mt-2 text-xs text-muted">{{ fulfillmentDetail(order) }}</p>
+          <UButton
+            class="mt-3"
+            block
+            size="xs"
+            label="ดูรายละเอียด"
+            color="primary"
+            variant="soft"
+            :to="`/admin/orders/${order.id}`"
+          />
         </div>
-      </UCard>
-
-      <div class="flex items-center justify-between pt-2">
-        <p class="text-xs text-muted">
-          Showing {{ items.length }} of {{ total }} customers
-        </p>
-        <UButton
-          v-if="hasMore"
-          label="Load more"
-          color="neutral"
-          variant="soft"
-          :loading="loadingMore"
-          @click="loadMore()"
-        />
       </div>
-    </div>
+
+      <div
+        class="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-default pt-3"
+      >
+        <p class="text-xs text-muted">
+          Page {{ page + 1 }} · {{ pageSize }} orders per page
+        </p>
+        <div class="flex gap-2">
+          <UButton
+            size="sm"
+            label="Previous"
+            color="neutral"
+            variant="soft"
+            :disabled="page === 0 || loading"
+            @click="goToPage(page - 1)"
+          />
+          <UButton
+            size="sm"
+            label="Next"
+            color="neutral"
+            variant="soft"
+            :disabled="!hasMore || loading"
+            @click="goToPage(page + 1)"
+          />
+        </div>
+      </div>
+    </UCard>
 
     <AdminOrderQrScanner
       v-model:open="isScannerOpen"

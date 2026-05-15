@@ -56,6 +56,7 @@ const groups = computed<SidebarGroup[]>(() => {
   // ── Group 1: Personal (ALL roles) ──
   const personalItems: SidebarItem[] = [
     { id: "profile", label: t("user.personalInfo"), icon: "bx:user" },
+    { id: "security", label: t("user.security"), icon: "bx:shield-quarter" },
   ];
 
   // B2C only: KYC verification
@@ -69,6 +70,11 @@ const groups = computed<SidebarGroup[]>(() => {
 
   personalItems.push(
     { id: "addresses", label: t("user.addresses"), icon: "bx:map" },
+    {
+      id: "taxProfile",
+      label: t("user.taxProfile"),
+      icon: "bx:receipt",
+    },
     {
       id: "active-rentals",
       label: t("user.activeRentals"),

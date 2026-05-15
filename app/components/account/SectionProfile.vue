@@ -17,10 +17,31 @@ const { t, locale } = useI18n();
 const toast = useToast();
 const { profile, updateProfile, loading } = useUserProfile();
 const { userEmail } = useAuthSession();
+const authUser = useSupabaseUser();
 const isCustomerQrOpen = ref(false);
 const customerQrPayload = computed(() =>
   profile.value?.id ? `customer:${profile.value.id}` : "",
 );
+const authPhone = computed(() => {
+  const value = (authUser.value as { phone?: unknown } | null)?.phone;
+  return typeof value === "string" ? value : "";
+});
+const isMobileVerified = computed(() =>
+  Boolean(
+    (authUser.value as { phone_confirmed_at?: unknown } | null)
+      ?.phone_confirmed_at,
+  ),
+);
+const mobileStatusLabel = computed(() =>
+  isMobileVerified.value ? t("user.verified") : t("user.unverified"),
+);
+const mobileStatusDescription = computed(() => {
+  if (authPhone.value && isMobileVerified.value)
+    return t("user.mobileVerifiedDesc");
+  if (profile.value?.phone || authPhone.value)
+    return t("user.mobileUnverifiedDesc");
+  return t("user.mobilePlaceholderDesc");
+});
 
 // ── Editable form state ──
 const fullName = ref("");
@@ -76,7 +97,8 @@ function formatDate(iso: string | undefined): string {
 
 // ── Check if form has changes ──
 const hasChanges = computed(() => {
-  if (!profile.value) return false;
+  if (!profile.value)
+    return Boolean(fullName.value.trim() || phone.value.trim());
   return (
     fullName.value !== (profile.value.fullName ?? "") ||
     phone.value !== (profile.value.phone ?? "")
@@ -148,6 +170,14 @@ const membershipColor = computed(() => {
             size="lg"
           />
         </div>
+
+        <UAlert
+          color="neutral"
+          variant="soft"
+          icon="bx:mobile"
+          :title="`${t('user.mobileRegistration')}: ${mobileStatusLabel}`"
+          :description="mobileStatusDescription"
+        />
 
         <!-- Email (read-only) -->
         <div>

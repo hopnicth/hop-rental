@@ -15,9 +15,68 @@ import type { PublicBranch } from "~/composables/useBranches";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import type { RentalPricingLine } from "~/utils/rental-pricing";
 import { calculateShipping } from "~/utils/shipping";
+import type { RentalPaymentLineSummary } from "~/types/rental-payment-line";
+import {
+  calculateRentalPaymentLines,
+  summarizeRentalPaymentLines,
+} from "~/utils/rental-payment-lines";
+
+type MixedCheckoutItemError = {
+  itemType: "sale_item" | "rental_booking" | "shipping" | "checkout";
+  itemId: string;
+  cartLineId?: string | null;
+  errorCode: string;
+  message: string;
+  suggestedAction: string;
+};
+
+type MixedCheckoutAllocation = {
+  allocationType: "sale_product" | "shipping" | "booking_deposit";
+  targetType: string;
+  targetId: string | null;
+  amount: number;
+  currencyCode: string;
+  taxCategory: string;
+  whtRate: number;
+  whtAmount: number;
+  metadata?: Record<string, unknown>;
+};
+
+type MixedCheckoutValidationResponse =
+  | {
+      ok: true;
+      amountTotal: number;
+      currencyCode: string;
+      allocations: MixedCheckoutAllocation[];
+    }
+  | {
+      ok: false;
+      errors: MixedCheckoutItemError[];
+      message?: string;
+    };
+
+type MixedCheckoutCreateResponse =
+  | MixedCheckoutValidationResponse
+  | {
+      ok: true;
+      session: { id: string };
+      attempt?: {
+        qrImageUrl?: string | null;
+        redirectUrl?: string | null;
+        status?: string;
+      };
+    };
+
+type CheckoutCancelTarget = {
+  sessionId: string;
+  method: "promptpay" | "credit_card" | null;
+  source: "mixed" | "booking";
+  bookingId?: string;
+};
 
 const { t, locale } = useI18n();
 const route = useRoute();
+const runtimeConfig = useRuntimeConfig();
 const lang = computed(() => locale.value as LocaleCode);
 const toast = useToast();
 const { getSaleStockBySku, getProductById } = useProducts();
@@ -36,6 +95,12 @@ const {
   cartSubtotal,
   cartItemCount,
   cartId,
+  loading: cartLoading,
+  isDbSyncPendingForCurrentUser: isCartDbSyncPendingForCurrentUser,
+  isReadyForCheckout: isCartReadyForCheckout,
+  checkoutState: cartCheckoutState,
+  refreshCartFromDb,
+  refreshCheckoutState: refreshCartCheckoutState,
   updateQuantity,
   removeFromCart,
   clearCartPersisted,
@@ -47,7 +112,7 @@ const {
   confirmedBookings,
   activeBookingTotalDeposit,
   activeBookingTotalRental,
-  updateBookingStatus,
+  refreshBookings,
   updateHub,
   removeBooking,
 } = useBooking();
@@ -62,8 +127,6 @@ const {
 } = useAddresses();
 
 const {
-  activeContext,
-  memberships,
   isB2B,
   isB2BUser,
   isB2BAdmin,
@@ -73,6 +136,16 @@ const {
   syncContextWithMemberships,
 } = useCompanyContext();
 const { submitOrder } = useOrders();
+const bookingDepositAgreementAccepted = ref(false);
+const mixedCheckoutEnabled = computed(
+  () => runtimeConfig.public.mixedCheckoutEnabled === true,
+);
+const cancelCheckoutModalOpen = ref(false);
+const cancelCheckoutTarget = ref<CheckoutCancelTarget | null>(null);
+const isCancellingCheckout = ref(false);
+const cancelCheckoutUsesPromptPay = computed(
+  () => cancelCheckoutTarget.value?.method === "promptpay",
+);
 
 // ── Selected address ──
 const selectedAddressId = ref<string | null>(null);
@@ -87,12 +160,72 @@ async function refreshCheckoutAddresses() {
   syncContextWithMemberships();
 
   await fetchAddresses();
+  ensureValidSelectedAddress();
+}
+
+let bookingCheckoutStateRefreshInFlight = false;
+let lastBookingCheckoutStateRefreshAt = 0;
+
+async function refreshCartBookingCheckoutState(
+  _reason: string,
+  options: { force?: boolean } = {},
+) {
+  if (!isLoggedIn.value || route.path !== "/user/cart") return;
+  const now = Date.now();
+  if (!options.force && now - lastBookingCheckoutStateRefreshAt < 1000) return;
+  if (bookingCheckoutStateRefreshInFlight) return;
+
+  bookingCheckoutStateRefreshInFlight = true;
+  lastBookingCheckoutStateRefreshAt = now;
+  try {
+    await refreshCartFromDb();
+    await refreshBookings();
+    await refreshCartCheckoutState({
+      bookingIds: activeBookings.value.map((booking) => booking.bookingId),
+    });
+  } finally {
+    bookingCheckoutStateRefreshInFlight = false;
+  }
 }
 
 // Fetch memberships + addresses on mount/login
 if (import.meta.client) {
+  const handleCartPageShow = () => {
+    void refreshCartBookingCheckoutState("pageshow", { force: true });
+  };
+  const handleCartFocus = () => {
+    void refreshCartBookingCheckoutState("focus");
+  };
+  const handleCartVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      void refreshCartBookingCheckoutState("visibilitychange", { force: true });
+    }
+  };
+
   onMounted(() => {
     void refreshCheckoutAddresses();
+    void refreshCartBookingCheckoutState("mounted", { force: true });
+    if (route.query.rentalPayment === "success") {
+      void refreshCartBookingCheckoutState("rental_payment_success", {
+        force: true,
+      });
+    }
+    window.addEventListener("pageshow", handleCartPageShow);
+    window.addEventListener("focus", handleCartFocus);
+    document.addEventListener("visibilitychange", handleCartVisibilityChange);
+  });
+
+  onActivated(() => {
+    void refreshCartBookingCheckoutState("activated", { force: true });
+  });
+
+  onBeforeUnmount(() => {
+    window.removeEventListener("pageshow", handleCartPageShow);
+    window.removeEventListener("focus", handleCartFocus);
+    document.removeEventListener(
+      "visibilitychange",
+      handleCartVisibilityChange,
+    );
   });
 
   watch(
@@ -113,7 +246,7 @@ if (import.meta.client) {
     () => {
       if (!isLoggedIn.value) return;
       selectedAddressId.value = null;
-      void fetchAddresses();
+      void refreshCheckoutAddresses();
     },
   );
 }
@@ -122,12 +255,17 @@ const availableAddresses = computed(() => {
   if (!isB2B.value) return personalAddresses.value;
 
   const currentCompanyId = currentCompany.value?.id;
-  if (!currentCompanyId) return [];
+  if (!currentCompanyId) return personalAddresses.value;
 
-  return companyAddresses.value.filter(
+  const companyScopedAddresses = companyAddresses.value.filter(
     (address) => address.companyId === currentCompanyId,
   );
+  return companyScopedAddresses.length > 0
+    ? companyScopedAddresses
+    : personalAddresses.value;
 });
+
+const isAddressBookLoading = computed(() => addressLoading.value);
 
 // ── Hub options (for booking item hub selectors) ──
 const { branches: publicBranches, ensureBranchesLoaded } = useBranches();
@@ -209,6 +347,25 @@ const isPickupSelected = computed(
   () => selectedAddressId.value === PICKUP_ADDRESS_SENTINEL,
 );
 
+function ensureValidSelectedAddress() {
+  if (isPickupSelected.value) return;
+
+  if (
+    selectedAddressId.value &&
+    !availableAddresses.value.some(
+      (addr) => addr.id === selectedAddressId.value,
+    )
+  ) {
+    selectedAddressId.value = null;
+  }
+
+  if (!selectedAddressId.value && availableAddresses.value.length > 0) {
+    const defaultAddr = availableAddresses.value.find((addr) => addr.isDefault);
+    selectedAddressId.value =
+      defaultAddr?.id ?? availableAddresses.value[0]!.id;
+  }
+}
+
 // Bookings that will share the pickup trip at the currently chosen branch.
 const pickupBookingsAtSelectedBranch = computed<BookingItem[]>(() => {
   if (!pickupBranchId.value) return [];
@@ -219,12 +376,8 @@ const pickupBookingsAtSelectedBranch = computed<BookingItem[]>(() => {
 
 // Auto-select default address (or pickup if previously chosen).
 watchEffect(() => {
-  if (selectedAddressId.value) return;
-  if (availableAddresses.value.length > 0) {
-    const defaultAddr = availableAddresses.value.find((a) => a.isDefault);
-    selectedAddressId.value =
-      defaultAddr?.id ?? availableAddresses.value[0]!.id;
-  }
+  if (isAddressBookLoading.value) return;
+  ensureValidSelectedAddress();
 });
 
 // ── Payment method ──
@@ -302,8 +455,8 @@ const hasShippingBoxes = computed(
     shippingBreakdown.value.s > 0,
 );
 
-// Online checkout total — sale items + shipping. Rental fees & deposits are
-// paid at the branch and never charged online.
+// Online checkout total — sale items + shipping. Rental Booking Deposit is
+// paid separately online; rental fee and remaining security deposit are due at pickup.
 const orderGrandTotal = computed(() => cartSubtotal.value + shippingCost.value);
 
 // Omise enforces a 20.00 THB minimum per charge. Block the online payment flow
@@ -316,12 +469,124 @@ const isBelowOnlineMin = computed(
 
 const hasRentalBookings = computed(() => activeBookings.value.length > 0);
 const hasPurchaseItems = computed(() => cartItems.value.length > 0);
+const hasMixedCart = computed(
+  () => hasPurchaseItems.value && hasRentalBookings.value,
+);
+const hasBookingOnlyCart = computed(
+  () => hasRentalBookings.value && !hasPurchaseItems.value,
+);
+const canUseMixedCheckout = computed(
+  () => mixedCheckoutEnabled.value && hasMixedCart.value && !isB2BUser.value,
+);
+const canUseBookingOnlyUnifiedCheckout = computed(
+  () =>
+    mixedCheckoutEnabled.value && hasBookingOnlyCart.value && !isB2BUser.value,
+);
+const canUseUnifiedCheckout = computed(
+  () => canUseMixedCheckout.value || canUseBookingOnlyUnifiedCheckout.value,
+);
+const showPaymentMethodSelector = computed(
+  () =>
+    (hasPurchaseItems.value || canUseBookingOnlyUnifiedCheckout.value) &&
+    !isB2BUser.value,
+);
+const hasSingleRentalBooking = computed(
+  () => activeBookings.value.length === 1,
+);
+const hasMultipleRentalBookings = computed(
+  () => activeBookings.value.length > 1,
+);
+const activeCheckoutBookings = computed(() =>
+  activeBookings.value.filter(
+    (booking) => booking.checkout?.state === "active_unpaid",
+  ),
+);
+const hasActiveBookingCheckout = computed(
+  () => activeCheckoutBookings.value.length > 0,
+);
+const isMixedCartCheckoutState = computed(
+  () => cartCheckoutState.value.checkoutKind === "mixed",
+);
+const hasActiveCartCheckout = computed(
+  () =>
+    isMixedCartCheckoutState.value &&
+    cartCheckoutState.value.state === "active_unpaid",
+);
+const hasExpiredCartCheckout = computed(
+  () =>
+    isMixedCartCheckoutState.value &&
+    cartCheckoutState.value.state === "expired",
+);
+const isCartConfigurationLockedByCheckout = computed(
+  () => hasActiveCartCheckout.value,
+);
 const bookingsMissingHub = computed(() =>
   activeBookings.value.filter((booking) => !booking.hubId),
 );
+const rentalPaymentLines = computed<RentalPaymentLine[]>(() =>
+  activeBookings.value.flatMap((booking) =>
+    calculateRentalPaymentLines({
+      customerKind:
+        isB2B.value && currentCompany.value?.id ? "company" : "individual",
+      rentalDays: booking.numDays,
+      rentalFeeAmount: booking.totalCost,
+      depositAmount: booking.deposit,
+      source: "cart_preview",
+      metadata: {
+        previewSurface: "storefront_cart",
+        bookingId: booking.bookingId,
+      },
+    }),
+  ),
+);
+const rentalPaymentSummary = computed<RentalPaymentLineSummary>(() =>
+  summarizeRentalPaymentLines(rentalPaymentLines.value),
+);
+const bookingDepositPreviewLines = computed(() =>
+  activeBookings.value.map((booking) => {
+    const bookingDepositLine = calculateRentalPaymentLines({
+      customerKind:
+        isB2B.value && currentCompany.value?.id ? "company" : "individual",
+      rentalDays: booking.numDays,
+      rentalFeeAmount: booking.totalCost,
+      depositAmount: booking.deposit,
+      source: "cart_preview",
+      metadata: {
+        previewSurface: "mixed_checkout_cart",
+        bookingId: booking.bookingId,
+      },
+    }).find((line) => line.lineType === "booking_deposit");
+
+    return {
+      bookingId: booking.bookingId,
+      title: getBookingTitle(booking),
+      amount: bookingDepositLine?.grossAmount ?? 0,
+    };
+  }),
+);
+const mixedCheckoutTotalPreview = computed(
+  () =>
+    cartSubtotal.value +
+    shippingCost.value +
+    bookingDepositPreviewLines.value.reduce(
+      (sum, line) => sum + line.amount,
+      0,
+    ),
+);
+const unifiedCheckoutPayButtonLabel = computed(() => {
+  if (canUseBookingOnlyUnifiedCheckout.value) {
+    return hasMultipleRentalBookings.value
+      ? t("cart.payAllBookingDeposits")
+      : t("cart.payBookingDeposit");
+  }
+  return t("cart.mixedCheckoutPayNow");
+});
 
 const hasItems = computed(
   () => hasRentalBookings.value || hasPurchaseItems.value,
+);
+const isSaleCheckoutStateReady = computed(
+  () => !hasPurchaseItems.value || isCartReadyForCheckout.value,
 );
 
 function getBookingTitle(booking: BookingItem): string {
@@ -334,6 +599,26 @@ function getBookingThumbnail(booking: BookingItem): string {
 
 function getBookingAccessPath(booking: BookingItem): string | null {
   return booking.assetSlug ? `/asset/${booking.assetSlug}` : null;
+}
+
+function bookingCheckoutState(booking: BookingItem): string {
+  return booking.checkout?.state ?? "none";
+}
+
+function canEditBookingDraft(booking: BookingItem): boolean {
+  return ["none", "expired"].includes(bookingCheckoutState(booking));
+}
+
+function checkoutMethodLabel(booking: BookingItem): string {
+  if (booking.checkout?.method === "credit_card") return t("cart.creditCard");
+  if (booking.checkout?.method === "promptpay") return t("cart.promptPay");
+  return t("cart.paymentMethod");
+}
+
+async function handleResumeBookingCheckout(booking: BookingItem) {
+  const sessionId = booking.checkout?.sessionId;
+  if (!sessionId) return;
+  await navigateTo(`/mixed-checkout/${encodeURIComponent(sessionId)}`);
 }
 
 function showBookingActionError() {
@@ -364,6 +649,7 @@ function showCartStockLimitError() {
 }
 
 function handleIncreaseQuantity(item: CartItem) {
+  if (isSaleItemLockedByCheckout(item)) return;
   const ok = updateQuantity(item.productId, item.skuId, item.quantity + 1);
   if (!ok) {
     showCartStockLimitError();
@@ -395,6 +681,10 @@ function unitLabel(line: RentalPricingLine): string {
   return t("booking.unitDays", { n: line.count });
 }
 
+function moneyLabel(value: number): string {
+  return `฿${Number(value || 0).toLocaleString()}`;
+}
+
 async function handleRemoveBooking(bookingId: string) {
   const ok = await removeBooking(bookingId);
   if (!ok) {
@@ -420,7 +710,19 @@ async function handleSetDefault(id: string) {
 
 // ── Proceed to payment (placeholder) ──
 const isSubmittingOrder = ref(false);
-const isSubmittingRental = ref(false);
+const submittingRentalBookingId = ref<string | null>(null);
+const isSubmittingRental = computed(() =>
+  Boolean(submittingRentalBookingId.value),
+);
+const mixedCheckoutErrors = ref<MixedCheckoutItemError[]>([]);
+const mixedCheckoutServerPreview = ref<MixedCheckoutValidationResponse | null>(
+  null,
+);
+const isPrevalidatingMixedCheckout = ref(false);
+const isCreatingMixedCheckout = ref(false);
+const isSubmittingMixedCheckout = computed(
+  () => isPrevalidatingMixedCheckout.value || isCreatingMixedCheckout.value,
+);
 
 function showInlineOrderError(title: string, description: string) {
   toast.add({
@@ -431,9 +733,282 @@ function showInlineOrderError(title: string, description: string) {
   });
 }
 
+function saleCartLineId(item: CartItem): string {
+  return `${item.productId}:${item.skuId}`;
+}
+
+function isSaleItemLockedByCheckout(item: CartItem): boolean {
+  return (
+    hasActiveCartCheckout.value &&
+    cartCheckoutState.value.saleItemCartLineIds.includes(saleCartLineId(item))
+  );
+}
+
+function bookingCartLineId(booking: BookingItem): string {
+  return booking.bookingId;
+}
+
+async function handleResumeCartCheckout() {
+  const sessionId = cartCheckoutState.value.sessionId;
+  if (!sessionId) return;
+  await navigateTo(`/mixed-checkout/${encodeURIComponent(sessionId)}`);
+}
+
+function openCancelCartCheckout() {
+  const sessionId = cartCheckoutState.value.sessionId;
+  if (!sessionId) return;
+  cancelCheckoutTarget.value = {
+    sessionId,
+    method: cartCheckoutState.value.method ?? null,
+    source: "mixed",
+  };
+  cancelCheckoutModalOpen.value = true;
+}
+
+function openCancelBookingCheckout(booking: BookingItem) {
+  const sessionId = booking.checkout?.sessionId;
+  if (!sessionId) return;
+  cancelCheckoutTarget.value = {
+    sessionId,
+    method: booking.checkout?.method ?? null,
+    source: "booking",
+    bookingId: booking.bookingId,
+  };
+  cancelCheckoutModalOpen.value = true;
+}
+
+function closeCancelCheckoutModal() {
+  if (isCancellingCheckout.value) return;
+  cancelCheckoutModalOpen.value = false;
+  cancelCheckoutTarget.value = null;
+}
+
+async function confirmCancelCheckout() {
+  const target = cancelCheckoutTarget.value;
+  if (!target) return;
+  isCancellingCheckout.value = true;
+  try {
+    await $fetch(
+      `/api/mixed-checkout/${encodeURIComponent(target.sessionId)}/cancel`,
+      {
+        method: "POST",
+      },
+    );
+    toast.add({
+      title: t("cart.cancelCheckoutSuccessTitle"),
+      description: t("cart.cancelCheckoutSuccessDesc"),
+      icon: "bx:check-circle",
+      color: "success",
+    });
+    cancelCheckoutModalOpen.value = false;
+    cancelCheckoutTarget.value = null;
+    await refreshCartBookingCheckoutState("checkout_cancelled", {
+      force: true,
+    });
+  } catch (error) {
+    toast.add({
+      title: t("cart.cancelCheckoutFailedTitle"),
+      description:
+        error instanceof Error
+          ? error.message
+          : t("cart.cancelCheckoutFailedDesc"),
+      icon: "bx:error-circle",
+      color: "error",
+    });
+  } finally {
+    isCancellingCheckout.value = false;
+  }
+}
+
+function getSaleItemMixedCheckoutError(
+  item: CartItem,
+): MixedCheckoutItemError | null {
+  const cartLineId = saleCartLineId(item);
+  return (
+    mixedCheckoutErrors.value.find(
+      (error) =>
+        error.itemType === "sale_item" &&
+        (error.cartLineId === cartLineId || error.itemId === item.skuId),
+    ) ?? null
+  );
+}
+
+function getRentalBookingMixedCheckoutError(
+  booking: BookingItem,
+): MixedCheckoutItemError | null {
+  const cartLineId = bookingCartLineId(booking);
+  return (
+    mixedCheckoutErrors.value.find(
+      (error) =>
+        error.itemType === "rental_booking" &&
+        (error.cartLineId === cartLineId || error.itemId === booking.bookingId),
+    ) ?? null
+  );
+}
+
+function getMixedCheckoutSuggestedActionLabel(
+  error: MixedCheckoutItemError | null | undefined,
+): string {
+  if (!error) return "";
+  const key = `cart.mixedCheckoutSuggestedActions.${error.suggestedAction}`;
+  const translated = t(key);
+  return translated === key ? error.suggestedAction : translated;
+}
+
+function setMixedCheckoutValidationErrors(
+  response: MixedCheckoutValidationResponse,
+) {
+  if (response.ok) {
+    mixedCheckoutErrors.value = [];
+    mixedCheckoutServerPreview.value = response;
+    return;
+  }
+  mixedCheckoutErrors.value = response.errors ?? [];
+  mixedCheckoutServerPreview.value = response;
+  showInlineOrderError(
+    t("cart.mixedCheckoutValidationFailedTitle"),
+    response.message || t("cart.mixedCheckoutValidationFailedDesc"),
+  );
+}
+
+function selectedMixedCheckoutMethod(): "credit_card" | "promptpay" {
+  return paymentMethod.value === "credit_card" ? "credit_card" : "promptpay";
+}
+
+function buildMixedCheckoutPayload(idempotencyKey?: string) {
+  const address = selectedAddress.value;
+  return {
+    idempotencyKey,
+    method: selectedMixedCheckoutMethod(),
+    cartId: cartId.value || null,
+    companyId: isB2B.value ? (currentCompany.value?.id ?? null) : null,
+    shippingMode: isPickupSelected.value ? "pickup" : "delivery",
+    pickupBranchId: pickupBranchId.value,
+    address: address
+      ? {
+          id: address.id || null,
+          title: address.title,
+          contactName: address.contactName,
+          contactPhone: address.contactPhone,
+          fullAddress: address.fullAddress,
+          subDistrict: address.subDistrict,
+          district: address.district,
+          province: address.province,
+          postalCode: address.postalCode,
+          note: address.note,
+        }
+      : null,
+    saleItems: cartItems.value.map((item) => ({
+      productId: item.productId,
+      skuId: item.skuId,
+      quantity: item.quantity,
+      expectedUnitPrice: item.unitPrice,
+      cartLineId: saleCartLineId(item),
+    })),
+    rentalBookings: activeBookings.value.map((booking) => ({
+      bookingId: booking.bookingId,
+      expectedBookingDepositAmount:
+        bookingDepositPreviewLines.value.find(
+          (line) => line.bookingId === booking.bookingId,
+        )?.amount ?? 0,
+      cartLineId: bookingCartLineId(booking),
+    })),
+  };
+}
+
+async function handleUnifiedCheckoutPay() {
+  if (!canUseUnifiedCheckout.value) return;
+  mixedCheckoutErrors.value = [];
+
+  if (hasPurchaseItems.value && !selectedAddress.value) {
+    showInlineOrderError(
+      isPickupSelected.value
+        ? t("cart.pickupBranchRequiredTitle")
+        : t("cart.deliveryAddressRequiredTitle"),
+      isPickupSelected.value
+        ? t("cart.pickupBranchRequiredDesc")
+        : t("cart.deliveryAddressRequiredDesc"),
+    );
+    return;
+  }
+
+  if (bookingsMissingHub.value.length > 0) {
+    showInlineOrderError(
+      t("cart.bookingHubRequiredTitle"),
+      t("cart.bookingHubRequiredDesc"),
+    );
+    return;
+  }
+
+  if (!bookingDepositAgreementAccepted.value) {
+    showInlineOrderError(
+      t("cart.bookingDepositAgreementRequiredTitle"),
+      t("cart.bookingDepositAgreementRequiredDesc"),
+    );
+    return;
+  }
+
+  isPrevalidatingMixedCheckout.value = true;
+  const prevalidateResponse = await $fetch<MixedCheckoutValidationResponse>(
+    "/api/mixed-checkout/prevalidate",
+    {
+      method: "POST",
+      body: buildMixedCheckoutPayload(),
+      ignoreResponseError: true,
+    },
+  );
+  isPrevalidatingMixedCheckout.value = false;
+  setMixedCheckoutValidationErrors(prevalidateResponse);
+  if (!prevalidateResponse.ok) return;
+
+  const idempotencyKey =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `mixed_checkout_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  isCreatingMixedCheckout.value = true;
+  try {
+    const createResponse = await $fetch<MixedCheckoutCreateResponse>(
+      "/api/mixed-checkout/create",
+      {
+        method: "POST",
+        body: buildMixedCheckoutPayload(idempotencyKey),
+        ignoreResponseError: true,
+      },
+    );
+    if (!createResponse.ok) {
+      setMixedCheckoutValidationErrors(createResponse);
+      return;
+    }
+    if (!("session" in createResponse) || !createResponse.session?.id) {
+      throw new Error("Mixed checkout session was not returned.");
+    }
+    await navigateTo(
+      `/mixed-checkout/${encodeURIComponent(createResponse.session.id)}`,
+    );
+  } catch (error) {
+    showInlineOrderError(
+      t("cart.mixedCheckoutCreateFailedTitle"),
+      error instanceof Error
+        ? error.message
+        : t("cart.mixedCheckoutCreateFailedDesc"),
+    );
+  } finally {
+    isCreatingMixedCheckout.value = false;
+  }
+}
+
 async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
   if (!hasPurchaseItems.value) {
     showInlineOrderError(t("cart.noSaleItemsTitle"), t("cart.noSaleItemsDesc"));
+    return;
+  }
+
+  if (!isSaleCheckoutStateReady.value) {
+    showInlineOrderError(
+      t("cart.checkoutStateLoadingTitle"),
+      t("cart.checkoutStateLoadingDesc"),
+    );
     return;
   }
 
@@ -481,8 +1056,16 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
 
   isSubmittingOrder.value = true;
   try {
+    const hadVisiblePurchaseItems = hasPurchaseItems.value;
     const isCartValid = await validateCart();
     if (!isCartValid) {
+      if (hadVisiblePurchaseItems) {
+        showInlineOrderError(
+          t("cart.cartChangedTitle"),
+          t("cart.cartChangedDesc"),
+        );
+        return;
+      }
       showInlineOrderError(
         t("cart.validationFailed"),
         t("cart.validationFailedDesc"),
@@ -553,6 +1136,7 @@ async function submitCurrentOrder(checkoutMode: "payment" | "quotation") {
       checkoutMode,
       paymentMethod:
         checkoutMode === "payment" ? paymentMethod.value : undefined,
+      shippingMode: isPickupSelected.value ? "pickup" : "delivery",
       address: selectedAddress.value,
       items: cartItems.value,
       cartId: cartId.value || null,
@@ -587,14 +1171,16 @@ async function requestQuotation() {
   await submitCurrentOrder("quotation");
 }
 
-async function handleSubmitRentals() {
-  const bookingsToSubmit = [...activeBookings.value];
+async function handleSubmitRental(bookingId: string) {
+  const booking = activeBookings.value.find(
+    (item) => item.bookingId === bookingId,
+  );
 
-  if (bookingsToSubmit.length === 0) {
+  if (!booking) {
     return;
   }
 
-  if (bookingsToSubmit.some((booking) => !booking.hubId)) {
+  if (!booking.hubId) {
     showInlineOrderError(
       t("cart.bookingHubRequiredTitle"),
       t("cart.bookingHubRequiredDesc"),
@@ -602,33 +1188,46 @@ async function handleSubmitRentals() {
     return;
   }
 
-  isSubmittingRental.value = true;
+  if (!bookingDepositAgreementAccepted.value) {
+    showInlineOrderError(
+      t("cart.bookingDepositAgreementRequiredTitle"),
+      t("cart.bookingDepositAgreementRequiredDesc"),
+    );
+    return;
+  }
+
+  submittingRentalBookingId.value = booking.bookingId;
 
   try {
-    const results = await Promise.all(
-      bookingsToSubmit.map((booking) =>
-        updateBookingStatus(booking.bookingId, "confirmed"),
-      ),
+    const idempotencyKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `booking_deposit_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    await $fetch(
+      `/api/rental-bookings/${encodeURIComponent(booking.bookingId)}/booking-deposit-payment/create`,
+      {
+        method: "POST",
+        body: {
+          idempotencyKey,
+          method: "promptpay",
+          agreementAccepted: true,
+        },
+      },
     );
 
-    if (results.some((ok) => !ok)) {
-      showInlineOrderError(
-        t("cart.rentalSubmitError"),
-        t("cart.rentalSubmitErrorDesc"),
-      );
-      return;
-    }
-
     await navigateTo({
-      path: "/user/rentals",
-      query: {
-        submitted: "1",
-        count: String(bookingsToSubmit.length),
-      },
+      path: `/rental-booking-payment/${encodeURIComponent(booking.bookingId)}`,
     });
   } finally {
-    isSubmittingRental.value = false;
+    submittingRentalBookingId.value = null;
   }
+}
+
+async function handleSubmitSingleRental() {
+  const booking = activeBookings.value[0];
+  if (!booking) return;
+  await handleSubmitRental(booking.bookingId);
 }
 
 async function handlePay() {
@@ -660,6 +1259,42 @@ async function handlePay() {
 
     <!-- ════════ Main Content (has items) ════════ -->
     <div v-else class="space-y-8">
+      <div
+        v-if="hasActiveCartCheckout"
+        class="space-y-3 rounded-lg border border-warning/40 bg-warning/10 p-4"
+      >
+        <UAlert
+          color="warning"
+          variant="soft"
+          icon="bx:time-five"
+          :title="t('cart.mixedCheckoutPendingGlobalTitle')"
+          :description="t('cart.mixedCheckoutPendingGlobalDesc')"
+        />
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            :label="t('cart.resumeMixedCheckout')"
+            icon="bx:arrow-back"
+            color="primary"
+            @click="() => void handleResumeCartCheckout()"
+          />
+          <UButton
+            :label="t('cart.cancelActiveCheckout')"
+            icon="bx:x-circle"
+            color="error"
+            variant="soft"
+            @click="openCancelCartCheckout"
+          />
+        </div>
+      </div>
+      <UAlert
+        v-else-if="hasExpiredCartCheckout"
+        color="neutral"
+        variant="soft"
+        icon="bx:time"
+        :title="t('cart.mixedCheckoutExpiredGlobalTitle')"
+        :description="t('cart.mixedCheckoutExpiredGlobalDesc')"
+      />
+
       <!-- ─── Section 1: Booking Items (Rental) ─── -->
       <section v-if="activeBookings.length > 0">
         <UCard>
@@ -682,6 +1317,11 @@ async function handlePay() {
               v-for="booking in activeBookings"
               :key="booking.bookingId"
               class="flex flex-col gap-4 rounded-lg border p-4 sm:flex-row"
+              :class="
+                getRentalBookingMixedCheckoutError(booking)
+                  ? 'border-error bg-error/5'
+                  : ''
+              "
             >
               <!-- Thumbnail -->
               <NuxtImg
@@ -715,9 +1355,36 @@ async function handlePay() {
                       >
                         {{ t("cart.assetLabel") }}
                       </UBadge>
+                      <UBadge
+                        v-if="bookingCheckoutState(booking) === 'active_unpaid'"
+                        color="warning"
+                        variant="subtle"
+                        size="sm"
+                      >
+                        {{ t("cart.bookingCheckoutPendingBadge") }}
+                      </UBadge>
+                      <UBadge
+                        v-else-if="bookingCheckoutState(booking) === 'expired'"
+                        color="neutral"
+                        variant="subtle"
+                        size="sm"
+                      >
+                        {{ t("cart.bookingCheckoutExpiredBadge") }}
+                      </UBadge>
+                      <UBadge
+                        v-else-if="
+                          bookingCheckoutState(booking) === 'blocked_review'
+                        "
+                        color="error"
+                        variant="subtle"
+                        size="sm"
+                      >
+                        {{ t("cart.bookingCheckoutReviewBadge") }}
+                      </UBadge>
                     </div>
                   </div>
                   <UButton
+                    v-if="canEditBookingDraft(booking)"
                     icon="bx:trash"
                     size="xs"
                     color="error"
@@ -791,6 +1458,27 @@ async function handlePay() {
                   }}
                 </UBadge>
 
+                <UAlert
+                  v-if="bookingCheckoutState(booking) === 'active_unpaid'"
+                  color="warning"
+                  variant="soft"
+                  icon="bx:time-five"
+                  :title="t('cart.bookingCheckoutPendingTitle')"
+                  :description="
+                    t('cart.bookingCheckoutPendingDesc', {
+                      method: checkoutMethodLabel(booking),
+                    })
+                  "
+                />
+                <UAlert
+                  v-else-if="bookingCheckoutState(booking) === 'expired'"
+                  color="neutral"
+                  variant="soft"
+                  icon="bx:time"
+                  :title="t('cart.bookingCheckoutExpiredTitle')"
+                  :description="t('cart.bookingCheckoutExpiredDesc')"
+                />
+
                 <!-- Hub selector -->
                 <div class="flex items-center gap-2">
                   <UIcon name="bx:store" class="text-muted" />
@@ -801,6 +1489,7 @@ async function handlePay() {
                     :placeholder="t('cart.selectHub')"
                     class="w-60"
                     size="sm"
+                    :disabled="!canEditBookingDraft(booking)"
                     @update:model-value="
                       (val: string | null) =>
                         val
@@ -809,27 +1498,81 @@ async function handlePay() {
                     "
                   />
                 </div>
+
+                <UAlert
+                  v-if="getRentalBookingMixedCheckoutError(booking)"
+                  color="error"
+                  variant="soft"
+                  icon="bx:error-circle"
+                  :title="getRentalBookingMixedCheckoutError(booking)?.message"
+                  :description="
+                    getMixedCheckoutSuggestedActionLabel(
+                      getRentalBookingMixedCheckoutError(booking),
+                    )
+                  "
+                />
+
+                <div
+                  v-if="
+                    hasMultipleRentalBookings &&
+                    !canUseUnifiedCheckout &&
+                    canEditBookingDraft(booking)
+                  "
+                  class="pt-2"
+                >
+                  <UButton
+                    :label="t('cart.payBookingDepositForBooking')"
+                    icon="bx:qr"
+                    color="primary"
+                    size="sm"
+                    :loading="submittingRentalBookingId === booking.bookingId"
+                    :disabled="
+                      isSubmittingRental ||
+                      !booking.hubId ||
+                      !bookingDepositAgreementAccepted
+                    "
+                    @click="() => void handleSubmitRental(booking.bookingId)"
+                  />
+                </div>
+                <div
+                  v-if="bookingCheckoutState(booking) === 'active_unpaid'"
+                  class="flex flex-wrap gap-2 pt-2"
+                >
+                  <UButton
+                    :label="t('cart.resumeBookingCheckout')"
+                    icon="bx:arrow-back"
+                    color="primary"
+                    size="sm"
+                    @click="() => void handleResumeBookingCheckout(booking)"
+                  />
+                  <UButton
+                    :label="t('cart.cancelActiveCheckout')"
+                    icon="bx:x-circle"
+                    color="error"
+                    variant="soft"
+                    size="sm"
+                    @click="openCancelBookingCheckout(booking)"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Booking subtotals -->
           <template #footer>
-            <div
-              class="flex flex-col gap-2 text-sm sm:flex-row sm:justify-end sm:gap-6"
-            >
-              <span>
-                {{ t("cart.rentalTotal") }}:
-                <strong
-                  >฿{{ activeBookingTotalRental.toLocaleString() }}</strong
-                >
-              </span>
-              <span class="text-info">
-                {{ t("cart.depositTotal") }}:
-                <strong
-                  >฿{{ activeBookingTotalDeposit.toLocaleString() }}</strong
-                >
-              </span>
+            <div class="space-y-3 text-sm">
+              <div
+                class="flex flex-col gap-2 sm:flex-row sm:justify-end sm:gap-6"
+              >
+                <span>
+                  {{ t("cart.rentalTotal") }}:
+                  <strong>{{ moneyLabel(activeBookingTotalRental) }}</strong>
+                </span>
+                <span class="text-info">
+                  {{ t("cart.depositTotal") }}:
+                  <strong>{{ moneyLabel(activeBookingTotalDeposit) }}</strong>
+                </span>
+              </div>
             </div>
           </template>
         </UCard>
@@ -842,6 +1585,14 @@ async function handlePay() {
           class="mt-4"
           :title="t('cart.payAtBranchTitle')"
           :description="t('cart.payAtBranchDesc')"
+        />
+        <UAlert
+          icon="bx:id-card"
+          color="info"
+          variant="soft"
+          class="mt-3"
+          :title="t('cart.identityPreparationTitle')"
+          :description="t('cart.identityPreparationDesc')"
         />
       </section>
 
@@ -866,7 +1617,14 @@ async function handlePay() {
             <div
               v-for="item in cartItems"
               :key="`${item.productId}-${item.skuId}`"
-              class="flex items-center gap-4 rounded-lg border p-3"
+              class="flex flex-wrap items-center gap-4 rounded-lg border p-3"
+              :class="
+                isSaleItemLockedByCheckout(item)
+                  ? 'border-warning bg-warning/5'
+                  : getSaleItemMixedCheckoutError(item)
+                    ? 'border-error bg-error/5'
+                    : ''
+              "
             >
               <!-- Thumbnail -->
               <NuxtImg
@@ -884,6 +1642,15 @@ async function handlePay() {
                     item.unitPrice.toLocaleString()
                   }}
                 </p>
+                <UBadge
+                  v-if="isSaleItemLockedByCheckout(item)"
+                  class="mt-2"
+                  color="warning"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{ t("cart.saleItemPendingCheckoutLabel") }}
+                </UBadge>
               </div>
 
               <!-- Quantity controls -->
@@ -893,7 +1660,9 @@ async function handlePay() {
                   size="xs"
                   color="neutral"
                   variant="outline"
-                  :disabled="item.quantity <= 1"
+                  :disabled="
+                    item.quantity <= 1 || isSaleItemLockedByCheckout(item)
+                  "
                   @click="
                     updateQuantity(
                       item.productId,
@@ -910,7 +1679,9 @@ async function handlePay() {
                   size="xs"
                   color="neutral"
                   variant="outline"
-                  :disabled="isAtStockLimit(item)"
+                  :disabled="
+                    isAtStockLimit(item) || isSaleItemLockedByCheckout(item)
+                  "
                   @click="handleIncreaseQuantity(item)"
                 />
               </div>
@@ -929,7 +1700,21 @@ async function handlePay() {
                 color="error"
                 variant="ghost"
                 :title="t('cart.remove')"
+                :disabled="isSaleItemLockedByCheckout(item)"
                 @click="removeFromCart(item.productId, item.skuId)"
+              />
+              <UAlert
+                v-if="getSaleItemMixedCheckoutError(item)"
+                class="basis-full"
+                color="error"
+                variant="soft"
+                icon="bx:error-circle"
+                :title="getSaleItemMixedCheckoutError(item)?.message"
+                :description="
+                  getMixedCheckoutSuggestedActionLabel(
+                    getSaleItemMixedCheckoutError(item),
+                  )
+                "
               />
             </div>
           </div>
@@ -973,7 +1758,7 @@ async function handlePay() {
           </template>
 
           <!-- Loading -->
-          <div v-if="addressLoading" class="space-y-3">
+          <div v-if="isAddressBookLoading" class="space-y-3">
             <div
               v-for="i in 2"
               :key="i"
@@ -987,11 +1772,16 @@ async function handlePay() {
               v-if="hasPickupCandidateBookings"
               class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors"
               :class="
-                isPickupSelected
-                  ? 'border-primary bg-primary/5'
-                  : 'hover:border-muted'
+                isCartConfigurationLockedByCheckout
+                  ? 'cursor-not-allowed opacity-70'
+                  : isPickupSelected
+                    ? 'border-primary bg-primary/5'
+                    : 'hover:border-muted'
               "
-              @click="selectedAddressId = PICKUP_ADDRESS_SENTINEL"
+              @click="
+                !isCartConfigurationLockedByCheckout &&
+                (selectedAddressId = PICKUP_ADDRESS_SENTINEL)
+              "
             >
               <!-- Radio indicator -->
               <div class="mt-0.5 shrink-0">
@@ -1038,6 +1828,7 @@ async function handlePay() {
                     :placeholder="t('cart.pickupBranchPlaceholder')"
                     size="md"
                     class="w-full sm:w-80"
+                    :disabled="isCartConfigurationLockedByCheckout"
                     @click.stop
                   />
                   <p
@@ -1121,11 +1912,16 @@ async function handlePay() {
               :key="addr.id"
               class="flex cursor-pointer items-start gap-3 rounded-lg border p-4 transition-colors"
               :class="
-                selectedAddressId === addr.id
-                  ? 'border-primary bg-primary/5'
-                  : 'hover:border-muted'
+                isCartConfigurationLockedByCheckout
+                  ? 'cursor-not-allowed opacity-70'
+                  : selectedAddressId === addr.id
+                    ? 'border-primary bg-primary/5'
+                    : 'hover:border-muted'
               "
-              @click="selectedAddressId = addr.id"
+              @click="
+                !isCartConfigurationLockedByCheckout &&
+                (selectedAddressId = addr.id)
+              "
             >
               <!-- Radio indicator -->
               <div class="mt-0.5 shrink-0">
@@ -1221,151 +2017,167 @@ async function handlePay() {
             </div>
           </template>
 
-          <!-- Order summary — sale items only (rental & deposit are paid at branch) -->
-          <div v-if="hasPurchaseItems" class="space-y-4">
-            <h3 class="font-semibold">{{ t("cart.orderSummary") }}</h3>
+          <div class="space-y-4">
+            <!-- Order summary — sale items only (rental Booking Deposit is separate) -->
+            <div v-if="hasPurchaseItems" class="space-y-4">
+              <h3 class="font-semibold">{{ t("cart.orderSummary") }}</h3>
 
-            <div class="space-y-2 text-sm">
-              <!-- Cart total -->
-              <div class="flex justify-between">
-                <span class="text-muted">
-                  {{ t("cart.cartTotal") }}
-                  ({{ t("cart.itemCount", { n: cartItemCount }) }})
-                </span>
-                <span>฿{{ cartSubtotal.toLocaleString() }}</span>
-              </div>
-
-              <!-- Shipping fee — waived when picking up at branch -->
-              <div class="flex justify-between">
-                <span class="text-muted">{{ t("cart.shippingFee") }}</span>
-                <span v-if="isPickupSelected" class="text-success">
-                  {{ t("cart.shippingFreeAtPickup") }}
-                </span>
-                <span v-else>฿{{ shippingCost.toLocaleString() }}</span>
-              </div>
-
-              <!-- Shipping breakdown — only when there are real boxes -->
-              <div
-                v-if="!isPickupSelected && hasShippingBoxes"
-                class="rounded-md bg-elevated/40 px-3 py-2 text-xs text-muted"
-              >
-                <div class="mb-1 font-medium">
-                  {{ t("cart.shippingBreakdownTitle") }}
+              <div class="space-y-2 text-sm">
+                <!-- Cart total -->
+                <div class="flex justify-between">
+                  <span class="text-muted">
+                    {{ t("cart.cartTotal") }}
+                    ({{ t("cart.itemCount", { n: cartItemCount }) }})
+                  </span>
+                  <span>฿{{ cartSubtotal.toLocaleString() }}</span>
                 </div>
-                <ul class="space-y-0.5">
-                  <li
-                    v-if="shippingBreakdown.xl > 0"
-                    class="flex justify-between"
-                  >
-                    <span>
-                      {{
-                        t("cart.shippingBreakdownLine.xl", {
-                          n: shippingBreakdown.xl,
-                        })
-                      }}
-                    </span>
-                    <span
-                      >฿{{
-                        (shippingBreakdown.xl * 200).toLocaleString()
-                      }}</span
+
+                <!-- Shipping fee — waived when picking up at branch -->
+                <div class="flex justify-between">
+                  <span class="text-muted">{{ t("cart.shippingFee") }}</span>
+                  <span v-if="isPickupSelected" class="text-success">
+                    {{ t("cart.shippingFreeAtPickup") }}
+                  </span>
+                  <span v-else>฿{{ shippingCost.toLocaleString() }}</span>
+                </div>
+
+                <!-- Shipping breakdown — only when there are real boxes -->
+                <div
+                  v-if="!isPickupSelected && hasShippingBoxes"
+                  class="rounded-md bg-elevated/40 px-3 py-2 text-xs text-muted"
+                >
+                  <div class="mb-1 font-medium">
+                    {{ t("cart.shippingBreakdownTitle") }}
+                  </div>
+                  <ul class="space-y-0.5">
+                    <li
+                      v-if="shippingBreakdown.xl > 0"
+                      class="flex justify-between"
                     >
-                  </li>
-                  <li
-                    v-if="shippingBreakdown.l > 0"
-                    class="flex justify-between"
-                  >
-                    <span>
-                      {{
-                        t("cart.shippingBreakdownLine.l", {
-                          n: shippingBreakdown.l,
-                        })
-                      }}
-                    </span>
-                    <span
-                      >฿{{ (shippingBreakdown.l * 150).toLocaleString() }}</span
+                      <span>
+                        {{
+                          t("cart.shippingBreakdownLine.xl", {
+                            n: shippingBreakdown.xl,
+                          })
+                        }}
+                      </span>
+                      <span
+                        >฿{{
+                          (shippingBreakdown.xl * 200).toLocaleString()
+                        }}</span
+                      >
+                    </li>
+                    <li
+                      v-if="shippingBreakdown.l > 0"
+                      class="flex justify-between"
                     >
-                  </li>
-                  <li
-                    v-if="shippingBreakdown.m > 0"
-                    class="flex justify-between"
-                  >
-                    <span>
-                      {{
-                        t("cart.shippingBreakdownLine.m", {
-                          n: shippingBreakdown.m,
-                        })
-                      }}
-                    </span>
-                    <span
-                      >฿{{ (shippingBreakdown.m * 100).toLocaleString() }}</span
+                      <span>
+                        {{
+                          t("cart.shippingBreakdownLine.l", {
+                            n: shippingBreakdown.l,
+                          })
+                        }}
+                      </span>
+                      <span
+                        >฿{{
+                          (shippingBreakdown.l * 150).toLocaleString()
+                        }}</span
+                      >
+                    </li>
+                    <li
+                      v-if="shippingBreakdown.m > 0"
+                      class="flex justify-between"
                     >
-                  </li>
-                  <li
-                    v-if="shippingBreakdown.s > 0"
-                    class="flex justify-between"
-                  >
-                    <span>
-                      {{
-                        t("cart.shippingBreakdownLine.s", {
-                          n: shippingBreakdown.s,
-                        })
-                      }}
-                    </span>
-                    <span
-                      >฿{{ (shippingBreakdown.s * 50).toLocaleString() }}</span
+                      <span>
+                        {{
+                          t("cart.shippingBreakdownLine.m", {
+                            n: shippingBreakdown.m,
+                          })
+                        }}
+                      </span>
+                      <span
+                        >฿{{
+                          (shippingBreakdown.m * 100).toLocaleString()
+                        }}</span
+                      >
+                    </li>
+                    <li
+                      v-if="shippingBreakdown.s > 0"
+                      class="flex justify-between"
                     >
-                  </li>
-                  <li
-                    v-if="shippingBreakdown.free > 0"
-                    class="flex justify-between"
-                  >
-                    <span>
-                      {{
-                        t("cart.shippingBreakdownLine.free", {
-                          n: shippingBreakdown.free,
-                        })
-                      }}
-                    </span>
-                    <span>฿0</span>
-                  </li>
-                </ul>
+                      <span>
+                        {{
+                          t("cart.shippingBreakdownLine.s", {
+                            n: shippingBreakdown.s,
+                          })
+                        }}
+                      </span>
+                      <span
+                        >฿{{
+                          (shippingBreakdown.s * 50).toLocaleString()
+                        }}</span
+                      >
+                    </li>
+                    <li
+                      v-if="shippingBreakdown.free > 0"
+                      class="flex justify-between"
+                    >
+                      <span>
+                        {{
+                          t("cart.shippingBreakdownLine.free", {
+                            n: shippingBreakdown.free,
+                          })
+                        }}
+                      </span>
+                      <span>฿0</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <UDivider />
+
+                <!-- Grand total — cart subtotal + shipping -->
+                <div class="flex justify-between text-lg font-bold">
+                  <span>{{ t("cart.grandTotal") }}</span>
+                  <span class="text-primary">
+                    ฿{{ orderGrandTotal.toLocaleString() }}
+                  </span>
+                </div>
+
+                <!-- Minimum-charge notice for online payment (Omise: 20 THB) -->
+                <p
+                  v-if="isBelowOnlineMin && !isB2BUser"
+                  class="rounded-md bg-warning/10 p-2 text-xs text-warning"
+                >
+                  <UIcon name="bx:info-circle" class="mr-1 align-text-bottom" />
+                  {{
+                    t("cart.minimumChargeNotice", {
+                      min: MIN_ONLINE_PAYMENT_THB,
+                    })
+                  }}
+                </p>
               </div>
-
-              <UDivider />
-
-              <!-- Grand total — cart subtotal + shipping -->
-              <div class="flex justify-between text-lg font-bold">
-                <span>{{ t("cart.grandTotal") }}</span>
-                <span class="text-primary">
-                  ฿{{ orderGrandTotal.toLocaleString() }}
-                </span>
-              </div>
-
-              <!-- Minimum-charge notice for online payment (Omise: 20 THB) -->
-              <p
-                v-if="isBelowOnlineMin && !isB2BUser"
-                class="rounded-md bg-warning/10 p-2 text-xs text-warning"
-              >
-                <UIcon name="bx:info-circle" class="mr-1 align-text-bottom" />
-                {{
-                  t("cart.minimumChargeNotice", { min: MIN_ONLINE_PAYMENT_THB })
-                }}
-              </p>
             </div>
 
-            <UDivider />
+            <UDivider
+              v-if="
+                hasPurchaseItems && (showPaymentMethodSelector || isB2BUser)
+              "
+            />
 
             <!-- Payment method (hidden for organization members — quotation only) -->
-            <div v-if="hasPurchaseItems && !isB2BUser" class="space-y-3">
+            <div v-if="showPaymentMethodSelector" class="space-y-3">
               <h3 class="font-semibold">{{ t("cart.paymentMethod") }}</h3>
 
               <!-- Credit Card -->
               <label
                 class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
                 :class="
-                  paymentMethod === 'credit_card'
-                    ? 'border-primary bg-primary/5'
-                    : ''
+                  isCartConfigurationLockedByCheckout
+                    ? 'cursor-not-allowed opacity-70'
+                    : paymentMethod === 'credit_card'
+                      ? 'border-primary bg-primary/5'
+                      : ''
                 "
               >
                 <input
@@ -1373,6 +2185,7 @@ async function handlePay() {
                   type="radio"
                   value="credit_card"
                   class="accent-primary"
+                  :disabled="isCartConfigurationLockedByCheckout"
                 />
                 <UIcon name="bx:credit-card" class="text-lg" />
                 <span class="text-sm">{{ t("cart.creditCard") }}</span>
@@ -1382,9 +2195,11 @@ async function handlePay() {
               <label
                 class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
                 :class="
-                  paymentMethod === 'promptpay'
-                    ? 'border-primary bg-primary/5'
-                    : ''
+                  isCartConfigurationLockedByCheckout
+                    ? 'cursor-not-allowed opacity-70'
+                    : paymentMethod === 'promptpay'
+                      ? 'border-primary bg-primary/5'
+                      : ''
                 "
               >
                 <input
@@ -1392,6 +2207,7 @@ async function handlePay() {
                   type="radio"
                   value="promptpay"
                   class="accent-primary"
+                  :disabled="isCartConfigurationLockedByCheckout"
                 />
                 <UIcon name="bx:qr" class="text-lg" />
                 <span class="text-sm">{{ t("cart.promptPay") }}</span>
@@ -1399,7 +2215,12 @@ async function handlePay() {
 
               <!-- Company Credit (organization admin only with KYC verified) -->
               <label
-                v-if="isB2BAdmin && currentCompany?.kycStatus === 'verified'"
+                v-if="
+                  isB2BAdmin &&
+                  hasPurchaseItems &&
+                  currentCompany?.kycStatus === 'verified' &&
+                  !canUseMixedCheckout
+                "
                 class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 transition-colors"
                 :class="
                   paymentMethod === 'company_credit'
@@ -1412,7 +2233,10 @@ async function handlePay() {
                   type="radio"
                   value="company_credit"
                   class="accent-primary"
-                  :disabled="creditRemaining < orderGrandTotal"
+                  :disabled="
+                    creditRemaining < orderGrandTotal ||
+                    isCartConfigurationLockedByCheckout
+                  "
                 />
                 <UIcon name="bx:building" class="text-lg" />
                 <div>
@@ -1452,18 +2276,223 @@ async function handlePay() {
               {{ t("cart.b2bUserQuotationOnly") }}
             </div>
 
+            <div v-if="hasRentalBookings" class="space-y-4">
+              <h3 class="font-semibold">
+                {{ t("cart.rentalPaymentSummaryPreviewTitle") }}
+              </h3>
+
+              <div
+                class="space-y-3 rounded-lg border border-default bg-elevated/30 p-4 text-sm"
+              >
+                <section class="rounded-lg bg-default p-3">
+                  <p class="mb-2 font-semibold text-highlighted">
+                    {{ t("cart.rentalSummaryPayNowTitle") }}
+                  </p>
+                  <div class="flex justify-between gap-3">
+                    <span class="text-muted">{{
+                      t("cart.rentalSummaryBookingDeposit")
+                    }}</span>
+                    <span class="font-semibold text-primary">{{
+                      moneyLabel(rentalPaymentSummary.bookingDepositDueNow)
+                    }}</span>
+                  </div>
+                </section>
+
+                <section class="rounded-lg bg-default p-3">
+                  <p class="mb-2 font-semibold text-highlighted">
+                    {{ t("cart.rentalSummaryPayAtPickupTitle") }}
+                  </p>
+                  <div class="space-y-1">
+                    <div class="flex justify-between gap-3">
+                      <span class="text-muted">{{
+                        t("cart.rentalSummaryRentalFeeAtPickup")
+                      }}</span>
+                      <span>{{
+                        moneyLabel(rentalPaymentSummary.rentalFeeDue)
+                      }}</span>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                      <span class="text-muted">{{
+                        t("cart.rentalSummaryRemainingSecurityDepositAtPickup")
+                      }}</span>
+                      <span>{{
+                        moneyLabel(
+                          rentalPaymentSummary.remainingSecurityDepositDueAtPickup,
+                        )
+                      }}</span>
+                    </div>
+                    <UDivider class="py-1" />
+                    <div class="flex justify-between gap-3 font-semibold">
+                      <span>{{ t("cart.rentalSummaryTotalDueAtPickup") }}</span>
+                      <span>{{
+                        moneyLabel(rentalPaymentSummary.netPayableAtPickup)
+                      }}</span>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="rounded-lg bg-default p-3">
+                  <p class="mb-2 font-semibold text-highlighted">
+                    {{ t("cart.rentalSummarySecurityDepositTitle") }}
+                  </p>
+                  <div class="space-y-1">
+                    <div class="flex justify-between gap-3">
+                      <span class="text-muted">{{
+                        t("cart.rentalSummaryFullSecurityDeposit")
+                      }}</span>
+                      <span>{{
+                        moneyLabel(rentalPaymentSummary.securityDepositRequired)
+                      }}</span>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                      <span class="text-muted">{{
+                        t("cart.rentalSummaryLessBookingDeposit")
+                      }}</span>
+                      <span
+                        >-{{
+                          moneyLabel(rentalPaymentSummary.bookingDepositDueNow)
+                        }}</span
+                      >
+                    </div>
+                    <UDivider class="py-1" />
+                    <div class="flex justify-between gap-3 font-semibold">
+                      <span>{{
+                        t("cart.rentalSummaryRemainingSecurityDepositAtPickup")
+                      }}</span>
+                      <span>{{
+                        moneyLabel(
+                          rentalPaymentSummary.remainingSecurityDepositDueAtPickup,
+                        )
+                      }}</span>
+                    </div>
+                  </div>
+                </section>
+
+                <p
+                  class="rounded-lg bg-info/5 p-3 text-xs leading-relaxed text-muted"
+                >
+                  {{ t("cart.bookingDepositSecurityDepositNote") }}
+                </p>
+              </div>
+
+              <div
+                v-if="hasRentalBookings"
+                class="rounded-lg border border-dashed border-warning p-4 text-sm text-muted"
+              >
+                <UIcon name="bx:store" class="mr-1 inline text-warning" />
+                {{
+                  bookingsMissingHub.length > 0
+                    ? t("cart.bookingHubRequiredNotice", {
+                        n: bookingsMissingHub.length,
+                      })
+                    : t("cart.bookingSubmitReady")
+                }}
+                <div class="mt-4 rounded-lg bg-warning/5 p-3">
+                  <p class="font-semibold text-highlighted">
+                    {{ t("cart.bookingDepositAgreementTitle") }}
+                  </p>
+                  <p class="mt-1 text-xs leading-relaxed">
+                    {{ t("cart.bookingDepositAgreementText") }}
+                  </p>
+                  <label
+                    class="mt-3 flex cursor-pointer items-start gap-2 text-xs"
+                  >
+                    <input
+                      v-model="bookingDepositAgreementAccepted"
+                      type="checkbox"
+                      class="mt-0.5 accent-primary"
+                    />
+                    <span>{{ t("cart.bookingDepositAgreementCheckbox") }}</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <UAlert
+              v-if="hasMixedCart"
+              icon="bx:info-circle"
+              color="info"
+              variant="soft"
+              :title="t('cart.mixedPaymentTitle')"
+              :description="t('cart.mixedPaymentDesc')"
+            />
+
             <div
-              v-if="hasRentalBookings"
-              class="rounded-lg border border-dashed border-warning p-4 text-sm text-muted"
+              v-if="canUseUnifiedCheckout"
+              class="space-y-4 rounded-lg border border-primary/40 bg-primary/5 p-4"
             >
-              <UIcon name="bx:store" class="mr-1 inline text-warning" />
-              {{
-                bookingsMissingHub.length > 0
-                  ? t("cart.bookingHubRequiredNotice", {
-                      n: bookingsMissingHub.length,
-                    })
-                  : t("cart.bookingSubmitReady")
-              }}
+              <div class="flex items-start gap-3">
+                <UIcon name="bx:qr" class="mt-1 text-xl text-primary" />
+                <div>
+                  <p class="font-semibold text-highlighted">
+                    {{
+                      canUseBookingOnlyUnifiedCheckout
+                        ? t("cart.bookingOnlyUnifiedCheckoutTitle")
+                        : t("cart.mixedCheckoutTitle")
+                    }}
+                  </p>
+                  <p class="mt-1 text-sm text-muted">
+                    {{
+                      canUseBookingOnlyUnifiedCheckout
+                        ? t("cart.bookingOnlyUnifiedCheckoutDesc")
+                        : t("cart.mixedCheckoutDesc")
+                    }}
+                  </p>
+                  <p class="mt-1 text-xs text-muted">
+                    {{ t("cart.mixedCheckoutBookingDepositNote") }}
+                  </p>
+                  <p class="mt-1 text-xs text-warning">
+                    {{ t("cart.mixedCheckoutExperimentalNotice") }}
+                  </p>
+                </div>
+              </div>
+
+              <div class="rounded-lg bg-default p-3 text-sm">
+                <p class="mb-2 font-medium">
+                  {{ t("cart.mixedCheckoutAllocationBreakdown") }}
+                </p>
+                <div class="space-y-1">
+                  <div
+                    v-if="hasPurchaseItems"
+                    class="flex justify-between gap-3"
+                  >
+                    <span class="text-muted">{{
+                      t("cart.mixedCheckoutSaleProducts")
+                    }}</span>
+                    <span>{{ moneyLabel(cartSubtotal) }}</span>
+                  </div>
+                  <div
+                    v-if="hasPurchaseItems"
+                    class="flex justify-between gap-3"
+                  >
+                    <span class="text-muted">{{
+                      t("cart.mixedCheckoutShipping")
+                    }}</span>
+                    <span>{{ moneyLabel(shippingCost) }}</span>
+                  </div>
+                  <div
+                    v-for="line in bookingDepositPreviewLines"
+                    :key="line.bookingId"
+                    class="flex justify-between gap-3"
+                  >
+                    <span class="text-muted">
+                      {{
+                        t("cart.mixedCheckoutBookingDepositLine", {
+                          title: line.title,
+                        })
+                      }}
+                    </span>
+                    <span>{{ moneyLabel(line.amount) }}</span>
+                  </div>
+                  <UDivider class="py-1" />
+                  <div
+                    class="flex justify-between gap-3 font-semibold text-primary"
+                  >
+                    <span>{{ t("cart.mixedCheckoutTotalPayableNow") }}</span>
+                    <span>{{ moneyLabel(mixedCheckoutTotalPreview) }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1493,42 +2522,122 @@ async function handlePay() {
               </div>
               <div class="flex flex-col gap-3 sm:flex-row">
                 <UButton
-                  v-if="hasRentalBookings"
+                  v-if="
+                    hasSingleRentalBooking &&
+                    !canUseUnifiedCheckout &&
+                    !hasActiveBookingCheckout
+                  "
                   :label="
                     isSubmittingRental
                       ? t('cart.submittingRental')
-                      : t('cart.submitRental')
+                      : t('cart.payBookingDeposit')
                   "
-                  icon="bx:calendar-check"
+                  icon="bx:qr"
                   size="lg"
                   color="primary"
                   :loading="isSubmittingRental"
                   :disabled="
-                    isSubmittingRental || bookingsMissingHub.length > 0
+                    isSubmittingRental ||
+                    bookingsMissingHub.length > 0 ||
+                    !bookingDepositAgreementAccepted
                   "
-                  @click="handleSubmitRentals"
+                  @click="handleSubmitSingleRental"
                 />
                 <!-- Proceed to Payment — not for organization members -->
                 <UButton
-                  v-if="hasPurchaseItems && !isB2BUser"
+                  v-if="hasPurchaseItems && !isB2BUser && !canUseMixedCheckout"
                   :label="t('cart.proceedToPayment')"
                   icon="bx:check-circle"
                   size="lg"
-                  :loading="isSubmittingOrder"
+                  :loading="
+                    isSubmittingOrder ||
+                    cartLoading ||
+                    isCartDbSyncPendingForCurrentUser
+                  "
                   :disabled="
                     isSubmittingOrder ||
+                    hasActiveCartCheckout ||
                     !hasPurchaseItems ||
+                    !isSaleCheckoutStateReady ||
                     (isBelowOnlineMin &&
                       (paymentMethod === 'credit_card' ||
                         paymentMethod === 'promptpay'))
                   "
                   @click="handlePay"
                 />
+                <UButton
+                  v-if="canUseUnifiedCheckout"
+                  :label="unifiedCheckoutPayButtonLabel"
+                  :icon="
+                    paymentMethod === 'credit_card' ? 'bx:credit-card' : 'bx:qr'
+                  "
+                  size="lg"
+                  color="primary"
+                  :loading="isSubmittingMixedCheckout"
+                  :disabled="
+                    isSubmittingMixedCheckout ||
+                    hasActiveCartCheckout ||
+                    hasActiveBookingCheckout ||
+                    bookingsMissingHub.length > 0 ||
+                    !bookingDepositAgreementAccepted
+                  "
+                  @click="handleUnifiedCheckoutPay"
+                />
               </div>
+              <UAlert
+                v-if="hasActiveBookingCheckout || hasActiveCartCheckout"
+                color="warning"
+                variant="soft"
+                icon="bx:time-five"
+                :title="t('cart.bookingCheckoutPendingTitle')"
+                :description="t('cart.bookingCheckoutAggregateBlockedDesc')"
+              />
             </div>
           </template>
         </UCard>
       </section>
     </div>
+
+    <UModal
+      v-model:open="cancelCheckoutModalOpen"
+      :title="t('cart.cancelCheckoutModalTitle')"
+      :dismissible="!isCancellingCheckout"
+    >
+      <template #body>
+        <div class="space-y-3 text-sm">
+          <UAlert
+            color="warning"
+            variant="soft"
+            icon="bx:error-circle"
+            :description="t('cart.cancelCheckoutModalBody')"
+          />
+          <UAlert
+            v-if="cancelCheckoutUsesPromptPay"
+            color="warning"
+            variant="subtle"
+            icon="bx:qr"
+            :description="t('cart.cancelCheckoutPromptPayCaution')"
+          />
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton
+            :label="t('cart.cancelCheckoutBack')"
+            color="neutral"
+            variant="ghost"
+            :disabled="isCancellingCheckout"
+            @click="closeCancelCheckoutModal"
+          />
+          <UButton
+            :label="t('cart.cancelCheckoutConfirm')"
+            color="error"
+            icon="bx:x-circle"
+            :loading="isCancellingCheckout"
+            @click="() => void confirmCancelCheckout()"
+          />
+        </div>
+      </template>
+    </UModal>
   </UContainer>
 </template>

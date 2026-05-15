@@ -80,7 +80,22 @@ export function buildBlockDocumentPath(
  * never blocks a metadata mutation.
  */
 export async function removeBlockStorageFolder(
-  adminClient: any,
+  adminClient: {
+    storage: {
+      from(bucket: string): {
+        list(
+          prefix: string,
+          options: { limit: number },
+        ): Promise<{
+          data: Array<{ name?: string | null }> | null;
+          error: { message?: string } | null;
+        }>;
+        remove(
+          paths: string[],
+        ): Promise<{ error: { message?: string } | null }>;
+      };
+    };
+  },
   prefix: string,
 ) {
   try {

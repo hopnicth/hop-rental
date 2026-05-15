@@ -10,6 +10,18 @@ type ContactSettingsDto = {
   updatedAt: string | null;
 };
 
+type AuthUserLike = {
+  id?: string;
+  sub?: string;
+} | null;
+
+function getAuthUserId(user: AuthUserLike): string | null {
+  if (!user) return null;
+  if (typeof user.id === "string" && user.id.length > 0) return user.id;
+  if (typeof user.sub === "string" && user.sub.length > 0) return user.sub;
+  return null;
+}
+
 const { t, locale } = useI18n();
 const config = useRuntimeConfig();
 const user = useSupabaseUser();
@@ -18,12 +30,7 @@ const isFabVisible = computed(
   () =>
     cookieConsent.hasResponded.value && !cookieConsent.isPreferencesOpen.value,
 );
-const currentUserId = computed(
-  () =>
-    ((user.value as any)?.id as string | undefined) ??
-    ((user.value as any)?.sub as string | undefined) ??
-    null,
-);
+const currentUserId = computed(() => getAuthUserId(user.value as AuthUserLike));
 const toast = useToast();
 const chat = useChat();
 

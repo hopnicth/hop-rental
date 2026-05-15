@@ -59,7 +59,27 @@ export function mapAdminPaymentAlert(row: unknown): AdminPaymentAlert {
   };
 }
 
-type AnyClient = { from: (table: string) => any };
+type QueryError = { message: string } | null;
+type SelectRowsResult = Promise<{ data: unknown[] | null; error: QueryError }>;
+type AlertUpdateQuery = {
+  eq(column: string, value: unknown): AlertUpdateQuery;
+  is(column: string, value: unknown): AlertUpdateQuery;
+  select(columns: string): SelectRowsResult;
+};
+type AlertListQuery = {
+  eq(column: string, value: unknown): AlertListQuery;
+  order(
+    column: string,
+    options: { ascending: boolean; nullsFirst?: boolean },
+  ): AlertListQuery;
+  limit(value: number): SelectRowsResult;
+};
+type AnyClient = {
+  from(table: "payment_alerts"): {
+    update(payload: Record<string, unknown>): AlertUpdateQuery;
+    select(columns: string): AlertListQuery;
+  };
+};
 
 /**
  * Mark every unresolved admin-audience alert for an order as resolved by the

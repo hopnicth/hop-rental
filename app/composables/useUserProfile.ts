@@ -5,9 +5,10 @@
  * - Provides reactive profile data
  * - Exposes update method
  *
- * SSR-safe — DB queries only run on client when user is authenticated.
+ * SSR-safe — profile reads/writes go through owner-checked server APIs.
  */
 import type { UserProfile } from "~/types/user";
+import type { UserProfileApiResponse } from "~~/server/utils/user-profile";
 
 // ── Singleton reactive state (shared across components) ──
 const profile = ref<UserProfile | null>(null);
@@ -34,6 +35,13 @@ function mapRow(row: Record<string, unknown>): UserProfile {
     pdpaConsentUrl: (row.pdpa_consent_url as string) ?? null,
     pdpaConsentedAt: (row.pdpa_consented_at as string) ?? null,
     kycRejectionReason: (row.kyc_rejection_reason as string) ?? null,
+    accountStatus:
+      (row.account_status as UserProfile["accountStatus"]) ?? "active",
+    deactivationRequestedAt: (row.deactivation_requested_at as string) ?? null,
+    deletionRequestedAt: (row.deletion_requested_at as string) ?? null,
+    deletedAt: (row.deleted_at as string) ?? null,
+    anonymizedAt: (row.anonymized_at as string) ?? null,
+    lifecycleUpdatedAt: (row.lifecycle_updated_at as string) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -42,6 +50,10 @@ function mapRow(row: Record<string, unknown>): UserProfile {
 export function useUserProfile() {
   const supabase = useSupabaseClient();
   const user = useSupabaseUser();
+
+  function requestHeaders() {
+    return import.meta.server ? useRequestHeaders(["cookie"]) : undefined;
+  }
 
   async function resolveUserId(): Promise<string | null> {
     if (typeof user.value?.id === "string" && user.value.id.length > 0) {
@@ -73,19 +85,12 @@ export function useUserProfile() {
       error.value = null;
 
       try {
-        const { data, error: dbError } = await supabase
-          .from("users")
-          .select("*")
-          .eq("id", userId)
-          .single();
-
-        if (dbError) {
-          error.value = dbError.message;
-          profile.value = null;
-          return;
-        }
-
-        profile.value = data ? mapRow(data as Record<string, unknown>) : null;
+        const response = await $fetch<UserProfileApiResponse>("/api/user", {
+          headers: requestHeaders(),
+        });
+        profile.value = response.profile
+          ? mapRow(response.profile as Record<string, unknown>)
+          : null;
       } catch (e) {
         error.value = e instanceof Error ? e.message : "Unknown error";
         profile.value = null;
@@ -131,26 +136,20 @@ export function useUserProfile() {
   ): Promise<boolean> {
     if (!user.value) return false;
 
-    // Map camelCase → snake_case for DB
-    const dbUpdates: Record<string, unknown> = {};
-    if (updates.fullName !== undefined) dbUpdates.full_name = updates.fullName;
-    if (updates.phone !== undefined) dbUpdates.phone = updates.phone;
-    if (updates.avatarUrl !== undefined)
-      dbUpdates.avatar_url = updates.avatarUrl;
-
-    const { error: dbError } = await supabase
-      .from("users")
-      .update(dbUpdates)
-      .eq("id", user.value.id);
-
-    if (dbError) {
-      error.value = dbError.message;
+    try {
+      const response = await $fetch<UserProfileApiResponse>("/api/user", {
+        method: "PUT",
+        headers: requestHeaders(),
+        body: updates,
+      });
+      profile.value = response.profile
+        ? mapRow(response.profile as Record<string, unknown>)
+        : null;
+      return Boolean(profile.value);
+    } catch (e) {
+      error.value = e instanceof Error ? e.message : "Unknown error";
       return false;
     }
-
-    // Re-fetch to get updated data
-    await fetchProfile();
-    return true;
   }
 
   // ── Auto-fetch on auth state change (client-only) ──

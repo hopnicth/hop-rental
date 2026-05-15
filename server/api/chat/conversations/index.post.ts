@@ -18,6 +18,9 @@ const CHAT_SUBJECT_TYPES = new Set([
   "rental_booking",
 ]);
 
+type ChatConversationRow = Record<string, unknown>;
+type ChatMessageRow = Record<string, unknown>;
+
 function cleanSubjectType(value: unknown): ChatSubjectType {
   return CHAT_SUBJECT_TYPES.has(String(value))
     ? (String(value) as ChatSubjectType)
@@ -30,7 +33,10 @@ function cleanText(value: unknown, max = 120): string | null {
   return text.length > 0 ? text.slice(0, max) : null;
 }
 
-function mapConversation(row: any, message: any | null): ChatConversationDto {
+function mapConversation(
+  row: ChatConversationRow,
+  message: ChatMessageRow | null,
+): ChatConversationDto {
   return {
     id: String(row.id),
     subjectType: String(row.subject_type ?? "general") as ChatSubjectType,
@@ -53,11 +59,17 @@ function mapConversation(row: any, message: any | null): ChatConversationDto {
 export default defineEventHandler(
   async (event): Promise<{ item: ChatConversationDto; created: boolean }> => {
     const { userId, platformRole, adminClient } = await requireChatUser(event);
-    const payload = (await readBody(event)) as CreateChatConversationPayload | null;
+    const payload = (await readBody(
+      event,
+    )) as CreateChatConversationPayload | null;
     const subjectType = cleanSubjectType(payload?.subjectType);
-    const subjectId = subjectType === "general" ? null : cleanText(payload?.subjectId);
+    const subjectId =
+      subjectType === "general" ? null : cleanText(payload?.subjectId);
     if (subjectType !== "general" && !subjectId) {
-      throw createError({ statusCode: 422, statusMessage: "subjectId is required" });
+      throw createError({
+        statusCode: 422,
+        statusMessage: "subjectId is required",
+      });
     }
 
     const customerId =
@@ -65,7 +77,10 @@ export default defineEventHandler(
         ? cleanText(payload.customerId, 64)
         : userId;
     if (!customerId) {
-      throw createError({ statusCode: 422, statusMessage: "customerId is required" });
+      throw createError({
+        statusCode: 422,
+        statusMessage: "customerId is required",
+      });
     }
 
     let existingRequest = adminClient
@@ -84,7 +99,10 @@ export default defineEventHandler(
 
     const { data: existingRows, error: existingError } = await existingRequest;
     if (existingError) {
-      throw createError({ statusCode: 500, statusMessage: existingError.message });
+      throw createError({
+        statusCode: 500,
+        statusMessage: existingError.message,
+      });
     }
     if (existingRows?.[0]) {
       return { item: mapConversation(existingRows[0], null), created: false };
@@ -92,12 +110,17 @@ export default defineEventHandler(
 
     const { data: conversation, error } = await adminClient
       .from("chat_conversations")
-      .insert({ subject_type: subjectType, subject_id: subjectId, customer_id: customerId })
+      .insert({
+        subject_type: subjectType,
+        subject_id: subjectId,
+        customer_id: customerId,
+      })
       .select(
         "id, subject_type, subject_id, customer_id, status, last_message_id, created_at, updated_at, closed_at, archived_at",
       )
       .single();
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+    if (error)
+      throw createError({ statusCode: 500, statusMessage: error.message });
 
     const { error: participantError } = await adminClient
       .from("chat_participants")
@@ -111,12 +134,17 @@ export default defineEventHandler(
         { onConflict: "conversation_id,user_id" },
       );
     if (participantError) {
-      throw createError({ statusCode: 500, statusMessage: participantError.message });
+      throw createError({
+        statusCode: 500,
+        statusMessage: participantError.message,
+      });
     }
 
-    let initialMessage: any | null = null;
+    let initialMessage: ChatMessageRow | null = null;
     if (payload?.initialMessage) {
-      const messagePayload = validateChatMessagePayload({ body: payload.initialMessage });
+      const messagePayload = validateChatMessagePayload({
+        body: payload.initialMessage,
+      });
       const { data: message, error: messageError } = await adminClient
         .from("chat_messages")
         .insert({
@@ -130,11 +158,17 @@ export default defineEventHandler(
         )
         .single();
       if (messageError) {
-        throw createError({ statusCode: 500, statusMessage: messageError.message });
+        throw createError({
+          statusCode: 500,
+          statusMessage: messageError.message,
+        });
       }
       initialMessage = message;
     }
 
-    return { item: mapConversation(conversation, initialMessage), created: true };
+    return {
+      item: mapConversation(conversation, initialMessage),
+      created: true,
+    };
   },
 );

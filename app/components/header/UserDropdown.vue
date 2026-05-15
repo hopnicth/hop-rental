@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from "@nuxt/ui";
+import QrcodeVue from "qrcode.vue";
 import { formatCompanyRole, formatPlatformRole } from "~/utils/role-display";
 
 const { t } = useI18n();
@@ -7,6 +8,11 @@ const { isLoggedIn, displayName, avatarUrl, userEmail, logout } =
   useAuthSession();
 const { profile } = useUserProfile();
 const { activeContext, currentCompany, memberships } = useCompanyContext();
+const isQrModalOpen = ref(false);
+
+const customerQrPayload = computed(() =>
+  profile.value?.id ? `customer:${profile.value.id}` : "",
+);
 
 const currentRoleIcon = computed(() => {
   if (activeContext.value.role === "b2b_admin") return "bx:shield";
@@ -65,6 +71,13 @@ const loggedInItems = computed<DropdownMenuItem[][]>(() => {
   return [
     summaryItems,
     [
+      {
+        label: "QR Code ของฉัน",
+        icon: "bx:qr",
+        onSelect: () => {
+          isQrModalOpen.value = true;
+        },
+      },
       {
         label: t("user.activeRentals"),
         icon: "bx:box",
@@ -138,4 +151,30 @@ const guestItems = computed<DropdownMenuItem[][]>(() => [
       <UIcon v-else name="bx:user" class="size-5" />
     </UButton>
   </UDropdownMenu>
+
+  <UModal v-model:open="isQrModalOpen" title="QR Code ของฉัน">
+    <template #body>
+      <div
+        v-if="customerQrPayload"
+        class="flex flex-col items-center gap-4 px-2 py-4 text-center"
+      >
+        <div class="rounded-2xl border bg-white p-4 shadow-sm">
+          <QrcodeVue :value="customerQrPayload" :size="220" level="H" />
+        </div>
+
+        <div class="space-y-1">
+          <p class="text-sm font-semibold text-highlighted">
+            {{ profile?.fullName || userEmail }}
+          </p>
+          <p class="font-mono text-xs text-muted">
+            {{ profile?.id }}
+          </p>
+        </div>
+      </div>
+
+      <div v-else class="py-6 text-center text-sm text-muted">
+        ยังไม่พบข้อมูลผู้ใช้สำหรับสร้าง QR Code
+      </div>
+    </template>
+  </UModal>
 </template>

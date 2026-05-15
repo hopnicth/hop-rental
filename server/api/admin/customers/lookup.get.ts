@@ -1,8 +1,8 @@
 import { createError, defineEventHandler, getQuery } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
 import {
-  ADMIN_RENTAL_BOOKING_LIST_SELECT,
   fetchAdminUserProfiles,
+  fetchAdminRentalBookingListRows,
   isUuid,
   mapAdminRentalBookingRow,
 } from "~~/server/utils/admin-orders";
@@ -14,6 +14,7 @@ interface WalkInCustomerRow {
   full_name: string | null;
   linked_user_id: string | null;
   id_card_url: string | null;
+  id_card_storage_path: string | null;
   notes: string | null;
   updated_at: string;
 }
@@ -30,6 +31,12 @@ function asString(value: unknown): string {
 
 function safeLike(value: string): string {
   return `*${value.replace(/[%_*]/g, "")}*`;
+}
+
+function errorMessage(error: unknown): string {
+  return error && typeof error === "object" && "message" in error
+    ? String((error as { message?: unknown }).message ?? "Unknown error")
+    : "Unknown error";
 }
 
 export default defineEventHandler(
@@ -74,7 +81,7 @@ export default defineEventHandler(
       let walkInQuery = adminClient
         .from("walk_in_customers")
         .select(
-          "phone, full_name, linked_user_id, id_card_url, notes, updated_at",
+          "phone, full_name, linked_user_id, id_card_url, id_card_storage_path, notes, updated_at",
         )
         .limit(1);
       walkInQuery = phone
@@ -86,28 +93,48 @@ export default defineEventHandler(
 
     const bookingMap = new Map<string, AdminRentalBookingRow>();
     for (const id of profileIds) {
-      const { data, error } = await adminClient
-        .from("rental_bookings")
-        .select(ADMIN_RENTAL_BOOKING_LIST_SELECT)
-        .eq("user_id", id)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (error)
-        throw createError({ statusCode: 500, statusMessage: error.message });
-      for (const row of data ?? [])
-        bookingMap.set(String(row.id), mapAdminRentalBookingRow(row));
+      let rows: unknown[];
+      try {
+        rows = await fetchAdminRentalBookingListRows((select) =>
+          adminClient
+            .from("rental_bookings")
+            .select(select)
+            .eq("user_id", id)
+            .order("created_at", { ascending: false })
+            .limit(50),
+        );
+      } catch (error) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: errorMessage(error),
+        });
+      }
+      for (const row of rows) {
+        const booking = mapAdminRentalBookingRow(row);
+        bookingMap.set(booking.id, booking);
+      }
     }
     if (phone) {
-      const { data, error } = await adminClient
-        .from("rental_bookings")
-        .select(ADMIN_RENTAL_BOOKING_LIST_SELECT)
-        .ilike("booker_phone", `%${phone.replace(/[%_]/g, "")}%`)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (error)
-        throw createError({ statusCode: 500, statusMessage: error.message });
-      for (const row of data ?? [])
-        bookingMap.set(String(row.id), mapAdminRentalBookingRow(row));
+      let rows: unknown[];
+      try {
+        rows = await fetchAdminRentalBookingListRows((select) =>
+          adminClient
+            .from("rental_bookings")
+            .select(select)
+            .ilike("booker_phone", `%${phone.replace(/[%_]/g, "")}%`)
+            .order("created_at", { ascending: false })
+            .limit(50),
+        );
+      } catch (error) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: errorMessage(error),
+        });
+      }
+      for (const row of rows) {
+        const booking = mapAdminRentalBookingRow(row);
+        bookingMap.set(booking.id, booking);
+      }
     }
 
     const customer = firstProfileId
@@ -117,7 +144,11 @@ export default defineEventHandler(
           fullName: firstProfile?.fullName ?? null,
           phone: firstProfile?.phone ?? null,
           kycStatus: firstProfile?.kycStatus ?? null,
-          idCardUrl: firstProfile?.idCardUrl ?? walkIn?.id_card_url ?? null,
+          idCardUrl:
+            firstProfile?.idCardUrl ??
+            walkIn?.id_card_storage_path ??
+            walkIn?.id_card_url ??
+            null,
         }
       : walkIn
         ? {
@@ -126,7 +157,7 @@ export default defineEventHandler(
             fullName: walkIn.full_name,
             phone: walkIn.phone,
             kycStatus: null,
-            idCardUrl: walkIn.id_card_url,
+            idCardUrl: walkIn.id_card_storage_path ?? walkIn.id_card_url,
           }
         : null;
 

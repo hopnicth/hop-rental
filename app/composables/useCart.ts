@@ -1,9 +1,15 @@
-import type { Cart, CartItem, GuestCartBuffer } from "~/types/cart";
+import type {
+  Cart,
+  CartCheckoutState,
+  CartItem,
+  GuestCartBuffer,
+} from "~/types/cart";
 
 // ── Constants ───────────────────────────────────────────────
 const CART_STORAGE_PREFIX = "hop-rental-cart";
 const GUEST_BUFFER_KEY = "hop-rental-cart-guest";
 const GUEST_BUFFER_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+const cartDbSyncQueues = new Map<string, Promise<void>>();
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -25,6 +31,22 @@ function generateCartId(): string {
 
 function emptyCart(): Cart {
   return { cartId: "", items: [], updatedAt: new Date().toISOString() };
+}
+
+function emptyCartCheckoutState(): CartCheckoutState {
+  return {
+    state: "none",
+    sessionId: null,
+    checkoutKind: null,
+    sessionStatus: null,
+    attemptId: null,
+    attemptStatus: null,
+    method: null,
+    expiresAt: null,
+    saleItemCartLineIds: [],
+    bookingIds: [],
+    shippingIncluded: false,
+  };
 }
 
 function normalizePrice(value: unknown, fallback: number): number {
@@ -70,6 +92,55 @@ function normalizeCartItem(raw: Partial<CartItem>): CartItem {
     quantity: Math.max(1, Number(raw.quantity) || 1),
     addedAt: raw.addedAt ?? new Date().toISOString(),
   };
+}
+
+function normalizeCartCheckoutState(raw: unknown): CartCheckoutState {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return emptyCartCheckoutState();
+  }
+  const value = raw as Record<string, unknown>;
+  const state = value.state;
+  if (
+    state !== "none" &&
+    state !== "active_unpaid" &&
+    state !== "expired" &&
+    state !== "paid_or_finalized" &&
+    state !== "blocked_review"
+  )
+    return emptyCartCheckoutState();
+  const checkoutKind =
+    value.checkoutKind === "mixed" ||
+    value.checkoutKind === "rental_deposit_only" ||
+    value.checkoutKind === "sale_only"
+      ? value.checkoutKind
+      : null;
+  const method =
+    value.method === "promptpay" || value.method === "credit_card"
+      ? value.method
+      : null;
+  const strings = (items: unknown): string[] =>
+    Array.isArray(items)
+      ? items.filter((item): item is string => typeof item === "string")
+      : [];
+  return {
+    state,
+    sessionId: typeof value.sessionId === "string" ? value.sessionId : null,
+    checkoutKind,
+    sessionStatus:
+      typeof value.sessionStatus === "string" ? value.sessionStatus : null,
+    attemptId: typeof value.attemptId === "string" ? value.attemptId : null,
+    attemptStatus:
+      typeof value.attemptStatus === "string" ? value.attemptStatus : null,
+    method,
+    expiresAt: typeof value.expiresAt === "string" ? value.expiresAt : null,
+    saleItemCartLineIds: strings(value.saleItemCartLineIds),
+    bookingIds: strings(value.bookingIds),
+    shippingIncluded: value.shippingIncluded === true,
+  };
+}
+
+function saleCartLineId(item: CartItem): string {
+  return `${item.productId}:${item.skuId}`;
 }
 
 function waitForMs(ms: number): Promise<void> {
@@ -200,7 +271,12 @@ function mergeItems(base: CartItem[], incoming: CartItem[]): CartItem[] {
 
 // ── Shared reactive state (singleton across components) ─────
 const cart = ref<Cart>(emptyCart());
+const cartHydrating = ref(false);
+const checkoutState = ref<CartCheckoutState>(emptyCartCheckoutState());
+const checkoutStateLoading = ref(false);
 const currentUserId = ref<string | null>(null);
+const resolvedAuthUserId = ref<string | null>(null);
+const cartDbSyncPendingUserIds = ref<Set<string>>(new Set());
 /** Prevents duplicate hydration when userId hasn't changed */
 const lastHydratedUserId = ref<string | null | undefined>(undefined);
 
@@ -234,6 +310,56 @@ export function useCart() {
     return currentUserId.value ?? user.value?.id ?? null;
   }
 
+  function getAuthenticatedCartUserId(): string | null {
+    return user.value?.id ?? resolvedAuthUserId.value;
+  }
+
+  async function resolveAuthenticatedCartUserId(): Promise<string | null> {
+    const reactiveUserId = user.value?.id ?? null;
+    if (reactiveUserId) {
+      resolvedAuthUserId.value = reactiveUserId;
+      return reactiveUserId;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        resolvedAuthUserId.value = session.user.id;
+        return session.user.id;
+      }
+    } catch {
+      // Fall through to getUser(); Nuxt's reactive user can lag behind Supabase.
+    }
+
+    try {
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+      resolvedAuthUserId.value = authUser?.id ?? null;
+      return resolvedAuthUserId.value;
+    } catch {
+      resolvedAuthUserId.value = null;
+      return null;
+    }
+  }
+
+  function setCartDbSyncPending(userId: string, pending: boolean): void {
+    const next = new Set(cartDbSyncPendingUserIds.value);
+    if (pending) next.add(userId);
+    else next.delete(userId);
+    cartDbSyncPendingUserIds.value = next;
+  }
+
+  async function waitForCartDbSync(userId: string): Promise<void> {
+    for (let i = 0; i < 3; i += 1) {
+      const pending = cartDbSyncQueues.get(userId);
+      if (!pending) return;
+      await pending.catch(() => undefined);
+    }
+  }
+
   function normalizeRequestedQuantity(quantity: number): number {
     const parsed = Math.floor(Number(quantity));
     return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
@@ -253,7 +379,7 @@ export function useCart() {
       if (
         currentUserId.value === userId &&
         lastHydratedUserId.value !== userId &&
-        user.value?.id === userId
+        getAuthenticatedCartUserId() === userId
       ) {
         void hydrateCart(userId);
       }
@@ -261,18 +387,65 @@ export function useCart() {
   }
 
   async function initializeCartHydration(): Promise<void> {
-    const rememberedUserId = currentUserId.value ?? user.value?.id ?? null;
+    await hydrateCart(await resolveAuthenticatedCartUserId());
+  }
 
-    if (rememberedUserId) {
-      await hydrateCart(rememberedUserId);
+  async function refreshCheckoutState(
+    options: {
+      bookingIds?: string[];
+    } = {},
+  ): Promise<void> {
+    const userId = await resolveAuthenticatedCartUserId();
+    if (!userId) {
+      checkoutState.value = emptyCartCheckoutState();
       return;
     }
 
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
+    const saleCartLineIds = cart.value.items.map(saleCartLineId);
+    const bookingIds = [...new Set(options.bookingIds ?? [])].filter(Boolean);
+    if (saleCartLineIds.length === 0 && bookingIds.length === 0) {
+      checkoutState.value = emptyCartCheckoutState();
+      return;
+    }
 
-    await hydrateCart(authUser?.id ?? null);
+    checkoutStateLoading.value = true;
+    try {
+      const response = await $fetch<CartCheckoutState>(
+        "/api/cart/checkout-state",
+        {
+          method: "POST",
+          body: {
+            cartId: cart.value.cartId || null,
+            saleCartLineIds,
+            bookingIds,
+          },
+        },
+      );
+      checkoutState.value = normalizeCartCheckoutState(response);
+    } catch {
+      console.warn("[useCart] fetch checkout state failed");
+    } finally {
+      checkoutStateLoading.value = false;
+    }
+  }
+
+  async function refreshCartFromDb(): Promise<void> {
+    const userId = await resolveAuthenticatedCartUserId();
+    if (!userId || currentUserId.value !== userId) return;
+
+    await waitForCartDbSync(userId);
+
+    let dbData: { items: CartItem[]; updatedAt: string } | null = null;
+    try {
+      dbData = await fetchCartFromDb(userId);
+    } catch {
+      return;
+    }
+
+    if (!dbData || currentUserId.value !== userId) return;
+    cart.value.items = dbData.items;
+    cart.value.updatedAt = dbData.updatedAt;
+    saveCartLocal(userId, cart.value);
   }
 
   async function awaitAuthenticatedCartUserId(
@@ -285,8 +458,10 @@ export function useCart() {
 
       const sessionUserId = session?.user?.id ?? null;
       if (sessionUserId === expectedUserId) {
+        resolvedAuthUserId.value = sessionUserId;
         return sessionUserId;
       }
+      if (sessionUserId) resolvedAuthUserId.value = sessionUserId;
 
       await waitForMs(150);
     }
@@ -297,8 +472,11 @@ export function useCart() {
     } = await supabase.auth.getUser();
 
     if (authUser?.id === expectedUserId) {
+      resolvedAuthUserId.value = authUser.id;
       return authUser.id;
     }
+
+    if (authUser?.id) resolvedAuthUserId.value = authUser.id;
 
     if (error) {
       console.warn("[useCart] auth session not ready:", {
@@ -419,8 +597,8 @@ export function useCart() {
     }
   }
 
-  /** Replace all items in DB with the given list (delete + insert). */
-  async function upsertCartToDb(
+  /** Replace all items in DB with the given list. */
+  async function replaceCartItemsInDb(
     userId: string,
     items: CartItem[],
   ): Promise<void> {
@@ -450,7 +628,8 @@ export function useCart() {
         return;
       }
 
-      // Insert current items
+      // Upsert current items. Rapid cart actions can overlap across async syncs;
+      // upsert avoids duplicate-key 409s on (cart_id, product_id, sku_id).
       if (items.length > 0) {
         const rows = items.map((item) => ({
           cart_id: dbCartId,
@@ -464,14 +643,14 @@ export function useCart() {
           quantity: item.quantity,
           added_at: item.addedAt,
         }));
-        const { error: insertError } = await supabase
+        const { error: upsertError } = await supabase
           .from("cart_items")
-          .insert(rows);
+          .upsert(rows, { onConflict: "cart_id,product_id,sku_id" });
 
-        if (insertError) {
+        if (upsertError) {
           console.warn(
-            "[useCart] upsertCartToDb insert error:",
-            insertError.message,
+            "[useCart] upsertCartToDb upsert error:",
+            upsertError.message,
           );
           return;
         }
@@ -492,6 +671,24 @@ export function useCart() {
     } catch {
       console.warn("[useCart] upsertCartToDb failed");
     }
+  }
+
+  function upsertCartToDb(userId: string, items: CartItem[]): Promise<void> {
+    const snapshot = items.map((item) => ({ ...item }));
+    const previous = cartDbSyncQueues.get(userId) ?? Promise.resolve();
+    setCartDbSyncPending(userId, true);
+    let next: Promise<void>;
+    next = previous
+      .catch(() => undefined)
+      .then(() => replaceCartItemsInDb(userId, snapshot))
+      .finally(() => {
+        if (cartDbSyncQueues.get(userId) === next) {
+          cartDbSyncQueues.delete(userId);
+          setCartDbSyncPending(userId, false);
+        }
+      });
+    cartDbSyncQueues.set(userId, next);
+    return next;
   }
 
   // ── Persist helper (Sync 3 — Action Sync) ─────────────────
@@ -523,72 +720,83 @@ export function useCart() {
   async function hydrateCart(userId: string | null): Promise<void> {
     // Skip if already hydrated for this exact userId
     if (lastHydratedUserId.value === userId) return;
+    resolvedAuthUserId.value = userId;
+    cartHydrating.value = true;
+    if (currentUserId.value !== userId) {
+      cart.value = userId ? loadCartLocal(userId) : emptyCart();
+    }
     currentUserId.value = userId;
 
-    if (!userId) {
-      // ── Guest mode ──
-      const guestItems = loadGuestBuffer();
-      cart.value = {
-        cartId: cart.value.cartId || generateCartId(),
-        items: guestItems,
-        updatedAt: new Date().toISOString(),
-      };
-      lastHydratedUserId.value = userId;
-      return;
-    }
-
-    // ── Logged-in mode ──
-
-    // 1. Show local cache immediately (fast)
-    const localCart = loadCartLocal(userId);
-    cart.value = localCart;
-
-    let dbData: { items: CartItem[]; updatedAt: string } | null = null;
-
     try {
-      // 2. Fetch from DB (source of truth)
-      dbData = await fetchCartFromDb(userId);
-    } catch {
-      if (currentUserId.value === userId) {
-        lastHydratedUserId.value = undefined;
-        scheduleCartHydrationRetry(userId);
+      if (!userId) {
+        // ── Guest mode ──
+        const guestItems = loadGuestBuffer();
+        cart.value = {
+          cartId: generateCartId(),
+          items: guestItems,
+          updatedAt: new Date().toISOString(),
+        };
+        lastHydratedUserId.value = userId;
+        return;
       }
-      return;
-    }
 
-    if (currentUserId.value !== userId) return;
+      // ── Logged-in mode ──
 
-    // 3. Reconcile local vs DB
-    //
-    // The DB is the canonical source whenever its updated_at is at least as
-    // recent as the local snapshot — including the case where the DB was just
-    // emptied server-side (e.g. on a paid order). Trusting timestamp alone
-    // (instead of "DB has items") prevents stale localStorage from re-uploading
-    // cleared items back into the DB on the next page load.
-    if (dbData) {
-      const dbTime = new Date(dbData.updatedAt).getTime();
-      const localTime = new Date(localCart.updatedAt).getTime();
-      const hasLocalItems = localCart.items.length > 0;
-      const shouldUseDb = !hasLocalItems || dbTime >= localTime;
+      // 1. Show local cache immediately (fast)
+      const localCart =
+        cart.value.userId === userId ? cart.value : loadCartLocal(userId);
+      cart.value = { ...localCart, userId };
 
-      if (shouldUseDb) {
-        cart.value.items = dbData.items;
-        cart.value.updatedAt = dbData.updatedAt;
+      let dbData: { items: CartItem[]; updatedAt: string } | null = null;
+
+      try {
+        // 2. Fetch from DB (source of truth)
+        dbData = await fetchCartFromDb(userId);
+      } catch {
+        if (currentUserId.value === userId) {
+          lastHydratedUserId.value = undefined;
+          scheduleCartHydrationRetry(userId);
+        }
+        return;
       }
-    }
 
-    // 4. Merge guest buffer if present (Sync 1 — Login Sync)
-    const guestItems = loadGuestBuffer();
-    if (guestItems.length > 0) {
-      cart.value.items = mergeItems(cart.value.items, guestItems);
-      cart.value.updatedAt = new Date().toISOString();
-      clearGuestBuffer();
-    }
+      if (currentUserId.value !== userId) return;
 
-    // 5. Persist merged result
-    saveCartLocal(userId, cart.value);
-    await upsertCartToDb(userId, cart.value.items);
-    lastHydratedUserId.value = userId;
+      // 3. Reconcile local vs DB
+      //
+      // The DB is the canonical source whenever its updated_at is at least as
+      // recent as the local snapshot — including the case where the DB was just
+      // emptied server-side (e.g. on a paid order). Trusting timestamp alone
+      // (instead of "DB has items") prevents stale localStorage from re-uploading
+      // cleared items back into the DB on the next page load.
+      if (dbData) {
+        const dbTime = new Date(dbData.updatedAt).getTime();
+        const localTime = new Date(localCart.updatedAt).getTime();
+        const hasLocalItems = localCart.items.length > 0;
+        const shouldUseDb = !hasLocalItems || dbTime >= localTime;
+
+        if (shouldUseDb) {
+          cart.value.items = dbData.items;
+          cart.value.updatedAt = dbData.updatedAt;
+        }
+      }
+
+      // 4. Merge guest buffer if present (Sync 1 — Login Sync)
+      const guestItems = loadGuestBuffer();
+      if (guestItems.length > 0) {
+        cart.value.items = mergeItems(cart.value.items, guestItems);
+        cart.value.updatedAt = new Date().toISOString();
+        clearGuestBuffer();
+      }
+
+      // 5. Persist merged result
+      saveCartLocal(userId, cart.value);
+      await upsertCartToDb(userId, cart.value.items);
+      lastHydratedUserId.value = userId;
+      await refreshCheckoutState();
+    } finally {
+      if (currentUserId.value === userId) cartHydrating.value = false;
+    }
   }
 
   // ── Mutations (Sync 3 — Action Sync) ──────────────────────
@@ -713,11 +921,13 @@ export function useCart() {
 
   function clearCart(): void {
     cart.value.items = [];
+    checkoutState.value = emptyCartCheckoutState();
     persistCart();
   }
 
   async function clearCartPersisted(): Promise<void> {
     cart.value.items = [];
+    checkoutState.value = emptyCartCheckoutState();
     cart.value.updatedAt = new Date().toISOString();
 
     const effectiveUserId = getEffectiveCartUserId();
@@ -739,12 +949,15 @@ export function useCart() {
    * Returns true if cart is valid (has items), false otherwise.
    */
   async function validateCart(): Promise<boolean> {
-    if (!currentUserId.value) return false;
+    const userId = await resolveAuthenticatedCartUserId();
+    if (!userId || currentUserId.value !== userId) return false;
+
+    await waitForCartDbSync(userId);
 
     let dbData: { items: CartItem[]; updatedAt: string } | null = null;
 
     try {
-      dbData = await fetchCartFromDb(currentUserId.value);
+      dbData = await fetchCartFromDb(userId);
     } catch {
       return cart.value.items.length > 0;
     }
@@ -752,7 +965,7 @@ export function useCart() {
     if (dbData) {
       cart.value.items = dbData.items;
       cart.value.updatedAt = dbData.updatedAt;
-      saveCartLocal(currentUserId.value, cart.value);
+      saveCartLocal(userId, cart.value);
     }
     return cart.value.items.length > 0;
   }
@@ -773,7 +986,9 @@ export function useCart() {
     }
     clearGuestBuffer();
     cart.value = emptyCart();
+    checkoutState.value = emptyCartCheckoutState();
     currentUserId.value = null;
+    resolvedAuthUserId.value = null;
     lastHydratedUserId.value = undefined;
   }
 
@@ -784,19 +999,17 @@ export function useCart() {
 
     watch(
       () => user.value?.id ?? null,
-      (newId, oldId) => {
-        if (oldId === undefined) {
-          return;
-        }
-
+      async (newId, oldId) => {
         if (newId !== oldId) {
+          const nextUserId = newId ?? (await resolveAuthenticatedCartUserId());
           // Reset so hydrateCart runs again for the new user
           lastHydratedUserId.value = undefined;
-          if (!newId) {
+          cart.value = nextUserId ? loadCartLocal(nextUserId) : emptyCart();
+          if (!nextUserId) {
             clearCartHydrationRetry();
           }
 
-          void hydrateCart(newId);
+          void hydrateCart(nextUserId);
         }
       },
     );
@@ -804,15 +1017,47 @@ export function useCart() {
 
   return {
     cart,
+    loading: computed(() => cartHydrating.value),
+    authenticatedUserId: computed(() => getAuthenticatedCartUserId()),
+    currentUserId: computed(() => currentUserId.value),
+    isDbSyncPendingForCurrentUser: computed(() => {
+      const userId = getAuthenticatedCartUserId() ?? currentUserId.value;
+      return Boolean(userId && cartDbSyncPendingUserIds.value.has(userId));
+    }),
+    isHydratedForCurrentUser: computed(() => {
+      const userId = getAuthenticatedCartUserId();
+      if (!userId) {
+        return !cartHydrating.value && lastHydratedUserId.value === null;
+      }
+      return (
+        !cartHydrating.value &&
+        currentUserId.value === userId &&
+        lastHydratedUserId.value === userId
+      );
+    }),
+    isReadyForCheckout: computed(() => {
+      const userId = getAuthenticatedCartUserId();
+      return (
+        Boolean(userId) &&
+        !cartHydrating.value &&
+        currentUserId.value === userId &&
+        lastHydratedUserId.value === userId &&
+        !Boolean(userId && cartDbSyncPendingUserIds.value.has(userId))
+      );
+    }),
     cartId,
     cartItems,
     cartItemCount,
     cartSubtotal,
+    checkoutState: computed(() => checkoutState.value),
+    checkoutStateLoading: computed(() => checkoutStateLoading.value),
     addToCart,
     updateQuantity,
     removeFromCart,
     clearCart,
     clearCartPersisted,
+    refreshCartFromDb,
+    refreshCheckoutState,
     validateCart,
     resetCartSession,
   };

@@ -7,7 +7,7 @@ import {
 } from "~~/server/utils/public-contact-settings";
 
 export default defineEventHandler(async (event) => {
-  const client = serverSupabaseServiceRole(event) as any;
+  const client = serverSupabaseServiceRole(event);
   const { data, error } = await client
     .from("public_contact_settings")
     .select("support_phone, line_url, updated_at")

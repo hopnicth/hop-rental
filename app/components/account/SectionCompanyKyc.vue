@@ -9,16 +9,19 @@
  *  - ID card of authorized signer
  *  - PDPA consent
  *
- * Uploads to Supabase Storage → updates companies.kyc_documents JSONB.
+ * Uploads through the owner-checked server API, which stores private files and
+ * updates companies.kyc_documents with service-role privileges.
  */
 import type { KycDocument } from "~/types/user";
 
 const { t } = useI18n();
 const toast = useToast();
-const supabase = useSupabaseClient();
 const { currentCompany, fetchMemberships } = useCompanyContext();
 
-const uploading = ref(false);
+const uploadingDocKey = ref<string | null>(null);
+const uploadError = ref<string | null>(null);
+const uploadSuccessDoc = ref<string | null>(null);
+const uploading = computed(() => uploadingDocKey.value !== null);
 
 // ── Required document types ──
 const requiredDocs = computed(() => [
@@ -49,6 +52,29 @@ function findDoc(key: string): KycDocument | undefined {
   return currentCompany.value?.kycDocuments?.find((d) => d.name === key);
 }
 
+function formatFileSize(size?: number) {
+  if (!size || size <= 0) return "";
+  if (size < 1024 * 1024) return `${Math.ceil(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function documentSummary(doc: KycDocument) {
+  const legacyName = doc.url?.split("/").pop();
+  if (legacyName) return legacyName;
+  return [doc.mimeType, formatFileSize(doc.fileSize)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function uploadErrorDescription(error: unknown) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "statusMessage" in error) {
+    const message = (error as { statusMessage?: unknown }).statusMessage;
+    if (typeof message === "string") return message;
+  }
+  return undefined;
+}
+
 // ── Upload handler per document type ──
 async function handleUpload(
   docKey: string,
@@ -65,52 +91,38 @@ async function handleUpload(
     return;
   }
 
-  uploading.value = true;
+  uploadingDocKey.value = docKey;
+  uploadError.value = null;
+  uploadSuccessDoc.value = null;
   try {
-    const ext = file.name.split(".").pop() || "pdf";
-    const path = `kyc/company/${currentCompany.value.id}/${docKey}.${ext}`;
+    const body = new FormData();
+    body.append("companyId", currentCompany.value.id);
+    body.append("documentType", docKey);
+    body.append("file", file);
 
-    const { error: uploadErr } = await supabase.storage
-      .from("kyc-documents")
-      .upload(path, file, { upsert: true });
-
-    if (uploadErr) throw uploadErr;
-
-    const { data: urlData } = supabase.storage
-      .from("kyc-documents")
-      .getPublicUrl(path);
-
-    // Build updated kyc_documents array
-    const existing: KycDocument[] =
-      currentCompany.value.kycDocuments?.filter((d) => d.name !== docKey) ?? [];
-    existing.push({
-      name: docKey,
-      url: urlData.publicUrl,
-      uploadedAt: new Date().toISOString(),
+    await $fetch("/api/company/kyc/document", {
+      method: "POST",
+      body,
     });
 
-    const { error: dbErr } = await supabase
-      .from("companies")
-      .update({ kyc_documents: existing })
-      .eq("id", currentCompany.value.id);
-
-    if (dbErr) throw dbErr;
-
     await fetchMemberships();
+    uploadSuccessDoc.value = docKey;
     toast.add({
-      title: t("user.saveSuccess"),
+      title: t("user.kycUploadSuccess"),
       icon: "bx:check-circle",
       color: "success",
     });
   } catch (e) {
     console.error("Upload error:", e);
+    uploadError.value = uploadErrorDescription(e) ?? t("user.saveError");
     toast.add({
-      title: t("user.saveError"),
+      title: t("user.kycUploadError"),
+      description: uploadError.value,
       icon: "bx:error-circle",
       color: "error",
     });
   } finally {
-    uploading.value = false;
+    uploadingDocKey.value = null;
   }
 }
 </script>
@@ -137,6 +149,23 @@ async function handleUpload(
       </div>
 
       <div v-else class="space-y-6">
+        <UAlert
+          v-if="uploadError"
+          color="error"
+          variant="soft"
+          icon="bx:error-circle"
+          :title="t('user.kycUploadError')"
+          :description="uploadError"
+        />
+
+        <UAlert
+          v-else-if="uploadSuccessDoc"
+          color="success"
+          variant="soft"
+          icon="bx:check-circle"
+          :title="t('user.kycUploadSuccess')"
+        />
+
         <!-- Rejection reason -->
         <div
           v-if="
@@ -173,7 +202,10 @@ async function handleUpload(
             <div class="flex items-center gap-2 rounded bg-elevated p-2">
               <UIcon name="bx:file" class="text-lg text-muted" />
               <span class="flex-1 truncate text-xs text-muted">
-                {{ findDoc(doc.key)!.url.split("/").pop() }}
+                {{
+                  documentSummary(findDoc(doc.key)!) ||
+                  t("user.documentUploaded")
+                }}
               </span>
             </div>
 
@@ -188,6 +220,7 @@ async function handleUpload(
               :interactive="true"
               :preview="false"
               :disabled="uploading"
+              :loading="uploadingDocKey === doc.key"
               @update:model-value="handleUpload(doc.key, $event)"
             />
           </div>
@@ -205,6 +238,7 @@ async function handleUpload(
             :interactive="true"
             :preview="false"
             :disabled="uploading"
+            :loading="uploadingDocKey === doc.key"
             @update:model-value="handleUpload(doc.key, $event)"
           />
         </div>

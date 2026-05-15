@@ -7,11 +7,23 @@ import {
 } from "~~/server/utils/payment-core";
 import { normalizeOmiseCharge } from "~~/server/utils/omise";
 import {
+  MIXED_CHECKOUT_SESSION_SELECT,
+  MIXED_PAYMENT_ATTEMPT_SELECT,
+  applyMixedCheckoutGatewayResult,
+} from "~~/server/utils/mixed-checkout-finalization";
+import {
   applyGatewayResult,
   assertGatewayAmountMatches,
   PAYMENT_ATTEMPT_SELECT,
   recordPaymentAlert,
 } from "~~/server/utils/payments";
+import {
+  RENTAL_BOOKING_PAYMENT_ATTEMPT_SELECT,
+  applyRentalBookingDepositGatewayResult,
+  assertGatewayAmountMatchesBookingDeposit,
+  computeBookingDepositLinesFromBooking,
+  loadRentalBookingForDepositPayment,
+} from "~~/server/utils/rental-booking-deposit-payment";
 
 export default defineEventHandler(async (event) => {
   const rawBody = (await readRawBody(event)) || "";
@@ -80,6 +92,147 @@ export default defineEventHandler(async (event) => {
     .eq("gateway_charge_id", gatewayChargeId)
     .maybeSingle();
   if (!attempt) {
+    const { data: rentalAttempt } = await adminClient
+      .from("rental_booking_payment_attempts")
+      .select(RENTAL_BOOKING_PAYMENT_ATTEMPT_SELECT)
+      .eq("gateway", "omise")
+      .eq("gateway_charge_id", gatewayChargeId)
+      .maybeSingle();
+
+    if (rentalAttempt) {
+      try {
+        const booking = await loadRentalBookingForDepositPayment(
+          adminClient,
+          String(rentalAttempt.booking_id),
+        );
+        const { bookingDeposit } = computeBookingDepositLinesFromBooking({
+          booking,
+        });
+        assertGatewayAmountMatchesBookingDeposit(
+          bookingDeposit.grossAmount,
+          String(booking.currency_code ?? "THB"),
+          charge,
+        );
+        await applyRentalBookingDepositGatewayResult({
+          client: adminClient,
+          booking,
+          attempt: rentalAttempt as Record<string, unknown>,
+          result: normalizeOmiseCharge(charge),
+        });
+        await adminClient
+          .from("payment_events")
+          .update({
+            rental_booking_payment_attempt_id: rentalAttempt.id,
+            booking_id: rentalAttempt.booking_id,
+            status: "processed",
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, rentalBookingDeposit: true };
+      } catch (err) {
+        await recordPaymentAlert(adminClient, {
+          bookingId: String(rentalAttempt.booking_id),
+          rentalBookingPaymentAttemptId: String(rentalAttempt.id),
+          kind: "booking_deposit_webhook_failed",
+          audience: "admin",
+          severity: "critical",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Booking Deposit webhook failed.",
+          metadata: { gatewayEventId, gatewayChargeId },
+        });
+        await adminClient
+          .from("payment_events")
+          .update({
+            rental_booking_payment_attempt_id: rentalAttempt.id,
+            booking_id: rentalAttempt.booking_id,
+            status: "failed",
+            processing_error:
+              err instanceof Error ? err.message : "RENTAL_WEBHOOK_FAILED",
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, rentalWebhookFailed: true };
+      }
+    }
+
+    const { data: mixedAttempt } = await adminClient
+      .from("mixed_payment_attempts")
+      .select(MIXED_PAYMENT_ATTEMPT_SELECT)
+      .eq("gateway", "omise")
+      .eq("gateway_charge_id", gatewayChargeId)
+      .maybeSingle();
+
+    if (mixedAttempt) {
+      const { data: mixedSession } = await adminClient
+        .from("mixed_checkout_sessions")
+        .select(MIXED_CHECKOUT_SESSION_SELECT)
+        .eq("id", mixedAttempt.mixed_checkout_session_id)
+        .maybeSingle();
+      if (!mixedSession) {
+        await adminClient
+          .from("payment_events")
+          .update({
+            mixed_payment_attempt_id: mixedAttempt.id,
+            status: "failed",
+            processing_error: "MIXED_CHECKOUT_SESSION_NOT_FOUND",
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, missingMixedSession: true };
+      }
+
+      try {
+        const result = await applyMixedCheckoutGatewayResult({
+          client: adminClient,
+          session: mixedSession as Record<string, unknown>,
+          attempt: mixedAttempt as Record<string, unknown>,
+          result: normalizeOmiseCharge(charge),
+        });
+        await adminClient
+          .from("payment_events")
+          .update({
+            mixed_checkout_session_id: mixedSession.id,
+            mixed_payment_attempt_id: mixedAttempt.id,
+            status: "processed",
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, mixedCheckout: true, ...result };
+      } catch (err) {
+        await recordPaymentAlert(adminClient, {
+          kind: "mixed_finalization_failed",
+          audience: "admin",
+          severity: "critical",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Mixed checkout finalization failed.",
+          mixedCheckoutSessionId: String(mixedSession.id),
+          mixedPaymentAttemptId: String(mixedAttempt.id),
+          metadata: { gatewayEventId, gatewayChargeId },
+        });
+        await adminClient
+          .from("mixed_payment_attempts")
+          .update({ status: "finalization_failed" })
+          .eq("id", mixedAttempt.id);
+        await adminClient
+          .from("mixed_checkout_sessions")
+          .update({ status: "finalization_failed" })
+          .eq("id", mixedSession.id);
+        await adminClient
+          .from("payment_events")
+          .update({
+            mixed_checkout_session_id: mixedSession.id,
+            mixed_payment_attempt_id: mixedAttempt.id,
+            status: "failed",
+            processing_error:
+              err instanceof Error ? err.message : "MIXED_WEBHOOK_FAILED",
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, mixedWebhookFailed: true };
+      }
+    }
+
     await recordPaymentAlert(adminClient, {
       kind: "webhook_missing_payment_attempt",
       audience: "admin",

@@ -1,0 +1,736 @@
+<script setup lang="ts">
+import QrcodeVue from "qrcode.vue";
+import type {
+  AdminDocumentEventType,
+  AdminOfficialDocumentDetail,
+  AdminOperationalRentalDocumentSnapshot,
+} from "~/types/admin-documents";
+
+definePageMeta({
+  layout: false,
+  middleware: ["role"],
+  platformRoles: ["staff", "super_admin"],
+});
+
+const route = useRoute();
+const documentId = computed(() => String(route.params.id ?? ""));
+const documentRow = ref<AdminOfficialDocumentDetail | null>(null);
+const loading = ref(false);
+const printing = ref(false);
+const error = ref<string | null>(null);
+const reprintReason = ref("");
+
+const snapshot = computed(
+  () =>
+    documentRow.value?.snapshot as AdminOperationalRentalDocumentSnapshot | any,
+);
+const payload = computed(() => snapshot.value?.payload ?? null);
+const booking = computed(() => snapshot.value?.booking ?? {});
+const customer = computed(() => snapshot.value?.customer ?? {});
+const financialRecognition = computed(
+  () => snapshot.value?.financial_recognition ?? {},
+);
+const depositDisposition = computed(
+  () => snapshot.value?.deposit_disposition ?? {},
+);
+const noShow = computed(() => snapshot.value?.no_show ?? {});
+const terms = computed(() => snapshot.value?.terms ?? {});
+const tax = computed(() => snapshot.value?.tax ?? {});
+const isReprint = computed(() => (documentRow.value?.printCount ?? 0) > 0);
+const isNoShowForfeitureReceipt = computed(
+  () =>
+    snapshot.value?.document?.document_type ===
+    "booking_deposit_forfeiture_ordinary_receipt",
+);
+const isNoShowForfeitureNotice = computed(
+  () =>
+    snapshot.value?.document?.document_type ===
+    "rental_booking_no_show_forfeiture_notice",
+);
+const isNoShowForfeitureDocument = computed(
+  () => isNoShowForfeitureReceipt.value || isNoShowForfeitureNotice.value,
+);
+const title = computed(() => {
+  if (isNoShowForfeitureReceipt.value) {
+    return "Booking Deposit Forfeiture Ordinary Receipt";
+  }
+  if (isNoShowForfeitureNotice.value) {
+    return "No-show Forfeiture Notice";
+  }
+  if (snapshot.value?.document.document_type === "rental_return_form") {
+    return "Rental Return Form";
+  }
+  return "Rental Pickup / Handover Form";
+});
+const bookingDetailId = computed(
+  () => payload.value?.booking?.id || booking.value?.id || null,
+);
+
+useHead(() => ({
+  title: `${snapshot.value?.document.document_number ?? "Document"} · Print`,
+}));
+
+function formatCurrency(value: unknown, currency = "THB") {
+  return new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+  }).format(Number(value ?? 0));
+}
+
+function formatDateTime(value: unknown) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(String(value)));
+}
+
+function formatDate(value: unknown) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeZone: "Asia/Bangkok",
+  }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function pick(source: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+}
+
+const noShowCurrency = computed(() =>
+  String(
+    pick(financialRecognition.value, "currency_code", "currencyCode") ||
+      pick(depositDisposition.value, "currency_code", "currencyCode") ||
+      documentRow.value?.currencyCode ||
+      "THB",
+  ),
+);
+const forfeitedAmount = computed(
+  () =>
+    pick(financialRecognition.value, "recognized_amount", "recognizedAmount") ??
+    pick(depositDisposition.value, "forfeited_amount", "forfeitedAmount") ??
+    documentRow.value?.totalAmount ??
+    0,
+);
+const termsReference = computed(
+  () =>
+    pick(terms.value, "accepted_terms_version") ||
+    pick(terms.value, "agreement_version_id") ||
+    pick(terms.value, "booking_deposit_agreement_id") ||
+    "—",
+);
+
+async function load() {
+  if (!documentId.value) return;
+  loading.value = true;
+  error.value = null;
+  try {
+    const response = await $fetch<{ document: AdminOfficialDocumentDetail }>(
+      `/api/admin/documents/${documentId.value}`,
+    );
+    documentRow.value = response.document;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : "Failed to load document";
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function recordAndPrint() {
+  if (!documentRow.value) return;
+  if (isReprint.value && reprintReason.value.trim().length === 0) {
+    error.value = "Reprint reason is required";
+    return;
+  }
+  printing.value = true;
+  error.value = null;
+  try {
+    const eventType: AdminDocumentEventType = isReprint.value
+      ? "reprinted"
+      : "printed";
+    const response = await $fetch<{ document: AdminOfficialDocumentDetail }>(
+      `/api/admin/documents/${documentRow.value.id}/events`,
+      {
+        method: "POST",
+        body: {
+          eventType,
+          reason: isReprint.value ? reprintReason.value.trim() : null,
+          metadata: { copyMode: "browser_print" },
+        },
+      },
+    );
+    documentRow.value = response.document;
+    await nextTick();
+    window.print();
+  } catch (e) {
+    error.value =
+      e instanceof Error ? e.message : "Failed to record print event";
+  } finally {
+    printing.value = false;
+  }
+}
+
+onMounted(() => void load());
+</script>
+
+<template>
+  <main class="print-page">
+    <div class="print-controls no-print">
+      <NuxtLink
+        v-if="bookingDetailId"
+        class="link"
+        :to="`/admin/rental-bookings/${bookingDetailId}`"
+      >
+        ← Booking detail
+      </NuxtLink>
+      <input
+        v-if="isReprint"
+        v-model="reprintReason"
+        class="reason-input"
+        placeholder="Reprint reason"
+      />
+      <button
+        class="print-button"
+        :disabled="!documentRow || printing"
+        @click="recordAndPrint"
+      >
+        {{ isReprint ? "Record Reprint & Print" : "Record Print & Print" }}
+      </button>
+    </div>
+
+    <section v-if="loading" class="screen-state no-print">
+      Loading document…
+    </section>
+    <section v-else-if="error" class="screen-state no-print error">
+      <p>{{ error }}</p>
+      <button class="print-button" @click="load">Retry</button>
+    </section>
+
+    <article
+      v-else-if="snapshot && payload && !isNoShowForfeitureDocument"
+      class="sheet"
+    >
+      <header class="form-header">
+        <div class="brand-block">
+          <div class="logo-fallback">H</div>
+          <div>
+            <p class="company-name">{{ snapshot.header.displayName }}</p>
+            <p class="muted">Operational rental evidence form</p>
+          </div>
+        </div>
+        <div class="doc-meta">
+          <h1>{{ title }}</h1>
+          <p>Document: {{ snapshot.document.document_number }}</p>
+          <p>Issued: {{ formatDateTime(snapshot.document.issued_at) }}</p>
+          <p>Booking: {{ payload.booking.code }}</p>
+        </div>
+      </header>
+
+      <section class="two-col compact-section">
+        <div>
+          <h2>Customer</h2>
+          <dl>
+            <dt>Name</dt>
+            <dd>{{ payload.customer.name }}</dd>
+            <dt>Phone</dt>
+            <dd>{{ payload.customer.phone || "—" }}</dd>
+            <dt>Type</dt>
+            <dd>{{ payload.customer.type }}</dd>
+            <dt>KYC / ID</dt>
+            <dd>
+              {{
+                payload.customer.kycStatus ||
+                payload.customer.idEvidenceRef ||
+                "—"
+              }}
+            </dd>
+          </dl>
+        </div>
+        <div>
+          <h2>{{ payload.event.label }}</h2>
+          <dl>
+            <dt>Branch</dt>
+            <dd>{{ payload.branch.name || payload.branch.id || "—" }}</dd>
+            <dt>Event time</dt>
+            <dd>{{ formatDateTime(payload.event.at) }}</dd>
+            <dt>Rental start</dt>
+            <dd>{{ formatDate(payload.booking.startDate) }}</dd>
+            <dt>Rental end</dt>
+            <dd>{{ formatDate(payload.booking.endDate) }}</dd>
+            <dt>Days</dt>
+            <dd>{{ payload.booking.rentalDays }}</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="compact-section">
+        <h2>Rental Items</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Asset / SKU</th>
+              <th class="right">Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="item in payload.items"
+              :key="`${item.assetCode}-${item.skuId}`"
+            >
+              <td>{{ item.name }}</td>
+              <td>{{ item.assetCode || "—" }} / {{ item.skuId || "—" }}</td>
+              <td class="right">{{ item.quantity }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="compact-section">
+        <h2>Checklist Summary</h2>
+        <p v-if="payload.checklist">
+          <b>{{ payload.checklist.name }}</b> · Status:
+          {{ payload.checklist.status }} · Required:
+          {{ payload.checklist.requiredAnswered }}/{{
+            payload.checklist.requiredItems
+          }}
+          · Passed/Failed: {{ payload.checklist.passedItems }}/{{
+            payload.checklist.failedItems
+          }}
+        </p>
+        <p v-else class="muted">No checklist summary available.</p>
+      </section>
+
+      <section class="compact-section">
+        <h2>Operational Money / Deposit Summary</h2>
+        <div class="money-grid">
+          <p>
+            Rental Fee<br /><b>{{
+              formatCurrency(
+                payload.money.rentalFeeDue,
+                payload.money.currencyCode,
+              )
+            }}</b>
+          </p>
+          <p>
+            Booking Deposit<br /><b>{{
+              formatCurrency(
+                payload.money.bookingDepositDueNow,
+                payload.money.currencyCode,
+              )
+            }}</b>
+          </p>
+          <p>
+            Security Deposit Required<br /><b>{{
+              formatCurrency(
+                payload.money.securityDepositRequired,
+                payload.money.currencyCode,
+              )
+            }}</b>
+          </p>
+          <p>
+            Remaining Deposit at Pickup<br /><b>{{
+              formatCurrency(
+                payload.money.remainingSecurityDepositDueAtPickup,
+                payload.money.currencyCode,
+              )
+            }}</b>
+          </p>
+          <p>
+            Deposit Recorded<br /><b>{{
+              formatCurrency(
+                payload.money.depositPaid,
+                payload.money.currencyCode,
+              )
+            }}</b>
+          </p>
+          <p>
+            Refund / Extra<br /><b
+              >{{
+                formatCurrency(
+                  payload.money.refundAmount,
+                  payload.money.currencyCode,
+                )
+              }}
+              /
+              {{
+                formatCurrency(
+                  payload.money.additionalChargeAmount,
+                  payload.money.currencyCode,
+                )
+              }}</b
+            >
+          </p>
+        </div>
+      </section>
+
+      <section class="compact-section qr-section">
+        <div>
+          <h2>Booking QR</h2>
+          <p class="muted">
+            Booking reference only. Not receipt/tax invoice verification.
+          </p>
+          <p class="mono">{{ payload.booking.qrValue }}</p>
+        </div>
+        <div class="qr-box">
+          <QrcodeVue :value="payload.booking.qrValue" :size="92" level="H" />
+        </div>
+      </section>
+
+      <section class="signatures">
+        <div class="signature-box">
+          <p class="sig-label">Customer signature</p>
+          <img
+            v-if="payload.event.signatureUrl"
+            :src="payload.event.signatureUrl"
+            alt="Customer signature"
+          />
+        </div>
+        <div class="signature-box">
+          <p class="sig-label">Staff name / signature</p>
+          <p class="staff-name">{{ payload.event.staffName || "—" }}</p>
+        </div>
+      </section>
+
+      <footer class="disclaimer">
+        <p>{{ snapshot.disclaimer.th }}</p>
+        <p>{{ snapshot.disclaimer.en }}</p>
+        <p class="muted">Print count: {{ documentRow?.printCount ?? 0 }}</p>
+      </footer>
+    </article>
+
+    <article
+      v-else-if="snapshot && isNoShowForfeitureDocument"
+      class="sheet no-show-sheet"
+    >
+      <header class="form-header">
+        <div class="brand-block">
+          <div class="logo-fallback">H</div>
+          <div>
+            <p class="company-name">
+              {{ snapshot.header?.displayName || "HOPNIC" }}
+            </p>
+            <p class="muted">
+              {{
+                isNoShowForfeitureReceipt
+                  ? "Non-tax ordinary receipt"
+                  : "Contractual / operational notice"
+              }}
+            </p>
+          </div>
+        </div>
+        <div class="doc-meta">
+          <h1>{{ title }}</h1>
+          <p>Document: {{ snapshot.document.document_number }}</p>
+          <p>Issued: {{ formatDateTime(snapshot.document.issued_at) }}</p>
+          <p>Booking: {{ booking.reference || booking.id || "—" }}</p>
+        </div>
+      </header>
+
+      <section class="two-col compact-section">
+        <div>
+          <h2>Customer</h2>
+          <dl>
+            <dt>Name</dt>
+            <dd>{{ customer.display_name || customer.booker_name || "—" }}</dd>
+            <dt>Phone</dt>
+            <dd>{{ customer.phone || "—" }}</dd>
+            <dt>Email</dt>
+            <dd>{{ customer.email || "—" }}</dd>
+          </dl>
+        </div>
+        <div>
+          <h2>Booking</h2>
+          <dl>
+            <dt>Reference</dt>
+            <dd>{{ booking.reference || booking.id || "—" }}</dd>
+            <dt>Item</dt>
+            <dd>{{ booking.item_name || "—" }}</dd>
+            <dt>Pickup date</dt>
+            <dd>
+              {{
+                formatDate(
+                  noShow.pickup_date_snapshot || booking.scheduled_pickup_date,
+                )
+              }}
+            </dd>
+            <dt>Branch</dt>
+            <dd>{{ booking.hub_name || booking.hub_id || "—" }}</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section v-if="isNoShowForfeitureReceipt" class="compact-section">
+        <h2>Ordinary Receipt Details</h2>
+        <dl>
+          <dt>Forfeited amount</dt>
+          <dd>{{ formatCurrency(forfeitedAmount, noShowCurrency) }}</dd>
+          <dt>Recognized at</dt>
+          <dd>{{ formatDateTime(financialRecognition.recognized_at) }}</dd>
+          <dt>Tax status</dt>
+          <dd>Not a tax invoice · VAT 0 · Not subject to WHT</dd>
+          <dt>Tax treatment</dt>
+          <dd>
+            {{
+              tax.tax_treatment ||
+              financialRecognition.tax_treatment ||
+              "non_vat_contractual_penalty"
+            }}
+          </dd>
+          <dt>WHT treatment</dt>
+          <dd>
+            {{
+              tax.wht_treatment ||
+              financialRecognition.wht_treatment ||
+              "not_subject_to_wht"
+            }}
+          </dd>
+        </dl>
+      </section>
+
+      <section v-else class="compact-section">
+        <h2>No-show Notice Details</h2>
+        <dl>
+          <dt>No-show marked</dt>
+          <dd>{{ formatDateTime(noShow.marked_at) }}</dd>
+          <dt>Deposit outcome</dt>
+          <dd>
+            {{
+              noShow.deposit_outcome ||
+              depositDisposition.disposition ||
+              "forfeited"
+            }}
+          </dd>
+          <dt>Forfeited amount</dt>
+          <dd>{{ formatCurrency(forfeitedAmount, noShowCurrency) }}</dd>
+          <dt>Terms reference</dt>
+          <dd>{{ termsReference }}</dd>
+        </dl>
+        <p class="muted mt-2">
+          This document is a no-show forfeiture notice only. It is not a receipt
+          and not a tax invoice.
+        </p>
+      </section>
+
+      <footer class="disclaimer">
+        <p>{{ snapshot.disclaimer?.th }}</p>
+        <p>{{ snapshot.disclaimer?.en }}</p>
+        <p class="muted">Print count: {{ documentRow?.printCount ?? 0 }}</p>
+      </footer>
+    </article>
+  </main>
+</template>
+
+<style>
+@page {
+  size: A5 portrait;
+  margin: 8mm;
+}
+html,
+body {
+  background: #f1f5f9;
+}
+.print-page {
+  color: #111827;
+  font-family: Arial, "Noto Sans Thai", sans-serif;
+  font-size: 8.5pt;
+  line-height: 1.25;
+}
+.print-controls {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  padding: 16px;
+}
+.link {
+  color: #2563eb;
+  text-decoration: none;
+}
+.print-button {
+  background: #111827;
+  border: 0;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  padding: 8px 12px;
+}
+.reason-input {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  min-width: 220px;
+  padding: 8px;
+}
+.screen-state {
+  margin: 24px auto;
+  max-width: 148mm;
+  padding: 16px;
+}
+.screen-state.error {
+  color: #b91c1c;
+}
+.sheet {
+  background: white;
+  box-shadow: 0 12px 40px rgb(15 23 42 / 14%);
+  margin: 0 auto 24px;
+  min-height: 210mm;
+  padding: 8mm;
+  width: 148mm;
+}
+.form-header {
+  align-items: start;
+  border-bottom: 0.25mm solid #111827;
+  display: grid;
+  gap: 4mm;
+  grid-template-columns: 1fr 1fr;
+  padding-bottom: 3mm;
+}
+.brand-block {
+  align-items: center;
+  display: flex;
+  gap: 4mm;
+}
+.logo-fallback {
+  align-items: center;
+  border: 0.25mm solid #111827;
+  display: flex;
+  font-size: 12pt;
+  font-weight: 700;
+  height: 12mm;
+  justify-content: center;
+  width: 12mm;
+}
+.company-name {
+  font-size: 12pt;
+  font-weight: 700;
+}
+h1 {
+  font-size: 15pt;
+  line-height: 1.1;
+  margin: 0 0 1mm;
+}
+h2 {
+  font-size: 9.5pt;
+  margin: 0 0 1.5mm;
+}
+p {
+  margin: 0;
+}
+.doc-meta {
+  text-align: right;
+}
+.compact-section {
+  border: 0.2mm solid #cbd5e1;
+  margin-top: 2.5mm;
+  padding: 2mm;
+}
+.two-col,
+.signatures {
+  display: grid;
+  gap: 4mm;
+  grid-template-columns: 1fr 1fr;
+}
+dl {
+  display: grid;
+  grid-template-columns: 23mm 1fr;
+  margin: 0;
+  row-gap: 0.7mm;
+}
+dt,
+.muted,
+.sig-label {
+  color: #64748b;
+}
+dd {
+  margin: 0;
+}
+table {
+  border-collapse: collapse;
+  font-size: 8pt;
+  width: 100%;
+}
+th,
+td {
+  border: 0.2mm solid #cbd5e1;
+  padding: 1mm 1.2mm;
+  vertical-align: top;
+}
+th {
+  background: #f8fafc;
+  font-weight: 700;
+}
+.right {
+  text-align: right;
+}
+.money-grid {
+  display: grid;
+  gap: 2mm;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+.qr-section {
+  align-items: start;
+  display: flex;
+  justify-content: space-between;
+}
+.qr-box {
+  align-items: center;
+  border: 0.2mm solid #cbd5e1;
+  display: flex;
+  justify-content: center;
+  min-height: 28mm;
+  min-width: 28mm;
+  padding: 2mm;
+}
+.mono {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 7pt;
+  word-break: break-all;
+}
+.signatures {
+  margin-top: 3mm;
+}
+.signature-box {
+  border: 0.25mm solid #111827;
+  height: 22mm;
+  padding: 1.5mm;
+}
+.signature-box img {
+  display: block;
+  height: 16mm;
+  margin: 0 auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+.staff-name {
+  margin-top: 8mm;
+  text-align: center;
+}
+.disclaimer {
+  border-top: 0.2mm solid #cbd5e1;
+  font-size: 6.8pt;
+  margin-top: 2.5mm;
+  padding-top: 1.5mm;
+}
+@media print {
+  html,
+  body {
+    background: white;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .sheet {
+    box-shadow: none;
+    margin: 0;
+    min-height: auto;
+    padding: 0;
+    width: auto;
+  }
+}
+</style>

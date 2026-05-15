@@ -223,26 +223,48 @@ function syncFiltersToQuery() {
   if (!import.meta.client || isApplyingRouteQuery.value) return;
   const next = { ...route.query };
 
-  selectedCategory.value !== defaultCategory.value &&
-  selectedCategory.value !== "all"
-    ? (next.category = selectedCategory.value)
-    : delete next.category;
-  selectedType.value !== defaultType.value && selectedType.value !== "all"
-    ? (next.type = selectedType.value)
-    : delete next.type;
-  selectedBrands.value.length > 0
-    ? (next.brands = selectedBrands.value.join(","))
-    : delete next.brands;
-  minPrice.value !== null && minPrice.value > 0
-    ? (next.min = String(minPrice.value))
-    : delete next.min;
-  maxPrice.value !== null && maxPrice.value > 0
-    ? (next.max = String(maxPrice.value))
-    : delete next.max;
-  inStockOnly.value ? (next.stock = "1") : delete next.stock;
+  if (
+    selectedCategory.value !== defaultCategory.value &&
+    selectedCategory.value !== "all"
+  ) {
+    next.category = selectedCategory.value;
+  } else {
+    delete next.category;
+  }
+
+  if (
+    selectedType.value !== defaultType.value &&
+    selectedType.value !== "all"
+  ) {
+    next.type = selectedType.value;
+  } else {
+    delete next.type;
+  }
+
+  if (selectedBrands.value.length > 0) {
+    next.brands = selectedBrands.value.join(",");
+  } else {
+    delete next.brands;
+  }
+
+  if (minPrice.value !== null && minPrice.value > 0) {
+    next.min = String(minPrice.value);
+  } else {
+    delete next.min;
+  }
+
+  if (maxPrice.value !== null && maxPrice.value > 0) {
+    next.max = String(maxPrice.value);
+  } else {
+    delete next.max;
+  }
+
+  if (inStockOnly.value) next.stock = "1";
+  else delete next.stock;
 
   const dynamic = writeDynamicFilters(selectedDynamicFilters.value);
-  dynamic ? (next.df = dynamic) : delete next.df;
+  if (dynamic) next.df = dynamic;
+  else delete next.df;
 
   if (!queryObjectsEqual(route.query, next)) {
     isSyncingToQuery.value = true;

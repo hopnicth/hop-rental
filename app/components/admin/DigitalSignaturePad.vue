@@ -1,4 +1,13 @@
 <script setup lang="ts">
+const props = withDefaults(
+  defineProps<{
+    hint?: string;
+  }>(),
+  {
+    hint: "ให้ลูกค้าเซ็นรับของบนหน้าจอนี้",
+  },
+);
+
 const model = defineModel<string | null>({ default: null });
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
@@ -50,7 +59,9 @@ function move(event: PointerEvent) {
 
 function stop() {
   drawing.value = false;
-  model.value = hasInk.value ? canvasRef.value?.toDataURL("image/png") ?? null : null;
+  model.value = hasInk.value
+    ? (canvasRef.value?.toDataURL("image/png") ?? null)
+    : null;
 }
 
 function clear() {
@@ -82,8 +93,15 @@ onBeforeUnmount(() => window.removeEventListener("resize", setupCanvas));
       />
     </div>
     <div class="flex items-center justify-between gap-2">
-      <p class="text-xs text-muted">ให้ลูกค้าเซ็นรับของบนหน้าจอนี้</p>
-      <UButton size="xs" variant="ghost" color="neutral" icon="bx:eraser" label="ล้างลายเซ็น" @click="clear" />
+      <p class="text-xs text-muted">{{ props.hint }}</p>
+      <UButton
+        size="xs"
+        variant="ghost"
+        color="neutral"
+        icon="bx:eraser"
+        label="ล้างลายเซ็น"
+        @click="clear"
+      />
     </div>
   </div>
 </template>

@@ -21,6 +21,7 @@ import type {
   RentalBookingStatus,
   RentalPricingBreakdownRow,
 } from "~/types/rental-booking";
+import type { RentalPaymentLine } from "~/types/rental-payment-line";
 import type { ShippingBreakdown } from "~/utils/shipping";
 
 export interface AdminCustomerProfile {
@@ -132,7 +133,14 @@ export interface AdminRentalBookingDetail {
   depositPaymentMethod: RentalDepositPaymentMethod | null;
   depositPaymentStatus: RentalDepositPaymentStatus;
   depositRefundStatus: RentalDepositRefundStatus;
+  depositRefundAmount: number;
+  depositRefundNotes: string | null;
+  noShowAt: string | null;
+  noShowMarkedByUserId: string | null;
+  noShowReason: string | null;
+  noShowSourceEventId: string | null;
   pricingBreakdown: RentalPricingBreakdownRow | Record<string, never>;
+  rentalPaymentLines: RentalPaymentLine[];
   storageBranchId: string | null;
   storageBranchName: string | null;
   bookerName: string | null;

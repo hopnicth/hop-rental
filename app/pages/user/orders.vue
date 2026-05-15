@@ -16,12 +16,30 @@ type BadgeColor =
   | "success"
   | "error"
   | "primary";
+type RefundHistoryDocument = {
+  id: string;
+  status?: string | null;
+  documentNo?: string | null;
+  issuedAt?: string | null;
+};
+type RefundHistoryTracking = {
+  bookingId: string;
+  refundRequest: { status: string; refundedAt?: string | null } | null;
+  documents: {
+    cancellationConfirmation: RefundHistoryDocument | null;
+    refundConfirmation: RefundHistoryDocument | null;
+  };
+  refundProof: { exists: boolean };
+};
 
 const route = useRoute();
 const { t } = useI18n();
 const { isLoggedIn } = useAuthSession();
 const { orders, loading, error, fetchOrders } = useOrders();
 const { bookingItems } = useBooking();
+const refundTrackingByBookingId = ref<Record<string, RefundHistoryTracking>>(
+  {},
+);
 
 const cancelledBookings = computed<BookingItem[]>(() =>
   bookingItems.value
@@ -41,6 +59,63 @@ function rentalPeriodLabel(booking: BookingItem): string {
   return `${booking.startDate} → ${booking.returnDate} • ${t("cart.days", { n: booking.numDays })}`;
 }
 
+function detailPath(booking: BookingItem): string {
+  return `/user/rentals/${encodeURIComponent(booking.bookingId)}`;
+}
+
+function cancelRefundPath(booking: BookingItem): string {
+  return `${detailPath(booking)}#cancel-refund`;
+}
+
+function refundProofPath(booking: BookingItem): string {
+  return `${detailPath(booking)}#refund-proof`;
+}
+
+function documentPrintPath(document: RefundHistoryDocument | null): string {
+  return document
+    ? `/user/documents/${encodeURIComponent(document.id)}/print`
+    : "";
+}
+
+function refundTrackingFor(booking: BookingItem): RefundHistoryTracking | null {
+  return refundTrackingByBookingId.value[booking.bookingId] ?? null;
+}
+
+function refundStatusLabel(status: unknown): string {
+  const key = String(status || "pending_admin_review");
+  return t(`ordersPage.rentalHistory.refundStatus.${key}`);
+}
+
+function hasRefundRequest(booking: BookingItem): boolean {
+  return Boolean(refundTrackingFor(booking)?.refundRequest);
+}
+
+function hasCancellationConfirmation(booking: BookingItem): boolean {
+  return Boolean(
+    refundTrackingFor(booking)?.documents.cancellationConfirmation?.id,
+  );
+}
+
+function hasRefundConfirmation(booking: BookingItem): boolean {
+  return Boolean(refundTrackingFor(booking)?.documents.refundConfirmation?.id);
+}
+
+function hasHistoryRefundProof(booking: BookingItem): boolean {
+  return refundTrackingFor(booking)?.refundProof.exists === true;
+}
+
+function cancellationConfirmationPath(booking: BookingItem): string {
+  return documentPrintPath(
+    refundTrackingFor(booking)?.documents.cancellationConfirmation ?? null,
+  );
+}
+
+function refundConfirmationPath(booking: BookingItem): string {
+  return documentPrintPath(
+    refundTrackingFor(booking)?.documents.refundConfirmation ?? null,
+  );
+}
+
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
     navigateTo(`/user/login?redirect=${encodeURIComponent(route.fullPath)}`);
@@ -52,6 +127,31 @@ if (import.meta.client) {
     void fetchOrders();
   });
 }
+
+watch(
+  () => cancelledBookings.value.map((booking) => booking.bookingId).join(","),
+  async () => {
+    const bookingIds = cancelledBookings.value.map(
+      (booking) => booking.bookingId,
+    );
+    if (bookingIds.length === 0) {
+      refundTrackingByBookingId.value = {};
+      return;
+    }
+    try {
+      const res = await $fetch<{ items: RefundHistoryTracking[] }>(
+        "/api/user/rental-bookings/refund-tracking-status",
+        { method: "POST", body: { bookingIds } },
+      );
+      refundTrackingByBookingId.value = Object.fromEntries(
+        res.items.map((item) => [item.bookingId, item]),
+      );
+    } catch {
+      refundTrackingByBookingId.value = {};
+    }
+  },
+  { immediate: true },
+);
 
 function getQueryValue(value: string | string[] | undefined): string | null {
   return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
@@ -353,6 +453,18 @@ function fulfillmentStatusColor(status: OrderFulfillmentStatus): BadgeColor {
                   }}
                 </UBadge>
               </div>
+              <p
+                v-if="refundTrackingFor(booking)?.refundRequest"
+                class="text-xs font-medium text-primary"
+              >
+                {{
+                  t("ordersPage.rentalHistory.refundStatusLine", {
+                    status: refundStatusLabel(
+                      refundTrackingFor(booking)?.refundRequest?.status,
+                    ),
+                  })
+                }}
+              </p>
               <div class="space-y-1 text-sm text-muted">
                 <p>
                   <span class="font-medium text-default"
@@ -372,6 +484,46 @@ function fulfillmentStatusColor(status: OrderFulfillmentStatus): BadgeColor {
                   >
                   {{ booking.hubName || t("rentalsPage.noHub") }}
                 </p>
+              </div>
+              <div class="flex flex-wrap gap-2 pt-1">
+                <UButton size="xs" variant="outline" :to="detailPath(booking)">
+                  {{ t("ordersPage.rentalHistory.actions.detail") }}
+                </UButton>
+                <UButton
+                  v-if="hasRefundRequest(booking)"
+                  size="xs"
+                  variant="outline"
+                  color="primary"
+                  :to="cancelRefundPath(booking)"
+                >
+                  {{ t("ordersPage.rentalHistory.actions.trackRefund") }}
+                </UButton>
+                <UButton
+                  v-if="hasCancellationConfirmation(booking)"
+                  size="xs"
+                  variant="ghost"
+                  :to="cancellationConfirmationPath(booking)"
+                >
+                  {{
+                    t("ordersPage.rentalHistory.actions.cancellationDocument")
+                  }}
+                </UButton>
+                <UButton
+                  v-if="hasRefundConfirmation(booking)"
+                  size="xs"
+                  variant="ghost"
+                  :to="refundConfirmationPath(booking)"
+                >
+                  {{ t("ordersPage.rentalHistory.actions.refundDocument") }}
+                </UButton>
+                <UButton
+                  v-if="hasHistoryRefundProof(booking)"
+                  size="xs"
+                  variant="ghost"
+                  :to="refundProofPath(booking)"
+                >
+                  {{ t("ordersPage.rentalHistory.actions.refundProof") }}
+                </UButton>
               </div>
             </div>
 

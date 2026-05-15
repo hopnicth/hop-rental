@@ -5,6 +5,13 @@ import { CATALOG_MEDIA_BUCKET } from "./catalog-media";
 export const CONTENT_MEDIA_BUCKET = CATALOG_MEDIA_BUCKET;
 export const CONTENT_MEDIA_PREFIX = "content-pages";
 export type ContentUploadKind = "image" | "file";
+type StorageAdminClient = {
+  storage: {
+    from(bucket: string): {
+      remove(paths: string[]): Promise<{ error: unknown }>;
+    };
+  };
+};
 
 function fail422(message: string): never {
   throw createError({ statusCode: 422, statusMessage: message });
@@ -39,7 +46,8 @@ export async function processContentImageUpload(buffer: Buffer) {
 }
 
 export function extractContentStoragePathFromPublicUrl(publicUrl: unknown) {
-  if (typeof publicUrl !== "string" || publicUrl.trim().length === 0) return null;
+  if (typeof publicUrl !== "string" || publicUrl.trim().length === 0)
+    return null;
 
   try {
     const pathname = new URL(publicUrl).pathname;
@@ -47,15 +55,23 @@ export function extractContentStoragePathFromPublicUrl(publicUrl: unknown) {
     const markerIndex = pathname.indexOf(marker);
     if (markerIndex < 0) return null;
 
-    const path = decodeURIComponent(pathname.slice(markerIndex + marker.length));
+    const path = decodeURIComponent(
+      pathname.slice(markerIndex + marker.length),
+    );
     return path.startsWith(`${CONTENT_MEDIA_PREFIX}/`) ? path : null;
   } catch {
     return null;
   }
 }
 
-export async function removeContentMediaPath(adminClient: any, path: unknown) {
-  if (typeof path !== "string" || !path.startsWith(`${CONTENT_MEDIA_PREFIX}/`)) {
+export async function removeContentMediaPath(
+  adminClient: StorageAdminClient,
+  path: unknown,
+) {
+  if (
+    typeof path !== "string" ||
+    !path.startsWith(`${CONTENT_MEDIA_PREFIX}/`)
+  ) {
     return false;
   }
 
@@ -75,7 +91,7 @@ export async function removeContentMediaPath(adminClient: any, path: unknown) {
 }
 
 export async function removeContentMediaByPublicUrl(
-  adminClient: any,
+  adminClient: StorageAdminClient,
   publicUrl: unknown,
 ) {
   const path = extractContentStoragePathFromPublicUrl(publicUrl);
@@ -83,7 +99,10 @@ export async function removeContentMediaByPublicUrl(
   return await removeContentMediaPath(adminClient, path);
 }
 
-export function collectContentMediaUrls(value: unknown, urls = new Set<string>()) {
+export function collectContentMediaUrls(
+  value: unknown,
+  urls = new Set<string>(),
+) {
   if (typeof value === "string") {
     if (extractContentStoragePathFromPublicUrl(value)) urls.add(value);
     return urls;
@@ -95,7 +114,8 @@ export function collectContentMediaUrls(value: unknown, urls = new Set<string>()
   }
 
   if (value && typeof value === "object") {
-    for (const item of Object.values(value)) collectContentMediaUrls(item, urls);
+    for (const item of Object.values(value))
+      collectContentMediaUrls(item, urls);
   }
 
   return urls;

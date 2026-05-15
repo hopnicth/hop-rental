@@ -17,8 +17,10 @@ export interface BookingPeriodSnapshot {
   startDate: string;
   /** Number of rental days */
   numDays: number;
-  /** ISO date string — calculated return date (YYYY-MM-DD) */
+  /** ISO date string — customer-visible inclusive return date (YYYY-MM-DD) */
   returnDate: string;
+  /** ISO date string — internal exclusive DB end boundary (YYYY-MM-DD) */
+  exclusiveEndDate?: string;
 }
 
 /** Pricing fields locked at the time the booking is created. */
@@ -35,6 +37,22 @@ export interface BookingPricingSnapshot {
   deposit: number;
   /** Tiered duration breakdown used to produce totalCost */
   pricingBreakdown?: RentalPricingBreakdown;
+}
+
+export interface BookingCheckoutState {
+  state:
+    | "none"
+    | "active_unpaid"
+    | "expired"
+    | "paid_or_finalized"
+    | "blocked_review";
+  sessionId?: string | null;
+  sessionStatus?: string | null;
+  attemptId?: string | null;
+  attemptStatus?: string | null;
+  method?: "promptpay" | "credit_card" | null;
+  expiresAt?: string | null;
+  allocationStatus?: string | null;
 }
 
 /**
@@ -79,6 +97,8 @@ export interface BookingItem
   bookerPhone?: string | null;
   /** Booking status */
   status: BookingStatus;
+  /** Active/expired mixed checkout state for draft cart display */
+  checkout?: BookingCheckoutState;
   /** ISO date string — when booking was created */
   createdAt: string;
 }

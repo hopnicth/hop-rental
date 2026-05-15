@@ -143,10 +143,6 @@ function normalizeFeaturedRentalRow(row: unknown): HomeFeaturedAsset | null {
   };
 }
 
-function byTrendingScoreDesc(a: Product, b: Product): number {
-  return b.insight.trendingScore - a.insight.trendingScore;
-}
-
 function byRentalPriority(a: Asset, b: Asset): number {
   return b.rentalCount - a.rentalCount || a.sortOrder - b.sortOrder;
 }

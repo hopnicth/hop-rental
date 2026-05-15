@@ -13,6 +13,10 @@ import {
   type RentalPricingLine,
 } from "~/utils/rental-pricing";
 import {
+  calculateInclusiveRentalDays,
+  toExclusiveEndDate,
+} from "~/utils/rental-dates";
+import {
   canBypassBookingCutoff,
   formatCutoffTime,
   isPastDailyCutoff,
@@ -29,6 +33,16 @@ interface RentalBookingCalendarPayload {
   monthlyRate: number;
   pricingBreakdown: RentalPricingBreakdown;
   isValid: boolean;
+}
+
+interface RentalCalendarBlockingBooking {
+  bookingId?: string;
+  skuId?: string;
+  assetId?: string;
+  startDate: string;
+  exclusiveEndDate?: string;
+  returnDate: string;
+  status?: string;
 }
 
 const props = withDefaults(
@@ -49,6 +63,7 @@ const props = withDefaults(
     monthlyEnabled?: boolean | null;
     deposit?: number | null;
     currencyCode?: string | null;
+    blockingBookings?: RentalCalendarBlockingBooking[] | null;
   }>(),
   {
     loading: false,
@@ -67,6 +82,7 @@ const props = withDefaults(
     monthlyEnabled: null,
     deposit: null,
     currencyCode: null,
+    blockingBookings: null,
   },
 );
 
@@ -91,7 +107,7 @@ type ContactSettingsDto = {
 const { t } = useI18n();
 const toast = useToast();
 const config = useRuntimeConfig();
-const { blockingBookings } = useBooking();
+const { blockingBookings: sessionBlockingBookings } = useBooking();
 const { profile } = useUserProfile();
 
 const { data: contactSettings } = useFetch<ContactSettingsDto>(
@@ -163,6 +179,13 @@ const selectedSkuKey = computed(
   () => props.selectedSkuId ?? props.selectedSku?.id,
 );
 const assetKey = computed(() => props.assetId ?? props.asset?.id);
+const sourceBlockingBookings = computed(
+  () => props.blockingBookings ?? sessionBlockingBookings.value,
+);
+
+function isBlockingRentalStatus(status: unknown): boolean {
+  return status === "confirmed" || status === "picked_up";
+}
 
 const calendarRange = computed<CalendarRangeValue | undefined>({
   get: () => selectedRange.value,
@@ -184,7 +207,8 @@ const relevantBookings = computed(() => {
   const assetId = assetKey.value;
   if (!skuId && !assetId) return [];
 
-  return blockingBookings.value.filter((booking) => {
+  return sourceBlockingBookings.value.filter((booking) => {
+    if (!isBlockingRentalStatus(booking.status)) return false;
     if (assetId) {
       return (
         booking.assetId === assetId ||
@@ -199,7 +223,9 @@ const blockedDateKeys = computed(() => {
   const keys = new Set<string>();
   for (const booking of relevantBookings.value) {
     let cursor = parseISOToUtcDate(booking.startDate);
-    const end = parseISOToUtcDate(booking.returnDate);
+    const end = parseISOToUtcDate(
+      booking.exclusiveEndDate || booking.returnDate,
+    );
     if (!cursor || !end) continue;
     while (cursor < end) {
       keys.add(toISODateKey(cursor));
@@ -210,6 +236,9 @@ const blockedDateKeys = computed(() => {
 });
 
 const blockedDateCount = computed(() => blockedDateKeys.value.size);
+const blockedDateSignature = computed(() =>
+  Array.from(blockedDateKeys.value).sort().join("|"),
+);
 const leadTimeBlockedDateCount = computed(() =>
   diffCalendarDays(todayDate, minDate.value),
 );
@@ -220,7 +249,10 @@ const startDate = computed(() => selectedRange.value?.start);
 const returnDate = computed(() => selectedRange.value?.end);
 const numDays = computed(() => {
   if (!startDate.value || !returnDate.value) return 0;
-  return diffCalendarDays(startDate.value, returnDate.value);
+  return calculateInclusiveRentalDays(
+    toISO(startDate.value),
+    toISO(returnDate.value),
+  );
 });
 
 const dailyRate = computed(
@@ -279,7 +311,9 @@ function unitLabel(line: RentalPricingLine): string {
 const selectionHitsBlockedDates = computed(() => {
   if (!startDate.value || !returnDate.value) return false;
   let cursor = startDate.value.toDate("UTC");
-  const end = returnDate.value.toDate("UTC");
+  const exclusiveEnd = toExclusiveEndDate(toISO(returnDate.value));
+  const end = exclusiveEnd ? parseISOToUtcDate(exclusiveEnd) : null;
+  if (!end) return false;
   while (cursor < end) {
     if (blockedDateKeys.value.has(toISODateKey(cursor))) return true;
     cursor = addUtcDays(cursor, 1);
@@ -387,13 +421,16 @@ function normalizeRangeSelection(range: CalendarRangeValue | undefined): {
   reason: "min" | "max" | null;
 } {
   if (!range?.start || !range.end) return { range, reason: null };
-  const days = diffCalendarDays(range.start, range.end);
+  const days = calculateInclusiveRentalDays(
+    toISO(range.start),
+    toISO(range.end),
+  );
   if (days === 0) return { range, reason: null };
   if (days < minDays.value)
     return {
       range: {
         start: range.start,
-        end: range.start.add({ days: minDays.value }),
+        end: range.start.add({ days: Math.max(0, minDays.value - 1) }),
       },
       reason: "min",
     };
@@ -401,7 +438,7 @@ function normalizeRangeSelection(range: CalendarRangeValue | undefined): {
     return {
       range: {
         start: range.start,
-        end: range.start.add({ days: maxDays.value }),
+        end: range.start.add({ days: Math.max(0, maxDays.value - 1) }),
       },
       reason: "max",
     };
@@ -439,6 +476,7 @@ watch([() => selectedSkuKey.value, () => assetKey.value], () => {
   selectedRange.value = undefined;
   leadTimeAlertVisible.value = false;
   rangeAdjustedReason.value = null;
+  calendarRenderKey.value += 1;
 });
 
 watch(
@@ -467,6 +505,15 @@ const adjustedRangeRenderSignature = computed(() => {
     numDays.value,
   ].join(":");
 });
+
+watch(
+  blockedDateSignature,
+  async () => {
+    await nextTick();
+    calendarRenderKey.value += 1;
+  },
+  { flush: "post" },
+);
 
 watch(
   adjustedRangeRenderSignature,

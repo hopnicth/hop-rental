@@ -41,7 +41,21 @@ export function buildInventoryPayload(body: Record<string, unknown>) {
  * on sku_branch_inventory rows.
  */
 export async function resolveInventoryWithBranch(
-  adminClient: { from: (table: string) => any },
+  adminClient: {
+    from(table: "inventories" | "store_branches"): {
+      select(columns: string): {
+        eq(
+          column: string,
+          value: unknown,
+        ): {
+          single(): Promise<{
+            data: Record<string, unknown> | null;
+            error: { message: string } | null;
+          }>;
+        };
+      };
+    };
+  },
   inventoryId: string,
 ) {
   const { data: inv, error: invErr } = await adminClient

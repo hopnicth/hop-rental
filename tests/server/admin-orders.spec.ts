@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   countAdminActionRequiredItems,
+  fetchAdminUserProfiles,
   fetchAdminRentalBookings,
   filterAdminActionRequiredRows,
   isAdminRentalBookingActionRequired,
@@ -160,5 +161,41 @@ describe("admin rental booking list fetch", () => {
     expect(selects[1]).not.toContain("walk_in_phone");
     expect(rows).toHaveLength(1);
     expect(rows[0].walkInPhone).toBeNull();
+  });
+});
+
+describe("admin customer profile fetch", () => {
+  it("skips blank and malformed user ids before applying UUID filters", async () => {
+    const appliedIds: string[][] = [];
+    const validId = crypto.randomUUID();
+    const client = {
+      from: () => ({
+        select: () => ({
+          in: (_column: string, ids: string[]) => {
+            appliedIds.push(ids);
+            return Promise.resolve({ data: [], error: null });
+          },
+        }),
+      }),
+    };
+
+    await fetchAdminUserProfiles(client, ["", "   ", "not-a-uuid", validId]);
+
+    expect(appliedIds).toEqual([[validId]]);
+  });
+
+  it("does not query profiles when all ids are blank or malformed", async () => {
+    let queried = false;
+    const client = {
+      from: () => {
+        queried = true;
+        return { select: () => ({ in: () => Promise.resolve() }) };
+      },
+    };
+
+    const profiles = await fetchAdminUserProfiles(client, ["", "bad-id"]);
+
+    expect(queried).toBe(false);
+    expect(profiles.size).toBe(0);
   });
 });

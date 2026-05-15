@@ -15,8 +15,8 @@ import type {
   OrderPaymentStatus,
   OrderStatus,
 } from "~/types/order";
-import type { RentalBookingStatus } from "~/types/rental-booking";
 import type {
+  RentalBookingStatus,
   RentalDepositPaymentMethod,
   RentalDepositPaymentStatus,
   RentalDepositRefundStatus,
@@ -24,6 +24,13 @@ import type {
 
 export type AdminOrderType = "sale" | "rental";
 export type AdminOrderQueueView = "all" | "action_required";
+export type AdminSaleOrderQueueView =
+  | "action_required"
+  | "delivery"
+  | "pickup"
+  | "awaiting_payment"
+  | "all";
+export type AdminSaleOrderFulfillmentMethod = "delivery" | "pickup";
 
 export interface AdminCustomerSummary {
   userId: string;
@@ -71,6 +78,8 @@ export interface AdminRentalBookingRow {
   depositPaymentMethod: RentalDepositPaymentMethod | null;
   depositPaymentStatus: RentalDepositPaymentStatus;
   depositRefundStatus: RentalDepositRefundStatus;
+  depositRefundAmount: number;
+  depositRefundNotes: string | null;
   currencyCode: string;
   storageBranchId: string | null;
   storageBranchName: string | null;
@@ -118,6 +127,61 @@ export interface AdminFlatSaleListResponse {
 
 export interface AdminFlatRentalListResponse {
   items: AdminRentalBookingRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+}
+
+export interface AdminSaleOrderQueueCustomer {
+  id: string | null;
+  name: string | null;
+  phone: string | null;
+}
+
+export interface AdminSaleOrderQueueBranch {
+  id: string;
+  name: string | null;
+}
+
+export interface AdminSaleOrderQueueRow {
+  id: string;
+  orderNumber: string;
+  customer: AdminSaleOrderQueueCustomer;
+  createdAt: string;
+  updatedAt: string | null;
+  orderStatus: OrderStatus;
+  paymentStatus: OrderPaymentStatus;
+  fulfillmentStatus: OrderFulfillmentStatus;
+  fulfillmentMethod: AdminSaleOrderFulfillmentMethod | null;
+  pickupBranch: AdminSaleOrderQueueBranch | null;
+  addressTitle: string | null;
+  itemCount: number;
+  grandTotal: number;
+  currencyCode: string;
+}
+
+export interface AdminSaleOrderQueueSummary {
+  actionRequired: number;
+  delivery: number;
+  pickup: number;
+  awaitingPayment: number;
+  all: number;
+}
+
+export interface AdminSaleOrderQueueFilterParams {
+  queue?: AdminSaleOrderQueueView;
+  search?: string;
+  orderStatus?: OrderStatus[];
+  paymentStatus?: OrderPaymentStatus[];
+  fulfillmentStatus?: OrderFulfillmentStatus[];
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+export interface AdminSaleOrderQueueResponse {
+  items: AdminSaleOrderQueueRow[];
+  summary: AdminSaleOrderQueueSummary;
   total: number;
   page: number;
   pageSize: number;

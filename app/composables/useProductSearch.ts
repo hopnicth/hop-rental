@@ -52,6 +52,12 @@ export interface AutocompleteSuggestion {
   similarityScore: number;
 }
 
+type RpcError = { message: string } | null;
+type RpcResponse = { data: unknown[] | null; error: RpcError };
+type ProductSearchRpcClient = ReturnType<typeof useSupabaseClient> & {
+  rpc: (name: string, args?: Record<string, unknown>) => Promise<RpcResponse>;
+};
+
 function localized(
   th: string | null,
   en: string | null,
@@ -183,7 +189,7 @@ function mapSuggestionRow(
 }
 
 export function useProductSearch() {
-  const supabase = useSupabaseClient();
+  const supabase = useSupabaseClient() as ProductSearchRpcClient;
 
   function activeDynamicFilters(
     value: Record<string, DynamicFilterValue> | undefined,
@@ -217,20 +223,14 @@ export function useProductSearch() {
       p_dynamic_filters: activeDynamicFilters(params.dynamicFilters),
     };
 
-    let { data, error } = await (supabase as any).rpc(
-      "search_products",
-      rpcArgs,
-    );
+    let { data, error } = await supabase.rpc("search_products", rpcArgs);
 
     // Backward-compatible fallback while migration 045 is not yet applied.
     // The page still client-side filters visible rows, but DB-level dynamic
     // filtering is required for fully correct pagination/total_count.
     if (error) {
       const { p_dynamic_filters: _dynamicFilters, ...legacyArgs } = rpcArgs;
-      const fallback = await (supabase as any).rpc(
-        "search_products",
-        legacyArgs,
-      );
+      const fallback = await supabase.rpc("search_products", legacyArgs);
       if (!fallback.error) {
         console.warn(
           "[useProductSearch] search_products dynamic filters unavailable; using legacy RPC fallback.",
@@ -259,13 +259,10 @@ export function useProductSearch() {
     const trimmed = prefix.trim();
     if (trimmed.length === 0) return [];
 
-    const { data, error } = await (supabase as any).rpc(
-      "autocomplete_products",
-      {
-        prefix: trimmed,
-        p_limit: limit,
-      },
-    );
+    const { data, error } = await supabase.rpc("autocomplete_products", {
+      prefix: trimmed,
+      p_limit: limit,
+    });
 
     if (error) {
       console.warn(

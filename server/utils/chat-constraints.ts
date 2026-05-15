@@ -27,6 +27,31 @@ export interface ChatUnreadMessageRow {
   deletedAt?: unknown;
 }
 
+type ChatAttachmentRow = Record<string, unknown> & {
+  id?: unknown;
+  message_id?: unknown;
+  storage_bucket?: unknown;
+  storage_path?: unknown;
+  file_name?: unknown;
+  mime_type?: unknown;
+  file_size?: unknown;
+  kind?: unknown;
+  created_at?: unknown;
+  deleted_at?: unknown;
+};
+
+type ChatMessageRow = Record<string, unknown> & {
+  id?: unknown;
+  conversation_id?: unknown;
+  sender_id?: unknown;
+  message_type?: unknown;
+  body?: unknown;
+  created_at?: unknown;
+  edited_at?: unknown;
+  deleted_at?: unknown;
+  chat_attachments?: unknown;
+};
+
 export const CHAT_ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
   "image/png",
@@ -189,7 +214,9 @@ export function countChatUnreadMessages(params: {
   return counts;
 }
 
-export function mapChatAttachmentRow(row: any): ChatAttachmentDto {
+export function mapChatAttachmentRow(
+  row: ChatAttachmentRow,
+): ChatAttachmentDto {
   return {
     id: String(row.id ?? ""),
     messageId: String(row.message_id ?? ""),
@@ -203,10 +230,16 @@ export function mapChatAttachmentRow(row: any): ChatAttachmentDto {
   };
 }
 
-export function mapChatMessageRow(row: any): ChatMessageDto {
+export function mapChatMessageRow(row: ChatMessageRow): ChatMessageDto {
   const attachments = Array.isArray(row.chat_attachments)
     ? row.chat_attachments
-        .filter((item: any) => !item.deleted_at)
+        .filter(
+          (item): item is ChatAttachmentRow =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            !Array.isArray(item) &&
+            !(item as ChatAttachmentRow).deleted_at,
+        )
         .map(mapChatAttachmentRow)
     : [];
   return {

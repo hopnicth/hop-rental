@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import type { LocaleCode } from "~/types/locale";
-
 const { isLoggedIn } = useAuthSession();
 const route = useRoute();
-const { locale, t } = useI18n();
+const { t } = useI18n();
 const { products } = useProducts();
 const { productIds, loading, loadWishlist } = useWishlist();
 
-const lang = computed(() => locale.value as LocaleCode);
 const wishlistProducts = computed(() => {
   const ids = new Set(productIds.value);
   return products.value.filter((product) => ids.has(product.id));

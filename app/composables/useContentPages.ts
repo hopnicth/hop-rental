@@ -64,9 +64,11 @@ function pickLinkedIds(
   key: "product_id" | "asset_id",
 ): string[] {
   if (!Array.isArray(value)) return [];
-  const sorted = [...value].sort((a: any, b: any) => {
-    const ao = Number(a?.sort_order ?? 0);
-    const bo = Number(b?.sort_order ?? 0);
+  const sorted = [...value].sort((a, b) => {
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
+    const ao = Number(left.sort_order ?? 0);
+    const bo = Number(right.sort_order ?? 0);
     return ao - bo;
   });
   const out: string[] = [];

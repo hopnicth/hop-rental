@@ -6,6 +6,17 @@
  *   - promptpay: auto-initiate, show QR + countdown, poll status until terminal.
  */
 import type { LocaleCode } from "~/types/locale";
+import {
+  cardDigits,
+  cardNumberDisplayMaxLength,
+  cvcLengthForCard,
+  formatExpiryDisplay,
+  formatPaymentCardNumber,
+  isValidLuhn,
+  parseExpiryDisplay,
+  preventNonDigitBeforeInput,
+  sanitizeCvcForCard,
+} from "~/utils/payment-card";
 
 interface PaymentAttemptResp {
   paymentAttemptId: string;
@@ -49,7 +60,9 @@ const STRINGS = {
     expired: "QR หมดอายุ",
     retry: "ลองใหม่อีกครั้ง",
     pending: "รอการยืนยันจากธนาคาร...",
+    checkingStatus: "กำลังตรวจสอบสถานะการชำระเงิน...",
     preparingQr: "กำลังสร้าง QR...",
+    paymentReceived: "ได้รับยอดชำระแล้ว กำลังยืนยันคำสั่งซื้อ...",
     failed: "การชำระเงินล้มเหลว",
     failedDesc: "กรุณาลองใหม่อีกครั้ง หรือเลือกวิธีอื่น",
     backToCart: "กลับไปที่ตะกร้า",
@@ -74,7 +87,9 @@ const STRINGS = {
     expired: "QR expired",
     retry: "Try again",
     pending: "Waiting for bank confirmation...",
+    checkingStatus: "Checking payment status...",
     preparingQr: "Preparing QR...",
+    paymentReceived: "Payment received. Finalizing your order...",
     failed: "Payment failed",
     failedDesc: "Please try again or choose another method.",
     backToCart: "Back to cart",
@@ -97,6 +112,9 @@ const status = ref<PaymentStatusResp | null>(null);
 const loading = ref(true);
 const submitting = ref(false);
 const cancelling = ref(false);
+const isPromptPayPollInFlight = ref(false);
+const isReconcilingPromptPay = ref(false);
+const isNavigatingToResult = ref(false);
 const errorMsg = ref<string | null>(null);
 const idempotencyKey = ref(
   typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -107,87 +125,34 @@ const idempotencyKey = ref(
 const card = reactive({ name: "", number: "", expiry: "", cvc: "" });
 
 // ── Card-number formatting & validation ──
-// Best practices: detect brand from BIN/IIN, cap input length per brand,
-// and apply brand-specific gap pattern (Amex 4-6-5, others 4-4-4-4 or
-// 4-4-4-4-3 for 19-digit cards). Final validation uses Luhn (mod-10) before
-// tokenization.
-type CardBrand = {
-  brand: string;
-  maxDigits: number;
-  gaps: number[];
-};
-function detectCardBrand(digits: string): CardBrand {
-  if (/^3[47]/.test(digits))
-    return { brand: "amex", maxDigits: 15, gaps: [4, 10] };
-  if (/^35/.test(digits))
-    return { brand: "jcb", maxDigits: 19, gaps: [4, 8, 12, 16] };
-  if (/^(30[0-5]|36|38|39)/.test(digits))
-    return { brand: "diners", maxDigits: 14, gaps: [4, 10] };
-  if (/^4/.test(digits))
-    return { brand: "visa", maxDigits: 19, gaps: [4, 8, 12, 16] };
-  if (/^(5[1-5]|2[2-7])/.test(digits))
-    return { brand: "mastercard", maxDigits: 16, gaps: [4, 8, 12] };
-  if (/^(6011|65|64[4-9]|622)/.test(digits))
-    return { brand: "discover", maxDigits: 19, gaps: [4, 8, 12, 16] };
-  if (/^(62|81)/.test(digits))
-    return { brand: "unionpay", maxDigits: 19, gaps: [4, 8, 12, 16] };
-  return { brand: "unknown", maxDigits: 19, gaps: [4, 8, 12, 16] };
+// Raw card details are normalized only in-browser and tokenized through
+// Omise.js; only the generated token is sent to Hopnic backend APIs.
+function updateCardNumber(value: string | number) {
+  card.number = formatPaymentCardNumber(value);
 }
-function formatCardNumber(input: string): string {
-  const all = (input ?? "").replace(/[^0-9]/g, "");
-  const brand = detectCardBrand(all);
-  const digits = all.slice(0, brand.maxDigits);
-  let out = "";
-  for (let i = 0; i < digits.length; i++) {
-    if (i > 0 && brand.gaps.includes(i)) out += " ";
-    out += digits[i];
-  }
-  return out;
+function updateCardExpiry(value: string | number) {
+  card.expiry = formatExpiryDisplay(value);
 }
-function formatExpiry(input: string): string {
-  const digits = (input ?? "").replace(/[^0-9]/g, "").slice(0, 4);
-  if (digits.length < 3) return digits;
-  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
-}
-// Luhn (mod-10) check. PCI-acceptable digit range is 12–19.
-function isValidLuhn(digits: string): boolean {
-  if (digits.length < 12 || digits.length > 19) return false;
-  let sum = 0;
-  let alt = false;
-  for (let i = digits.length - 1; i >= 0; i--) {
-    let n = parseInt(digits[i] ?? "0", 10);
-    if (Number.isNaN(n)) return false;
-    if (alt) {
-      n *= 2;
-      if (n > 9) n -= 9;
-    }
-    sum += n;
-    alt = !alt;
-  }
-  return sum % 10 === 0;
+function updateCardCvc(value: string | number) {
+  card.cvc = sanitizeCvcForCard(value, card.number);
 }
 watch(
   () => card.number,
   (val) => {
-    const formatted = formatCardNumber(val ?? "");
+    const formatted = formatPaymentCardNumber(val ?? "");
     if (formatted !== val) card.number = formatted;
+    card.cvc = sanitizeCvcForCard(card.cvc, formatted);
   },
 );
 watch(
   () => card.expiry,
   (val) => {
-    const formatted = formatExpiry(val ?? "");
+    const formatted = formatExpiryDisplay(val ?? "");
     if (formatted !== val) card.expiry = formatted;
   },
 );
-// Brand-aware maxlength for the card-number input. Equals the brand's
-// digit cap plus the number of gaps that fall before that cap.
-const cardMaxLength = computed(() => {
-  const digits = card.number.replace(/[^0-9]/g, "");
-  const brand = detectCardBrand(digits);
-  const gapsApplied = brand.gaps.filter((g) => g < brand.maxDigits).length;
-  return brand.maxDigits + gapsApplied;
-});
+const cardMaxLength = computed(() => cardNumberDisplayMaxLength(card.number));
+const cvcMaxLength = computed(() => cvcLengthForCard(card.number));
 
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) navigateTo("/user/login");
@@ -196,10 +161,31 @@ watchEffect(() => {
 const method = computed(() => status.value?.paymentMethod ?? null);
 const latestAttempt = computed(() => status.value?.latestAttempt ?? null);
 
+function isTerminalAttemptStatus(
+  statusValue: string | null | undefined,
+): boolean {
+  return (
+    statusValue === "paid" ||
+    statusValue === "failed" ||
+    statusValue === "expired" ||
+    statusValue === "cancelled" ||
+    statusValue === "refunded"
+  );
+}
+
 const isTerminalStatus = computed(() => {
   const ps = status.value?.paymentStatus;
   return ps === "paid" || ps === "cancelled" || ps === "refunded";
 });
+const isPromptPayAttemptTerminal = computed(() =>
+  isTerminalAttemptStatus(latestAttempt.value?.status),
+);
+const showProcessingOverlay = computed(
+  () => submitting.value || isNavigatingToResult.value,
+);
+const processingOverlayLabel = computed(() =>
+  isNavigatingToResult.value ? s.value.paymentReceived : s.value.confirming,
+);
 
 const isPromptPayExpired = computed(
   () => latestAttempt.value?.status === "expired",
@@ -270,21 +256,81 @@ const remainingLabel = computed(() => {
 
 // ── Status polling ──
 let pollHandle: ReturnType<typeof setInterval> | null = null;
+let pageActive = true;
 function stopPolling(): void {
   if (pollHandle) {
     clearInterval(pollHandle);
     pollHandle = null;
   }
 }
+
+async function pollPromptPayAttempt(): Promise<void> {
+  const attempt = latestAttempt.value;
+  if (!attempt || method.value !== "promptpay") return;
+  if (isTerminalAttemptStatus(attempt.status)) return;
+  if (isPromptPayPollInFlight.value) return;
+
+  isPromptPayPollInFlight.value = true;
+  try {
+    await $fetch(
+      `/api/payments/poll/${encodeURIComponent(attempt.paymentAttemptId)}`,
+      {
+        method: "POST",
+      },
+    );
+  } finally {
+    isPromptPayPollInFlight.value = false;
+  }
+}
+
+async function syncPromptPayStatus(): Promise<void> {
+  if (!pageActive || isNavigatingToResult.value) return;
+
+  const shouldPollPromptPayAttempt =
+    method.value === "promptpay" &&
+    Boolean(latestAttempt.value?.paymentAttemptId) &&
+    !isPromptPayAttemptTerminal.value &&
+    !isTerminalStatus.value;
+
+  if (shouldPollPromptPayAttempt) {
+    isReconcilingPromptPay.value = true;
+  }
+
+  try {
+    if (shouldPollPromptPayAttempt) {
+      await pollPromptPayAttempt();
+    }
+  } catch (err) {
+    errorMsg.value = err instanceof Error ? err.message : s.value.failed;
+  }
+
+  await refreshStatus();
+  if (!pageActive) {
+    isReconcilingPromptPay.value = false;
+    return;
+  }
+
+  if (isTerminalStatus.value) {
+    stopPolling();
+    stopTicker();
+    isReconcilingPromptPay.value = false;
+    isNavigatingToResult.value = true;
+    await goToResult();
+    return;
+  }
+
+  if (method.value === "promptpay" && isPromptPayAttemptTerminal.value) {
+    stopPolling();
+    stopTicker();
+  }
+
+  isReconcilingPromptPay.value = false;
+}
+
 function startPolling(): void {
   if (pollHandle) return;
-  pollHandle = setInterval(async () => {
-    await refreshStatus();
-    if (isTerminalStatus.value) {
-      stopPolling();
-      stopTicker();
-      void goToResult();
-    }
+  pollHandle = setInterval(() => {
+    void syncPromptPayStatus();
   }, 3000);
 }
 
@@ -302,27 +348,20 @@ async function initiatePayment(
   });
 }
 
-function parseExpiry(input: string): { month: number; year: number } | null {
-  const trimmed = input.replace(/\s+/g, "");
-  const match = trimmed.match(/^(\d{1,2})\/?(\d{2}|\d{4})$/);
-  if (!match) return null;
-  const month = Number(match[1]);
-  let year = Number(match[2]);
-  if (year < 100) year += 2000;
-  if (month < 1 || month > 12) return null;
-  return { month, year };
-}
-
 async function handleCardSubmit(): Promise<void> {
   errorMsg.value = null;
-  const digitsOnly = card.number.replace(/[^0-9]/g, "");
+  const digitsOnly = cardDigits(card.number);
   if (!isValidLuhn(digitsOnly)) {
     errorMsg.value = s.value.invalidCard;
     return;
   }
-  const expiry = parseExpiry(card.expiry);
+  const expiry = parseExpiryDisplay(card.expiry);
   if (!expiry) {
     errorMsg.value = s.value.expiry;
+    return;
+  }
+  if (card.cvc.length !== cvcMaxLength.value) {
+    errorMsg.value = s.value.cvc;
     return;
   }
   submitting.value = true;
@@ -402,9 +441,11 @@ async function handleCancel(): Promise<void> {
 }
 
 onMounted(async () => {
+  pageActive = true;
   await refreshStatus();
   loading.value = false;
   if (isTerminalStatus.value) {
+    isNavigatingToResult.value = true;
     await goToResult();
     return;
   }
@@ -423,6 +464,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  pageActive = false;
   stopPolling();
   stopTicker();
 });
@@ -501,33 +543,42 @@ onBeforeUnmount(() => {
             </UFormField>
             <UFormField :label="s.cardNumber">
               <UInput
-                v-model="card.number"
+                :model-value="card.number"
                 inputmode="numeric"
+                pattern="[0-9 ]*"
                 autocomplete="cc-number"
                 placeholder="0000 0000 0000 0000"
                 :maxlength="cardMaxLength"
                 required
+                @beforeinput="preventNonDigitBeforeInput"
+                @update:model-value="updateCardNumber"
               />
             </UFormField>
             <div class="grid grid-cols-2 gap-3">
               <UFormField :label="s.expiry">
                 <UInput
-                  v-model="card.expiry"
+                  :model-value="card.expiry"
                   inputmode="numeric"
+                  pattern="[0-9/]*"
                   autocomplete="cc-exp"
                   placeholder="MM/YY"
                   :maxlength="5"
                   required
+                  @beforeinput="preventNonDigitBeforeInput"
+                  @update:model-value="updateCardExpiry"
                 />
               </UFormField>
               <UFormField :label="s.cvc">
                 <UInput
-                  v-model="card.cvc"
+                  :model-value="card.cvc"
                   inputmode="numeric"
+                  pattern="[0-9]*"
                   autocomplete="cc-csc"
                   placeholder="123"
-                  :maxlength="4"
+                  :maxlength="cvcMaxLength"
                   required
+                  @beforeinput="preventNonDigitBeforeInput"
+                  @update:model-value="updateCardCvc"
                 />
               </UFormField>
             </div>
@@ -600,6 +651,13 @@ onBeforeUnmount(() => {
                 </span>
               </p>
               <p class="text-xs text-muted">{{ s.pending }}</p>
+              <div
+                v-if="isReconcilingPromptPay"
+                class="inline-flex items-center gap-2 rounded-full bg-elevated px-3 py-1 text-xs text-muted"
+              >
+                <UIcon name="bx:loader-alt" class="animate-spin" />
+                <span>{{ s.checkingStatus }}</span>
+              </div>
             </template>
             <template v-else>
               <div class="h-72 w-72 animate-pulse rounded-lg bg-elevated" />
@@ -632,9 +690,9 @@ onBeforeUnmount(() => {
          payment-result page. -->
     <Teleport to="body">
       <Transition name="payment-fade">
-        <div v-if="submitting" class="payment-overlay">
+        <div v-if="showProcessingOverlay" class="payment-overlay">
           <div class="payment-loader" />
-          <p class="payment-overlay__label">{{ s.confirming }}</p>
+          <p class="payment-overlay__label">{{ processingOverlayLabel }}</p>
         </div>
       </Transition>
     </Teleport>

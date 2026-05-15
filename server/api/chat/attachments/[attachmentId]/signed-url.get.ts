@@ -6,10 +6,33 @@ import {
 
 const SIGNED_URL_TTL_SECONDS = 60;
 
+type ChatAttachmentRow = {
+  message_id?: string | null;
+  storage_bucket?: string | null;
+  storage_path?: string | null;
+};
+
+type StorageClient = {
+  storage: {
+    from(bucket: string): {
+      createSignedUrl(
+        path: string,
+        ttlSeconds: number,
+      ): Promise<{
+        data: { signedUrl: string };
+        error: { message: string } | null;
+      }>;
+    };
+  };
+};
+
 export default defineEventHandler(async (event) => {
   const attachmentId = getRouterParam(event, "attachmentId");
   if (!attachmentId) {
-    throw createError({ statusCode: 400, statusMessage: "attachmentId is required" });
+    throw createError({
+      statusCode: 400,
+      statusMessage: "attachmentId is required",
+    });
   }
 
   const { userId, platformRole, adminClient } = await requireChatUser(event);
@@ -19,19 +42,29 @@ export default defineEventHandler(async (event) => {
     .eq("id", attachmentId)
     .is("deleted_at", null)
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-  if (!attachment) throw createError({ statusCode: 404, statusMessage: "Attachment not found" });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  if (!attachment)
+    throw createError({
+      statusCode: 404,
+      statusMessage: "Attachment not found",
+    });
+  const attachmentRow = attachment as ChatAttachmentRow;
 
   await loadAccessibleChatMessage(
     adminClient,
-    String((attachment as any).message_id),
+    String(attachmentRow.message_id ?? ""),
     userId,
     platformRole,
   );
 
-  const { data, error: signedError } = await adminClient.storage
-    .from(String((attachment as any).storage_bucket))
-    .createSignedUrl(String((attachment as any).storage_path), SIGNED_URL_TTL_SECONDS);
+  const storageClient = adminClient as typeof adminClient & StorageClient;
+  const { data, error: signedError } = await storageClient.storage
+    .from(String(attachmentRow.storage_bucket ?? ""))
+    .createSignedUrl(
+      String(attachmentRow.storage_path ?? ""),
+      SIGNED_URL_TTL_SECONDS,
+    );
   if (signedError) {
     throw createError({ statusCode: 500, statusMessage: signedError.message });
   }

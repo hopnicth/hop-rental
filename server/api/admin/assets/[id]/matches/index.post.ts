@@ -1,9 +1,20 @@
 import { createError, defineEventHandler, getRouterParam, readBody } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
 
+type AssetMatchRow = Record<string, unknown> & {
+  product?: {
+    name_th?: string | null;
+    slug?: string | null;
+    is_hidden?: boolean | null;
+  } | null;
+};
+
 function asNonEmptyString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    throw createError({ statusCode: 422, statusMessage: `${field} is required` });
+    throw createError({
+      statusCode: 422,
+      statusMessage: `${field} is required`,
+    });
   }
   return value.trim();
 }
@@ -13,7 +24,7 @@ function asNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function mapAssetMatch(row: Record<string, any>) {
+function mapAssetMatch(row: AssetMatchRow) {
   return {
     id: String(row.id ?? ""),
     assetId: String(row.asset_id ?? ""),
@@ -33,7 +44,10 @@ export default defineEventHandler(async (event) => {
   const body = (await readBody(event)) as Record<string, unknown>;
 
   if (!assetId) {
-    throw createError({ statusCode: 400, statusMessage: "asset id is required" });
+    throw createError({
+      statusCode: 400,
+      statusMessage: "asset id is required",
+    });
   }
 
   const productId = asNonEmptyString(body.productId, "productId");
@@ -54,12 +68,15 @@ export default defineEventHandler(async (event) => {
           ? body.note.trim()
           : null,
     })
-    .select("id, asset_id, product_id, match_type, sort_order, note, updated_at, product:products(slug, name_th, is_hidden)")
+    .select(
+      "id, asset_id, product_id, match_type, sort_order, note, updated_at, product:products(slug, name_th, is_hidden)",
+    )
     .single();
 
   if (error || !data) {
     throw createError({
-      statusCode: error?.code === "23505" ? 409 : error?.code === "23503" ? 404 : 500,
+      statusCode:
+        error?.code === "23505" ? 409 : error?.code === "23503" ? 404 : 500,
       statusMessage: error?.message ?? "Asset match create failed",
     });
   }

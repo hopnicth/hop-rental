@@ -6,7 +6,20 @@
 --   * Give assets parity with product search: curated keywords, tsvector,
 --     trigram lookup indexes, category/tag GIN indexes, and autocomplete RPC.
 
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_extension e
+    JOIN pg_namespace n ON n.oid = e.extnamespace
+    WHERE e.extname = 'pg_trgm'
+      AND n.nspname <> 'extensions'
+  ) THEN
+    ALTER EXTENSION pg_trgm SET SCHEMA extensions;
+  END IF;
+END $$;
 
 -- ─── Product index gap ─────────────────────────────────────────
 

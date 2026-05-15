@@ -1,7 +1,14 @@
 import { createError, defineEventHandler, getQuery, setHeader } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
+import { isMissingRentalBookingColumn } from "~~/server/utils/admin-orders";
 
 type Row = Record<string, unknown>;
+
+const POS_RENTAL_EXPORT_SELECT =
+  "id, created_at, walk_in_phone, user_id, asset_code, asset_name, rental_days, rental_total, deposit_paid_amount, deposit_payment_method, deposit_refund_status, deposit_refund_amount, checkout_total_amount, checkout_paid_amount, checkout_payment_method, pos_branch_id, pos_branch_code, pos_branch_name";
+
+const POS_RENTAL_EXPORT_SELECT_WITHOUT_REFUND_AMOUNT =
+  "id, created_at, walk_in_phone, user_id, asset_code, asset_name, rental_days, rental_total, deposit_paid_amount, deposit_payment_method, deposit_refund_status, checkout_total_amount, checkout_paid_amount, checkout_payment_method, pos_branch_id, pos_branch_code, pos_branch_name";
 
 const CSV_HEADERS = [
   "Date",
@@ -18,6 +25,8 @@ const CSV_HEADERS = [
   "Total Amount",
   "Paid Amount",
   "Payment Method",
+  "Refund Status",
+  "Refund Amount",
 ];
 
 function asText(value: unknown): string {
@@ -38,6 +47,13 @@ function vatIncluded(total: number): number {
   return Math.round(((total * 7) / 107) * 100) / 100;
 }
 
+function isMissingRefundAmountColumn(error: unknown): boolean {
+  return isMissingRentalBookingColumn(error, [
+    "rental_bookings.deposit_refund_amount",
+    "deposit_refund_amount",
+  ]);
+}
+
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requirePlatformAdmin(event);
   const query = getQuery(event);
@@ -53,33 +69,51 @@ export default defineEventHandler(async (event) => {
     .order("created_at", { ascending: false })
     .limit(2000);
 
-  let rentalsQuery = adminClient
-    .from("rental_bookings")
-    .select(
-      "id, created_at, walk_in_phone, user_id, asset_code, asset_name, rental_days, rental_total, deposit_paid_amount, deposit_payment_method, checkout_total_amount, checkout_paid_amount, checkout_payment_method, pos_branch_id, pos_branch_code, pos_branch_name",
-    )
-    .order("created_at", { ascending: false })
-    .limit(2000);
+  const buildRentalsQuery = (select: string) => {
+    let rentalsQuery = adminClient
+      .from("rental_bookings")
+      .select(select)
+      .order("created_at", { ascending: false })
+      .limit(2000);
+
+    if (dateFrom) rentalsQuery = rentalsQuery.gte("created_at", dateFrom);
+    if (dateTo)
+      rentalsQuery = rentalsQuery.lte("created_at", `${dateTo}T23:59:59`);
+    if (branchId) rentalsQuery = rentalsQuery.eq("pos_branch_id", branchId);
+    return rentalsQuery;
+  };
 
   if (dateFrom) {
     ordersQuery = ordersQuery.gte("created_at", dateFrom);
-    rentalsQuery = rentalsQuery.gte("created_at", dateFrom);
   }
   if (dateTo) {
     ordersQuery = ordersQuery.lte("created_at", `${dateTo}T23:59:59`);
-    rentalsQuery = rentalsQuery.lte("created_at", `${dateTo}T23:59:59`);
   }
   if (branchId) {
     ordersQuery = ordersQuery.eq("pos_branch_id", branchId);
-    rentalsQuery = rentalsQuery.eq("pos_branch_id", branchId);
   }
 
-  const [ordersResult, rentalsResult] = await Promise.all([ordersQuery, rentalsQuery]);
+  const [ordersResult, initialRentalsResult] = await Promise.all([
+    ordersQuery,
+    buildRentalsQuery(POS_RENTAL_EXPORT_SELECT),
+  ]);
+  let rentalsResult = initialRentalsResult;
+  if (rentalsResult.error && isMissingRefundAmountColumn(rentalsResult.error)) {
+    rentalsResult = await buildRentalsQuery(
+      POS_RENTAL_EXPORT_SELECT_WITHOUT_REFUND_AMOUNT,
+    );
+  }
   if (ordersResult.error) {
-    throw createError({ statusCode: 500, statusMessage: ordersResult.error.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: ordersResult.error.message,
+    });
   }
   if (rentalsResult.error) {
-    throw createError({ statusCode: 500, statusMessage: rentalsResult.error.message });
+    throw createError({
+      statusCode: 500,
+      statusMessage: rentalsResult.error.message,
+    });
   }
 
   const lines: unknown[][] = [CSV_HEADERS];
@@ -102,12 +136,15 @@ export default defineEventHandler(async (event) => {
         total.toFixed(2),
         money(order.pos_paid_amount || order.grand_total).toFixed(2),
         asText(order.pos_payment_method),
+        "",
+        "0.00",
       ]);
     }
   }
 
   for (const rental of (rentalsResult.data ?? []) as Row[]) {
-    const total = money(rental.checkout_total_amount) || money(rental.rental_total);
+    const total =
+      money(rental.checkout_total_amount) || money(rental.rental_total);
     lines.push([
       asText(rental.created_at).slice(0, 10),
       asText(rental.pos_branch_name) || asText(rental.pos_branch_code),
@@ -121,8 +158,12 @@ export default defineEventHandler(async (event) => {
       vatIncluded(total).toFixed(2),
       "0.00",
       total.toFixed(2),
-      money(rental.checkout_paid_amount || rental.deposit_paid_amount).toFixed(2),
+      money(rental.checkout_paid_amount || rental.deposit_paid_amount).toFixed(
+        2,
+      ),
       asText(rental.checkout_payment_method || rental.deposit_payment_method),
+      asText(rental.deposit_refund_status),
+      money(rental.deposit_refund_amount).toFixed(2),
     ]);
   }
 

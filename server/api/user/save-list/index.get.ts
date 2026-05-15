@@ -1,5 +1,8 @@
 import { createError, defineEventHandler } from "h3";
-import { serverSupabaseServiceRole, serverSupabaseUser } from "#supabase/server";
+import {
+  serverSupabaseServiceRole,
+  serverSupabaseUser,
+} from "#supabase/server";
 import { getAuthUserId } from "~~/server/utils/user-wishlist";
 import {
   groupSaveListItems,
@@ -11,10 +14,13 @@ export default defineEventHandler(async (event) => {
   const authUser = await serverSupabaseUser(event);
   const userId = getAuthUserId(authUser);
   if (!userId) {
-    throw createError({ statusCode: 401, statusMessage: "Authentication required" });
+    throw createError({
+      statusCode: 401,
+      statusMessage: "Authentication required",
+    });
   }
 
-  const client = serverSupabaseServiceRole(event) as any;
+  const client = serverSupabaseServiceRole(event);
   const { data, error } = await client
     .from("user_save_list")
     .select("item_type, asset_id, service_id")

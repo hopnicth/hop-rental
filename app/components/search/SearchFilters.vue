@@ -157,7 +157,7 @@ function removeFilterGroup(groupId: string) {
     return;
   }
   const next = { ...dynamicFilters.value };
-  delete next[groupId];
+  Reflect.deleteProperty(next, groupId);
   dynamicFilters.value = next;
   addedDynamicGroupIds.value = addedDynamicGroupIds.value.filter(
     (id) => id !== groupId,

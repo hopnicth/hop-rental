@@ -1,9 +1,14 @@
-import type { BookingItem, BookingStore } from "~/types/booking";
+import type {
+  BookingCheckoutState,
+  BookingItem,
+  BookingStore,
+} from "~/types/booking";
 import type { RentalBookingInsert } from "~/types/rental-booking";
 import {
   normalizeRentalPricingBreakdown,
   type RentalPricingBreakdown,
 } from "~/utils/rental-pricing";
+import { toCustomerReturnDate, toExclusiveEndDate } from "~/utils/rental-dates";
 
 const BOOKING_STORAGE_PREFIX = "hop-rental-bookings";
 
@@ -82,12 +87,27 @@ function normalizeBookingStatus(value: unknown): BookingItem["status"] {
     value === "confirmed" ||
     value === "picked_up" ||
     value === "returned" ||
-    value === "cancelled"
+    value === "cancelled" ||
+    value === "no_show"
   ) {
     return value;
   }
   return "draft";
 }
+
+function isDraftBooking(booking: BookingItem | undefined): boolean {
+  return booking?.status === "draft";
+}
+
+type DeleteDraftBookingResponse = {
+  ok: boolean;
+  deletedBookingId?: string;
+};
+
+type DraftCheckoutStateResponse = {
+  ok: boolean;
+  states: Record<string, BookingCheckoutState>;
+};
 
 function isUuid(value: unknown): value is string {
   return (
@@ -100,6 +120,39 @@ function isUuid(value: unknown): value is string {
 
 function normalizeAssetId(value: unknown): string | undefined {
   return isUuid(value) ? value : undefined;
+}
+
+function normalizeCheckoutState(
+  value: unknown,
+): BookingCheckoutState | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
+  const raw = value as Record<string, unknown>;
+  const state = raw.state;
+  if (
+    state !== "none" &&
+    state !== "active_unpaid" &&
+    state !== "expired" &&
+    state !== "paid_or_finalized" &&
+    state !== "blocked_review"
+  )
+    return undefined;
+  return {
+    state,
+    sessionId: typeof raw.sessionId === "string" ? raw.sessionId : null,
+    sessionStatus:
+      typeof raw.sessionStatus === "string" ? raw.sessionStatus : null,
+    attemptId: typeof raw.attemptId === "string" ? raw.attemptId : null,
+    attemptStatus:
+      typeof raw.attemptStatus === "string" ? raw.attemptStatus : null,
+    method:
+      raw.method === "promptpay" || raw.method === "credit_card"
+        ? raw.method
+        : null,
+    expiresAt: typeof raw.expiresAt === "string" ? raw.expiresAt : null,
+    allocationStatus:
+      typeof raw.allocationStatus === "string" ? raw.allocationStatus : null,
+  };
 }
 
 function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
@@ -122,6 +175,7 @@ function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
     startDate: raw.startDate ?? "",
     numDays: Math.max(1, Number(raw.numDays) || 1),
     returnDate: raw.returnDate ?? raw.startDate ?? "",
+    exclusiveEndDate: raw.exclusiveEndDate,
     dailyRate: normalizeMoney(raw.dailyRate),
     weeklyRate: normalizeMoney(raw.weeklyRate),
     monthlyRate: normalizeMoney(raw.monthlyRate),
@@ -133,6 +187,7 @@ function normalizeBookingItem(raw: Partial<BookingItem>): BookingItem {
     bookerName: raw.bookerName ?? null,
     bookerPhone: raw.bookerPhone ?? null,
     status: normalizeBookingStatus(raw.status),
+    checkout: normalizeCheckoutState(raw.checkout),
     createdAt,
   };
 }
@@ -216,7 +271,9 @@ function mapRowToBooking(
       "",
     startDate: (row.start_date as string) ?? fallback?.startDate,
     numDays: Number.isFinite(numDays) ? numDays : fallback?.numDays,
-    returnDate: (row.end_date as string) ?? fallback?.returnDate,
+    returnDate:
+      toCustomerReturnDate(row.end_date as string) ?? fallback?.returnDate,
+    exclusiveEndDate: (row.end_date as string) ?? fallback?.exclusiveEndDate,
     dailyRate: Number.isFinite(dailyRate) ? dailyRate : fallback?.dailyRate,
     weeklyRate: Number.isFinite(weeklyRate) ? weeklyRate : fallback?.weeklyRate,
     monthlyRate: Number.isFinite(monthlyRate)
@@ -230,6 +287,9 @@ function mapRowToBooking(
     bookerName: (row.booker_name as string) ?? fallback?.bookerName ?? null,
     bookerPhone: (row.booker_phone as string) ?? fallback?.bookerPhone ?? null,
     status: (row.status as BookingItem["status"]) ?? fallback?.status,
+    checkout:
+      normalizeCheckoutState(row.checkout) ??
+      normalizeCheckoutState(fallback?.checkout),
     createdAt:
       (row.created_at as string) ??
       fallback?.createdAt ??
@@ -242,6 +302,7 @@ function mapBookingToInsert(
   booking: BookingItem,
 ): RentalBookingInsert {
   const assetId = normalizeAssetId(booking.assetId);
+  const exclusiveEndDate = toExclusiveEndDate(booking.returnDate);
 
   return {
     user_id: userId,
@@ -260,7 +321,7 @@ function mapBookingToInsert(
     matched_product_id: booking.matchedProductId || booking.productId || null,
     matched_product_name: booking.matchedProductName ?? booking.productName,
     start_date: booking.startDate,
-    end_date: booking.returnDate,
+    end_date: exclusiveEndDate ?? booking.returnDate,
     rental_days: booking.numDays,
     pricing_model: "daily",
     currency_code: "THB",
@@ -298,6 +359,8 @@ function mapBookingToLegacyInsert(
   | "deposit_amount"
   | "status"
 > {
+  const exclusiveEndDate = toExclusiveEndDate(booking.returnDate);
+
   return {
     user_id: userId,
     product_id: booking.productId || null,
@@ -307,7 +370,7 @@ function mapBookingToLegacyInsert(
     thumbnail: booking.thumbnail,
     hub_name: booking.hubName,
     start_date: booking.startDate,
-    end_date: booking.returnDate,
+    end_date: exclusiveEndDate ?? booking.returnDate,
     rental_days: booking.numDays,
     pricing_model: "daily",
     currency_code: "THB",
@@ -482,13 +545,16 @@ export function useBooking() {
     items: BookingItem[],
     userId: string,
   ): Promise<boolean> {
-    const fullRows = items.map((item) => ({
+    const draftItems = items.filter((item) => item.status === "draft");
+    if (draftItems.length === 0) return true;
+
+    const fullRows = draftItems.map((item) => ({
       id: item.bookingId,
       ...mapBookingToInsert(userId, item),
       created_at: item.createdAt,
       updated_at: item.createdAt,
     }));
-    const legacyRows = items.map((item) => ({
+    const legacyRows = draftItems.map((item) => ({
       id: item.bookingId,
       ...mapBookingToLegacyInsert(userId, item),
       created_at: item.createdAt,
@@ -580,12 +646,13 @@ export function useBooking() {
     }, 400);
   }
 
-  async function initializeBookingHydration(): Promise<void> {
-    const rememberedUserId =
-      currentBookingUserId.value ?? user.value?.id ?? null;
+  async function initializeBookingHydration(
+    options: { force?: boolean } = {},
+  ): Promise<void> {
+    const reactiveUserId = user.value?.id ?? null;
 
-    if (rememberedUserId) {
-      await hydrateBookings(rememberedUserId);
+    if (reactiveUserId) {
+      await hydrateBookings(reactiveUserId, options);
       return;
     }
 
@@ -593,7 +660,18 @@ export function useBooking() {
       data: { user: authUser },
     } = await supabase.auth.getUser();
 
-    await hydrateBookings(authUser?.id ?? null);
+    await hydrateBookings(authUser?.id ?? null, options);
+  }
+
+  /** Force reload current user's bookings from the database. */
+  async function refreshBookings(): Promise<void> {
+    const userId = user.value?.id ?? currentBookingUserId.value ?? null;
+    if (userId) {
+      await hydrateBookings(userId, { force: true });
+      return;
+    }
+
+    await initializeBookingHydration({ force: true });
   }
 
   async function awaitAuthenticatedBookingUserId(
@@ -647,7 +725,9 @@ export function useBooking() {
 
   /** Bookings that should still block availability */
   const blockingBookings = computed(() =>
-    store.value.items.filter((b) => b.status !== "cancelled"),
+    store.value.items.filter(
+      (b) => b.status === "confirmed" || b.status === "picked_up",
+    ),
   );
 
   /** Total number of confirmed bookings */
@@ -706,9 +786,29 @@ export function useBooking() {
       }
 
       const rows = (data ?? []) as Record<string, unknown>[];
+      const items = rows.map(mapRowToBooking);
+      const draftIds = items
+        .filter((booking) => booking.status === "draft")
+        .map((booking) => booking.bookingId);
+
+      if (draftIds.length > 0) {
+        try {
+          const response = await $fetch<DraftCheckoutStateResponse>(
+            "/api/rental-bookings/draft-checkout-state",
+            { method: "POST", body: { bookingIds: draftIds } },
+          );
+          for (const item of items) {
+            item.checkout =
+              normalizeCheckoutState(response.states?.[item.bookingId]) ??
+              (item.status === "draft" ? { state: "none" } : undefined);
+          }
+        } catch {
+          console.warn("[useBooking] fetch checkout state failed");
+        }
+      }
 
       return {
-        items: rows.map(mapRowToBooking),
+        items,
         updatedAt:
           (rows.at(-1)?.updated_at as string | undefined) ??
           new Date().toISOString(),
@@ -723,17 +823,21 @@ export function useBooking() {
     const legacyStore = loadBookings(userId);
     if (legacyStore.items.length === 0) return;
 
+    const draftItems = legacyStore.items.filter(
+      (item) => item.status === "draft",
+    );
+    if (draftItems.length === 0) return;
+
     try {
-      const ok = await upsertBookingsWithSchemaFallback(
-        legacyStore.items,
-        userId,
-      );
+      const ok = await upsertBookingsWithSchemaFallback(draftItems, userId);
 
       if (!ok) {
         return;
       }
 
-      removeBookingStorage(userId);
+      if (draftItems.length === legacyStore.items.length) {
+        removeBookingStorage(userId);
+      }
     } catch {
       console.warn("[useBooking] migrateLegacyBookingsToDb failed");
     }
@@ -743,10 +847,16 @@ export function useBooking() {
    * (Re-)load bookings for the given user during client bootstrap
    * and when the authenticated user changes.
    */
-  async function hydrateBookings(userId: string | null): Promise<void> {
-    if (lastHydratedBookingUserId.value === userId) return;
+  async function hydrateBookings(
+    userId: string | null,
+    options: { force?: boolean } = {},
+  ): Promise<void> {
+    if (!options.force && lastHydratedBookingUserId.value === userId) return;
 
     bookingHydrating.value = true;
+    if (currentBookingUserId.value !== userId) {
+      store.value = emptyBookingStore();
+    }
     currentBookingUserId.value = userId;
 
     try {
@@ -760,6 +870,7 @@ export function useBooking() {
       if (currentBookingUserId.value !== userId) return;
 
       if (authenticatedUserId !== userId) {
+        store.value = emptyBookingStore();
         lastHydratedBookingUserId.value = undefined;
         scheduleBookingHydrationRetry(userId);
         return;
@@ -837,12 +948,20 @@ export function useBooking() {
   }
 
   /**
-   * Confirm a booking by writing the final confirmed row to Supabase.
+   * Confirm a booking by creating an own draft row, then asking the server
+   * service-role endpoint to validate and transition it to confirmed.
    */
   async function confirmBooking(
     params: CreateBookingParams,
   ): Promise<BookingItem> {
-    return createBooking(params, "confirmed");
+    const draft = await createBooking(params, "draft");
+    const response = await $fetch<{ booking: Record<string, unknown> }>(
+      `/api/rental-bookings/${encodeURIComponent(draft.bookingId)}/confirm`,
+      { method: "POST" },
+    );
+    const confirmed = mapRowToBooking(response.booking, draft);
+    replaceStoreBooking(confirmed);
+    return confirmed;
   }
 
   /**
@@ -873,10 +992,19 @@ export function useBooking() {
           return true;
         }
 
+        const current = getBookingById(bookingId);
+        if (!isDraftBooking(current) || status !== "draft") {
+          console.warn(
+            "[useBooking] direct status updates are limited to draft rows",
+          );
+          return false;
+        }
+
         const { data, error } = await supabase
           .from("rental_bookings")
           .update({ status })
           .eq("id", bookingId)
+          .eq("status", "draft")
           .select("*")
           .single();
 
@@ -912,10 +1040,17 @@ export function useBooking() {
   ): Promise<boolean> {
     return (async () => {
       try {
+        const current = getBookingById(bookingId);
+        if (!isDraftBooking(current)) {
+          console.warn("[useBooking] updateHub is limited to draft bookings");
+          return false;
+        }
+
         const { data, error } = await supabase
           .from("rental_bookings")
           .update({ hub_id: hubId, hub_name: hubName })
           .eq("id", bookingId)
+          .eq("status", "draft")
           .select("*")
           .single();
 
@@ -944,13 +1079,21 @@ export function useBooking() {
   function removeBooking(bookingId: string): Promise<boolean> {
     return (async () => {
       try {
-        const { error } = await supabase
-          .from("rental_bookings")
-          .delete()
-          .eq("id", bookingId);
+        const current = getBookingById(bookingId);
+        if (!isDraftBooking(current)) {
+          console.warn(
+            "[useBooking] removeBooking is limited to draft bookings",
+          );
+          return false;
+        }
 
-        if (error) {
-          console.warn("[useBooking] removeBooking error:", error.message);
+        const response = await $fetch<DeleteDraftBookingResponse>(
+          `/api/rental-bookings/${encodeURIComponent(bookingId)}/draft`,
+          { method: "DELETE" },
+        );
+
+        if (!response.ok) {
+          console.warn("[useBooking] removeBooking rejected by server");
           return false;
         }
 
@@ -978,18 +1121,16 @@ export function useBooking() {
       }
 
       try {
-        const { error } = await supabase
-          .from("rental_bookings")
-          .delete()
-          .eq("user_id", userId);
-
-        if (error) {
-          console.warn("[useBooking] clearBookings error:", error.message);
-          return false;
+        const draftItems = [...store.value.items].filter(
+          (booking) => booking.status === "draft",
+        );
+        let allDeleted = true;
+        for (const booking of draftItems) {
+          const ok = await removeBooking(booking.bookingId);
+          if (!ok) allDeleted = false;
         }
-
-        store.value = emptyBookingStore();
-        return true;
+        store.value.updatedAt = new Date().toISOString();
+        return allDeleted;
       } catch {
         console.warn("[useBooking] clearBookings failed");
         return false;
@@ -1028,16 +1169,10 @@ export function useBooking() {
     watch(
       () => user.value?.id ?? null,
       (newId, oldId) => {
-        if (oldId === undefined) {
-          return;
-        }
-
         if (newId !== oldId) {
+          clearBookingHydrationRetry();
           lastHydratedBookingUserId.value = undefined;
-
-          if (!newId) {
-            clearBookingHydrationRetry();
-          }
+          store.value = emptyBookingStore();
 
           void hydrateBookings(newId);
         }
@@ -1048,6 +1183,12 @@ export function useBooking() {
   return {
     store,
     loading: computed(() => bookingHydrating.value),
+    currentUserId: computed(() => currentBookingUserId.value),
+    isHydratedForCurrentUser: computed(
+      () =>
+        !bookingHydrating.value &&
+        lastHydratedBookingUserId.value === (user.value?.id ?? null),
+    ),
     bookingItems,
     draftBookings,
     confirmedBookings,
@@ -1060,6 +1201,7 @@ export function useBooking() {
     activeBookingTotalRental,
     addBooking,
     confirmBooking,
+    refreshBookings,
     getBookingById,
     getConfirmedBookingCountBySku,
     getRemainingAvailability,

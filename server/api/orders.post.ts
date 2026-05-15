@@ -5,12 +5,29 @@ import {
   serverSupabaseUser,
 } from "#supabase/server";
 import { calculateShipping } from "~~/app/utils/shipping";
-import {
-  asPaymentMethod,
-  asPaymentNonEmptyString,
-} from "~~/server/utils/payment-core";
+import { asPaymentNonEmptyString } from "~~/server/utils/payment-core";
 
 type AnyRecord = Record<string, unknown>;
+type OrderPaymentMethod =
+  | "credit_card"
+  | "promptpay"
+  | "company_credit"
+  | "cash"
+  | "qr_transfer"
+  | "bank_transfer"
+  | "card"
+  | "other";
+
+const ORDER_PAYMENT_METHODS = new Set<OrderPaymentMethod>([
+  "credit_card",
+  "promptpay",
+  "company_credit",
+  "cash",
+  "qr_transfer",
+  "bank_transfer",
+  "card",
+  "other",
+]);
 
 function requireRecord(value: unknown, label: string): AnyRecord {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -34,6 +51,121 @@ function addressSnapshot(address: AnyRecord) {
     postalCode: asPaymentNonEmptyString(address.postalCode) ?? null,
     note: asPaymentNonEmptyString(address.note) ?? null,
   };
+}
+
+function asOrderPaymentMethod(value: unknown): OrderPaymentMethod | null {
+  const method = asPaymentNonEmptyString(value) as OrderPaymentMethod | null;
+  return method && ORDER_PAYMENT_METHODS.has(method) ? method : null;
+}
+
+function derivePaymentStatus(input: {
+  checkoutMode: "payment" | "quotation";
+  paymentMethod: OrderPaymentMethod | null;
+}) {
+  if (input.checkoutMode === "quotation") return "not_applicable";
+  return input.paymentMethod === "company_credit"
+    ? "pending_review"
+    : "awaiting_payment";
+}
+
+async function assertCompanyMembership(
+  adminClient: ReturnType<typeof serverSupabaseServiceRole>,
+  userId: string,
+  companyId: string | null,
+): Promise<void> {
+  if (!companyId) return;
+
+  const { data, error } = await adminClient
+    .from("company_members")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("company_id", companyId)
+    .maybeSingle();
+
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  if (!data) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Company membership required",
+    });
+  }
+}
+
+async function assertAddressAccess(
+  adminClient: ReturnType<typeof serverSupabaseServiceRole>,
+  input: {
+    userId: string;
+    companyId: string | null;
+    address: AnyRecord;
+    shippingMode: "delivery" | "pickup";
+  },
+): Promise<string | null> {
+  const addressId = asPaymentNonEmptyString(input.address.id);
+  if (!addressId) {
+    if (input.shippingMode === "delivery") {
+      throw createError({
+        statusCode: 422,
+        statusMessage: "Delivery address is required",
+      });
+    }
+    return null;
+  }
+
+  const { data, error } = await adminClient
+    .from("addresses")
+    .select("id, user_id, company_id")
+    .eq("id", addressId)
+    .maybeSingle();
+
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  if (!data) {
+    throw createError({ statusCode: 404, statusMessage: "Address not found" });
+  }
+
+  const addressCompanyId = asPaymentNonEmptyString(data.company_id);
+  const addressUserId = asPaymentNonEmptyString(data.user_id);
+
+  if (input.companyId) {
+    if (addressCompanyId !== input.companyId) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: "Address does not belong to selected company",
+      });
+    }
+    return addressId;
+  }
+
+  if (addressUserId !== input.userId || addressCompanyId) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "Address access denied",
+    });
+  }
+  return addressId;
+}
+
+async function assertPickupBranchAccess(
+  adminClient: ReturnType<typeof serverSupabaseServiceRole>,
+  pickupBranchId: string | null,
+): Promise<string | null> {
+  if (!pickupBranchId) return null;
+  const { data, error } = await adminClient
+    .from("store_branches")
+    .select("id, is_active")
+    .eq("id", pickupBranchId)
+    .maybeSingle();
+
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  if (!data || data.is_active !== true) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Pickup branch is not available",
+    });
+  }
+  return pickupBranchId;
 }
 
 export default defineEventHandler(async (event) => {
@@ -74,7 +206,9 @@ export default defineEventHandler(async (event) => {
   const checkoutMode =
     body.checkoutMode === "quotation" ? "quotation" : "payment";
   const paymentMethod =
-    checkoutMode === "payment" ? asPaymentMethod(body.paymentMethod) : null;
+    checkoutMode === "payment"
+      ? asOrderPaymentMethod(body.paymentMethod)
+      : null;
   if (checkoutMode === "payment" && !paymentMethod) {
     throw createError({
       statusCode: 400,
@@ -188,6 +322,23 @@ export default defineEventHandler(async (event) => {
           })),
         );
   const address = requireRecord(body.address, "address");
+  const companyId = asPaymentNonEmptyString(body.companyId);
+  const shippingMode = body.shippingMode === "pickup" ? "pickup" : "delivery";
+  const pickupBranchId =
+    shippingMode === "pickup"
+      ? await assertPickupBranchAccess(
+          adminClient,
+          asPaymentNonEmptyString(body.pickupBranchId) ?? null,
+        )
+      : null;
+
+  await assertCompanyMembership(adminClient, userId, companyId);
+  const addressId = await assertAddressAccess(adminClient, {
+    userId,
+    companyId,
+    address,
+    shippingMode,
+  });
 
   const requestedCartId = asPaymentNonEmptyString(body.cartId);
   let resolvedCartId: string | null = null;
@@ -213,16 +364,17 @@ export default defineEventHandler(async (event) => {
     .from("orders")
     .insert({
       user_id: userId,
-      company_id: asPaymentNonEmptyString(body.companyId),
+      company_id: companyId,
       cart_id: resolvedCartId,
       checkout_mode: checkoutMode,
       payment_method: paymentMethod,
       status: "submitted",
-      payment_status:
-        checkoutMode === "quotation" ? "not_applicable" : "awaiting_payment",
+      payment_status: derivePaymentStatus({ checkoutMode, paymentMethod }),
       fulfillment_status:
         checkoutMode === "quotation" ? "not_applicable" : "unfulfilled",
-      address_id: asPaymentNonEmptyString(address.id),
+      shipping_mode: shippingMode,
+      pickup_branch_id: pickupBranchId,
+      address_id: addressId,
       address_snapshot: addressSnapshot(address),
       subtotal,
       discount_total: discountTotal,
@@ -267,7 +419,19 @@ export default defineEventHandler(async (event) => {
       .eq("user_id", userId)
       .eq("idempotency_key", idempotencyKey)
       .single();
-    return { orderId: existing?.order_id, idempotent: true };
+    if (existing?.order_id) {
+      const { data: existingOrder } = await adminClient
+        .from("orders")
+        .select("*")
+        .eq("id", existing.order_id)
+        .single();
+      return {
+        order: existingOrder,
+        orderId: existing.order_id,
+        idempotent: true,
+      };
+    }
+    return { orderId: null, idempotent: true };
   }
 
   return { order, idempotent: false };

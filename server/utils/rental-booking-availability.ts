@@ -1,7 +1,22 @@
 import { createError } from "h3";
 
+type QueryError = { message: string } | null;
+type RentalBookingQuery = PromiseLike<{
+  data: unknown[] | null;
+  error: QueryError;
+}> & {
+  in(column: string, values: string[]): RentalBookingQuery;
+  lt(column: string, value: string): RentalBookingQuery;
+  gt(column: string, value: string): RentalBookingQuery;
+  limit(value: number): RentalBookingQuery;
+  eq(column: string, value: string): RentalBookingQuery;
+  is(column: string, value: null): RentalBookingQuery;
+  neq(column: string, value: string): RentalBookingQuery;
+};
 type AnyClient = {
-  from: (table: string) => any;
+  from(table: "rental_bookings"): {
+    select(columns: string): RentalBookingQuery;
+  };
 };
 
 const BLOCKING_RENTAL_STATUSES = ["confirmed", "picked_up"] as const;
@@ -57,6 +72,7 @@ export async function assertRentalBookingAvailability(
     assetId?: string | null;
     skuId?: string | null;
     startDate: unknown;
+    /** Internal exclusive end boundary for DB half-open interval [startDate, endDate). */
     endDate: unknown;
     excludeBookingId?: string | null;
   },
@@ -73,6 +89,7 @@ export async function assertRentalBookingAvailability(
     .from("rental_bookings")
     .select("id")
     .in("status", [...BLOCKING_RENTAL_STATUSES])
+    // DB ranges are stored as half-open intervals: [start_date, end_date).
     .lt("start_date", endDate)
     .gt("end_date", startDate)
     .limit(1);

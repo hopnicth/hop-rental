@@ -13,6 +13,8 @@
 import type { Component } from "vue";
 import AccountSidebar from "~/components/account/AccountSidebar.vue";
 import SectionProfile from "~/components/account/SectionProfile.vue";
+import SectionSecurity from "~/components/account/SectionSecurity.vue";
+import SectionTaxProfile from "~/components/account/SectionTaxProfile.vue";
 import SectionKyc from "~/components/account/SectionKyc.vue";
 import SectionAddresses from "~/components/account/SectionAddresses.vue";
 import SectionPoints from "~/components/account/SectionPoints.vue";
@@ -96,6 +98,8 @@ watch(
 // ── Section registry ──
 const sectionMap: Record<string, Component> = {
   profile: markRaw(SectionProfile),
+  security: markRaw(SectionSecurity),
+  taxProfile: markRaw(SectionTaxProfile),
   kyc: markRaw(SectionKyc),
   addresses: markRaw(SectionAddresses),
   points: markRaw(SectionPoints),
@@ -192,7 +196,7 @@ function handleSelect(id: string) {
 
       <!-- ── Content Area (9 cols) — dynamic section ── -->
       <main class="col-span-12 lg:col-span-9">
-        <component v-if="currentComponent" :is="currentComponent" />
+        <component :is="currentComponent" v-if="currentComponent" />
         <UCard v-else>
           <div class="py-12 text-center">
             <UIcon name="bx:time" class="mx-auto mb-3 text-4xl text-muted" />

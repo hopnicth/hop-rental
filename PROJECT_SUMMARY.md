@@ -1,6 +1,6 @@
 # HOP-RENTAL Project Summary
 
-Last updated: 2026-05-10
+Last updated: 2026-05-15
 Audience: developers, operators, future Augment sessions
 
 ## Purpose
@@ -33,7 +33,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Add to cart
 - Submit order from `/user/cart`
 - Customer sees history in `/user/orders`
-- Admin manages status from `/admin/orders`
+- Admin triages sale orders from `/admin/orders` using the Sale Order Operations Queue, then manages status from `/admin/orders/[id]`
 - Staff can create branch-scoped POS sales from `/admin/pos`; customer info is optional in Sale mode
 
 ### Rental
@@ -45,7 +45,11 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Staff can also create confirmed rentals from `/admin/pos` for account or walk-in customers
 - Customer sees active history in `/user/rentals`
 - Cancelled bookings remain in DB and appear in `/user/orders`
-- Admin manages rental operations from `/admin/orders` and `/admin/rental-bookings/[id]`
+- Customer rental detail at `/user/rentals/[bookingId]` exposes QR, documents, cancellation/refund status, refund proof shortcuts, and the eligible self-service cancellation/refund form.
+- Eligible customer cancellation creates an immutable cancellation event and a manual Booking Deposit refund request; admin completes the refund from `/admin/refunds` and uploads proof before the customer refund confirmation is exposed.
+- Staff can manually mark overdue confirmed rental bookings as `no_show`; this records a no-show event, creates Booking Deposit disposition + financial recognition events, marks Booking Deposit as forfeited/refund-not-applicable, and releases availability because `no_show` is not a blocking rental status.
+- Booking Deposit forfeiture Phase 3.1 foundation is implemented for terms references and no-show disposition/recognition. Ordinary receipt, operational notices, customer/admin document access, POS V2, and admin-agreed cancellation forfeiture remain future work documented in `docs/booking-deposit-forfeiture-accounting-document-design.md`.
+- Admin manages rental operations from `/admin/rental-bookings/[id]`; `/admin/orders` is sale-order-only
 
 ## Major completed slices
 
@@ -88,9 +92,11 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 
 ### Admin order operations
 
-- `/admin/orders` groups sale orders + rental bookings by customer
-- QR scan supports `order:<number>`, `booking:<uuid>`, `customer:<uuid>`
-- Incomplete rows are highlighted visually
+- `/admin/orders` is a sale-order-only operations queue backed by `GET /api/admin/orders/queue`
+- The order queue has summary cards/tabs for `ต้องจัดการ`, `ต้องจัดส่ง`, `ลูกค้ารับเอง`, `รอชำระ`, and `ทั้งหมด`
+- Queue counts come from the backend summary and pagination is order-level, not customer-grouped
+- Legacy sale orders with `shipping_mode = NULL` stay visible in action-required/all queues but are not guessed into delivery/pickup
+- QR scan on `/admin/orders` searches sale order queue rows for `order:<number>` / customer payloads
 - Sale orders support admin tracking updates
 - `/admin/pos` combines customer lookup, walk-in capture, rentable-asset search, deposit entry, and immediate booking creation
 - `/admin/pos` now has separated Rental/Sale mode tabs, branch-scoped catalog, sale cart, unified payment capture, and daily POS transaction history
@@ -101,7 +107,34 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - POS return flow records a fulfillment event and moves the booking to `returned`
 - POS keeps pending ID-card uploads / booking drafts in `localStorage` for retry on flaky connections
 - Rental booking detail supports checklists + documents
+- Admin rental booking detail supports operational pickup/return document preview, issue, browser print, and reprint audit using immutable `official_documents` snapshots
 - Booking docs store storage metadata for clean delete
+
+### Customer cancellation / Booking Deposit refunds
+
+- Phase C.1E refund proof and queue smoke is passed: admin can upload refund proof, admin detail shows it, and customer-facing proof access works through signed/customer-safe routes.
+- Customer refund bank account entry now sanitizes the displayed value and submitted model to digits only; backend validation still enforces 6-25 digits after limited formatting normalization.
+- Admin refund queue has segmented status filters with counts for all refund statuses and an unresolved-work badge in the admin navigation. Unresolved means pending admin review + processing + needs customer contact.
+- Refund confirmation documents remain gated until the refund is marked refunded and proof is linked; customer payloads do not expose raw storage bucket/path metadata.
+- No backend refund workflow semantics were changed by the latest UI polish/input UX batch.
+
+### No-show lifecycle foundation
+
+- No-show is now a first-class rental booking status: `no_show`.
+- Staff mark no-show manually from admin rental booking detail only when booking is still `confirmed` and pickup date is before the current Bangkok local date.
+- No-show creates `rental_booking_no_show_events` and mirrors metadata onto `rental_bookings.no_show_*` fields.
+- No-show now also creates `rental_booking_deposit_disposition_events` and `financial_recognition_events` idempotently so forfeiture has a separate operational → disposition → recognition chain.
+- Booking Deposit no-show outcome is explicit: `deposit_refund_status = forfeited`, `deposit_refund_amount = 0`, and no `payment_refunds` row is created.
+- `confirmed` and `picked_up` continue blocking rental availability; `no_show` does not.
+
+### Booking Deposit forfeiture accounting / receipt / terms
+
+- Design track is complete and consolidated in `docs/booking-deposit-forfeiture-accounting-document-design.md`; Phase 3.1 foundation is implemented.
+- Implemented chain for no-show: operational source event → `rental_booking_deposit_disposition_events` → `financial_recognition_events`; derived payment allocation trace and ordinary receipt/documents remain pending.
+- `rental_bookings.deposit_refund_status` remains a mirror/status field; disposition events own terminal Booking Deposit outcome for implemented no-show forfeiture.
+- `booking_deposit_terms` is now an allowed canonical agreement type; Booking Deposit payment acceptance links to active published agreement evidence when available and keeps legacy snapshot fallback.
+- Future ordinary receipt must reuse `official_documents`, source from `financial_recognition_events`, and be ordinary receipt only: no tax invoice, no VAT, no WHT, and no tax invoice conversion.
+- Next implementation should avoid receipt/notice scope creep unless explicitly selected; receipt, notice, document access, admin-agreed cancellation forfeiture, and POS V2 remain not implemented.
 
 ### Chat/support
 
@@ -140,6 +173,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/user/cart`
 - `/user/orders`
 - `/user/rentals`
+- `/user/rentals/[bookingId]`
+- `/user/documents/[id]/print`
 
 ### Admin
 
@@ -151,6 +186,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - `/admin/pos`
 - `/admin/walk-in` (redirect alias)
 - `/admin/rental-bookings/[id]`
+- `/admin/refunds`
 - `/admin/content`
 - `/admin/home-categories`
 - `/admin/messages`, `/admin/messages/[id]`
@@ -169,6 +205,11 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Booking cancellation is soft-delete.
 - Booker phone/name should be preferred over account phone/name when present on a booking.
 - Deposit collection is tracked on the booking row, while uploaded proof files are stored separately for audit.
+- Customer self-service cancellation is available only for eligible confirmed/paid rental bookings before the locked refund cutoff; late cancellation remains support-only after cutoff.
+- No-show is handled separately from cancellation/refund: staff may manually mark overdue confirmed bookings `no_show`, which records Booking Deposit forfeiture/refund-not-applicable without creating a refund case.
+- Forfeiture foundation is partially runtime: no-show creates deposit disposition and financial recognition events, and Booking Deposit Terms can use canonical agreement governance. Forfeiture ordinary receipt, no-show notice, admin-agreed cancellation notice/forfeiture, document access UI, and POS V2 remain pending implementation.
+- Booking Deposit refunds are manual admin work in this phase; do not introduce automatic gateway refunds without a separate design decision.
+- Refund confirmation visibility requires refunded status plus linked refund proof.
 - Homepage promotion/service cards must reference an existing `content_pages` row; create the page in `/admin/content` first, then link it from `/admin/home-content`.
 - Public service-provider Line links must be sanitized to HTTPS `line.me` / `lin.ee` URLs; raw IDs may be stored separately and converted at render time.
 - For PostgREST `ILIKE`, use `*term*` instead of `%term%`.
@@ -183,12 +224,16 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 1. Decide/apply migration `045` when ready to enable DB-level `/search` dynamic filtering
 2. Backfill `main_category_key` on existing `content_pages` rows so public content filters show useful results
 3. Search schema alignment: consolidate current hybrid Universal Search into a server-owned global endpoint/RPC for ranking and facets
-4. Official POS receipt/tax invoice/delivery-note PDF generation
-5. Backoffice checklist-template management polish
-6. Robust offline POS queue with idempotency keys
+4. Continue Booking Deposit Forfeiture after Phase 3.1: choose derived allocation/admin-review hardening or ordinary receipt runtime as the next explicit batch
+5. Review no-show browser/admin ops and decide whether to add an overdue pickup dashboard queue
+6. Decide whether customer late non-refundable cancellation should remain support-only or become a separate recorded lifecycle
+7. Official POS receipt/tax invoice/delivery-note PDF generation
+8. Backoffice checklist-template management polish
+9. Robust offline POS queue with idempotency keys
 
 ## Read next
 
 - `API_INDEX.md` for routes/endpoints/composables
 - `ADMIN_MVP_ACTION_PLAN.md` for admin backlog
 - `ASSET_ACTION_PLAN.md` for rental/asset decisions
+- `docs/booking-deposit-forfeiture-accounting-document-design.md` for accepted forfeiture accounting/receipt/terms design and Phase 3 roadmap

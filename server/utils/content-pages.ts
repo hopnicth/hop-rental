@@ -259,9 +259,11 @@ function pickLinkedIds(
   key: "product_id" | "asset_id",
 ): string[] {
   if (!Array.isArray(rows)) return [];
-  const sorted = [...rows].sort((a: any, b: any) => {
-    const ao = Number(a?.sort_order ?? 0);
-    const bo = Number(b?.sort_order ?? 0);
+  const sorted = [...rows].sort((a, b) => {
+    const left = a as Record<string, unknown>;
+    const right = b as Record<string, unknown>;
+    const ao = Number(left.sort_order ?? 0);
+    const bo = Number(right.sort_order ?? 0);
     return ao - bo;
   });
   const out: string[] = [];
@@ -272,7 +274,34 @@ function pickLinkedIds(
   return out;
 }
 
-export function mapContentPageRow(row: any) {
+type ContentPageRow = Record<string, unknown> & {
+  id?: string;
+  content_type?: string;
+  slug?: string;
+  main_category_key?: string | null;
+  provider_id?: string | null;
+  title_th?: string;
+  title_en?: string;
+  title_cn?: string | null;
+  title_jp?: string | null;
+  excerpt_th?: string;
+  excerpt_en?: string;
+  excerpt_cn?: string | null;
+  excerpt_jp?: string | null;
+  cover_image_url?: string | null;
+  blocks?: unknown;
+  service_areas?: unknown;
+  content_page_products?: unknown;
+  content_page_assets?: unknown;
+  service_providers?: unknown;
+  sort_order?: number | string | null;
+  is_active?: boolean | null;
+  published_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export function mapContentPageRow(row: ContentPageRow) {
   return {
     id: row.id,
     contentType: row.content_type as ContentType,
@@ -326,7 +355,19 @@ function mapServiceProviderRow(row: unknown) {
 }
 
 type SupabaseAdminClient = {
-  from: (table: string) => any;
+  from: (table: string) => {
+    upsert(
+      payload: unknown,
+      options: { onConflict: string },
+    ): Promise<{ error: { message: string } | null }>;
+    delete(): {
+      eq(
+        column: string,
+        value: string,
+      ): Promise<{ error: { message: string } | null }>;
+    };
+    insert(payload: unknown): Promise<{ error: { message: string } | null }>;
+  };
 };
 
 export async function upsertServiceProvider(
