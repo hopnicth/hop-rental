@@ -36,6 +36,22 @@ export interface CompleteRentalFulfillmentOptions {
   payload: RentalFulfillmentPayload;
 }
 
+export interface AssertRentalFulfillmentPrerequisitesOptions extends CompleteRentalFulfillmentOptions {
+  requirePaidPickupDeposit?: boolean;
+  validateSignature?: boolean;
+}
+
+export interface RentalFulfillmentPrerequisites {
+  current: Record<string, unknown>;
+  requiredStatus: RentalBookingStatus;
+  currentStatus: string | null;
+  branchId: string | null;
+  checklistId: string;
+  depositPaidAmount: number;
+  refundAmount: number;
+  refundStatus: RentalDepositRefundStatus;
+}
+
 const SIGNATURE_BUCKET = "catalog-media";
 const REFUND_STATUSES = new Set<RentalDepositRefundStatus>([
   "not_refunded",
@@ -70,6 +86,20 @@ function parsePngDataUrl(value: string | null | undefined): Buffer | null {
   if (!match) return null;
   const buffer = Buffer.from(match[1], "base64");
   return buffer.byteLength > 0 ? buffer : null;
+}
+
+function assertValidSignatureDataUrl(
+  eventType: RentalFulfillmentEventType,
+  value: string | null | undefined,
+): Buffer {
+  const buffer = parsePngDataUrl(value);
+  if (!buffer) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: `${eventType} signature is required`,
+    });
+  }
+  return buffer;
 }
 
 function statusAfter(
@@ -284,13 +314,7 @@ async function uploadSignature(
   eventType: RentalFulfillmentEventType,
   signatureDataUrl: string | null | undefined,
 ) {
-  const buffer = parsePngDataUrl(signatureDataUrl);
-  if (!buffer) {
-    throw createError({
-      statusCode: 422,
-      statusMessage: `${eventType} signature is required`,
-    });
-  }
+  const buffer = assertValidSignatureDataUrl(eventType, signatureDataUrl);
   const path = `rental-fulfillment/${bookingId}/${eventType}-${crypto.randomUUID()}.png`;
   const { error } = await adminClient.storage
     .from(SIGNATURE_BUCKET)
@@ -316,6 +340,81 @@ async function loadCurrentBooking(adminClient: AdminClient, bookingId: string) {
       statusMessage: "Rental booking not found",
     });
   return data as Record<string, unknown>;
+}
+
+export async function assertRentalFulfillmentPrerequisites({
+  adminClient,
+  userId,
+  platformRole,
+  bookingId,
+  eventType,
+  payload,
+  requirePaidPickupDeposit = true,
+  validateSignature = true,
+}: AssertRentalFulfillmentPrerequisitesOptions): Promise<RentalFulfillmentPrerequisites> {
+  const current = await loadCurrentBooking(adminClient, bookingId);
+  const requiredStatus = expectedStatus(eventType);
+  const currentStatus = cleanText(current.status);
+  if (currentStatus !== requiredStatus) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: `${eventType} requires a ${requiredStatus} booking`,
+    });
+  }
+
+  const branchId = resolveEventBranch(current, payload);
+  await assertBranchAccess(adminClient, userId, platformRole, branchId);
+  await assertNoDuplicateEvent(adminClient, bookingId, eventType);
+  if (eventType === "pickup") {
+    if (
+      requirePaidPickupDeposit &&
+      cleanText(current.deposit_payment_status) !== "paid"
+    ) {
+      throw createError({
+        statusCode: 422,
+        statusMessage: "Pickup requires paid deposit/payment status",
+      });
+    }
+    await assertPickupCustomerEvidence(adminClient, current);
+  }
+
+  const checklistId = await loadCompletedChecklist(
+    adminClient,
+    bookingId,
+    eventType,
+  );
+  const depositPaidAmount = money(current.deposit_paid_amount);
+  const refundAmount = money(payload.refundAmount);
+  const refundStatus = REFUND_STATUSES.has(
+    payload.refundStatus as RentalDepositRefundStatus,
+  )
+    ? (payload.refundStatus as RentalDepositRefundStatus)
+    : depositPaidAmount > 0
+      ? "pending"
+      : "not_applicable";
+  if (eventType === "return") {
+    if (refundAmount > depositPaidAmount) {
+      throw createError({
+        statusCode: 422,
+        statusMessage: "Refund amount cannot exceed deposit paid amount",
+      });
+    }
+    await assertRefundProof(adminClient, bookingId, refundAmount, refundStatus);
+  }
+  if (validateSignature) {
+    assertValidSignatureDataUrl(eventType, payload.signatureDataUrl);
+  }
+
+  return {
+    current,
+    requiredStatus,
+    currentStatus,
+    branchId,
+    checklistId,
+    depositPaidAmount,
+    refundAmount,
+    refundStatus,
+  };
 }
 
 async function insertReturnDepositLog(
@@ -363,52 +462,23 @@ export async function completeRentalBookingFulfillment({
   eventType,
   payload,
 }: CompleteRentalFulfillmentOptions): Promise<AdminRentalBookingDetail> {
-  const current = await loadCurrentBooking(adminClient, bookingId);
-  const requiredStatus = expectedStatus(eventType);
-  const currentStatus = cleanText(current.status);
-  if (currentStatus !== requiredStatus) {
-    throw createError({
-      statusCode: 422,
-      statusMessage: `${eventType} requires a ${requiredStatus} booking`,
-    });
-  }
-
-  const branchId = resolveEventBranch(current, payload);
-  await assertBranchAccess(adminClient, userId, platformRole, branchId);
-  await assertNoDuplicateEvent(adminClient, bookingId, eventType);
-  if (eventType === "pickup") {
-    if (cleanText(current.deposit_payment_status) !== "paid") {
-      throw createError({
-        statusCode: 422,
-        statusMessage: "Pickup requires paid deposit/payment status",
-      });
-    }
-    await assertPickupCustomerEvidence(adminClient, current);
-  }
-
-  const checklistId = await loadCompletedChecklist(
+  const prerequisites = await assertRentalFulfillmentPrerequisites({
     adminClient,
+    userId,
+    platformRole,
     bookingId,
     eventType,
-  );
-  const depositPaidAmount = money(current.deposit_paid_amount);
-  const refundAmount = money(payload.refundAmount);
-  const refundStatus = REFUND_STATUSES.has(
-    payload.refundStatus as RentalDepositRefundStatus,
-  )
-    ? (payload.refundStatus as RentalDepositRefundStatus)
-    : depositPaidAmount > 0
-      ? "pending"
-      : "not_applicable";
-  if (eventType === "return") {
-    if (refundAmount > depositPaidAmount) {
-      throw createError({
-        statusCode: 422,
-        statusMessage: "Refund amount cannot exceed deposit paid amount",
-      });
-    }
-    await assertRefundProof(adminClient, bookingId, refundAmount, refundStatus);
-  }
+    payload,
+  });
+  const {
+    current,
+    requiredStatus,
+    branchId,
+    checklistId,
+    depositPaidAmount,
+    refundAmount,
+    refundStatus,
+  } = prerequisites;
 
   const { signatureUrl, signaturePath } = await uploadSignature(
     adminClient,

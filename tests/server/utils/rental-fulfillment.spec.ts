@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertRentalFulfillmentPrerequisites,
   completeRentalBookingFulfillment,
   type RentalFulfillmentPayload,
 } from "~~/server/utils/rental-fulfillment";
@@ -131,6 +132,52 @@ const baseChecklistItem = {
   result_status: "passed",
 };
 const baseUser = { id: "user-1", kyc_status: "verified" };
+
+describe("assertRentalFulfillmentPrerequisites", () => {
+  it("prevalidates pickup without requiring paid deposit when requested", async () => {
+    const result = await assertRentalFulfillmentPrerequisites({
+      adminClient: mockClient({
+        booking: baseBooking("confirmed", { deposit_payment_status: "unpaid" }),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+      requirePaidPickupDeposit: false,
+    });
+
+    expect(result).toMatchObject({
+      requiredStatus: "confirmed",
+      branchId: "branch-1",
+      checklistId: "chk-1",
+    });
+  });
+
+  it("prevalidates signature before callers mutate payment", async () => {
+    await expect(
+      assertRentalFulfillmentPrerequisites({
+        adminClient: mockClient({
+          booking: baseBooking("confirmed", {
+            deposit_payment_status: "unpaid",
+          }),
+          checklist: baseChecklist,
+          checklistItems: [baseChecklistItem],
+          users: [baseUser],
+        }),
+        userId: "staff-1",
+        platformRole: "staff",
+        bookingId: "booking-1",
+        eventType: "pickup",
+        payload: validPayload("pickup", { signatureDataUrl: "bad" }),
+        requirePaidPickupDeposit: false,
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+});
 
 function makeErrorTest(
   name: string,
