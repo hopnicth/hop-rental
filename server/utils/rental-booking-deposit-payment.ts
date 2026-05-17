@@ -17,6 +17,7 @@ import {
   computeRentalBookingPaymentLines,
   rentalPaymentLineInsertRows,
 } from "~~/server/utils/rental-payment-lines";
+import { recordBookingDepositHeldBalanceCollection } from "~~/server/utils/rental-held-balance-events";
 
 type AnyRecord = Record<string, unknown>;
 type QueryChain<T = AnyRecord> = {
@@ -445,6 +446,34 @@ export async function applyRentalBookingDepositGatewayResult(input: {
     status === "paid" &&
     input.booking.booking_deposit_payment_status !== "paid"
   ) {
+    const { bookingDeposit } = computeBookingDepositLinesFromBooking({
+      booking: input.booking,
+    });
+    assertGatewayAmountMatchesBookingDeposit(
+      bookingDeposit.grossAmount,
+      String(
+        input.booking.currency_code ?? input.attempt.currency_code ?? "THB",
+      ),
+      input.result.raw,
+    );
+    if (
+      Math.abs(money(input.attempt.amount) - bookingDeposit.grossAmount) > 0.01
+    ) {
+      throw createError({
+        statusCode: 409,
+        statusMessage: "PAYMENT_AMOUNT_MISMATCH",
+      });
+    }
+    await recordBookingDepositHeldBalanceCollection({
+      client: input.client,
+      booking: input.booking,
+      amount: bookingDeposit.grossAmount,
+      sourceType: "rental_booking_payment_attempt",
+      sourceId: String(input.attempt.id),
+      paymentMethod: bookingDepositMethodToLegacyDepositMethod(
+        input.attempt.method,
+      ),
+    });
     await input.client
       .from("rental_bookings")
       .update({

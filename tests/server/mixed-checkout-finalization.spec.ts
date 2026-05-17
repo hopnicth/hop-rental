@@ -49,14 +49,17 @@ class Chain {
   }
   async maybeSingle() {
     const r = await this.exec();
-    return { data: r.data[0] ?? null, error: null };
+    return { data: r.data[0] ?? null, error: r.error };
   }
   async single() {
     const r = await this.exec();
-    return { data: r.data[0] ?? null, error: null };
+    return { data: r.data[0] ?? null, error: r.error };
   }
   then(
-    res: (v: { data: Row[]; error: null }) => void,
+    res: (v: {
+      data: Row[];
+      error: { code?: string; message?: string } | null;
+    }) => void,
     rej: (e: unknown) => void,
   ) {
     this.exec().then(res, rej);
@@ -66,6 +69,20 @@ class Chain {
     const rows = this.db[this.table];
     const matched = rows.filter((r) => this.filters.every((f) => f(r)));
     if (this.action === "insert") {
+      if (
+        this.table === "rental_held_balance_events" &&
+        rows.some(
+          (r) =>
+            r.source_type === this.payload.source_type &&
+            r.source_id === this.payload.source_id &&
+            r.event_type === this.payload.event_type,
+        )
+      ) {
+        return {
+          data: [],
+          error: { code: "23505", message: "duplicate" },
+        };
+      }
       const row = { id: `${this.table}-${rows.length + 1}`, ...this.payload };
       rows.push(row);
       return { data: [row], error: null };
@@ -174,6 +191,7 @@ function seed(overrides: Partial<Record<string, Row[]>> = {}) {
         booking_deposit_payment_status: "unpaid",
       },
     ],
+    rental_held_balance_events: [],
     payment_alerts: [],
     ...overrides,
   } as Record<string, Row[]>;
@@ -228,6 +246,17 @@ describe("mixed checkout finalization", () => {
     expect(
       db.mixed_payment_allocations.every((a) => a.status === "finalized"),
     ).toBe(true);
+    expect(db.rental_held_balance_events).toEqual([
+      expect.objectContaining({
+        rental_booking_id: "b1",
+        event_type: "booking_deposit_collection",
+        amount: 200,
+        currency_code: "THB",
+        status: "posted",
+        source_type: "mixed_payment_allocation",
+        source_id: "al-book",
+      }),
+    ]);
     expect(db.cart_items).toEqual([
       expect.objectContaining({
         id: "ci-new",
@@ -294,6 +323,13 @@ describe("mixed checkout finalization", () => {
       booking_deposit_paid_amount: 200,
       booking_deposit_mixed_allocation_id: "al-book",
     });
+    expect(db.rental_held_balance_events).toEqual([
+      expect.objectContaining({
+        source_type: "mixed_payment_allocation",
+        source_id: "al-book",
+        amount: 200,
+      }),
+    ]);
     expect(db.mixed_payment_allocations[0].status).toBe("finalized");
     expect(db.mixed_checkout_sessions[0].status).toBe("finalized");
     expect(db.mixed_payment_attempts[0].status).toBe("finalized");
@@ -316,6 +352,7 @@ describe("mixed checkout finalization", () => {
     });
     expect(c.calls).toEqual(["f_apply_order_inventory"]);
     expect(confirmRentalBooking).toHaveBeenCalledTimes(1);
+    expect(db.rental_held_balance_events).toHaveLength(1);
     expect(db.cart_items).toHaveLength(1);
     expect(db.cart_items[0].id).toBe("ci-new");
   });
@@ -355,8 +392,40 @@ describe("mixed checkout finalization", () => {
     });
     expect(db.orders[0].payment_status).toBe("awaiting_payment");
     expect(db.rental_bookings[0].status).toBe("draft");
+    expect(db.rental_held_balance_events).toHaveLength(0);
     expect(db.mixed_payment_attempts[0].status).toBe("finalization_failed");
     expect(db.payment_alerts[0].kind).toBe("mixed_payment_amount_mismatch");
+  });
+
+  it("booking allocation amount mismatch rejects without held-balance event", async () => {
+    const db = seed({
+      mixed_checkout_sessions: [
+        { ...seed().mixed_checkout_sessions[0], amount_total: 1300 },
+      ],
+      mixed_payment_attempts: [
+        { ...seed().mixed_payment_attempts[0], amount: 1300 },
+      ],
+      mixed_payment_allocations: seed().mixed_payment_allocations.map((row) =>
+        row.allocation_type === "booking_deposit"
+          ? { ...row, amount: 300 }
+          : row,
+      ),
+    });
+    const c = client(db);
+    await applyMixedCheckoutGatewayResult({
+      client: c,
+      session: db.mixed_checkout_sessions[0],
+      attempt: db.mixed_payment_attempts[0],
+      result: { ...paid, raw: { id: "ch1", amount: 130000, currency: "thb" } },
+    });
+    expect(db.rental_held_balance_events).toHaveLength(0);
+    expect(
+      db.mixed_payment_allocations.find((a) => a.id === "al-book")?.status,
+    ).toBe("paid_confirm_failed");
+    expect(db.mixed_checkout_sessions[0].status).toBe("partial_finalized");
+    expect(
+      db.payment_alerts.some((a) => a.kind === "mixed_booking_confirm_failed"),
+    ).toBe(true);
   });
 
   it("rental confirm failure marks booking allocation paid_confirm_failed and session partial", async () => {

@@ -56,27 +56,80 @@ function paidCharge() {
   };
 }
 
-function fakeClient() {
+function fakeClient(initial: Partial<Record<string, Row[]>> = {}) {
   const updates: Array<{ table: string; payload: Record<string, unknown> }> =
     [];
+  const state: Record<string, Row[]> = {
+    rental_held_balance_events: [],
+    ...initial,
+  };
   return {
     updates,
+    state,
     from(table: string) {
-      return {
-        update(payload: Record<string, unknown>) {
+      let action: "select" | "insert" | "update" = "select";
+      let payload: Row = {};
+      const filters: Array<[string, unknown, "eq" | "neq"]> = [];
+      const rows = () => (state[table] ??= []);
+      const matching = () =>
+        rows().filter((row) =>
+          filters.every(([k, v, op]) =>
+            op === "eq" ? row[k] === v : row[k] !== v,
+          ),
+        );
+      const exec = async () => {
+        if (action === "insert") {
+          if (
+            table === "rental_held_balance_events" &&
+            rows().some(
+              (row) =>
+                row.source_type === payload.source_type &&
+                row.source_id === payload.source_id &&
+                row.event_type === payload.event_type,
+            )
+          ) {
+            return {
+              data: null,
+              error: { code: "23505", message: "duplicate" },
+            };
+          }
+          const row = { id: `${table}-${rows().length + 1}`, ...payload };
+          rows().push(row);
+          return { data: row, error: null };
+        }
+        if (action === "update") {
           updates.push({ table, payload });
-          const chain = {
-            eq: () => chain,
-            neq: () => chain,
-            select: () => chain,
-            single: async () => ({
-              data: { id: "attempt-1", ...payload },
-              error: null,
-            }),
+          const matched = matching();
+          matched.forEach((row) => Object.assign(row, payload));
+          return {
+            data: matched[0] ?? { id: "attempt-1", ...payload },
+            error: null,
           };
+        }
+        return { data: matching()[0] ?? null, error: null };
+      };
+      const chain = {
+        select: () => chain,
+        eq: (key: string, value: unknown) => (
+          filters.push([key, value, "eq"]),
+          chain
+        ),
+        neq: (key: string, value: unknown) => (
+          filters.push([key, value, "neq"]),
+          chain
+        ),
+        insert: (p: Row) => ((action = "insert"), (payload = p), chain),
+        update(p: Record<string, unknown>) {
+          action = "update";
+          payload = p;
           return chain;
         },
+        maybeSingle: exec,
+        single: exec,
+        then: (resolveFn: any, rejectFn: any) =>
+          exec().then(resolveFn, rejectFn),
       };
+      return chain;
     },
   };
 }
@@ -275,6 +328,73 @@ describe("rental booking deposit payment", () => {
     );
     expect(
       client.updates.some((update) => update.payload.status === "confirmed"),
+    ).toBe(false);
+    expect(client.state.rental_held_balance_events).toEqual([
+      expect.objectContaining({
+        rental_booking_id: "booking-1",
+        event_type: "booking_deposit_collection",
+        amount: 200,
+        currency_code: "THB",
+        status: "posted",
+        source_type: "rental_booking_payment_attempt",
+        source_id: "attempt-1",
+      }),
+    ]);
+  });
+
+  it("replaying a paid Booking Deposit attempt does not duplicate held-balance event", async () => {
+    vi.mocked(confirmRentalBooking).mockResolvedValue({
+      id: "booking-1",
+      status: "confirmed",
+    });
+    const client = fakeClient();
+    const input = {
+      client,
+      booking: booking(),
+      attempt: {
+        id: "attempt-1",
+        booking_id: "booking-1",
+        amount: 200,
+        method: "promptpay",
+      },
+      result: paidCharge(),
+    };
+
+    await applyRentalBookingDepositGatewayResult(input);
+    await applyRentalBookingDepositGatewayResult(input);
+
+    expect(client.state.rental_held_balance_events).toHaveLength(1);
+    expect(client.state.rental_held_balance_events[0]).toMatchObject({
+      source_type: "rental_booking_payment_attempt",
+      source_id: "attempt-1",
+      amount: 200,
+    });
+  });
+
+  it("rejects Booking Deposit amount mismatch without posting held-balance event", async () => {
+    const client = fakeClient();
+
+    await expect(
+      applyRentalBookingDepositGatewayResult({
+        client,
+        booking: booking(),
+        attempt: {
+          id: "attempt-1",
+          booking_id: "booking-1",
+          amount: 200,
+          method: "promptpay",
+        },
+        result: {
+          ...paidCharge(),
+          raw: { id: "chrg_1", amount: 30000, currency: "thb" },
+        },
+      }),
+    ).rejects.toMatchObject({ statusMessage: "PAYMENT_AMOUNT_MISMATCH" });
+    expect(client.state.rental_held_balance_events).toHaveLength(0);
+    expect(
+      client.updates.some(
+        (update) => update.payload.booking_deposit_payment_status === "paid",
+      ),
     ).toBe(false);
   });
 

@@ -13,6 +13,7 @@ import {
   bookingDepositMethodToLegacyDepositMethod,
   computeBookingDepositLinesFromBooking,
 } from "~~/server/utils/rental-booking-deposit-payment";
+import { recordBookingDepositHeldBalanceCollection } from "~~/server/utils/rental-held-balance-events";
 
 type AnyRecord = Record<string, unknown>;
 type AnyClient = {
@@ -335,6 +336,16 @@ async function finalizeBookingAllocation(input: {
       ) > 0.01
     )
       throw new Error("BOOKING_DEPOSIT_AMOUNT_MISMATCH");
+    await recordBookingDepositHeldBalanceCollection({
+      client: input.client,
+      booking,
+      amount: bookingDeposit.grossAmount,
+      sourceType: "mixed_payment_allocation",
+      sourceId: String(input.allocation.id),
+      paymentMethod: bookingDepositMethodToLegacyDepositMethod(
+        input.attempt.method,
+      ),
+    });
     if (
       booking.status !== "confirmed" ||
       booking.booking_deposit_mixed_allocation_id !== input.allocation.id
