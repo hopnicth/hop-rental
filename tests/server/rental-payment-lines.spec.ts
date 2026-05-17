@@ -1,11 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateBookingDepositDueNow,
   calculateRentalPaymentLines,
   summarizeRentalPaymentLines,
 } from "../../app/utils/rental-payment-lines";
 import { rentalPaymentLineInsertRows } from "../../server/utils/rental-payment-lines";
 
 describe("rental payment lines", () => {
+  it.each([
+    { rentalDays: 5, depositAmount: 0, expected: 0 },
+    { rentalDays: 5, depositAmount: 100, expected: 100 },
+    { rentalDays: 31, depositAmount: 500, expected: 500 },
+    { rentalDays: 5, depositAmount: 5000, expected: 200 },
+    { rentalDays: 31, depositAmount: 5000, expected: 1000 },
+  ])(
+    "caps Booking Deposit at required security deposit %#",
+    ({ rentalDays, depositAmount, expected }) => {
+      expect(
+        calculateBookingDepositDueNow({
+          rentalDays,
+          requiredSecurityDepositAmount: depositAmount,
+        }),
+      ).toBe(expected);
+    },
+  );
+
   it("does not apply WHT to an individual rental fee or deposit", () => {
     const lines = calculateRentalPaymentLines({
       customerKind: "individual",
@@ -147,7 +166,7 @@ describe("rental payment lines", () => {
     });
   });
 
-  it("does not allow remaining security deposit to go below zero", () => {
+  it("caps Booking Deposit so remaining security deposit does not go below zero", () => {
     const lines = calculateRentalPaymentLines({
       customerKind: "individual",
       rentalDays: 5,
@@ -155,9 +174,9 @@ describe("rental payment lines", () => {
     });
     expect(summarizeRentalPaymentLines(lines)).toMatchObject({
       securityDepositRequired: 100,
-      bookingDepositDueNow: 200,
+      bookingDepositDueNow: 100,
       remainingSecurityDepositDueAtPickup: 0,
-      netPayableNow: 200,
+      netPayableNow: 100,
       netPayableAtPickup: 0,
     });
   });

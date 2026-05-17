@@ -258,6 +258,7 @@ export function buildRentalMoneySummary(input: {
     ? bookingDepositTotals.gross
     : calculateBookingDepositDueNow({
         rentalDays: Number(booking.rental_days ?? 0),
+        requiredSecurityDepositAmount: depositSnapshot,
       });
   const lineSecurityDepositRequired = money(
     bookingDepositLine?.metadata.securityDepositRequired,

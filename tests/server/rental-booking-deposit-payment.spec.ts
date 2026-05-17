@@ -211,6 +211,19 @@ describe("rental booking deposit payment", () => {
     expect(summary.remainingSecurityDepositDueAtPickup).toBe(4000);
   });
 
+  it("caps server-computed Booking Deposit at required security deposit", () => {
+    const { bookingDeposit, summary } = computeBookingDepositLinesFromBooking({
+      booking: booking({
+        rental_days: 31,
+        rental_total: 1000,
+        deposit_amount: 500,
+      }),
+    });
+    expect(bookingDeposit.grossAmount).toBe(500);
+    expect(summary.bookingDepositDueNow).toBe(500);
+    expect(summary.remainingSecurityDepositDueAtPickup).toBe(0);
+  });
+
   it("validates gateway amount against booking_deposit only", () => {
     assertGatewayAmountMatchesBookingDeposit(200, "THB", {
       amount: 20000,

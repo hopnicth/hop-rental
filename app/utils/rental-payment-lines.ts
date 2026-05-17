@@ -138,11 +138,19 @@ function buildLine(input: {
 export function calculateBookingDepositDueNow(input: {
   rentalDays?: number;
   overrideAmount?: number;
+  requiredSecurityDepositAmount?: number;
 }): number {
   const rentalDays = Math.max(0, Math.ceil(Number(input.rentalDays ?? 0)) || 0);
   if (rentalDays <= 0) return 0;
   const fixedAmount = rentalDays > 30 ? 1000 : 200;
-  return Math.max(fixedAmount, money(input.overrideAmount));
+  const policyCalculatedAmount = Math.max(
+    fixedAmount,
+    money(input.overrideAmount),
+  );
+  const requiredSecurityDepositAmount = money(
+    input.requiredSecurityDepositAmount,
+  );
+  return Math.min(policyCalculatedAmount, requiredSecurityDepositAmount);
 }
 
 export function calculateRentalPaymentLines(
@@ -155,6 +163,7 @@ export function calculateRentalPaymentLines(
   const bookingDepositDueNow = calculateBookingDepositDueNow({
     rentalDays: input.rentalDays,
     overrideAmount: input.bookingDepositOverrideAmount,
+    requiredSecurityDepositAmount: securityDepositRequired,
   });
   const remainingSecurityDepositDueAtPickup = money(
     Math.max(0, securityDepositRequired - bookingDepositDueNow),
