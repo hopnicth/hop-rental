@@ -5,6 +5,10 @@ import {
   throwRentalBookingConflict,
 } from "~~/server/utils/rental-booking-availability";
 import { decomposeRentalDuration } from "~~/app/utils/rental-pricing";
+import {
+  assertBookingDepositHeldBalanceEvent,
+  type BookingDepositSourceType,
+} from "~~/server/utils/rental-held-balance-events";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -20,7 +24,12 @@ type AnyClient = {
 };
 
 export const RENTAL_CONFIRM_BOOKING_SELECT =
-  "id, user_id, status, asset_id, sku_id, start_date, end_date, rental_days, hub_id, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, currency_code, pricing_breakdown, booking_deposit_payment_status, booking_deposit_paid_amount, booking_deposit_paid_at";
+  "id, user_id, status, asset_id, sku_id, start_date, end_date, rental_days, hub_id, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, currency_code, pricing_breakdown, booking_deposit_payment_status, booking_deposit_paid_amount, booking_deposit_paid_at, booking_deposit_payment_attempt_id, booking_deposit_mixed_allocation_id";
+
+type BookingDepositHeldBalanceRequirement = {
+  sourceType: BookingDepositSourceType;
+  sourceId: string;
+};
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0
@@ -248,9 +257,14 @@ export async function validateRentalBookingForConfirmation(input: {
   allowedStatuses?: string[];
   requireBookingDepositPaid?: boolean;
   bypassBookingDepositRequirement?: boolean;
+  requireBookingDepositHeldBalanceEvent?: BookingDepositHeldBalanceRequirement;
+  skipUserOwnershipCheck?: boolean;
 }): Promise<void> {
   const { adminClient, booking, userId } = input;
-  if (String(booking.user_id ?? "") !== String(userId)) {
+  if (
+    !input.skipUserOwnershipCheck &&
+    String(booking.user_id ?? "") !== String(userId)
+  ) {
     throw createError({
       statusCode: 403,
       statusMessage: "Booking access denied",
@@ -285,6 +299,16 @@ export async function validateRentalBookingForConfirmation(input: {
         statusMessage: "BOOKING_DEPOSIT_PAYMENT_REQUIRED",
       });
     }
+    if (input.requireBookingDepositHeldBalanceEvent) {
+      await assertBookingDepositHeldBalanceEvent({
+        client: adminClient,
+        rentalBookingId: String(booking.id),
+        amount: asMoney(booking.booking_deposit_paid_amount),
+        currencyCode: asString(booking.currency_code) ?? "THB",
+        sourceType: input.requireBookingDepositHeldBalanceEvent.sourceType,
+        sourceId: input.requireBookingDepositHeldBalanceEvent.sourceId,
+      });
+    }
   }
 
   const days = assertDateAndDuration(booking);
@@ -306,6 +330,8 @@ export async function confirmRentalBooking(input: {
   allowedStatuses?: string[];
   requireBookingDepositPaid?: boolean;
   bypassBookingDepositRequirement?: boolean;
+  requireBookingDepositHeldBalanceEvent?: BookingDepositHeldBalanceRequirement;
+  skipUserOwnershipCheck?: boolean;
 }): Promise<AnyRecord> {
   const booking = await loadRentalBookingForConfirmation(
     input.adminClient,

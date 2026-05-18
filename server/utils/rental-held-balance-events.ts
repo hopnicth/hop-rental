@@ -7,8 +7,7 @@ type AnyClient = { from(table: string): any };
 export const RENTAL_HELD_BALANCE_EVENT_SELECT =
   "id, rental_booking_id, event_type, amount, currency_code, status, occurred_at, source_type, source_id, payment_method, branch_id, staff_user_id, idempotency_key, metadata, created_at";
 
-export const BOOKING_DEPOSIT_COLLECTION_EVENT =
-  "booking_deposit_collection";
+export const BOOKING_DEPOSIT_COLLECTION_EVENT = "booking_deposit_collection";
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -85,7 +84,8 @@ export async function findExistingRentalHeldBalanceEvent(input: {
     .eq("source_id", input.sourceId)
     .eq("event_type", input.eventType)
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
   return (data as AnyRecord | null) ?? null;
 }
 
@@ -148,13 +148,21 @@ export async function recordRentalHeldBalanceEvent(input: {
   return existing as AnyRecord;
 }
 
+export type BookingDepositSourceType =
+  | "rental_booking_payment_attempt"
+  | "mixed_payment_allocation"
+  | "pos_rental_payment_attempt";
+
 export async function recordBookingDepositHeldBalanceCollection(input: {
   client: AnyClient;
   booking: AnyRecord;
   amount: number;
-  sourceType: "rental_booking_payment_attempt" | "mixed_payment_allocation";
+  sourceType: BookingDepositSourceType;
   sourceId: string;
   paymentMethod?: string | null;
+  branchId?: string | null;
+  staffUserId?: string | null;
+  idempotencyKey?: string | null;
   metadata?: AnyRecord;
 }) {
   return await recordRentalHeldBalanceEvent({
@@ -166,6 +174,56 @@ export async function recordBookingDepositHeldBalanceCollection(input: {
     sourceType: input.sourceType,
     sourceId: input.sourceId,
     paymentMethod: input.paymentMethod,
+    branchId: input.branchId,
+    staffUserId: input.staffUserId,
+    idempotencyKey: input.idempotencyKey,
     metadata: input.metadata,
   });
+}
+
+export async function assertBookingDepositHeldBalanceEvent(input: {
+  client: AnyClient;
+  rentalBookingId: string;
+  amount: number;
+  currencyCode: string;
+  sourceType: BookingDepositSourceType;
+  sourceId: string;
+}): Promise<AnyRecord> {
+  const expected = {
+    rentalBookingId: text(input.rentalBookingId),
+    eventType: BOOKING_DEPOSIT_COLLECTION_EVENT,
+    amount: money(input.amount),
+    currencyCode: normalizeCurrency(input.currencyCode || "THB"),
+    sourceType: text(input.sourceType),
+    sourceId: text(input.sourceId),
+  };
+  assertValidEventIdentity(expected);
+  const existing = await findExistingRentalHeldBalanceEvent({
+    client: input.client,
+    sourceType: expected.sourceType,
+    sourceId: expected.sourceId,
+    eventType: expected.eventType,
+  });
+  if (!existing) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "BOOKING_DEPOSIT_HELD_BALANCE_EVENT_REQUIRED",
+    });
+  }
+  try {
+    assertExistingEventMatches(existing, expected);
+  } catch (err) {
+    const statusMessage =
+      err instanceof Error && "statusMessage" in err
+        ? String((err as { statusMessage?: unknown }).statusMessage)
+        : "BOOKING_DEPOSIT_HELD_BALANCE_EVENT_MISMATCH";
+    throw createError({
+      statusCode: 409,
+      statusMessage:
+        statusMessage === "RENTAL_HELD_BALANCE_EVENT_CONFLICT"
+          ? "BOOKING_DEPOSIT_HELD_BALANCE_EVENT_MISMATCH"
+          : statusMessage,
+    });
+  }
+  return existing;
 }
