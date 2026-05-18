@@ -64,6 +64,7 @@ const props = withDefaults(
     deposit?: number | null;
     currencyCode?: string | null;
     blockingBookings?: RentalCalendarBlockingBooking[] | null;
+    enforceCustomerTimeRestriction?: boolean;
   }>(),
   {
     loading: false,
@@ -83,6 +84,7 @@ const props = withDefaults(
     deposit: null,
     currencyCode: null,
     blockingBookings: null,
+    enforceCustomerTimeRestriction: true,
   },
 );
 
@@ -162,7 +164,10 @@ const canBypassCutoff = computed(() =>
   canBypassBookingCutoff(profile.value?.platformRole),
 );
 const isCutoffActive = computed(
-  () => !canBypassCutoff.value && isPastDailyCutoff(nowTick.value),
+  () =>
+    props.enforceCustomerTimeRestriction &&
+    !canBypassCutoff.value &&
+    isPastDailyCutoff(nowTick.value),
 );
 const cutoffTimeLabel = computed(() => formatCutoffTime());
 const minDate = computed(() => {
