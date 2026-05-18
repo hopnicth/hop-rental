@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  addDaysToLocalDate,
+  toBangkokLocalDate,
+} from "../../server/utils/rental-cancellation-policy";
 
 const mockState = vi.hoisted(() => ({
   body: {} as Record<string, unknown>,
@@ -54,7 +58,8 @@ function queryResult<T>(result: T) {
     limit: () => chain,
     maybeSingle: async () => result,
     single: async () => result,
-    then: (resolve: (value: T) => unknown) => Promise.resolve(result).then(resolve),
+    then: (resolve: (value: T) => unknown) =>
+      Promise.resolve(result).then(resolve),
   };
   return chain;
 }
@@ -220,11 +225,9 @@ describe("admin POS V3 rental draft API", () => {
   it("creates POS V3 draft quote payment-line snapshots", async () => {
     await endpoint({});
 
-    expect(mockState.insertedPaymentLines.map((line) => line.line_type)).toEqual([
-      "rental_fee",
-      "booking_deposit",
-      "refundable_security_deposit",
-    ]);
+    expect(
+      mockState.insertedPaymentLines.map((line) => line.line_type),
+    ).toEqual(["rental_fee", "booking_deposit", "refundable_security_deposit"]);
     expect(mockState.insertedPaymentLines[0]).toMatchObject({
       source: "pos_v3_draft_quote",
     });
@@ -289,7 +292,11 @@ describe("admin POS V3 rental draft API", () => {
   });
 
   it("rejects missing customer identity", async () => {
-    mockState.body = { ...mockState.body, walkInPhone: null, bookerPhone: null };
+    mockState.body = {
+      ...mockState.body,
+      walkInPhone: null,
+      bookerPhone: null,
+    };
 
     await expect(endpoint({})).rejects.toMatchObject({ statusCode: 422 });
     expect(mockState.insertedBookings).toHaveLength(0);
@@ -319,8 +326,37 @@ describe("admin POS V3 rental draft API", () => {
     await expect(endpoint({})).rejects.toMatchObject({ statusCode: 422 });
   });
 
+  it("rejects same-day startDate with SAME_DAY_RENTAL_USE_INSTANT_RENTAL_FLOW", async () => {
+    // Use the same Bangkok-local helper the endpoint uses so the test is
+    // immune to UTC/local timezone mismatches (e.g. midnight–07:00 ICT).
+    const today = toBangkokLocalDate(new Date());
+    const tomorrow = addDaysToLocalDate(today, 1);
+    mockState.body = { ...mockState.body, startDate: today, endDate: tomorrow };
+
+    await expect(endpoint({})).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: "SAME_DAY_RENTAL_USE_INSTANT_RENTAL_FLOW",
+    });
+    expect(mockState.insertedBookings).toHaveLength(0);
+  });
+
+  it("rejects past startDate", async () => {
+    mockState.body = {
+      ...mockState.body,
+      startDate: "2020-01-01",
+      endDate: "2020-01-03",
+    };
+
+    await expect(endpoint({})).rejects.toMatchObject({ statusCode: 422 });
+    expect(mockState.insertedBookings).toHaveLength(0);
+  });
+
   it("rejects invalid date ranges", async () => {
-    mockState.body = { ...mockState.body, startDate: "2026-05-23", endDate: "2026-05-21" };
+    mockState.body = {
+      ...mockState.body,
+      startDate: "2026-05-23",
+      endDate: "2026-05-21",
+    };
 
     await expect(endpoint({})).rejects.toMatchObject({ statusCode: 422 });
   });

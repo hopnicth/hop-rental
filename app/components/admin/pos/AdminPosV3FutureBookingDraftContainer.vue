@@ -89,8 +89,23 @@ interface DraftResponse {
   warnings: string[];
 }
 
+interface SameDayRentalIntentPayload {
+  branchId: string;
+  assetId: string;
+  startDate: string;
+  returnDate: string;
+  numDays: number;
+  userId: string | null;
+  walkInPhone: string | null;
+  bookerName: string | null;
+  bookerPhone: string | null;
+}
+
 const props = defineProps<{ userContext: UserContext | null }>();
-const emit = defineEmits<{ "draft-created": [result: DraftResponse] }>();
+const emit = defineEmits<{
+  "draft-created": [result: DraftResponse];
+  "same-day-rental-intent": [payload: SameDayRentalIntentPayload];
+}>();
 
 // Branch
 const branches = ref<BranchOption[]>([]);
@@ -215,10 +230,27 @@ const canSubmit = computed(() => {
     !calendarPayload.value.returnDate
   )
     return false;
-  return customerMode.value === "account"
-    ? !!props.userContext?.userId
-    : !!walkInPhone.value.trim();
+  if (customerMode.value === "account") {
+    return !!props.userContext?.userId;
+  }
+  return !!walkInPhone.value.trim() && !!bookerName.value.trim();
 });
+
+/** Returns today's date as YYYY-MM-DD in local time, matching the calendar's date semantics. */
+function localTodayDateOnly(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * True when the selected start date is today (local).
+ * Same-day rentals must NOT follow the Future Booking Draft → Booking Deposit flow.
+ */
+const isSameDayRentalIntent = computed(
+  () =>
+    !!calendarPayload.value.startDate &&
+    calendarPayload.value.startDate === localTodayDateOnly(),
+);
 
 async function loadBranches() {
   branchLoading.value = true;
@@ -264,10 +296,30 @@ async function searchAssets() {
 
 async function submitDraft() {
   if (!canSubmit.value) return;
+  const isAccount = customerMode.value === "account";
+
+  // ── Case 2: Same-day rental ──────────────────────────────────────────────
+  // Do NOT call the Future Booking Draft endpoint.
+  // Emit an intent upward for the dedicated Same-Day Rental flow.
+  if (isSameDayRentalIntent.value) {
+    emit("same-day-rental-intent", {
+      branchId: selectedBranchId.value,
+      assetId: selectedAssetId.value,
+      startDate: calendarPayload.value.startDate,
+      returnDate: calendarPayload.value.returnDate,
+      numDays: calendarPayload.value.numDays,
+      userId: isAccount && props.userContext ? props.userContext.userId : null,
+      walkInPhone: !isAccount ? walkInPhone.value.trim() || null : null,
+      bookerName: !isAccount ? bookerName.value.trim() || null : null,
+      bookerPhone: !isAccount ? walkInPhone.value.trim() || null : null,
+    });
+    return;
+  }
+
+  // ── Case 1: Future rental ────────────────────────────────────────────────
   isSubmitting.value = true;
   submitError.value = null;
   createdDraftResult.value = null;
-  const isAccount = customerMode.value === "account";
   try {
     const result = await $fetch<DraftResponse>(
       "/api/admin/pos-v3/rental-bookings/drafts",
@@ -508,11 +560,12 @@ onMounted(() => {
               placeholder="0812345678"
             />
           </UFormField>
-          <UFormField label="Name (optional)">
+          <UFormField label="Name" required>
             <UInput
               v-model="bookerName"
               icon="bx:user"
               placeholder="ชื่อลูกค้า / Customer name"
+              required
             />
           </UFormField>
         </div>
@@ -543,7 +596,7 @@ onMounted(() => {
             v-for="item in catalogItems"
             :key="item.id"
             type="button"
-            class="rounded-2xl border p-3 text-left transition"
+            class="flex gap-3 rounded-2xl border p-3 text-left transition"
             :class="
               item.id === selectedAssetId
                 ? 'border-primary bg-primary/5'
@@ -551,16 +604,30 @@ onMounted(() => {
             "
             @click="selectedAssetId = item.id"
           >
-            <p class="font-medium text-default">
-              {{ item.nameTh || item.nameEn }}
-            </p>
-            <p class="text-sm text-muted">
-              {{ item.skus[0]?.code }} · {{ fmt(item.skus[0]?.dailyRate) }}/day
-            </p>
-            <p class="text-xs text-muted">
-              Deposit {{ fmt(item.skus[0]?.depositAmount) }} · Min
-              {{ item.rentalMinDays }} day(s)
-            </p>
+            <div
+              class="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-elevated"
+            >
+              <img
+                v-if="item.thumbnailUrl"
+                :src="item.thumbnailUrl"
+                :alt="item.nameTh || item.nameEn"
+                class="size-full object-cover"
+              />
+              <UIcon v-else name="bx:image" class="size-6 text-muted" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate font-medium text-default">
+                {{ item.nameTh || item.nameEn }}
+              </p>
+              <p class="truncate text-sm text-muted">
+                {{ item.skus[0]?.code }} ·
+                {{ fmt(item.skus[0]?.dailyRate) }}/day
+              </p>
+              <p class="truncate text-xs text-muted">
+                Deposit {{ fmt(item.skus[0]?.depositAmount) }} · Min
+                {{ item.rentalMinDays }} day(s)
+              </p>
+            </div>
           </button>
         </div>
         <p
@@ -632,13 +699,17 @@ onMounted(() => {
 
       <!-- Submit -->
       <UButton
-        icon="bx:calendar-plus"
+        :icon="isSameDayRentalIntent ? 'bx:walk' : 'bx:calendar-plus'"
         color="primary"
         :loading="isSubmitting"
         :disabled="!canSubmit"
         @click="submitDraft"
       >
-        Create Future Booking Draft
+        {{
+          isSameDayRentalIntent
+            ? "Continue to Same-Day Rental"
+            : "Create Future Booking Draft"
+        }}
       </UButton>
     </div>
   </UCard>

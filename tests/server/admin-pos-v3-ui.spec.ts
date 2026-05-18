@@ -178,6 +178,19 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(source).toContain("walkInPhone");
   });
 
+  it("container requires booker name for walk-in customers", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain('<UFormField label="Name" required>');
+    expect(source).toContain("!!bookerName.value.trim()");
+    expect(source).not.toContain('label="Name (optional)"');
+  });
+
+  it("container shows asset thumbnail in the search result list", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain(':src="item.thumbnailUrl"');
+    expect(source).toContain('v-if="item.thumbnailUrl"');
+  });
+
   it("container uses ProductsRentalBookingCalendar for availability-aware date selection", () => {
     const source = read(CONTAINER_PATH);
     expect(source).toContain("ProductsRentalBookingCalendar");
@@ -311,12 +324,81 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(source).not.toContain("WHT");
   });
 
+  // ── Same-day vs Future branching ──────────────────────────────────────────
+
+  it("container has isSameDayRentalIntent computed to detect today's start date", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("isSameDayRentalIntent");
+    expect(source).toContain("localTodayDateOnly()");
+    expect(source).toContain(
+      "calendarPayload.value.startDate === localTodayDateOnly()",
+    );
+  });
+
+  it("container emits same-day-rental-intent and does NOT call draft endpoint for today", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain('"same-day-rental-intent"');
+    expect(source).toContain("isSameDayRentalIntent.value");
+    // Same-day branch returns early before $fetch to draft endpoint
+    expect(source).toContain('emit("same-day-rental-intent"');
+  });
+
+  it("same-day intent payload includes branchId, assetId, dates, numDays, and customer identity", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("branchId: selectedBranchId.value");
+    expect(source).toContain("assetId: selectedAssetId.value");
+    expect(source).toContain("returnDate: calendarPayload.value.returnDate");
+    expect(source).toContain("numDays: calendarPayload.value.numDays");
+    expect(source).toContain("bookerName:");
+    expect(source).toContain("bookerPhone:");
+  });
+
+  it("future rental path still emits draft-created and calls the draft endpoint", () => {
+    const source = read(CONTAINER_PATH);
+    // Future path: isSameDayRentalIntent is false → falls through to $fetch
+    expect(source).toContain("/api/admin/pos-v3/rental-bookings/drafts");
+    expect(source).toContain('emit("draft-created"');
+  });
+
+  it("submit button label is dynamic: future vs same-day", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("Continue to Same-Day Rental");
+    expect(source).toContain("Create Future Booking Draft");
+    expect(source).toContain("isSameDayRentalIntent");
+  });
+
+  it("createdDraftResult is only set on the future rental path, not on same-day path", () => {
+    const source = read(CONTAINER_PATH);
+    // same-day branch returns early before any assignment to createdDraftResult
+    expect(source).toContain("isSameDayRentalIntent.value");
+    expect(source).toContain("return;");
+    expect(source).toContain("createdDraftResult.value = result");
+  });
+
+  // ── Page-level state ──────────────────────────────────────────────────────
+
   it("page imports and mounts the draft container", () => {
     const page = read("app/pages/admin/pos-v3/index.vue");
     expect(page).toContain("AdminPosV3FutureBookingDraftContainer");
     expect(page).toContain("@draft-created");
     expect(page).toContain("latestDraftResult");
     expect(page).toContain("handleDraftCreated");
+  });
+
+  it("page has latestSameDayIntent state and same-day-rental-intent listener", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("latestSameDayIntent");
+    expect(page).toContain("handleSameDayIntent");
+    expect(page).toContain("@same-day-rental-intent");
+  });
+
+  it("latestDraftResult and latestSameDayIntent are stored separately on the page", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("latestDraftResult");
+    expect(page).toContain("latestSameDayIntent");
+    // They must be separate refs
+    expect(page).toContain("latestDraftResult = ref");
+    expect(page).toContain("latestSameDayIntent = ref");
   });
 
   it("page passes userContext to the container", () => {
@@ -329,5 +411,15 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     // v-if uses single-quote style: v-if="activeMode === 'booking'"
     expect(page).toContain("activeMode === 'booking'");
     expect(page).toContain("AdminPosV3FutureBookingDraftContainer");
+  });
+
+  it("no Container 2, Same-Day backend, or pickup/payment implementation introduced", () => {
+    const source = read(CONTAINER_PATH);
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(source).not.toContain("booking-deposit-payments");
+    expect(page).not.toContain("AdminPosV3CashDepositContainer");
+    expect(page).not.toContain("AdminPosV3SameDayContainer");
+    expect(source).not.toContain("pickup-complete");
+    expect(source).not.toContain("instant-rental");
   });
 });

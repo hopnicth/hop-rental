@@ -21,6 +21,7 @@ import {
   computeRentalBookingPaymentLines,
   rentalPaymentLineInsertRows,
 } from "~~/server/utils/rental-payment-lines";
+import { toBangkokLocalDate } from "~~/server/utils/rental-cancellation-policy";
 
 const ZERO_DUE_WARNING = "ZERO_BOOKING_DEPOSIT_CONFIRMATION_NOT_ENABLED";
 const PAYMENT_LINE_SOURCE = "pos_v3_draft_quote";
@@ -68,11 +69,20 @@ function money(value: unknown): number {
 
 function parseDate(value: string, field: string): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw createError({ statusCode: 422, statusMessage: `${field} must be YYYY-MM-DD` });
+    throw createError({
+      statusCode: 422,
+      statusMessage: `${field} must be YYYY-MM-DD`,
+    });
   }
   const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
-    throw createError({ statusCode: 422, statusMessage: `${field} must be a valid date` });
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== value
+  ) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: `${field} must be a valid date`,
+    });
   }
 }
 
@@ -81,13 +91,12 @@ function rentalDays(startDate: string, customerReturnDate: string): number {
   parseDate(customerReturnDate, "endDate");
   const days = calculateInclusiveRentalDays(startDate, customerReturnDate);
   if (days <= 0) {
-    throw createError({ statusCode: 422, statusMessage: "endDate must be on or after startDate" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "endDate must be on or after startDate",
+    });
   }
   return days;
-}
-
-function todayDateOnly(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 async function assertPosBranchAccess(input: {
@@ -104,9 +113,13 @@ async function assertPosBranchAccess(input: {
     .eq("branch_id", input.branchId)
     .eq("can_pos", true)
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
   if (!data) {
-    throw createError({ statusCode: 403, statusMessage: "No POS access for selected branch" });
+    throw createError({
+      statusCode: 403,
+      statusMessage: "No POS access for selected branch",
+    });
   }
 }
 
@@ -119,14 +132,20 @@ async function loadCustomer(input: {
     .select("id, full_name, phone")
     .eq("id", input.userId)
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
   if (!data) {
-    throw createError({ statusCode: 422, statusMessage: "userId must reference an existing customer" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "userId must reference an existing customer",
+    });
   }
   return data as CustomerRow;
 }
 
-function lineResponse(line: ReturnType<typeof computeRentalBookingPaymentLines>["lines"][number]) {
+function lineResponse(
+  line: ReturnType<typeof computeRentalBookingPaymentLines>["lines"][number],
+) {
   return {
     lineType: line.lineType,
     taxCategory: line.taxCategory,
@@ -141,8 +160,11 @@ function lineResponse(line: ReturnType<typeof computeRentalBookingPaymentLines>[
 }
 
 export default defineEventHandler(async (event) => {
-  const { adminClient, userId: staffUserId, platformRole } =
-    await requirePlatformAdmin(event);
+  const {
+    adminClient,
+    userId: staffUserId,
+    platformRole,
+  } = await requirePlatformAdmin(event);
   const body = (await readBody<PosV3DraftPayload>(event)) ?? {};
 
   const idempotencyKey = asText(body.idempotencyKey);
@@ -156,14 +178,31 @@ export default defineEventHandler(async (event) => {
   const customerReturnDate = asText(body.endDate);
 
   if (!userId && !walkInPhone) {
-    throw createError({ statusCode: 422, statusMessage: "Select an account customer or enter walk-in phone" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Select an account customer or enter walk-in phone",
+    });
   }
-  if (!assetId) throw createError({ statusCode: 422, statusMessage: "Asset is required" });
-  if (!branchId) throw createError({ statusCode: 422, statusMessage: "Branch is required" });
+  if (!assetId)
+    throw createError({ statusCode: 422, statusMessage: "Asset is required" });
+  if (!branchId)
+    throw createError({ statusCode: 422, statusMessage: "Branch is required" });
 
   const days = rentalDays(startDate, customerReturnDate);
-  if (startDate < todayDateOnly()) {
-    throw createError({ statusCode: 422, statusMessage: "startDate cannot be in the past" });
+  // Use Bangkok-local date semantics (Asia/Bangkok, UTC+7) to match the POS
+  // front-end's date picker, which also operates in local calendar dates.
+  const todayBangkok = toBangkokLocalDate(new Date());
+  if (startDate < todayBangkok) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "startDate cannot be in the past",
+    });
+  }
+  if (startDate === todayBangkok) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "SAME_DAY_RENTAL_USE_INSTANT_RENTAL_FLOW",
+    });
   }
   const exclusiveEndDate = toExclusiveEndDate(customerReturnDate);
   if (!exclusiveEndDate) {
@@ -184,13 +223,17 @@ export default defineEventHandler(async (event) => {
     .eq("is_active", true)
     .single();
   if (branchError || !branch) {
-    throw createError({ statusCode: 422, statusMessage: "branchId must reference an active branch" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "branchId must reference an active branch",
+    });
   }
   const branchRow = branch as BranchRow;
 
   const customer = userId ? await loadCustomer({ adminClient, userId }) : null;
   const bookerName = inputBookerName || customer?.full_name || null;
-  const bookerPhone = inputBookerPhone || customer?.phone || walkInPhone || null;
+  const bookerPhone =
+    inputBookerPhone || customer?.phone || walkInPhone || null;
 
   const { data: asset, error: assetError } = await adminClient
     .from("assets")
@@ -199,22 +242,36 @@ export default defineEventHandler(async (event) => {
     .eq("status", "active")
     .eq("is_hidden", false)
     .maybeSingle();
-  if (assetError) throw createError({ statusCode: 500, statusMessage: assetError.message });
-  if (!asset) throw createError({ statusCode: 404, statusMessage: "Asset not found" });
+  if (assetError)
+    throw createError({ statusCode: 500, statusMessage: assetError.message });
+  if (!asset)
+    throw createError({ statusCode: 404, statusMessage: "Asset not found" });
 
   const a = asset as PosAssetRow;
-  if (a.storage_branch_id && String(a.storage_branch_id) !== String(branchRow.id)) {
-    throw createError({ statusCode: 422, statusMessage: "Selected asset is not stored at the selected branch" });
+  if (
+    a.storage_branch_id &&
+    String(a.storage_branch_id) !== String(branchRow.id)
+  ) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Selected asset is not stored at the selected branch",
+    });
   }
   const minDays = Math.max(1, Number(a.min_rental_days ?? 1));
   const maxDays = Math.max(0, Number(a.max_rental_days ?? 0));
   if (days < minDays || (maxDays > 0 && days > maxDays)) {
-    throw createError({ statusCode: 422, statusMessage: `Rental duration must be ${minDays}-${maxDays || "∞"} days` });
+    throw createError({
+      statusCode: 422,
+      statusMessage: `Rental duration must be ${minDays}-${maxDays || "∞"} days`,
+    });
   }
 
   const dailyRate = a.daily_enabled === false ? 0 : money(a.daily_rate);
   if (dailyRate <= 0) {
-    throw createError({ statusCode: 422, statusMessage: "Selected asset has no rental daily rate" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Selected asset has no rental daily rate",
+    });
   }
   const weeklyRate = a.weekly_enabled === false ? 0 : money(a.weekly_rate);
   const monthlyRate = a.monthly_enabled === false ? 0 : money(a.monthly_rate);
@@ -247,7 +304,8 @@ export default defineEventHandler(async (event) => {
       },
       { onConflict: "phone" },
     );
-    if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+    if (error)
+      throw createError({ statusCode: 500, statusMessage: error.message });
   }
 
   const assetName = a.name_th || a.name_en || a.code || a.id;
@@ -268,7 +326,9 @@ export default defineEventHandler(async (event) => {
         posStaffUserId: staffUserId,
         idempotencyKey: idempotencyKey || null,
         staffNote: asText(body.staffNote) || null,
-        ...(body.metadata && typeof body.metadata === "object" ? body.metadata : {}),
+        ...(body.metadata && typeof body.metadata === "object"
+          ? body.metadata
+          : {}),
       },
     });
 
@@ -338,11 +398,15 @@ export default defineEventHandler(async (event) => {
       .from("rental_booking_payment_lines")
       .insert(paymentLineRows);
     if (paymentLinesError) {
-      throw createError({ statusCode: 500, statusMessage: paymentLinesError.message });
+      throw createError({
+        statusCode: 500,
+        statusMessage: paymentLinesError.message,
+      });
     }
   }
 
-  const warnings = paymentSummary.bookingDepositDueNow <= 0 ? [ZERO_DUE_WARNING] : [];
+  const warnings =
+    paymentSummary.bookingDepositDueNow <= 0 ? [ZERO_DUE_WARNING] : [];
 
   return {
     booking: {
