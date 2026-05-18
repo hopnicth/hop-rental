@@ -2,12 +2,10 @@ import { createError, defineEventHandler, readBody } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
 import { calculateBookingDepositDueNow } from "~~/app/utils/rental-payment-lines";
 import { assertRentalBookingAvailability } from "~~/server/utils/rental-booking-availability";
-import { recordBookingDepositHeldBalanceCollection } from "~~/server/utils/rental-held-balance-events";
-import { confirmRentalBooking } from "~~/server/utils/rental-booking-confirmation";
+import { finalizePosRentalBookingDeposit } from "~~/server/utils/pos-rental-booking-deposit-finalizer";
 
 const ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED =
   "ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED";
-const POS_SOURCE_TYPE = "pos_rental_payment_attempt" as const;
 
 const BOOKING_SELECT =
   "id, user_id, walk_in_phone, status, asset_id, sku_id, start_date, end_date, rental_days, hub_id, deposit_amount, currency_code, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, pos_staff_user_id";
@@ -245,91 +243,33 @@ export default defineEventHandler(async (event) => {
 
   const attemptId = String(attempt.id);
 
-  // Record canonical held-balance event (Model B: money is a liability until settlement)
-  await recordBookingDepositHeldBalanceCollection({
-    client: adminClient,
+  // Delegate shared finalization (held-balance event + booking update + confirmation)
+  // to the payment-method-agnostic finalizer. Cash-specific attempt creation above
+  // remains endpoint-side; the finalizer owns everything from event recording onward.
+  const finalizerResult = await finalizePosRentalBookingDeposit({
+    adminClient,
     booking,
+    attemptId,
     amount,
-    sourceType: POS_SOURCE_TYPE,
-    sourceId: attemptId,
     paymentMethod: "cash",
     branchId: posBranchId,
     staffUserId,
     idempotencyKey,
-    metadata: { bookingChannel: "admin_pos_v3", staffUserId },
   });
 
-  // Update booking deposit fields to reflect cash collection
-  await adminClient
-    .from("rental_bookings")
-    .update({
-      booking_deposit_payment_status: "paid",
-      booking_deposit_paid_amount: amount,
-      booking_deposit_paid_at: now,
-      booking_deposit_pos_attempt_id: attemptId,
-    })
-    .eq("id", bookingId)
-    .eq("booking_deposit_payment_status", "unpaid");
-
-  // Strict event-backed confirmation
-  let confirmError: unknown = null;
-  try {
-    await confirmRentalBooking({
-      adminClient,
-      bookingId,
-      userId: asText(booking.user_id),
-      skipUserOwnershipCheck: true,
-      requireBookingDepositPaid: true,
-      requireBookingDepositHeldBalanceEvent: {
-        sourceType: POS_SOURCE_TYPE,
-        sourceId: attemptId,
-      },
-    });
-  } catch (err) {
-    confirmError = err;
-  }
-
-  if (confirmError) {
-    // Cash is physically collected but confirmation failed — flag for manual review
-    const reason =
-      confirmError instanceof Error
-        ? confirmError.message
-        : String(confirmError);
-    const failedAt = new Date().toISOString();
-    await adminClient
-      .from("pos_rental_payment_attempts")
-      .update({
-        status: "paid_confirm_failed",
-        confirm_failed_at: failedAt,
-        confirm_failure_reason: reason,
-      })
-      .eq("id", attemptId);
-    await adminClient
-      .from("rental_bookings")
-      .update({
-        booking_deposit_payment_status: "paid_confirm_failed",
-        booking_deposit_confirm_failed_at: failedAt,
-        booking_deposit_confirm_failure_reason: reason,
-      })
-      .eq("id", bookingId);
+  if (finalizerResult.status === "paid_confirm_failed") {
     return {
       status: "paid_confirm_failed",
       paymentAttemptId: attemptId,
-      bookingDepositPaidAmount: amount,
-      currencyCode,
-      warnings: ["BOOKING_CONFIRMATION_FAILED_MANUAL_REVIEW_REQUIRED"],
+      bookingDepositPaidAmount: finalizerResult.bookingDepositPaidAmount,
+      currencyCode: finalizerResult.currencyCode,
+      warnings: finalizerResult.warnings,
     };
   }
 
   return {
     status: "confirmed",
-    booking: {
-      id: bookingId,
-      status: "confirmed",
-      bookingDepositPaymentStatus: "paid",
-      bookingDepositPaidAmount: amount,
-      currencyCode,
-    },
+    booking: finalizerResult.booking,
     paymentAttemptId: attemptId,
   };
 });
