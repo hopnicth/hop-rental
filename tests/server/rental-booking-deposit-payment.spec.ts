@@ -314,6 +314,10 @@ describe("rental booking deposit payment", () => {
         bookingId: "booking-1",
         userId: "user-1",
         requireBookingDepositPaid: true,
+        requireBookingDepositHeldBalanceEvent: {
+          sourceType: "rental_booking_payment_attempt",
+          sourceId: "attempt-1",
+        },
       }),
     );
     expect(client.updates).toEqual(
@@ -369,6 +373,45 @@ describe("rental booking deposit payment", () => {
       source_id: "attempt-1",
       amount: 200,
     });
+  });
+
+  it("does not confirm when held-balance event source conflicts", async () => {
+    const client = fakeClient({
+      rental_held_balance_events: [
+        {
+          id: "event-1",
+          rental_booking_id: "booking-1",
+          event_type: "booking_deposit_collection",
+          amount: 300,
+          currency_code: "THB",
+          status: "posted",
+          source_type: "rental_booking_payment_attempt",
+          source_id: "attempt-1",
+        },
+      ],
+    });
+
+    await expect(
+      applyRentalBookingDepositGatewayResult({
+        client,
+        booking: booking(),
+        attempt: {
+          id: "attempt-1",
+          booking_id: "booking-1",
+          amount: 200,
+          method: "promptpay",
+        },
+        result: paidCharge(),
+      }),
+    ).rejects.toMatchObject({
+      statusMessage: "RENTAL_HELD_BALANCE_EVENT_CONFLICT",
+    });
+    expect(confirmRentalBooking).not.toHaveBeenCalled();
+    expect(
+      client.updates.some(
+        (update) => update.payload.booking_deposit_payment_status === "paid",
+      ),
+    ).toBe(false);
   });
 
   it("rejects Booking Deposit amount mismatch without posting held-balance event", async () => {

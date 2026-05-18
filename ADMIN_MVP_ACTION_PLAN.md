@@ -17,6 +17,9 @@ Reality sync — 2026-05-15:
 - For that track, forfeiture ordinary receipt, no-show notice, customer/admin document access, POS V2, admin-agreed cancellation forfeiture, and tax invoice conversion blocking remain future implementation.
 - Late cancellation remains unchanged: customer self-service cancellation is still blocked after the Bangkok calendar-day refund cutoff and must stay separate from no-show.
 - Official POS receipts, abbreviated/full tax invoices, WHT automation, and POS history document menus remain future work.
+- POS V3 Phase 1 is implemented as a separate `/admin/pos-v3` operational entry shell: scan/search resolves booking or user context, User Pending Work combines pickup orders + active rental bookings, shows about 4 visible rows with internal scroll, and sorts earliest pickup-relevant work first.
+- POS V3 future-booking Phase 2A/2B is implemented through draft creation plus cash Booking Deposit finalization. Cashier UI now separates read-only Booking Deposit Due from editable Cash Tendered/change; backend finalization still records only the exact `bookingDepositDueNow` amount.
+- POS V3 future work is now governed by `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md` as the draft POS V3 master blueprint; do not continue deeper POS V3 implementation until the blueprint's reconciliation gates are resolved and approved.
 - Excessive customer cancellation restriction is design-locked but not implemented.
 
 ## Purpose
@@ -66,7 +69,7 @@ what was delivered; do not re-expand into checklists unless a regression appears
 - `/admin/filter-groups` (super-admin dynamic filter setup)
 - `/admin/orders`, `/admin/orders/[id]`, `/admin/rental-bookings/[id]`
 - `/admin/refunds` for manual Booking Deposit refund work queue and proof upload
-- `/admin/pos`, `/admin/walk-in` (POS route alias)
+- `/admin/pos`, `/admin/walk-in` (POS route alias), `/admin/pos-v3` (operational entry shell + future booking draft/cash deposit path)
 - `/admin/home-content` (super_admin only), `/admin/home-categories`, `/admin/content`
 
 ## Current important server areas
@@ -85,13 +88,14 @@ what was delivered; do not re-expand into checklists unless a regression appears
 
 1. [ ] Decide/apply migration `045` for DB-level `/search` dynamic filters
 2. [ ] Backfill existing `content_pages.main_category_key` values from `/admin/content`
-3. [ ] Continue Booking Deposit Forfeiture after Phase 3.1: derived allocation/admin review hardening or ordinary receipt design-to-runtime; receipt/notice/UI remain pending implementation
-4. [ ] Review no-show foundation in browser/admin ops and decide whether to add an overdue pickup dashboard queue
-5. [ ] Decide whether customer late non-refundable cancellation should remain support-only or become a separate recorded lifecycle
-6. [ ] Implement official POS document generation: receipt, abbreviated tax invoice, full tax invoice, delivery note
-7. [ ] Improve validation/messages on remaining admin forms
-8. [ ] Add storefront quick-links for spot checking product/asset/admin edits
-9. [ ] Add robust POS offline queue if front-desk offline use becomes frequent
+3. [ ] Reconcile and approve the POS V3 master blueprint gates: walk-in booking payment timing, rental money/tax point model, mixed checkout policy, WHT hold model, and reuse impact on pickup/readiness/fulfillment foundations
+4. [ ] Continue Booking Deposit Forfeiture after Phase 3.1: derived allocation/admin review hardening or ordinary receipt design-to-runtime; receipt/notice/UI remain pending implementation
+5. [ ] Review no-show foundation in browser/admin ops and decide whether to add an overdue pickup dashboard queue
+6. [ ] Decide whether customer late non-refundable cancellation should remain support-only or become a separate recorded lifecycle
+7. [ ] Implement official POS document generation only after the POS V3 document/tax model is reconciled: receipt, abbreviated tax invoice, full tax invoice, delivery note
+8. [ ] Improve validation/messages on remaining admin forms
+9. [ ] Add storefront quick-links for spot checking product/asset/admin edits
+10. [ ] Add robust POS offline queue if front-desk offline use becomes frequent
 
 ## Notes to preserve
 
@@ -102,6 +106,10 @@ what was delivered; do not re-expand into checklists unless a regression appears
 - Booker contact on a rental booking should be preferred over account contact when present.
 - POS Sale mode customer info is optional; Rental/Booking mode still requires customer identity/contact.
 - POS history cancel is `super_admin` only; print buttons are UI placeholders until document APIs are added.
+- POS V3 is intentionally separate from POS V2. Current runtime covers the operational entry shell, QR resolver, User Pending Work handoff, booking/order context display, future-booking draft creation, and cash Booking Deposit finalization only; it must not grow sale checkout, pickup/return completion, KYC, fiscal receipt/tax invoice, register/shift, or backend aggregator scope without a new approved phase.
+- POS V3 Container 2 cash semantics are locked: backend payment payload uses `amount: bookingDepositDueNow`; `cashTenderedAmount` and `changeAmount` are cashier UI concerns only and are not persisted as payment truth.
+- POS V3 User Pending Work keeps fetching the full existing list but constrains the visible UI to about 4 rows with internal scroll. Combined ordering is earliest pickup-relevant first: rental bookings use `startDate`; pickup order queue rows currently have no true pickup date, so `createdAt` is the deterministic fallback until an actual pickup date exists.
+- POS V3 master blueprint status is draft/reconciliation, not approved baseline. Treat conflicting older POS V2/payment/document assumptions as historical until the POS V3 gates are explicitly resolved.
 - Forfeited Booking Deposit ordinary receipt is accepted design only, not runtime: `financial_recognition_events` now exist as the future receipt source, but receipt issuance, notice documents, and tax invoice conversion blocking are still not implemented.
 - Homepage admin covers banners, partner logos, curated featured rails, and CMS-linked promotion/service cards.
 - Promotion/service rail rule: a `content_pages` row of the matching type must exist before it can be linked from `/admin/home-content`. Empty rails render empty states; do not reintroduce random fallbacks.

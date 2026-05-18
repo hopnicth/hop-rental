@@ -495,6 +495,10 @@ export async function applyRentalBookingDepositGatewayResult(input: {
         bookingId: String(input.booking.id),
         userId: String(input.booking.user_id),
         requireBookingDepositPaid: true,
+        requireBookingDepositHeldBalanceEvent: {
+          sourceType: "rental_booking_payment_attempt",
+          sourceId: String(input.attempt.id),
+        },
       });
     } catch (err) {
       const reason = err instanceof Error ? err.message : "CONFIRM_FAILED";

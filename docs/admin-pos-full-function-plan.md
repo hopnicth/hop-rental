@@ -10,6 +10,7 @@ Reality sync:
 - Print/tax buttons in legacy POS history remain placeholders. Official receipts/tax invoices/WHT are not delivered here.
 - Operational rental pickup/return document issuance now lives in admin rental booking detail and reuses the `official_documents` foundation; POS history document integration is still parked.
 - The current printing standard is A5 browser print first. The older carbon-paper receipt/tax-invoice notes below are historical and superseded by `docs/printing-document-standard.md` unless explicitly re-approved.
+- POS V3 future direction is now tracked in `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md` as a draft master blueprint. This legacy POS full-function plan remains implementation history/reference for `/admin/pos`, not the controlling POS V3 roadmap.
 
 ## Scope Delivered in Code
 

@@ -10,9 +10,15 @@ type MultipartPart = {
 interface MockBuilder {
   table: string;
   payload: unknown;
+  selected: string | null;
   filters: Array<[string, unknown]>;
+  select(columns: string): MockBuilder;
   update(payload: unknown): MockBuilder;
   eq(column: string, value: unknown): MockBuilder;
+  maybeSingle(): Promise<{
+    data: { pdpa_consented_at: string | null } | null;
+    error: { message: string } | null;
+  }>;
 }
 
 const mockState = vi.hoisted(() => ({
@@ -25,6 +31,7 @@ const mockState = vi.hoisted(() => ({
     bytes: number;
     options: Record<string, unknown>;
   }>,
+  pdpaConsentedAt: "2026-05-18T00:00:00.000Z" as string | null,
   builders: [] as MockBuilder[],
 }));
 
@@ -63,7 +70,12 @@ vi.mock("#supabase/server", () => ({
         const builder: MockBuilder = {
           table,
           payload: undefined,
+          selected: null,
           filters: [],
+          select(columns: string) {
+            this.selected = columns;
+            return this;
+          },
           update(payload: unknown) {
             this.payload = payload;
             return this;
@@ -71,6 +83,12 @@ vi.mock("#supabase/server", () => ({
           eq(column: string, value: unknown) {
             this.filters.push([column, value]);
             return this;
+          },
+          async maybeSingle() {
+            return {
+              data: { pdpa_consented_at: mockState.pdpaConsentedAt },
+              error: null,
+            };
           },
         };
         mockState.builders.push(builder);
@@ -97,6 +115,7 @@ describe("user KYC ID card upload API", () => {
     mockState.serviceRoleCalled = false;
     mockState.storageBucket = "";
     mockState.storageUploads = [];
+    mockState.pdpaConsentedAt = "2026-05-18T00:00:00.000Z";
     mockState.builders = [];
   });
 
@@ -163,8 +182,11 @@ describe("user KYC ID card upload API", () => {
     await handler({});
 
     expect(mockState.builders[0].table).toBe("users");
+    expect(mockState.builders[0].selected).toBe("pdpa_consented_at");
     expect(mockState.builders[0].filters).toEqual([["id", "user-1"]]);
-    expect(mockState.builders[0].payload).toMatchObject({
+    expect(mockState.builders[1].table).toBe("users");
+    expect(mockState.builders[1].filters).toEqual([["id", "user-1"]]);
+    expect(mockState.builders[1].payload).toMatchObject({
       id_card_url: expect.stringMatching(/^users\/user-1\/id-card\/.+\.pdf$/),
       kyc_status: "pending",
     });

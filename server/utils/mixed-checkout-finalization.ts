@@ -371,6 +371,10 @@ async function finalizeBookingAllocation(input: {
           bookingId: String(booking.id),
           userId: String(booking.user_id),
           requireBookingDepositPaid: true,
+          requireBookingDepositHeldBalanceEvent: {
+            sourceType: "mixed_payment_allocation",
+            sourceId: String(input.allocation.id),
+          },
         });
     }
     await input.client

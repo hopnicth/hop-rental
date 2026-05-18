@@ -492,6 +492,13 @@ describe("operational rental document issuance", () => {
       resolve(process.cwd(), "app/pages/admin/documents/[id]/print.vue"),
       "utf8",
     );
+    const officialHeader = readFileSync(
+      resolve(
+        process.cwd(),
+        "app/components/documents/OfficialDocumentHeader.vue",
+      ),
+      "utf8",
+    );
     expect(issuedPrint).toContain(
       "/api/admin/documents/${documentRow.value.id}/events",
     );
@@ -500,8 +507,25 @@ describe("operational rental document issuance", () => {
       "booking_deposit_forfeiture_ordinary_receipt",
     );
     expect(issuedPrint).toContain("rental_booking_no_show_forfeiture_notice");
-    expect(issuedPrint).toContain("No-show Forfeiture Notice");
-    expect(issuedPrint).toContain("Not a tax invoice · VAT 0");
+    expect(issuedPrint).toContain(
+      "ใบรับเงินค่าริบเงินมัดจำจองกรณีไม่มารับสินค้า",
+    );
+    expect(issuedPrint).toContain(
+      "หนังสือแจ้งการริบเงินมัดจำจองกรณีไม่มารับสินค้า",
+    );
+    expect(issuedPrint).toContain("OfficialDocumentHeader");
+    expect(officialHeader).toContain("0105564155415");
+    expect(officialHeader).toContain("เลขประจำตัวผู้เสียภาษี");
+    expect(officialHeader).toContain("รหัสสาขา");
+    expect(officialHeader).toContain("document-block");
+    expect(issuedPrint).toContain(
+      "เงินจำนวนนี้ได้รับชำระไว้แล้วในวันจอง และถูกริบตามเงื่อนไขการจอง ณ วันที่ระบุในเอกสารฉบับนี้",
+    );
+    expect(issuedPrint).not.toContain("No-show Forfeiture Notice");
+    expect(issuedPrint).not.toContain(
+      "Booking Deposit Forfeiture Ordinary Receipt",
+    );
+    expect(issuedPrint).not.toContain("Not a tax invoice · VAT 0");
     expect(
       readFileSync(
         resolve(

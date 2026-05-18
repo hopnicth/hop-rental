@@ -107,23 +107,26 @@ watch(
   },
 );
 
+// ── Edit mode ──
+// When data exists → form is locked (editing=false). User must press Edit first.
+// When no data → form is immediately open (editing=true).
+const editing = ref(false);
+
+watch(
+  () => taxProfile.value,
+  (p) => {
+    editing.value = !p; // no data → editable; data exists → locked
+  },
+  { immediate: true },
+);
+
+function handleEdit() {
+  editing.value = true;
+}
+
 const hasChanges = computed(() => formSnapshot() !== baselineSnapshot.value);
-const reviewStatusColor = computed(() => {
-  if (taxProfile.value?.reviewStatus === "approved") return "success";
-  if (taxProfile.value?.reviewStatus === "rejected") return "error";
-  if (taxProfile.value?.reviewStatus === "pending_review") return "warning";
-  return "neutral";
-});
-const reviewStatusLabel = computed(() => {
-  const status = taxProfile.value?.reviewStatus ?? "draft";
-  if (status === "approved") return t("user.taxProfileStatusApproved");
-  if (status === "rejected") return t("user.taxProfileStatusRejected");
-  if (status === "pending_review")
-    return t("user.taxProfileStatusPendingReview");
-  return t("user.taxProfileStatusDraft");
-});
 const canSave = computed(() => {
-  if (!available.value || saving.value) return false;
+  if (!available.value || saving.value || !editing.value) return false;
   if (
     !form.legalName.trim() ||
     !form.taxId.trim() ||
@@ -163,6 +166,7 @@ async function handleSave() {
       icon: "bx:check-circle",
       color: "success",
     });
+    editing.value = false; // Lock form after successful save
   } catch (error) {
     toast.add({
       title: t("user.taxProfileSaveError"),
@@ -192,10 +196,15 @@ async function handleSave() {
             <h2 class="text-lg font-semibold">{{ t("user.taxProfile") }}</h2>
             <p class="text-sm text-muted">{{ t("user.taxProfileSubtitle") }}</p>
           </div>
-          <UBadge
-            :label="reviewStatusLabel"
-            :color="reviewStatusColor"
-            variant="subtle"
+          <!-- Edit button — only shown when data exists and not yet editing -->
+          <UButton
+            v-if="taxProfile && !editing"
+            icon="bx:edit"
+            size="xs"
+            color="neutral"
+            variant="ghost"
+            :label="t('user.edit')"
+            @click="handleEdit"
           />
         </div>
       </template>
@@ -232,14 +241,7 @@ async function handleSave() {
               :items="kindOptions"
               value-key="value"
               class="w-full"
-            />
-          </UFormField>
-
-          <UFormField :label="t('user.taxProfileStatus')">
-            <UInput
-              :model-value="reviewStatusLabel"
-              disabled
-              icon="bx:check-shield"
+              :disabled="!editing"
             />
           </UFormField>
 
@@ -248,11 +250,17 @@ async function handleSave() {
               v-model="form.legalName"
               icon="bx:user-pin"
               class="w-full"
+              :disabled="!editing"
             />
           </UFormField>
 
           <UFormField :label="t('user.taxId')">
-            <UInput v-model="form.taxId" icon="bx:card" class="w-full" />
+            <UInput
+              v-model="form.taxId"
+              icon="bx:card"
+              class="w-full"
+              :disabled="!editing"
+            />
           </UFormField>
 
           <UFormField
@@ -264,6 +272,7 @@ async function handleSave() {
               :items="branchOptions"
               value-key="value"
               class="w-full"
+              :disabled="!editing"
             />
           </UFormField>
 
@@ -277,6 +286,7 @@ async function handleSave() {
               v-model="form.branchCode"
               icon="bx:buildings"
               class="w-full"
+              :disabled="!editing"
             />
           </UFormField>
 
@@ -284,34 +294,38 @@ async function handleSave() {
             class="md:col-span-2"
             :label="t('user.taxBillingAddress')"
           >
-            <UTextarea v-model="form.billingAddress" class="w-full" :rows="4" />
+            <UTextarea
+              v-model="form.billingAddress"
+              class="w-full"
+              :rows="4"
+              :disabled="!editing"
+            />
           </UFormField>
 
           <UFormField :label="t('user.phone')">
-            <UInput v-model="form.phone" icon="bx:phone" class="w-full" />
+            <UInput
+              v-model="form.phone"
+              icon="bx:phone"
+              class="w-full"
+              :disabled="!editing"
+            />
           </UFormField>
 
           <UFormField :label="t('user.email')">
-            <UInput v-model="form.email" icon="bx:envelope" class="w-full" />
+            <UInput
+              v-model="form.email"
+              icon="bx:envelope"
+              class="w-full"
+              :disabled="!editing"
+            />
           </UFormField>
         </div>
 
-        <UAlert
-          v-if="
-            taxProfile?.reviewStatus === 'rejected' &&
-            taxProfile.rejectionReason
-          "
-          color="error"
-          variant="soft"
-          icon="bx:error-circle"
-          :title="t('user.taxProfileRejectedReason')"
-          :description="taxProfile.rejectionReason"
-        />
-
-        <div class="flex justify-end">
+        <div v-if="editing" class="flex justify-end">
           <UButton
-            icon="bx:save"
-            :label="saving ? t('user.saving') : t('user.saveChanges')"
+            icon="bx:check"
+            :label="saving ? t('user.saving') : t('user.confirm')"
+            color="primary"
             :loading="saving"
             :disabled="!canSave"
             @click="handleSave"

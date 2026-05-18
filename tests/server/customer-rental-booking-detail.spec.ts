@@ -936,6 +936,18 @@ describe("customer rental booking detail and documents", () => {
     expect(listPage).toContain("/api/user/rental-bookings/refund-proof-status");
     expect(listPage).toContain("goToRefundProof(booking)");
     expect(listPage).toContain("rentalsPage.detail.viewRefundProof");
+    expect(listPage).toContain("pickupSortDirection");
+    expect(listPage).toContain("compareBookingsByPickupDate");
+    expect(listPage).toContain("togglePickupSort");
+    expect(listPage).toContain("rentalsPage.sortByPickup");
+    expect(listPage).toContain("rentalsPage.sortPickupEarliest");
+    expect(listPage).toContain("rentalsPage.sortPickupLatest");
+    expect(listPage).toContain("pickupDayNumber(booking)");
+    expect(listPage).toContain("pickupDayClass(booking)");
+    expect(listPage).toContain("isPickupTomorrow(booking)");
+    expect(listPage).toContain("rentalsPage.pickupTomorrowBadge");
+    expect(listPage).toContain("border-error/80");
+    expect(listPage).toContain('timeZone: "Asia/Bangkok"');
     expect(listPage).toContain('color="error"');
     expect(listPage).toContain('variant="outline"');
     expect(listPage).not.toContain(
@@ -974,6 +986,13 @@ describe("customer rental booking detail and documents", () => {
       resolve(process.cwd(), "app/pages/user/documents/[id]/print.vue"),
       "utf8",
     );
+    const officialHeader = readFileSync(
+      resolve(
+        process.cwd(),
+        "app/components/documents/OfficialDocumentHeader.vue",
+      ),
+      "utf8",
+    );
     expect(printPage).toContain("/api/user/documents/${documentId.value}");
     expect(printPage).toContain("snapshot.value");
     expect(printPage).toContain("window.print()");
@@ -988,13 +1007,31 @@ describe("customer rental booking detail and documents", () => {
     expect(printPage).toContain("ใบยืนยันการชำระเงินมัดจำจอง");
     expect(printPage).toContain("ใบยืนยันการยกเลิกการจองเช่า");
     expect(printPage).toContain("ใบยืนยันการคืนเงินมัดจำจอง");
-    expect(printPage).toContain("ใบรับเงินธรรมดา — Booking Deposit ที่ถูกริบ");
     expect(printPage).toContain(
-      "หนังสือแจ้งการไม่มารับสินค้าและการดำเนินการ Booking Deposit",
+      "ใบรับเงินค่าริบเงินมัดจำจองกรณีไม่มารับสินค้า",
+    );
+    expect(printPage).toContain(
+      "หนังสือแจ้งการริบเงินมัดจำจองกรณีไม่มารับสินค้า",
     );
     expect(printPage).toContain("booking_deposit_forfeiture_ordinary_receipt");
     expect(printPage).toContain("rental_booking_no_show_forfeiture_notice");
-    expect(printPage).toContain("ไม่ใช่ใบกำกับภาษี · VAT 0");
+    expect(printPage).toContain("OfficialDocumentHeader");
+    expect(officialHeader).toContain("0105564155415");
+    expect(officialHeader).toContain("เลขประจำตัวผู้เสียภาษี");
+    expect(officialHeader).toContain("รหัสสาขา");
+    expect(officialHeader).toContain("document-block");
+    expect(printPage).toContain(
+      "เงินจำนวนนี้ได้รับชำระไว้แล้วในวันจอง และถูกริบตามเงื่อนไขการจอง ณ วันที่ระบุในเอกสารฉบับนี้",
+    );
+    expect(printPage).toContain("ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม");
+    expect(printPage).not.toContain("Tax treatment");
+    expect(printPage).not.toContain("WHT treatment");
+    expect(printPage).not.toContain(
+      "ใบรับเงินธรรมดา — Booking Deposit ที่ถูกริบ",
+    );
+    expect(printPage).not.toContain(
+      "หนังสือแจ้งการไม่มารับสินค้าและการดำเนินการ Booking Deposit",
+    );
     expect(printPage).toContain("ไม่ใช่ใบเสร็จรับเงิน");
     expect(printPage).toContain("สถานะเงินมัดจำจอง");
     expect(printPage).toContain("จำนวนเงินมัดจำจองที่ชำระแล้ว");
@@ -1004,9 +1041,8 @@ describe("customer rental booking detail and documents", () => {
     expect(printPage).toContain("วันที่ยกเลิกการจอง");
     expect(printPage).toContain("ช่องทางการคืนเงิน");
     expect(printPage).toContain("หมายเหตุ");
-    expect(printPage).toContain("บริษัท ฮอปนิค จำกัด");
-    expect(printPage).toContain("HOPNIC Co., Ltd.");
-    expect(printPage).toContain("สำนักงานใหญ่");
+    expect(officialHeader).toContain("HOPNIC Co., Ltd.");
+    expect(officialHeader).toContain("สำนักงานใหญ่");
     expect(printPage).toContain("ไม่ใช่ใบเสร็จรับเงิน");
     expect(printPage).toContain("ไม่ใช่ใบกำกับภาษี");
   });

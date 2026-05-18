@@ -43,6 +43,45 @@ function noShowStatusCode(message: string): number {
   return 500;
 }
 
+async function fetchCurrentBookingDetail(input: {
+  adminClient: AnyClient;
+  bookingId: string;
+}): Promise<AdminRentalBookingDetail> {
+  const { data, error } = await input.adminClient
+    .from("rental_bookings")
+    .select(ADMIN_RENTAL_BOOKING_DETAIL_SELECT)
+    .eq("id", input.bookingId)
+    .maybeSingle();
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  if (!data)
+    throw createError({
+      statusCode: 404,
+      statusMessage: "RENTAL_BOOKING_NOT_FOUND",
+    });
+  const customer = await fetchAdminCustomerProfile(
+    input.adminClient as never,
+    text((data as Row).user_id),
+  );
+  return mapAdminRentalBookingDetail(data, customer);
+}
+
+async function ensureNoShowDocumentsThenFetchDetail(input: {
+  adminClient: AnyClient;
+  bookingId: string;
+  adminUserId: string;
+}): Promise<AdminRentalBookingDetail> {
+  await ensureNoShowForfeitureDocuments({
+    client: input.adminClient,
+    bookingId: input.bookingId,
+    adminUserId: input.adminUserId,
+  });
+  return fetchCurrentBookingDetail({
+    adminClient: input.adminClient,
+    bookingId: input.bookingId,
+  });
+}
+
 export function assertBookingCanBeMarkedNoShow(input: {
   booking: Row;
   now?: Date;
@@ -286,6 +325,14 @@ export async function markRentalBookingNoShow(input: {
       statusMessage: "RENTAL_BOOKING_NOT_FOUND",
     });
 
+  if (text((current as Row).status) === "no_show") {
+    return ensureNoShowDocumentsThenFetchDetail({
+      adminClient: input.adminClient,
+      bookingId: input.bookingId,
+      adminUserId: input.adminUserId,
+    });
+  }
+
   const policy = assertBookingCanBeMarkedNoShow({
     booking: current as Row,
     now: input.now,
@@ -312,6 +359,20 @@ export async function markRentalBookingNoShow(input: {
     .select("*")
     .maybeSingle();
   if (eventError) {
+    if (isUniqueViolation(eventError)) {
+      const detail = await fetchCurrentBookingDetail({
+        adminClient: input.adminClient,
+        bookingId: input.bookingId,
+      });
+      if (detail.status === "no_show") {
+        await ensureNoShowForfeitureDocuments({
+          client: input.adminClient,
+          bookingId: input.bookingId,
+          adminUserId: input.adminUserId,
+        });
+        return detail;
+      }
+    }
     throw createError({
       statusCode: isUniqueViolation(eventError) ? 409 : 500,
       statusMessage: isUniqueViolation(eventError)

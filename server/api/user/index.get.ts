@@ -5,8 +5,11 @@ import {
 } from "#supabase/server";
 import { getAuthUserId } from "~~/server/utils/user-wishlist";
 import {
+  isMissingOptionalUserProfileColumns,
   isMissingUserLifecycleColumns,
   USER_PROFILE_SELECT_BASE,
+  USER_PROFILE_SELECT_LEGACY,
+  USER_PROFILE_SELECT_LEGACY_WITH_LIFECYCLE,
   USER_PROFILE_SELECT_WITH_LIFECYCLE,
 } from "~~/server/utils/user-profile";
 
@@ -50,19 +53,28 @@ export default defineEventHandler(async (event) => {
   const client = serverSupabaseServiceRole(
     event,
   ) as unknown as UserProfileClient;
-  let result = await selectProfile(
-    client,
-    userId,
+  const candidateSelects = [
     USER_PROFILE_SELECT_WITH_LIFECYCLE,
-  );
+    USER_PROFILE_SELECT_BASE,
+    USER_PROFILE_SELECT_LEGACY_WITH_LIFECYCLE,
+    USER_PROFILE_SELECT_LEGACY,
+  ];
 
-  if (result.error && isMissingUserLifecycleColumns(result.error)) {
-    result = await selectProfile(client, userId, USER_PROFILE_SELECT_BASE);
+  let result: QueryResult | null = null;
+  for (const columns of candidateSelects) {
+    result = await selectProfile(client, userId, columns);
+    if (!result.error) break;
+    if (
+      !isMissingUserLifecycleColumns(result.error) &&
+      !isMissingOptionalUserProfileColumns(result.error)
+    ) {
+      break;
+    }
   }
 
-  if (result.error) {
+  if (result?.error) {
     throw createError({ statusCode: 500, statusMessage: result.error.message });
   }
 
-  return { profile: result.data ?? null };
+  return { profile: result?.data ?? null };
 });

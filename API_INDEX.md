@@ -20,6 +20,7 @@ Read this after `map.md` when debugging or implementing features.
 - `products.category_keys` and `assets.category_keys` are derived compatibility/search arrays. They contain `[main_category_key] + tag_keys`, so do not treat every `category_keys` entry as a public category.
 - Admin POS file uploads use `catalog-media` for customer IDs, deposit proofs, and fulfillment signatures.
 - Admin POS is branch-scoped: staff only see branches from `admin_user_branch_access.can_pos`; `super_admin` sees all active branches.
+- POS V3 master blueprint draft lives in `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md`; future POS V3 checkout, pickup/return, KYC, fiscal document, WHT, register/shift, and backend aggregator work must wait for its reconciliation gates.
 - Public service-page contact actions read phone/email/Google Maps plus optional `line_id` / `line_url` from `service_providers`; only HTTPS `line.me` / `lin.ee` links should survive validation.
 - Shared rental date logic lives in `app/components/products/RentalBookingCalendar.vue`; storefront asset booking uses asset rules, while admin POS rental creation intentionally passes `bufferDays = 0`.
 - Customer rental booking detail/cancellation/manual Booking Deposit refund is implemented for the eligible self-service path. No-show is a separate admin lifecycle (`no_show`) for overdue confirmed pickups and now creates Booking Deposit disposition + financial recognition events. Late cancellation remains support-only after cutoff and separate from no-show.
@@ -43,6 +44,7 @@ Read this after `map.md` when debugging or implementing features.
 | Admin sale order queue         | `app/composables/useAdminOrderQueue.ts`                | `/api/admin/orders/queue` → flat sale-order rows, queue counts, order-level pagination                                                            |
 | Legacy admin customer grouping | `app/composables/useAdminOrders.ts`                    | `/api/admin/orders/customers`; retained for compatibility, not the main `/admin/orders` UI                                                        |
 | Admin POS workflow/history     | `app/pages/admin/pos.vue`                              | `/api/admin/customers/lookup`, `/api/admin/pos/*`, `users`, `walk_in_customers`, `assets`, `product_skus`, `orders`, `rental_bookings`            |
+| Admin POS V3 entry shell       | `app/pages/admin/pos-v3/index.vue`                     | Reuses `/api/admin/customers/lookup`, `/api/admin/orders/queue`, `/api/admin/rental-bookings/[id]`, order detail APIs, and existing scanner       |
 | Customer rental detail/refund  | `app/pages/user/rentals/[bookingId].vue`               | `/api/user/rental-bookings/[id]`, `rental_bookings`, `rental_booking_cancellation_events`, `payment_refunds`, `official_documents`                |
 | Admin refund queue             | `app/pages/admin/refunds.vue`                          | `/api/admin/refunds*`, `payment_refunds`, `rental_booking_deposit_proofs`, `official_documents`                                                   |
 | Cookie consent                 | `app/composables/useCookieConsent.ts`                  | `hop-rental-cookie-consent` cookie (versioned, 180-day TTL)                                                                                       |
@@ -197,6 +199,7 @@ Every list/grid/rail that renders card-based data asynchronously must show a pro
 - `/admin/orders/[id]`
 - `/admin/pos`
 - `/admin/walk-in` (redirect alias)
+- `/admin/pos-v3`
 - `/admin/rental-bookings/[id]`
 - `/admin/home-content`
 - `/admin/home-categories`
@@ -272,6 +275,8 @@ Queue values are `action_required`, `delivery`, `pickup`, `awaiting_payment`, an
 | `POST /api/admin/rental-bookings/[id]/mark-no-show` | staff + super_admin | Manually marks overdue `confirmed` rental booking as `no_show`, records no-show event/metadata, creates Booking Deposit disposition + financial recognition events, sets Booking Deposit refund outcome to forfeited/refund-not-applicable, and does not create `payment_refunds`, receipts, or notices. |
 
 ### Admin POS API map
+
+`/admin/pos-v3` currently has no dedicated backend aggregator. Phase 1 intentionally reuses existing admin APIs and must keep doing so until a later POS V3 phase explicitly approves a server-owned aggregate contract.
 
 | Route                                      | Role                | Purpose                                                                   |
 | ------------------------------------------ | ------------------- | ------------------------------------------------------------------------- |

@@ -35,6 +35,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Customer sees history in `/user/orders`
 - Admin triages sale orders from `/admin/orders` using the Sale Order Operations Queue, then manages status from `/admin/orders/[id]`
 - Staff can create branch-scoped POS sales from `/admin/pos`; customer info is optional in Sale mode
+- POS V3 exists at `/admin/pos-v3` as a separate operational entry shell for scan/search context resolution and booking/order handoff, with a future-booking draft + cash Booking Deposit finalization path. Deeper sale checkout, pickup/return completion, KYC, fiscal documents, WHT, register/shift, and backend aggregator work remain gated by the POS V3 master blueprint draft.
 
 ### Rental
 
@@ -43,6 +44,7 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Create booking draft
 - Confirm rental from `/user/cart`
 - Staff can also create confirmed rentals from `/admin/pos` for account or walk-in customers
+- POS V3 currently reuses existing booking detail, pickup readiness, customer lookup, pickup order queue, order detail, scanner, POS draft creation, and booking-deposit payment foundations; future rental money/document semantics must be reconciled before expanding beyond draft/cash-deposit finalization.
 - Customer sees active history in `/user/rentals`
 - Cancelled bookings remain in DB and appear in `/user/orders`
 - Customer rental detail at `/user/rentals/[bookingId]` exposes QR, documents, cancellation/refund status, refund proof shortcuts, and the eligible self-service cancellation/refund form.
@@ -208,6 +210,8 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 - Customer self-service cancellation is available only for eligible confirmed/paid rental bookings before the locked refund cutoff; late cancellation remains support-only after cutoff.
 - No-show is handled separately from cancellation/refund: staff may manually mark overdue confirmed bookings `no_show`, which records Booking Deposit forfeiture/refund-not-applicable without creating a refund case.
 - Forfeiture foundation is partially runtime: no-show creates deposit disposition and financial recognition events, and Booking Deposit Terms can use canonical agreement governance. Forfeiture ordinary receipt, no-show notice, admin-agreed cancellation notice/forfeiture, document access UI, and POS V2 remain pending implementation.
+- POS V3 cash finalization records only the fixed `bookingDepositDueNow` payment amount. Cash Tendered and Change are staff-facing cashier UI values and do not alter backend payment truth.
+- POS V3 master blueprint draft is tracked in `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md`; it is the decision-reconciliation source for future POS V3 retail, booking, pickup, return, document, WHT, branch/staff, and customer-identity work.
 - Booking Deposit refunds are manual admin work in this phase; do not introduce automatic gateway refunds without a separate design decision.
 - Refund confirmation visibility requires refunded status plus linked refund proof.
 - Homepage promotion/service cards must reference an existing `content_pages` row; create the page in `/admin/content` first, then link it from `/admin/home-content`.
@@ -227,13 +231,15 @@ HOP-RENTAL is a Nuxt + Supabase app for:
 4. Continue Booking Deposit Forfeiture after Phase 3.1: choose derived allocation/admin-review hardening or ordinary receipt runtime as the next explicit batch
 5. Review no-show browser/admin ops and decide whether to add an overdue pickup dashboard queue
 6. Decide whether customer late non-refundable cancellation should remain support-only or become a separate recorded lifecycle
-7. Official POS receipt/tax invoice/delivery-note PDF generation
-8. Backoffice checklist-template management polish
-9. Robust offline POS queue with idempotency keys
+7. Reconcile POS V3 master blueprint gates before deeper POS implementation: walk-in booking payment timing, rental money/tax point model, mixed checkout separation, WHT hold model, and foundation reuse
+8. Official POS receipt/tax invoice/delivery-note PDF generation after POS V3 document policy is approved
+9. Backoffice checklist-template management polish
+10. Robust offline POS queue with idempotency keys
 
 ## Read next
 
 - `API_INDEX.md` for routes/endpoints/composables
 - `ADMIN_MVP_ACTION_PLAN.md` for admin backlog
+- `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md` for the POS V3 master blueprint draft and reconciliation gates
 - `ASSET_ACTION_PLAN.md` for rental/asset decisions
 - `docs/booking-deposit-forfeiture-accounting-document-design.md` for accepted forfeiture accounting/receipt/terms design and Phase 3 roadmap

@@ -5,6 +5,7 @@ import AdminPosV3PendingWorkList from "~/components/admin/pos/AdminPosV3PendingW
 import AdminPosV3BookingContext from "~/components/admin/pos/AdminPosV3BookingContext.vue";
 import AdminPosV3OrderContext from "~/components/admin/pos/AdminPosV3OrderContext.vue";
 import AdminPosV3FutureBookingDraftContainer from "~/components/admin/pos/AdminPosV3FutureBookingDraftContainer.vue";
+import AdminPosV3FutureBookingDepositCashContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositCashContainer.vue";
 import type {
   AdminRentalBookingRow,
   AdminSaleOrderQueueResponse,
@@ -90,8 +91,8 @@ const orderDetail = ref<AdminSaleOrderDetail | null>(null);
 const orderLoading = ref(false);
 const orderError = ref<string | null>(null);
 
-// Container 1 — Future Booking Draft result (preserved for Container 2)
-const latestDraftResult = ref<unknown>(null);
+// Container 1 — Future Booking Draft result (drives Container 2 mount)
+const latestDraftResult = ref<any>(null);
 function handleDraftCreated(result: unknown) {
   latestDraftResult.value = result;
 }
@@ -101,6 +102,12 @@ function handleDraftCreated(result: unknown) {
 const latestSameDayIntent = ref<unknown>(null);
 function handleSameDayIntent(payload: unknown) {
   latestSameDayIntent.value = payload;
+}
+
+// Container 2 — Confirmed Future Booking result (stored for future routing/display)
+const latestConfirmedFutureBookingResult = ref<unknown>(null);
+function handleBookingConfirmed(result: unknown) {
+  latestConfirmedFutureBookingResult.value = result;
 }
 
 const resolverBusy = computed(
@@ -466,6 +473,14 @@ function handleScannerDecoded(payload: {
       :user-context="userContext"
       @draft-created="handleDraftCreated"
       @same-day-rental-intent="handleSameDayIntent"
+    />
+
+    <!-- Container 2: Future Booking Cash Deposit Finalization
+         Mounts only when a future draft exists. Never mounts for same-day intents. -->
+    <AdminPosV3FutureBookingDepositCashContainer
+      v-if="activeMode === 'booking' && latestDraftResult !== null"
+      :draft-result="latestDraftResult"
+      @booking-confirmed="handleBookingConfirmed"
     />
   </div>
 </template>

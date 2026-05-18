@@ -15,15 +15,63 @@ describe("admin POS V2 shell wiring", () => {
     expect(page).toContain("/api/admin/customers/lookup");
     expect(page).toContain("AdminOrderQrScanner");
     expect(page).toContain("/api/admin/pos-v2/rental-bookings");
-    expect(page).toContain("Future Booking only");
+    expect(page).toContain("Pickup Readiness workspace");
+    expect(page).toContain("pickup-readiness");
   });
 
-  it("keeps Phase 3 POS V2 UI scoped away from pickup/payment/documents", () => {
+  it("connects Phase 3 booking success and lookup results to readiness", () => {
+    const page = read("app/pages/admin/pos-v2/index.vue");
+    const quickLookup = read(
+      "app/components/admin/pos/AdminPosQuickLookup.vue",
+    );
+
+    expect(page).toContain("Open pickup readiness");
+    expect(page).toContain("openPickupReadinessForBooking");
+    expect(quickLookup).toContain("openPickupReadiness");
+    expect(quickLookup).toContain("Open pickup readiness");
+  });
+
+  it("renders Phase 4B2 pickup completion UI beside readiness", () => {
     const page = read("app/pages/admin/pos-v2/index.vue");
 
-    expect(page).toContain("No pickup or payment in this phase");
-    expect(page).toContain("fiscal document actions are");
-    expect(page).toContain("all paid amounts remain zero");
+    expect(page).toContain("Pickup Completion");
+    expect(page).toContain("pickup-complete");
+    expect(page).toContain("Complete pickup");
+    expect(page).toContain("pickupPaymentMethod");
+    expect(page).toContain("pickupCollectedAmount");
+    expect(page).toContain("DigitalSignaturePad");
+  });
+
+  it("maps pickup payment methods to the Phase 4B1 backend contract", () => {
+    const page = read("app/pages/admin/pos-v2/index.vue");
+
+    expect(page).toContain('value: "cash"');
+    expect(page).toContain('value: "qr_transfer"');
+    expect(page).toContain('value: "bank_transfer"');
+    expect(page).toContain('value: "card"');
+    expect(page).toContain('value: "other"');
+  });
+
+  it("surfaces blockers, checklist path, and explicit partial-failure errors", () => {
+    const page = read("app/pages/admin/pos-v2/index.vue");
+
+    expect(page).toContain("Pickup completion is blocked");
+    expect(page).toContain("Complete checklist in booking detail");
+    expect(page).toContain("payment was recorded");
+    expect(page).toContain(
+      "Pickup payment recorded; fulfillment follow-up needed",
+    );
+  });
+
+  it("keeps Phase 4B2 scoped away from fiscal, return, and settlement controls", () => {
+    const page = read("app/pages/admin/pos-v2/index.vue");
+
+    expect(page).toContain("Fiscal documents, return, settlement");
+    expect(page).not.toContain("Issue receipt");
+    expect(page).not.toContain("Issue tax invoice");
+    expect(page).not.toContain("Issue ABB");
+    expect(page).not.toContain("Complete return");
+    expect(page).not.toContain("Settle rental");
     expect(page).not.toContain("/api/admin/documents/issue");
   });
 

@@ -51,8 +51,24 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const storagePath = `users/${userId}/id-card/${Date.now()}-${crypto.randomUUID()}.${extensionForMime(file.type || "")}`;
   const client = serverSupabaseServiceRole(event);
+  const { data: profile, error: profileError } = await client
+    .from("users")
+    .select("pdpa_consented_at")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profileError) {
+    throw createError({ statusCode: 500, statusMessage: profileError.message });
+  }
+  if (!profile?.pdpa_consented_at) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: "PDPA consent is required before uploading KYC documents",
+    });
+  }
+
+  const storagePath = `users/${userId}/id-card/${Date.now()}-${crypto.randomUUID()}.${extensionForMime(file.type || "")}`;
   const { error: uploadError } = await client.storage
     .from(KYC_DOCUMENTS_BUCKET)
     .upload(storagePath, buffer, {

@@ -6,12 +6,23 @@ import { formatCompanyRole, formatPlatformRole } from "~/utils/role-display";
 const { t } = useI18n();
 const { isLoggedIn, displayName, avatarUrl, userEmail, logout } =
   useAuthSession();
-const { profile } = useUserProfile();
+const {
+  profile,
+  loading: profileLoading,
+  ensureProfileLoaded,
+} = useUserProfile();
 const { activeContext, currentCompany, memberships } = useCompanyContext();
 const isQrModalOpen = ref(false);
+const isQrProfileResolving = ref(false);
 
 const customerQrPayload = computed(() =>
   profile.value?.id ? `customer:${profile.value.id}` : "",
+);
+
+const isCustomerQrLoading = computed(
+  () =>
+    !customerQrPayload.value &&
+    (isQrProfileResolving.value || profileLoading.value),
 );
 
 const currentRoleIcon = computed(() => {
@@ -39,6 +50,22 @@ const currentCompanyLabel = computed(
     memberships.value[0]?.company.name ??
     null,
 );
+
+async function openCustomerQrModal() {
+  if (customerQrPayload.value) {
+    isQrModalOpen.value = true;
+    return;
+  }
+
+  isQrModalOpen.value = true;
+  isQrProfileResolving.value = true;
+
+  try {
+    await ensureProfileLoaded(null, { force: true });
+  } finally {
+    isQrProfileResolving.value = false;
+  }
+}
 
 // ── Dropdown items: Logged-in (Phase A generic) ──
 const loggedInItems = computed<DropdownMenuItem[][]>(() => {
@@ -75,7 +102,7 @@ const loggedInItems = computed<DropdownMenuItem[][]>(() => {
         label: "QR Code ของฉัน",
         icon: "bx:qr",
         onSelect: () => {
-          isQrModalOpen.value = true;
+          void openCustomerQrModal();
         },
       },
       {
@@ -155,7 +182,15 @@ const guestItems = computed<DropdownMenuItem[][]>(() => [
   <UModal v-model:open="isQrModalOpen" title="QR Code ของฉัน">
     <template #body>
       <div
-        v-if="customerQrPayload"
+        v-if="isCustomerQrLoading"
+        class="flex flex-col items-center gap-3 px-2 py-6 text-center text-sm text-muted"
+      >
+        <UIcon name="bx:loader-alt" class="size-6 animate-spin" />
+        <p>กำลังโหลดข้อมูลผู้ใช้สำหรับสร้าง QR Code...</p>
+      </div>
+
+      <div
+        v-else-if="customerQrPayload"
         class="flex flex-col items-center gap-4 px-2 py-4 text-center"
       >
         <div class="rounded-2xl border bg-white p-4 shadow-sm">

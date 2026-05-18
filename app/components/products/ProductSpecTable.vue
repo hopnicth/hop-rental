@@ -10,6 +10,11 @@ const props = defineProps<{
 }>();
 
 const hasSpec = computed(() => Object.keys(props.spec).length > 0);
+
+function formatValue(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value.join(", ");
+  return value ?? "—";
+}
 </script>
 
 <template>
@@ -19,7 +24,7 @@ const hasSpec = computed(() => Object.keys(props.spec).length > 0);
         <td class="py-2 pr-4 font-medium text-gray-500 w-1/3">
           {{ key }}
         </td>
-        <td class="py-2">{{ value }}</td>
+        <td class="py-2">{{ formatValue(value) }}</td>
       </tr>
     </tbody>
   </table>

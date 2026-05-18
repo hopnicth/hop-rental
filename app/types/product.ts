@@ -21,7 +21,7 @@ export interface ProductSpec {
   ampere?: string;
   voltage?: string;
   // ── Dynamic fields (admin can add any key) ──
-  [key: string]: string | undefined;
+  [key: string]: string | string[] | undefined;
 }
 
 export interface ProductDocumentLink {

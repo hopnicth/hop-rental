@@ -96,7 +96,11 @@ const form = reactive({
   title: "",
   contactName: "",
   contactPhone: "",
-  fullAddress: "",
+  houseNo: "",
+  moo: "",
+  roomNo: "",
+  building: "",
+  street: "",
   subDistrict: "",
   district: "",
   province: "",
@@ -109,7 +113,11 @@ function resetForm() {
   form.title = "";
   form.contactName = "";
   form.contactPhone = "";
-  form.fullAddress = "";
+  form.houseNo = "";
+  form.moo = "";
+  form.roomNo = "";
+  form.building = "";
+  form.street = "";
   form.subDistrict = "";
   form.district = "";
   form.province = "";
@@ -140,7 +148,11 @@ function openEdit(addr: Address) {
   form.title = addr.title;
   form.contactName = addr.contactName ?? "";
   form.contactPhone = addr.contactPhone ?? "";
-  form.fullAddress = addr.fullAddress;
+  form.houseNo = addr.houseNo ?? "";
+  form.moo = addr.moo ?? "";
+  form.roomNo = addr.roomNo ?? "";
+  form.building = addr.building ?? "";
+  form.street = addr.street ?? "";
   form.subDistrict = addr.subDistrict ?? "";
   form.district = addr.district ?? "";
   form.province = addr.province ?? "";
@@ -160,11 +172,26 @@ async function handleSave() {
 
   saving.value = true;
 
+  // Build fullAddress from structured components for backward compat
+  const fullAddressParts = [
+    form.houseNo ? `เลขที่ ${form.houseNo}` : "",
+    form.moo ? `หมู่ ${form.moo}` : "",
+    form.roomNo ? `ห้อง ${form.roomNo}` : "",
+    form.building ? `อาคาร ${form.building}` : "",
+    form.street ? `ถนน ${form.street}` : "",
+  ].filter(Boolean);
+  const computedFullAddress = fullAddressParts.join(" ").trim();
+
   const fields = {
     title: form.title,
     contactName: form.contactName || null,
     contactPhone: form.contactPhone || null,
-    fullAddress: form.fullAddress,
+    houseNo: form.houseNo || null,
+    moo: form.moo || null,
+    roomNo: form.roomNo || null,
+    building: form.building || null,
+    street: form.street || null,
+    fullAddress: computedFullAddress,
     subDistrict: form.subDistrict || null,
     district: form.district || null,
     province: form.province || null,
@@ -299,10 +326,11 @@ async function handleSetDefault(id: string) {
         <div
           v-for="addr in visibleAddresses"
           :key="addr.id"
-          class="flex items-start justify-between gap-3 rounded-lg border p-4"
+          class="grid grid-cols-6 items-start gap-3 rounded-lg border p-4"
         >
-          <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-2">
+          <!-- col 1-4: address details -->
+          <div class="col-span-6 min-w-0 md:col-span-4">
+            <div class="mb-1 flex flex-wrap items-center gap-2">
               <p class="font-medium">{{ addr.title }}</p>
               <UBadge
                 v-if="addr.isDefault"
@@ -312,19 +340,67 @@ async function handleSetDefault(id: string) {
                 size="xs"
               />
             </div>
-            <p class="mt-1 text-sm text-muted">{{ addr.fullAddress }}</p>
+            <!-- Structured address line 1 -->
+            <p class="text-sm">
+              <template v-if="addr.houseNo"
+                >เลขที่ {{ addr.houseNo }}
+              </template>
+              <template v-if="addr.moo">หมู่ {{ addr.moo }} </template>
+              <template v-if="addr.roomNo">ห้อง {{ addr.roomNo }} </template>
+              <template v-if="addr.building"
+                >อาคาร {{ addr.building }}
+              </template>
+              <template v-if="addr.street">ถนน {{ addr.street }}</template>
+              <span
+                v-if="
+                  !addr.houseNo &&
+                  !addr.moo &&
+                  !addr.roomNo &&
+                  !addr.building &&
+                  !addr.street
+                "
+                class="text-muted"
+              >
+                {{ addr.fullAddress }}
+              </span>
+            </p>
+            <!-- Line 2: ตำบล/อำเภอ -->
             <p
-              v-if="addr.contactName || addr.contactPhone"
-              class="mt-1 text-xs text-muted"
+              v-if="addr.subDistrict || addr.district"
+              class="text-sm text-muted"
             >
-              {{
-                [addr.contactName, addr.contactPhone]
-                  .filter(Boolean)
-                  .join(" · ")
-              }}
+              <template v-if="addr.subDistrict"
+                >ตำบล/แขวง {{ addr.subDistrict }}
+              </template>
+              <template v-if="addr.district"
+                >อำเภอ/เขต {{ addr.district }}</template
+              >
+            </p>
+            <!-- Line 3: จังหวัด/รหัสไปรษณีย์ -->
+            <p
+              v-if="addr.province || addr.postalCode"
+              class="text-sm text-muted"
+            >
+              <template v-if="addr.province"
+                >จังหวัด {{ addr.province }}
+              </template>
+              <template v-if="addr.postalCode">{{ addr.postalCode }}</template>
+            </p>
+            <!-- Contact -->
+            <p v-if="addr.contactName" class="mt-1 text-xs text-muted">
+              ชื่อผู้รับ: {{ addr.contactName }}
+            </p>
+            <p v-if="addr.contactPhone" class="text-xs text-muted">
+              เบอร์ติดต่อ: {{ addr.contactPhone }}
+            </p>
+            <p v-if="addr.note" class="mt-1 text-xs text-muted italic">
+              {{ addr.note }}
             </p>
           </div>
-          <div class="flex shrink-0 gap-1">
+          <!-- col 5-6: actions -->
+          <div
+            class="col-span-6 flex items-center justify-end gap-1 md:col-span-2"
+          >
             <UButton
               v-if="canManageAddresses && !addr.isDefault"
               icon="bx:star"
@@ -333,6 +409,15 @@ async function handleSetDefault(id: string) {
               variant="ghost"
               :title="t('user.setAsDefault')"
               @click="handleSetDefault(addr.id)"
+            />
+            <UButton
+              v-if="addr.isDefault"
+              icon="bx:star"
+              size="xs"
+              color="primary"
+              variant="ghost"
+              :title="t('user.defaultAddress')"
+              disabled
             />
             <UButton
               v-if="canManageAddresses"
@@ -362,7 +447,12 @@ async function handleSetDefault(id: string) {
       </template>
 
       <div class="grid gap-4 sm:grid-cols-2">
-        <UFormField :label="t('user.addressTitle')" required>
+        <!-- Label + contact -->
+        <UFormField
+          :label="t('user.addressTitle')"
+          required
+          class="sm:col-span-2"
+        >
           <UInput
             v-model="form.title"
             :placeholder="t('user.addressTitle')"
@@ -385,20 +475,25 @@ async function handleSetDefault(id: string) {
             required
           />
         </UFormField>
-        <UFormField :label="t('user.postalCode')">
-          <UInput
-            v-model="form.postalCode"
-            :placeholder="t('user.postalCode')"
-            class="w-full"
-          />
+
+        <!-- Address detail fields -->
+        <UFormField label="เลขที่">
+          <UInput v-model="form.houseNo" placeholder="เลขที่" class="w-full" />
         </UFormField>
-        <UFormField :label="t('user.fullAddress')" class="sm:col-span-2">
-          <UInput
-            v-model="form.fullAddress"
-            :placeholder="t('user.fullAddress')"
-            class="w-full"
-          />
+        <UFormField label="หมู่">
+          <UInput v-model="form.moo" placeholder="หมู่" class="w-full" />
         </UFormField>
+        <UFormField label="ห้อง">
+          <UInput v-model="form.roomNo" placeholder="ห้อง" class="w-full" />
+        </UFormField>
+        <UFormField label="อาคาร">
+          <UInput v-model="form.building" placeholder="อาคาร" class="w-full" />
+        </UFormField>
+        <UFormField label="ถนน" class="sm:col-span-2">
+          <UInput v-model="form.street" placeholder="ถนน" class="w-full" />
+        </UFormField>
+
+        <!-- Sub-district / district / province / postal -->
         <UFormField :label="t('user.subDistrict')">
           <UInput
             v-model="form.subDistrict"
@@ -420,22 +515,29 @@ async function handleSetDefault(id: string) {
             class="w-full"
           />
         </UFormField>
-        <UFormField :label="t('user.addressNote')" class="sm:col-span-2">
+        <UFormField :label="t('user.postalCode')">
           <UInput
-            v-model="form.note"
-            :placeholder="t('user.addressNote')"
+            v-model="form.postalCode"
+            :placeholder="t('user.postalCode')"
             class="w-full"
           />
         </UFormField>
 
-        <label class="flex items-center gap-2 sm:col-span-2">
-          <input
-            v-model="form.isDefault"
-            type="checkbox"
-            class="h-4 w-4 rounded"
+        <!-- Note — UTextarea -->
+        <UFormField :label="t('user.addressNote')" class="sm:col-span-2">
+          <UTextarea
+            v-model="form.note"
+            :placeholder="t('user.addressNote')"
+            class="w-full"
+            :rows="3"
           />
-          <span class="text-sm">{{ t("user.setAsDefault") }}</span>
-        </label>
+        </UFormField>
+
+        <UCheckbox
+          v-model="form.isDefault"
+          :label="t('user.setAsDefault')"
+          class="sm:col-span-2"
+        />
       </div>
 
       <template #footer>

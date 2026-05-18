@@ -24,6 +24,8 @@ function mapRow(row: Record<string, unknown>): UserProfile {
   return {
     id: row.id as string,
     fullName: (row.full_name as string) ?? null,
+    firstName: (row.first_name as string) ?? null,
+    lastName: (row.last_name as string) ?? null,
     phone: (row.phone as string) ?? null,
     avatarUrl: (row.avatar_url as string) ?? null,
     platformRole:
@@ -132,7 +134,12 @@ export function useUserProfile() {
 
   // ── Update profile (partial) ──
   async function updateProfile(
-    updates: Partial<Pick<UserProfile, "fullName" | "phone" | "avatarUrl">>,
+    updates: Partial<
+      Pick<
+        UserProfile,
+        "fullName" | "firstName" | "lastName" | "phone" | "avatarUrl"
+      >
+    >,
   ): Promise<boolean> {
     if (!user.value) return false;
 

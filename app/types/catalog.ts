@@ -125,7 +125,7 @@ export interface CatalogProductRecord extends CatalogProduct {
   brand?: string;
   media_gallery?: CatalogMediaGalleryItemRecord[];
   media_links?: CatalogMediaLinkRecord[];
-  spec?: Record<string, string | undefined>;
+  spec?: Record<string, string | string[] | undefined>;
   documents?: CatalogDocumentLinkRecord[];
   detail_blocks?: ProductDetailBlocks;
   supplier_ids?: string[];

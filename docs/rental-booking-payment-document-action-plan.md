@@ -10,6 +10,7 @@ Reality sync:
 - **DESIGN LOCKED / NOT IMPLEMENTED:** customer-facing rental detail page, printable customer booking/payment/cancellation/refund confirmations, customer self-service eligible cancellation, manual Booking Deposit refund request, Admin Refund Queue, cancellation/restriction tracking foundation. Canonical design: `docs/customer-rental-booking-cancellation-refund-design.md`.
 - **DESIGNED ONLY / FUTURE:** daily accounting report UI, official receipt/tax invoice/WHT automation.
 - **OUTDATED wording to avoid:** statements that online Booking Deposit payment or `booking_deposit` line modeling are purely future work; these foundations now exist in code/migrations.
+- **POS V3 reconciliation required:** the POS V3 master blueprint draft (`file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md`) proposes rental pickup as deposit/handover operational documentation and return as the possible tax point. Do not deepen POS V3 pickup/return/payment/document UI from this older action plan until the rental money model and WHT gates are approved.
 
 ## 1. Executive Decision
 

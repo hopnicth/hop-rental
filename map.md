@@ -7,14 +7,15 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 
 1. `map.md` — this file
 2. `PROJECT_SUMMARY.md` — current system snapshot
-3. `HOPNIC_POS_V2_Master_Implementation_Plan.md` — canonical POS/customer rental phase control plan
-4. `docs/customer-rental-booking-cancellation-refund-design.md` — Phase C.1 customer documents/cancellation/manual refund design lock
-5. `API_INDEX.md` — routes, composables, endpoints, debug rules
-6. `SEARCH_AND_FILTER_GUIDELINE.md` — search/filter state, URL persistence, multi-type search direction
-7. `ADMIN_MVP_ACTION_PLAN.md` / `ASSET_ACTION_PLAN.md` — active backlog + decisions
-8. `DATABASE_ADMIN_MANUAL.md` — admin data setup rules
-9. `ROLE_MATRIX.md` — permission model
-10. `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
+3. `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md` — POS V3 master blueprint draft and reconciliation gates
+4. `HOPNIC_POS_V2_Master_Implementation_Plan.md` — historical/canonical POS V2 control plan; do not use it to expand POS V3 without reconciling the new blueprint
+5. `docs/customer-rental-booking-cancellation-refund-design.md` — Phase C.1 customer documents/cancellation/manual refund design lock
+6. `API_INDEX.md` — routes, composables, endpoints, debug rules
+7. `SEARCH_AND_FILTER_GUIDELINE.md` — search/filter state, URL persistence, multi-type search direction
+8. `ADMIN_MVP_ACTION_PLAN.md` / `ASSET_ACTION_PLAN.md` — active backlog + decisions
+9. `DATABASE_ADMIN_MANUAL.md` — admin data setup rules
+10. `ROLE_MATRIX.md` — permission model
+11. `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
 
 ## Current product state
 
@@ -23,7 +24,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - `/user/cart` is the unified review page for cart items + draft rental bookings.
 - Sale orders and rental bookings both have customer history pages.
 - Internal backoffice lives under `/admin` and is gated by `public.users.platform_role`.
-- Admin now has product, asset, branch/inventory, order, rental-booking, and POS sale/rental operations surfaces.
+- Admin now has product, asset, branch/inventory, order, rental-booking, legacy POS sale/rental operations, and POS V3 operational-entry surfaces.
 - Customer rental booking detail/cancellation/manual Booking Deposit refund is design-locked for future Phase C.1, but not implemented yet.
 
 ## Most important docs by task
@@ -31,6 +32,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 ### If you need current business/technical context
 
 - Read `PROJECT_SUMMARY.md`
+- For future POS V3 work, read `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md` first and resolve its reconciliation gates before coding deeper workflows
 - Read `HOPNIC_POS_V2_Master_Implementation_Plan.md`
 - For customer rental documents/cancellation/manual refund work, read `docs/customer-rental-booking-cancellation-refund-design.md`
 
@@ -94,6 +96,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 - Future global search should support products, rental assets, services, blogs, reviews, and promotions. Migration `045` for DB-level product dynamic filters is prepared but still pending remote apply.
 - Admin order QR payloads: `order:<number>`, `booking:<uuid>`, `customer:<uuid>`.
 - Admin POS payloads/flows are branch-scoped; Sale customer info is optional, Rental customer info is required, and `Scan Customer` lives in the customer info card.
+- POS V3 at `/admin/pos-v3` currently includes the operational entry shell plus future-booking draft creation and cash Booking Deposit finalization. Supported QR payloads are `booking:<uuid>` and `customer:<uuid>`; receipt/document issuance, pickup/return completion, and sale checkout are still out of scope.
 - Shared rental calendar logic now lives in `app/components/products/RentalBookingCalendar.vue`; storefront and POS should stay behaviorally aligned, with POS intentionally passing `bufferDays = 0`.
 - Cookie consent is captured by `<CookieConsentBanner />` mounted in both `default` and `admin` layouts. Consent state lives in the `hop-rental-cookie-consent` cookie (180-day TTL, versioned). Categories: `necessary` (always on), `analytics`, `preferences`, `marketing`. Non-essential default off — never load analytics/marketing scripts before checking `useCookieConsent().isAllowed(...)`.
 - Floating UI z-index ladder: ChatFab / MobileFloatingPanel `z-40` → generic Nuxt UI modals `z-50` → cookie consent banner `z-60` → cookie preferences modal `z-70`. Keep ChatFab below modal overlays; do not raise it back to `z-999`.
@@ -102,7 +105,7 @@ Purpose: lightweight entrypoint for Augment and developers. Read this first befo
 
 - Storefront: `/`, `/product-{group}`, `/product-{group}/{slug}`, `/product-rental`, `/asset/{slug}`, `/blog`, `/blog/[slug]`, `/services`, `/services/[slug]`, `/promotions`, `/promotions/[slug]`, `/reviews`, `/reviews/[slug]`
 - Customer: `/user/cart`, `/user/orders`, `/user/rentals`
-- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/filter-groups`, `/admin/main-categories`, `/admin/home-categories`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/pos`, `/admin/walk-in`, `/admin/rental-bookings/[id]`, `/admin/home-content`, `/admin/content`
+- Admin: `/admin`, `/admin/products`, `/admin/assets`, `/admin/filter-groups`, `/admin/main-categories`, `/admin/home-categories`, `/admin/branches-inventory`, `/admin/orders`, `/admin/orders/[id]`, `/admin/pos`, `/admin/walk-in`, `/admin/pos-v3`, `/admin/rental-bookings/[id]`, `/admin/home-content`, `/admin/content`
 
 ## Key server/API areas
 

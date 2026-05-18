@@ -3,7 +3,7 @@
  * Profile section — ALL roles can access.
  *
  * Displays and allows editing of:
- *  - Full name, Phone, Avatar URL (read-only), Email (read-only), Member since
+ *  - First name, Last name, Phone, Avatar upload/delete, Email (read-only), Member since
  *  - Membership level badge
  *
  * Reuses:
@@ -44,44 +44,115 @@ const mobileStatusDescription = computed(() => {
 });
 
 // ── Editable form state ──
-const fullName = ref("");
+const firstName = ref("");
+const lastName = ref("");
 const phone = ref("");
+const avatarPreview = ref<string | null>(null);
+const avatarFile = ref<File | null>(null);
+const avatarDeleted = ref(false);
+const uploadingAvatar = ref(false);
 
 // Sync form with profile when it loads
 watch(
   () => profile.value,
   (p) => {
     if (p) {
-      fullName.value = p.fullName ?? "";
+      firstName.value = p.firstName ?? "";
+      lastName.value = p.lastName ?? "";
       phone.value = p.phone ?? "";
+      avatarPreview.value = p.avatarUrl ?? null;
     }
   },
   { immediate: true },
 );
 
+function handleAvatarSelect(file: File | File[] | null | undefined) {
+  const f = Array.isArray(file) ? file[0] : file;
+  if (!f) return;
+  avatarFile.value = f;
+  avatarDeleted.value = false;
+  avatarPreview.value = URL.createObjectURL(f);
+}
+
+function handleAvatarDelete() {
+  avatarFile.value = null;
+  avatarDeleted.value = true;
+  avatarPreview.value = null;
+}
+
 // ── Save handler ──
 const saving = ref(false);
 
+const hasChanges = computed(() => {
+  if (!profile.value)
+    return Boolean(
+      firstName.value.trim() || lastName.value.trim() || phone.value.trim(),
+    );
+  return (
+    firstName.value !== (profile.value.firstName ?? "") ||
+    lastName.value !== (profile.value.lastName ?? "") ||
+    phone.value !== (profile.value.phone ?? "") ||
+    avatarFile.value !== null ||
+    avatarDeleted.value
+  );
+});
+
 async function handleSave() {
   saving.value = true;
-  const ok = await updateProfile({
-    fullName: fullName.value || null,
-    phone: phone.value || null,
-  });
-  saving.value = false;
+  try {
+    let newAvatarUrl: string | null | undefined = undefined;
 
-  if (ok) {
-    toast.add({
-      title: t("user.saveSuccess"),
-      icon: "bx:check-circle",
-      color: "success",
+    if (avatarFile.value) {
+      uploadingAvatar.value = true;
+      const body = new FormData();
+      body.append("file", avatarFile.value);
+      const res = await $fetch<{ avatarUrl: string }>("/api/user/avatar", {
+        method: "POST",
+        body,
+      });
+      newAvatarUrl = res.avatarUrl;
+      avatarFile.value = null;
+      uploadingAvatar.value = false;
+    } else if (avatarDeleted.value) {
+      newAvatarUrl = null;
+    }
+
+    const ok = await updateProfile({
+      firstName: firstName.value.trim() || null,
+      lastName: lastName.value.trim() || null,
+      fullName:
+        [firstName.value.trim(), lastName.value.trim()]
+          .filter(Boolean)
+          .join(" ") || null,
+      phone: phone.value || null,
+      ...(newAvatarUrl !== undefined ? { avatarUrl: newAvatarUrl } : {}),
     });
-  } else {
+
+    avatarDeleted.value = false;
+
+    if (ok) {
+      toast.add({
+        title: t("user.saveSuccess"),
+        icon: "bx:check-circle",
+        color: "success",
+      });
+    } else {
+      toast.add({
+        title: t("user.saveError"),
+        icon: "bx:error-circle",
+        color: "error",
+      });
+    }
+  } catch (e) {
+    uploadingAvatar.value = false;
     toast.add({
       title: t("user.saveError"),
+      description: e instanceof Error ? e.message : undefined,
       icon: "bx:error-circle",
       color: "error",
     });
+  } finally {
+    saving.value = false;
   }
 }
 
@@ -94,16 +165,6 @@ function formatDate(iso: string | undefined): string {
     day: "numeric",
   });
 }
-
-// ── Check if form has changes ──
-const hasChanges = computed(() => {
-  if (!profile.value)
-    return Boolean(fullName.value.trim() || phone.value.trim());
-  return (
-    fullName.value !== (profile.value.fullName ?? "") ||
-    phone.value !== (profile.value.phone ?? "")
-  );
-});
 
 // ── Membership badge color ──
 const membershipColor = computed(() => {
@@ -137,7 +198,7 @@ const membershipColor = computed(() => {
       <!-- Loading skeleton -->
       <div v-if="loading" class="space-y-4">
         <div
-          v-for="i in 4"
+          v-for="i in 5"
           :key="i"
           class="h-10 animate-pulse rounded bg-elevated"
         />
@@ -145,62 +206,131 @@ const membershipColor = computed(() => {
 
       <!-- Profile form -->
       <form v-else class="space-y-5" @submit.prevent="handleSave">
-        <!-- Full Name -->
-        <div>
-          <label class="mb-1 block text-sm font-medium">{{
-            t("user.fullName")
-          }}</label>
-          <UInput
-            v-model="fullName"
-            icon="bx:user"
-            :placeholder="t('user.fullName')"
-            size="lg"
+        <fieldset :disabled="saving" class="space-y-5">
+          <!-- Avatar -->
+          <div>
+            <label class="mb-2 block text-sm font-medium">{{
+              t("user.profilePhoto")
+            }}</label>
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <!-- Preview + delete button -->
+              <div class="relative shrink-0">
+                <div
+                  class="h-20 w-20 overflow-hidden rounded-full border bg-elevated"
+                >
+                  <img
+                    v-if="avatarPreview"
+                    :src="avatarPreview"
+                    alt="avatar"
+                    class="h-full w-full object-cover"
+                  />
+                  <div
+                    v-else
+                    class="flex h-full w-full items-center justify-center text-muted"
+                  >
+                    <UIcon name="bx:user" class="text-3xl" />
+                  </div>
+                </div>
+                <UButton
+                  v-if="avatarPreview"
+                  icon="bx:x"
+                  size="xs"
+                  color="error"
+                  variant="solid"
+                  class="absolute -right-1 -top-1 rounded-full"
+                  :title="t('user.removePhoto')"
+                  @click.prevent="handleAvatarDelete"
+                />
+              </div>
+
+              <!-- Upload zone -->
+              <div class="flex-1">
+                <UFileUpload
+                  accept="image/jpeg,image/png,image/webp"
+                  :label="t('user.uploadPhoto')"
+                  :description="t('user.uploadPhotoHint')"
+                  icon="bx:upload"
+                  variant="area"
+                  :dropzone="true"
+                  :interactive="true"
+                  :preview="false"
+                  :disabled="saving || uploadingAvatar"
+                  @update:model-value="handleAvatarSelect"
+                />
+              </div>
+            </div>
+          </div>
+
+          <!-- First Name + Last Name -->
+          <div class="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1 block text-sm font-medium">{{
+                t("user.firstName")
+              }}</label>
+              <UInput
+                v-model="firstName"
+                icon="bx:user"
+                :placeholder="t('user.firstName')"
+                size="lg"
+              />
+            </div>
+            <div>
+              <label class="mb-1 block text-sm font-medium">{{
+                t("user.lastName")
+              }}</label>
+              <UInput
+                v-model="lastName"
+                icon="bx:user"
+                :placeholder="t('user.lastName')"
+                size="lg"
+              />
+            </div>
+          </div>
+
+          <!-- Phone -->
+          <div>
+            <label class="mb-1 block text-sm font-medium">{{
+              t("user.phone")
+            }}</label>
+            <UInput
+              v-model="phone"
+              icon="bx:phone"
+              :placeholder="t('user.phone')"
+              size="lg"
+            />
+          </div>
+
+          <UAlert
+            color="neutral"
+            variant="soft"
+            icon="bx:mobile"
+            :title="`${t('user.mobileRegistration')}: ${mobileStatusLabel}`"
+            :description="mobileStatusDescription"
           />
-        </div>
 
-        <!-- Phone -->
-        <div>
-          <label class="mb-1 block text-sm font-medium">{{
-            t("user.phone")
-          }}</label>
-          <UInput
-            v-model="phone"
-            icon="bx:phone"
-            :placeholder="t('user.phone')"
-            size="lg"
-          />
-        </div>
+          <!-- Email (read-only) -->
+          <div>
+            <label class="mb-1 block text-sm font-medium">{{
+              t("user.email")
+            }}</label>
+            <UInput
+              :model-value="userEmail"
+              icon="bx:envelope"
+              disabled
+              size="lg"
+            />
+          </div>
 
-        <UAlert
-          color="neutral"
-          variant="soft"
-          icon="bx:mobile"
-          :title="`${t('user.mobileRegistration')}: ${mobileStatusLabel}`"
-          :description="mobileStatusDescription"
-        />
-
-        <!-- Email (read-only) -->
-        <div>
-          <label class="mb-1 block text-sm font-medium">{{
-            t("user.email")
-          }}</label>
-          <UInput
-            :model-value="userEmail"
-            icon="bx:envelope"
-            disabled
-            size="lg"
-          />
-        </div>
-
-        <!-- Member Since (read-only) -->
-        <div>
-          <label class="mb-1 block text-sm font-medium">{{
-            t("user.memberSince")
-          }}</label>
-          <p class="text-sm text-muted">
-            {{ formatDate(profile?.createdAt) }}
-          </p>
-        </div>
+          <!-- Member Since (read-only) -->
+          <div>
+            <label class="mb-1 block text-sm font-medium">{{
+              t("user.memberSince")
+            }}</label>
+            <p class="text-sm text-muted">
+              {{ formatDate(profile?.createdAt) }}
+            </p>
+          </div>
+        </fieldset>
 
         <!-- Save button -->
         <UButton

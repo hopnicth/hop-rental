@@ -40,7 +40,7 @@ describe("account settings UI wiring", () => {
     expect(profile).toContain("mobileRegistration");
     expect(profile).toContain("phone_confirmed_at");
     expect(profile).toContain(
-      "Boolean(fullName.value.trim() || phone.value.trim())",
+      "firstName.value.trim() || lastName.value.trim() || phone.value.trim()",
     );
   });
 
@@ -62,6 +62,11 @@ describe("account settings UI wiring", () => {
     expect(kyc).toContain("kycUploadInProgressTitle");
     expect(kyc).toContain("savingConsent");
     expect(kyc).toContain("canUploadKycDocument");
+    expect(kyc).toContain("resolveAuthenticatedUserId");
+    expect(kyc).toContain("supabase.auth.getUser");
+    expect(kyc).toContain("isUuid");
+    expect(kyc).toContain('.eq("id", userId)');
+    expect(kyc).not.toContain('.eq("id", user.value.id)');
     expect(kyc).toContain("/api/user/kyc/id-card");
     expect(kyc).not.toContain('storage.from("kyc-documents")');
     expect(kyc).not.toContain("getPublicUrl");

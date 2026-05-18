@@ -19,10 +19,13 @@ const supabase = useSupabaseClient();
 const user = useSupabaseUser();
 const { profile, loading, fetchProfile } = useUserProfile();
 
-// ── PDPA consent state ──
+// ── Consent state ──
+const termsAccepted = ref(false);
 const pdpaAccepted = ref(false);
 const uploading = ref(false);
 const savingConsent = ref(false);
+// When user presses Edit on a verified KYC
+const editingVerified = ref(false);
 
 const consentSections = computed(() => [
   {
@@ -75,15 +78,54 @@ const consentSections = computed(() => [
 ]);
 
 const hasPdpaConsent = computed(() => Boolean(profile.value?.pdpaConsentedAt));
+const isVerified = computed(() => profile.value?.kycStatus === "verified");
+
+// Let customers choose a file on the client; the handler/server blocks upload until PDPA is saved.
 const canUploadKycDocument = computed(
-  () => Boolean(user.value && hasPdpaConsent.value) && !uploading.value,
+  () => Boolean(user.value) && !uploading.value,
 );
+
+// Show upload zone:
+// - not verified yet, OR
+// - verified but user pressed Edit
+const showUploadZone = computed(
+  () => !isVerified.value || editingVerified.value,
+);
+
+// Both checkboxes must be ticked to allow saving consent + uploading
+const bothConsentsAccepted = computed(
+  () => termsAccepted.value && pdpaAccepted.value,
+);
+
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  );
+}
+
+async function resolveAuthenticatedUserId(): Promise<string | null> {
+  if (isUuid(user.value?.id)) return user.value.id;
+
+  const {
+    data: { user: authUser },
+    error,
+  } = await supabase.auth.getUser();
+  if (error) throw error;
+
+  return isUuid(authUser?.id) ? authUser.id : null;
+}
 
 // Sync PDPA checkbox with profile
 watch(
   () => profile.value,
   (p) => {
-    if (p?.pdpaConsentedAt) pdpaAccepted.value = true;
+    if (p?.pdpaConsentedAt) {
+      pdpaAccepted.value = true;
+      termsAccepted.value = true;
+    }
   },
   { immediate: true },
 );
@@ -164,19 +206,29 @@ async function handleIdCardUpload(file: File | File[] | null | undefined) {
   }
 }
 
+// ── Edit verified KYC ──
+function handleEditVerified() {
+  editingVerified.value = true;
+}
+
 // ── PDPA consent handler ──
 async function handlePdpaConsent() {
-  if (!user.value || !pdpaAccepted.value) return;
+  if (!bothConsentsAccepted.value) return;
 
   savingConsent.value = true;
   try {
+    const userId = await resolveAuthenticatedUserId();
+    if (!userId) {
+      throw new Error("Authentication required");
+    }
+
     const { error: dbErr } = await supabase
       .from("users")
       .update({
         pdpa_consented_at: new Date().toISOString(),
         pdpa_consent_url: "/terms/pdpa",
       })
-      .eq("id", user.value.id);
+      .eq("id", userId);
 
     if (dbErr) throw dbErr;
 
@@ -238,53 +290,111 @@ async function handlePdpaConsent() {
 
         <!-- ID Card Upload -->
         <div>
-          <p class="mb-2 text-sm font-medium">{{ t("user.uploadIdCard") }}</p>
-          <p class="mb-3 text-xs text-muted">
-            {{ t("user.kycFileTypes") }} · {{ t("user.maxFileSize") }}
-          </p>
+          <div class="mb-2 flex items-center justify-between gap-3">
+            <p class="text-sm font-medium">{{ t("user.uploadIdCard") }}</p>
+            <!-- Edit button when verified -->
+            <UButton
+              v-if="isVerified && !editingVerified"
+              icon="bx:edit"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              :label="t('user.edit')"
+              @click="handleEditVerified"
+            />
+          </div>
 
-          <!-- Already uploaded — show preview -->
-          <div v-if="profile?.idCardUrl" class="space-y-3">
-            <div class="flex items-center gap-3 rounded-lg border p-3">
-              <UIcon name="bx:id-card" class="text-2xl text-muted" />
-              <div class="flex-1 truncate text-sm">
-                {{ profile.idCardUrl.split("/").pop() }}
+          <!-- Verified state — show document preview + Edit warning -->
+          <div v-if="isVerified && !editingVerified" class="space-y-3">
+            <div v-if="profile?.idCardUrl" class="space-y-2">
+              <!-- Image preview if applicable -->
+              <div
+                v-if="/\.(jpe?g|png|webp)$/i.test(profile.idCardUrl)"
+                class="overflow-hidden rounded-lg border"
+              >
+                <img
+                  :src="profile.idCardUrl"
+                  alt="ID Card"
+                  class="max-h-48 w-full object-contain"
+                />
               </div>
-              <UBadge color="success" variant="subtle" label="Uploaded" />
+              <div class="flex items-center gap-3 rounded-lg border p-3">
+                <UIcon name="bx:id-card" class="text-2xl text-muted" />
+                <div class="flex-1 truncate text-sm">
+                  {{ profile.idCardUrl.split("/").pop() }}
+                </div>
+                <UBadge
+                  color="success"
+                  variant="subtle"
+                  :label="t('user.kycVerified')"
+                />
+              </div>
+            </div>
+            <p class="text-xs text-muted">
+              {{ t("user.kycVerifiedEditHint") }}
+            </p>
+          </div>
+
+          <!-- Edit warning when pressing Edit on verified -->
+          <UAlert
+            v-if="isVerified && editingVerified"
+            class="mb-3"
+            color="warning"
+            variant="soft"
+            icon="bx:error"
+            :title="t('user.kycEditWarningTitle')"
+            :description="t('user.kycEditWarningDesc')"
+          />
+
+          <!-- Upload zone — shown when not yet verified or user pressed Edit -->
+          <div v-if="showUploadZone" class="space-y-3">
+            <p class="text-xs text-muted">
+              {{ t("user.kycFileTypes") }} · {{ t("user.maxFileSize") }}
+            </p>
+            <p class="text-xs font-medium text-warning">
+              {{ t("user.kycIdCardPurposeNote") }}
+            </p>
+
+            <!-- Already uploaded — show re-upload -->
+            <div v-if="profile?.idCardUrl" class="space-y-3">
+              <div class="flex items-center gap-3 rounded-lg border p-3">
+                <UIcon name="bx:id-card" class="text-2xl text-muted" />
+                <div class="flex-1 truncate text-sm">
+                  {{ profile.idCardUrl.split("/").pop() }}
+                </div>
+                <UBadge color="neutral" variant="subtle" label="Uploaded" />
+              </div>
+              <UFileUpload
+                accept="image/jpeg,image/png,application/pdf"
+                :label="t('user.reupload')"
+                :description="t('user.kycFileTypes')"
+                icon="bx:upload"
+                variant="area"
+                size="sm"
+                :dropzone="true"
+                :interactive="true"
+                :preview="false"
+                :disabled="!canUploadKycDocument"
+                @update:model-value="handleIdCardUpload"
+              />
             </div>
 
-            <!-- Re-upload button (when rejected or wants to replace) -->
+            <!-- No file yet -->
             <UFileUpload
-              v-if="profile.kycStatus !== 'verified'"
+              v-if="!profile?.idCardUrl"
               accept="image/jpeg,image/png,application/pdf"
-              :label="t('user.reupload')"
+              :label="t('user.uploadIdCard')"
               :description="t('user.kycFileTypes')"
               icon="bx:upload"
               variant="area"
-              size="sm"
               :dropzone="true"
               :interactive="true"
               :preview="false"
               :disabled="!canUploadKycDocument"
+              class="min-h-40"
               @update:model-value="handleIdCardUpload"
             />
           </div>
-
-          <!-- No file yet — show full upload area -->
-          <UFileUpload
-            v-if="!profile?.idCardUrl"
-            accept="image/jpeg,image/png,application/pdf"
-            :label="t('user.uploadIdCard')"
-            :description="t('user.kycFileTypes')"
-            icon="bx:upload"
-            variant="area"
-            :dropzone="true"
-            :interactive="true"
-            :preview="false"
-            :disabled="!canUploadKycDocument"
-            class="min-h-40"
-            @update:model-value="handleIdCardUpload"
-          />
 
           <UAlert
             v-if="!hasPdpaConsent"
@@ -364,6 +474,12 @@ async function handlePdpaConsent() {
 
           <!-- Not yet consented -->
           <div v-else class="space-y-3">
+            <!-- Checkbox 1: Term of agreement -->
+            <UCheckbox
+              v-model="termsAccepted"
+              :label="t('user.kycTermsCheckbox')"
+            />
+            <!-- Checkbox 2: PDPA -->
             <UCheckbox
               v-model="pdpaAccepted"
               :label="t('user.kycConsentCheckboxDetailed')"
@@ -373,7 +489,7 @@ async function handlePdpaConsent() {
               :label="t('user.pdpaConsent')"
               icon="bx:check"
               color="primary"
-              :disabled="!pdpaAccepted || savingConsent || uploading"
+              :disabled="!bothConsentsAccepted || savingConsent || uploading"
               :loading="savingConsent"
               @click="handlePdpaConsent"
             />

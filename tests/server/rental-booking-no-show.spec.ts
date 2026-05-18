@@ -78,6 +78,7 @@ function client(db: {
   branch_document_settings?: Row[];
   users: Row[];
   payment_refunds: Row[];
+  _onDuplicateNoShowEvent?: () => void;
 }) {
   return {
     rpc: async (_name: string, params: Row) => ({
@@ -86,6 +87,7 @@ function client(db: {
     }),
     from(table: string) {
       const filters: Array<[string, unknown]> = [];
+      let selectColumns = "";
       let insertPayload: Row | null = null;
       let updatePayload: Row | null = null;
       let deleteMode = false;
@@ -93,7 +95,10 @@ function client(db: {
       const matching = () =>
         rows().filter((row) => filters.every(([k, v]) => row[k] === v));
       const chain: any = {
-        select: () => chain,
+        select: (columns = "") => {
+          selectColumns = String(columns);
+          return chain;
+        },
         eq: (key: string, value: unknown) => (
           filters.push([key, value]),
           chain
@@ -111,11 +116,24 @@ function client(db: {
           return chain;
         },
         maybeSingle: async () => {
+          if (
+            table === "users" &&
+            selectColumns
+              .split(",")
+              .map((column) => column.trim())
+              .includes("email")
+          ) {
+            return {
+              data: null,
+              error: { message: "column users.email does not exist" },
+            };
+          }
           if (insertPayload) {
             if (
               table === "rental_booking_no_show_events" &&
               rows().some((r) => r.booking_id === insertPayload?.booking_id)
             ) {
+              db._onDuplicateNoShowEvent?.();
               return {
                 data: null,
                 error: { code: "23505", message: "duplicate" },
@@ -193,6 +211,102 @@ function client(db: {
       };
       return chain;
     },
+  };
+}
+
+function noShowChainDb(
+  overrides: {
+    booking?: Row;
+    officialDocuments?: Row[];
+  } = {},
+) {
+  return {
+    rental_bookings: [
+      baseBooking({
+        status: "no_show",
+        no_show_source_event_id: "no-show-1",
+        ...overrides.booking,
+      }),
+    ],
+    rental_booking_no_show_events: [
+      {
+        id: "no-show-1",
+        booking_id: "booking-1",
+        admin_user_id: "staff-1",
+        marked_at: "2026-06-12T00:00:00.000Z",
+        pickup_date_snapshot: "2026-06-10",
+        deposit_outcome: "booking_deposit_forfeited_no_refund",
+        reason: "customer did not arrive",
+      },
+    ],
+    rental_booking_deposit_disposition_events: [
+      {
+        id: "disposition-1",
+        booking_id: "booking-1",
+        source_event_type: "no_show",
+        no_show_event_id: "no-show-1",
+        occurred_at: "2026-06-12T00:00:00.000Z",
+        disposition: "forfeited",
+        forfeited_amount: 200,
+        currency_code: "THB",
+        accepted_terms_version: "booking_deposit_terms_v1",
+        terms_accepted_at: "2026-06-01T00:00:00.000Z",
+        policy_version: "booking_deposit_forfeiture_no_show_v1",
+      },
+    ],
+    financial_recognition_events: [
+      {
+        id: "recognition-1",
+        recognition_type: "booking_deposit_forfeiture_income",
+        source_type: "rental_booking_deposit_disposition_event",
+        source_id: "disposition-1",
+        booking_id: "booking-1",
+        recognized_at: "2026-06-12T00:00:00.000Z",
+        recognized_amount: 200,
+        currency_code: "THB",
+        revenue_category: "contractual_penalty_damage_deposit_forfeiture",
+        tax_treatment: "non_vat_contractual_penalty",
+        vat_rate: 0,
+        vat_amount: 0,
+        wht_treatment: "not_subject_to_wht",
+        wht_rate: 0,
+        wht_amount: 0,
+        related_document_id: null,
+      },
+    ],
+    rental_booking_deposit_agreements: [] as Row[],
+    official_documents: overrides.officialDocuments ?? ([] as Row[]),
+    document_events: [] as Row[],
+    system_configs: [] as Row[],
+    branch_document_settings: [] as Row[],
+    users: [{ id: "user-1", full_name: "Customer One" }],
+    payment_refunds: [] as Row[],
+  };
+}
+
+function existingForfeitureReceipt(): Row {
+  return {
+    id: "receipt-existing",
+    document_type: FORFEITURE_RECEIPT_DOCUMENT_TYPE,
+    document_no: "BDFR-202606-0001",
+    status: "issued",
+    branch_id: "hub-1",
+    source_type: "financial_recognition_event",
+    source_id: "recognition-1",
+    issued_at: "2026-06-12T00:00:00.000Z",
+    subtotal: 200,
+    vat_amount: 0,
+    total_amount: 200,
+    currency_code: "THB",
+    template_key: `${FORFEITURE_RECEIPT_DOCUMENT_TYPE}_v1`,
+    template_version: 1,
+    snapshot: {},
+    idempotency_key:
+      "financial_recognition_event:recognition-1:booking_deposit_forfeiture_ordinary_receipt",
+    print_count: 0,
+    last_printed_at: null,
+    created_at: "2026-06-12T00:00:00.000Z",
+    updated_at: "2026-06-12T00:00:00.000Z",
   };
 }
 
@@ -295,6 +409,7 @@ describe("rental booking no-show lifecycle", () => {
       is_tax_invoice: false,
       tax_invoice_convertible: false,
     });
+    expect(receipt?.snapshot.customer).toMatchObject({ email: null });
     expect(notice).toMatchObject({
       source_type: "rental_booking_no_show_event",
       source_id: "rental_booking_no_show_events-1",
@@ -324,6 +439,7 @@ describe("rental booking no-show lifecycle", () => {
       agreement_acceptance_log_id: "acceptance-1",
       fallback_used: true,
     });
+    expect(notice?.snapshot.customer).toMatchObject({ email: null });
     expect(db.financial_recognition_events[0].related_document_id).toBe(
       receipt?.id,
     );
@@ -484,7 +600,114 @@ describe("rental booking no-show lifecycle", () => {
     },
   );
 
-  it("rejects already no_show booking idempotently", async () => {
+  it("self-heals missing documents when already no_show mark flow is re-entered", async () => {
+    const db = noShowChainDb();
+
+    const result = await markRentalBookingNoShow({
+      adminClient: client(db),
+      bookingId: "booking-1",
+      adminUserId: "staff-1",
+      now: new Date("2026-06-12T00:00:00.000Z"),
+    });
+
+    expect(result.status).toBe("no_show");
+    expect(db.rental_booking_no_show_events).toHaveLength(1);
+    expect(
+      db.official_documents.filter(
+        (doc) => doc.document_type === FORFEITURE_RECEIPT_DOCUMENT_TYPE,
+      ),
+    ).toHaveLength(1);
+    expect(
+      db.official_documents.filter(
+        (doc) => doc.document_type === NO_SHOW_FORFEITURE_NOTICE_DOCUMENT_TYPE,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("keeps already no_show mark re-entry document issuance idempotent", async () => {
+    const db = noShowChainDb();
+
+    await markRentalBookingNoShow({
+      adminClient: client(db),
+      bookingId: "booking-1",
+      adminUserId: "staff-1",
+      now: new Date("2026-06-12T00:00:00.000Z"),
+    });
+    await markRentalBookingNoShow({
+      adminClient: client(db),
+      bookingId: "booking-1",
+      adminUserId: "staff-1",
+      now: new Date("2026-06-12T00:00:00.000Z"),
+    });
+
+    expect(
+      db.official_documents.filter(
+        (doc) => doc.document_type === FORFEITURE_RECEIPT_DOCUMENT_TYPE,
+      ),
+    ).toHaveLength(1);
+    expect(
+      db.official_documents.filter(
+        (doc) => doc.document_type === NO_SHOW_FORFEITURE_NOTICE_DOCUMENT_TYPE,
+      ),
+    ).toHaveLength(1);
+    expect(db.document_events).toHaveLength(2);
+  });
+
+  it("issues only the missing no-show document on already no_show re-entry", async () => {
+    const existingReceipt = existingForfeitureReceipt();
+    const db = noShowChainDb({ officialDocuments: [existingReceipt] });
+
+    await markRentalBookingNoShow({
+      adminClient: client(db),
+      bookingId: "booking-1",
+      adminUserId: "staff-1",
+      now: new Date("2026-06-12T00:00:00.000Z"),
+    });
+
+    const receipts = db.official_documents.filter(
+      (doc) => doc.document_type === FORFEITURE_RECEIPT_DOCUMENT_TYPE,
+    );
+    const notices = db.official_documents.filter(
+      (doc) => doc.document_type === NO_SHOW_FORFEITURE_NOTICE_DOCUMENT_TYPE,
+    );
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0].id).toBe(existingReceipt.id);
+    expect(notices).toHaveLength(1);
+    expect(db.financial_recognition_events[0].related_document_id).toBe(
+      existingReceipt.id,
+    );
+  });
+
+  it("self-heals documents on no-show event retry conflict after booking is no_show", async () => {
+    const db = noShowChainDb({ booking: { status: "confirmed" } });
+    (
+      db as typeof db & { _onDuplicateNoShowEvent?: () => void }
+    )._onDuplicateNoShowEvent = () => {
+      db.rental_bookings[0].status = "no_show";
+    };
+
+    const result = await markRentalBookingNoShow({
+      adminClient: client(db),
+      bookingId: "booking-1",
+      adminUserId: "staff-1",
+      now: new Date("2026-06-12T00:00:00.000Z"),
+    });
+
+    expect(result.status).toBe("no_show");
+    expect(db.rental_booking_no_show_events).toHaveLength(1);
+    expect(
+      db.official_documents.filter(
+        (doc) => doc.document_type === FORFEITURE_RECEIPT_DOCUMENT_TYPE,
+      ),
+    ).toHaveLength(1);
+    expect(
+      db.official_documents.filter(
+        (doc) => doc.document_type === NO_SHOW_FORFEITURE_NOTICE_DOCUMENT_TYPE,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("rejects already no_show booking without a valid event chain", async () => {
     const db = {
       rental_bookings: [baseBooking({ status: "no_show" })],
       rental_booking_no_show_events: [] as Row[],
@@ -500,7 +723,8 @@ describe("rental booking no-show lifecycle", () => {
         adminUserId: "staff-1",
         now: new Date("2026-06-12T00:00:00.000Z"),
       }),
-    ).rejects.toMatchObject({ statusMessage: "BOOKING_ALREADY_NO_SHOW" });
+    ).rejects.toMatchObject({ statusMessage: "NO_SHOW_EVENT_NOT_FOUND" });
+    expect(db.rental_booking_no_show_events).toHaveLength(0);
   });
 
   it("keeps no_show out of generic status patch transitions", () => {
@@ -555,6 +779,16 @@ describe("rental booking no-show lifecycle", () => {
     expect(utility).not.toContain("tax_invoice_requests");
     expect(utility).not.toContain("advance_tax_invoice");
     expect(utility).not.toContain("abbreviated_tax_invoice");
+  });
+
+  it("does not query non-existent public users email for no-show documents", () => {
+    const utility = readFileSync(
+      resolve("server/utils/rental-booking-no-show-documents.ts"),
+      "utf8",
+    );
+    expect(utility).not.toContain("full_name, email");
+    expect(utility).not.toContain("email, phone");
+    expect(utility).toContain("id, full_name, phone");
   });
 
   it("admin detail page exposes only the dedicated no-show action for overdue confirmed bookings", () => {

@@ -240,7 +240,7 @@ async function loadChain(client: AnyClient, bookingId: string) {
     ? await maybeOne(
         client,
         "users",
-        "id, full_name, email, phone",
+        "id, full_name, phone",
         "id",
         booking.user_id,
       )
@@ -276,7 +276,7 @@ function commonSnapshots(chain: Awaited<ReturnType<typeof loadChain>>) {
       display_name: text(chain.user?.full_name) || text(booking.booker_name),
       booker_name: nullable(booking.booker_name),
       phone: nullable(booking.booker_phone) ?? nullable(chain.user?.phone),
-      email: nullable(chain.user?.email),
+      email: null,
     },
   };
 }

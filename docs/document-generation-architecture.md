@@ -10,6 +10,7 @@ Reality sync:
 - **PARTIAL:** browser A5 print + immutable snapshot pattern is implemented for operational rental forms only.
 - **PARKED:** POS History related-documents integration, document list/history UI, document settings UI, void/reissue UI, and server-side PDF archive.
 - **DESIGNED ONLY:** official receipt, abbreviated/full tax invoice, WHT automation, credit/debit notes, refund transactions, and daily closing reports.
+- **POS V3 reconciliation required:** the POS V3 master blueprint draft (`file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md`) changes target retail/rental document sequencing, including immediate retail abbreviated receipt/tax invoice and rental return-settlement tax-point questions. Treat this architecture as reusable foundation, not final POS V3 behavior, until those gates are approved.
 - Exact runtime behavior should be checked against `app/types/admin-documents.ts`, `server/utils/admin-documents.ts`, and `server/utils/admin-rental-operational-documents.ts` before extending this architecture.
 
 ## Goal

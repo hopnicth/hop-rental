@@ -413,13 +413,14 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(page).toContain("AdminPosV3FutureBookingDraftContainer");
   });
 
-  it("no Container 2, Same-Day backend, or pickup/payment implementation introduced", () => {
+  it("Container 1 does not include cash finalization logic, same-day backend, or pickup controls", () => {
     const source = read(CONTAINER_PATH);
     const page = read("app/pages/admin/pos-v3/index.vue");
+    // Container 1 source must never contain payment finalization or pickup logic
     expect(source).not.toContain("booking-deposit-payments");
-    expect(page).not.toContain("AdminPosV3CashDepositContainer");
-    expect(page).not.toContain("AdminPosV3SameDayContainer");
     expect(source).not.toContain("pickup-complete");
     expect(source).not.toContain("instant-rental");
+    // Page must never contain the same-day container (not yet implemented)
+    expect(page).not.toContain("AdminPosV3SameDayContainer");
   });
 });

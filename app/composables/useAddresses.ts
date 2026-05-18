@@ -23,7 +23,12 @@ function mapRow(row: Record<string, unknown>): Address {
     contactName: (row.contact_name as string) ?? null,
     contactPhone: (row.contact_phone as string) ?? null,
     isDefault: (row.is_default as boolean) ?? false,
-    fullAddress: row.full_address as string,
+    houseNo: (row.house_no as string) ?? null,
+    moo: (row.moo as string) ?? null,
+    roomNo: (row.room_no as string) ?? null,
+    building: (row.building as string) ?? null,
+    street: (row.street as string) ?? null,
+    fullAddress: (row.full_address as string) ?? "",
     subDistrict: (row.sub_district as string) ?? null,
     district: (row.district as string) ?? null,
     province: (row.province as string) ?? null,
@@ -47,6 +52,11 @@ function toDbFields(
   if (fields.contactName !== undefined) db.contact_name = fields.contactName;
   if (fields.contactPhone !== undefined) db.contact_phone = fields.contactPhone;
   if (fields.isDefault !== undefined) db.is_default = fields.isDefault;
+  if (fields.houseNo !== undefined) db.house_no = fields.houseNo;
+  if (fields.moo !== undefined) db.moo = fields.moo;
+  if (fields.roomNo !== undefined) db.room_no = fields.roomNo;
+  if (fields.building !== undefined) db.building = fields.building;
+  if (fields.street !== undefined) db.street = fields.street;
   if (fields.fullAddress !== undefined) db.full_address = fields.fullAddress;
   if (fields.subDistrict !== undefined) db.sub_district = fields.subDistrict;
   if (fields.district !== undefined) db.district = fields.district;

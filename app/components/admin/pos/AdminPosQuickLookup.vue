@@ -32,6 +32,7 @@ const emit = defineEmits<{
   "update:modelValue": [value: string];
   submit: [];
   scan: [];
+  openPickupReadiness: [bookingId: string];
 }>();
 
 const searchValue = computed({
@@ -62,7 +63,8 @@ function formatDateRange(startDate: string, endDate: string) {
         <div>
           <h2 class="text-lg font-semibold">Quick lookup</h2>
           <p class="text-sm text-muted">
-            Search with the existing customer lookup API. Good for booking QR, phone number, or customer detail triage.
+            Search with the existing customer lookup API. Good for booking QR,
+            phone number, or customer detail triage.
           </p>
         </div>
         <UBadge color="primary" variant="soft">{{ branchLabel }}</UBadge>
@@ -78,7 +80,12 @@ function formatDateRange(startDate: string, endDate: string) {
           placeholder="Search phone, booking no., customer name, company, tax ID"
           @keyup.enter="emit('submit')"
         />
-        <UButton :loading="loading" icon="bx:search" color="primary" @click="emit('submit')">
+        <UButton
+          :loading="loading"
+          icon="bx:search"
+          color="primary"
+          @click="emit('submit')"
+        >
           Search
         </UButton>
         <UButton icon="bx:barcode-reader" variant="soft" @click="emit('scan')">
@@ -87,24 +94,39 @@ function formatDateRange(startDate: string, endDate: string) {
       </div>
 
       <div class="grid gap-2 text-sm text-muted md:grid-cols-2">
-        <div class="rounded-xl border border-default p-3">Supports booking QR, phone lookup, and customer triage.</div>
-        <div class="rounded-xl border border-default p-3">Future company / tax-ID search will sit on top of this shell.</div>
+        <div class="rounded-xl border border-default p-3">
+          Supports booking QR, phone lookup, and customer triage.
+        </div>
+        <div class="rounded-xl border border-default p-3">
+          Future company / tax-ID search will sit on top of this shell.
+        </div>
       </div>
 
       <template v-if="result">
-        <div v-if="result.customer" class="rounded-2xl border border-default p-4">
+        <div
+          v-if="result.customer"
+          class="rounded-2xl border border-default p-4"
+        >
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="font-medium text-default">
                 {{ result.customer.fullName || "Unnamed customer" }}
               </p>
-              <p class="text-sm text-muted">{{ result.customer.phone || "No phone" }}</p>
+              <p class="text-sm text-muted">
+                {{ result.customer.phone || "No phone" }}
+              </p>
             </div>
             <div class="flex flex-wrap gap-2">
               <UBadge color="primary" variant="soft">
-                {{ result.customer.kind === 'account' ? 'Registered' : 'Walk-in' }}
+                {{
+                  result.customer.kind === "account" ? "Registered" : "Walk-in"
+                }}
               </UBadge>
-              <UBadge v-if="result.customer.kycStatus" color="info" variant="soft">
+              <UBadge
+                v-if="result.customer.kycStatus"
+                color="info"
+                variant="soft"
+              >
                 KYC: {{ result.customer.kycStatus }}
               </UBadge>
             </div>
@@ -127,21 +149,43 @@ function formatDateRange(startDate: string, endDate: string) {
             >
               <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p class="font-medium text-default">{{ bookingTitle(booking) }}</p>
+                  <p class="font-medium text-default">
+                    {{ bookingTitle(booking) }}
+                  </p>
                   <p class="text-sm text-muted">
                     {{ formatDateRange(booking.startDate, booking.endDate) }}
                   </p>
                 </div>
-                <UBadge :color="bookingStatusColor(booking.status)" variant="soft">
+                <UBadge
+                  :color="bookingStatusColor(booking.status)"
+                  variant="soft"
+                >
                   {{ booking.status }}
                 </UBadge>
               </div>
 
               <div class="mt-3 flex flex-wrap gap-2">
-                <UButton :to="`/admin/rental-bookings/${booking.id}`" size="sm" color="primary">
+                <UButton
+                  size="sm"
+                  color="primary"
+                  variant="solid"
+                  @click="emit('openPickupReadiness', booking.id)"
+                >
+                  Open pickup readiness
+                </UButton>
+                <UButton
+                  :to="`/admin/rental-bookings/${booking.id}`"
+                  size="sm"
+                  color="primary"
+                >
                   Open booking
                 </UButton>
-                <UButton to="/admin/pos" size="sm" variant="soft" color="primary">
+                <UButton
+                  to="/admin/pos"
+                  size="sm"
+                  variant="soft"
+                  color="primary"
+                >
                   Continue in legacy POS
                 </UButton>
               </div>

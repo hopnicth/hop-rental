@@ -40,13 +40,19 @@ function toStringArray(value: unknown): string[] {
 
 function toStringRecord(
   value: unknown,
-): Record<string, string | undefined> | undefined {
+): Record<string, string | string[] | undefined> | undefined {
   if (!isRecord(value)) return undefined;
 
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
       key,
-      typeof item === "string" ? item : undefined,
+      typeof item === "string"
+        ? item
+        : Array.isArray(item) && item.every((v) => typeof v === "string")
+          ? (item as string[])
+          : item != null
+            ? String(item)
+            : undefined,
     ]),
   );
 }

@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import QrcodeVue from "qrcode.vue";
+import OfficialDocumentHeader from "~/components/documents/OfficialDocumentHeader.vue";
 import type {
   AdminDocumentEventType,
   AdminOfficialDocumentDetail,
   AdminOperationalRentalDocumentSnapshot,
 } from "~/types/admin-documents";
+
+const NO_SHOW_RECEIPT_TITLE = "ใบรับเงินค่าริบเงินมัดจำจองกรณีไม่มารับสินค้า";
+const NO_SHOW_NOTICE_TITLE = "หนังสือแจ้งการริบเงินมัดจำจองกรณีไม่มารับสินค้า";
+const RECEIPT_NON_TAX_NOTE =
+  "เอกสารฉบับนี้เป็นใบรับเงินค่าริบเงินมัดจำจองกรณีไม่มารับสินค้า ไม่ใช่ใบกำกับภาษี ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม และไม่ใช่เอกสารหัก ณ ที่จ่าย";
+const RECEIPT_PAID_EARLIER_NOTE =
+  "เงินจำนวนนี้ได้รับชำระไว้แล้วในวันจอง และถูกริบตามเงื่อนไขการจอง ณ วันที่ระบุในเอกสารฉบับนี้";
+const NOTICE_NON_TAX_NOTE =
+  "เอกสารฉบับนี้เป็นหนังสือแจ้งการริบเงินมัดจำจองกรณีไม่มารับสินค้า ไม่ใช่ใบเสร็จรับเงิน และไม่ใช่ใบกำกับภาษี";
 
 definePageMeta({
   layout: false,
@@ -36,6 +46,9 @@ const depositDisposition = computed(
 const noShow = computed(() => snapshot.value?.no_show ?? {});
 const terms = computed(() => snapshot.value?.terms ?? {});
 const tax = computed(() => snapshot.value?.tax ?? {});
+const documentHeader = computed<Record<string, unknown>>(
+  () => snapshot.value?.header ?? {},
+);
 const isReprint = computed(() => (documentRow.value?.printCount ?? 0) > 0);
 const isNoShowForfeitureReceipt = computed(
   () =>
@@ -52,10 +65,10 @@ const isNoShowForfeitureDocument = computed(
 );
 const title = computed(() => {
   if (isNoShowForfeitureReceipt.value) {
-    return "Booking Deposit Forfeiture Ordinary Receipt";
+    return NO_SHOW_RECEIPT_TITLE;
   }
   if (isNoShowForfeitureNotice.value) {
-    return "No-show Forfeiture Notice";
+    return NO_SHOW_NOTICE_TITLE;
   }
   if (snapshot.value?.document.document_type === "rental_return_form") {
     return "Rental Return Form";
@@ -103,6 +116,48 @@ function pick(source: Record<string, unknown>, ...keys: string[]) {
   return null;
 }
 
+function clean(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function formatOptionalCurrency(value: unknown, currency = "THB") {
+  if (value === undefined || value === null || value === "") return "—";
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "—";
+  return formatCurrency(amount, currency);
+}
+
+function thaiDepositOutcome(value: unknown): string {
+  const code = clean(value);
+  if (code === "booking_deposit_forfeited_no_refund") {
+    return "ริบเงินมัดจำจอง และไม่มีเงินคืน";
+  }
+  if (code === "forfeited") return "ริบเงินมัดจำแล้ว";
+  return code || "ริบเงินมัดจำแล้ว";
+}
+
+function thaiTaxTreatment(value: unknown): string {
+  const code = clean(value);
+  if (code === "non_vat_contractual_penalty") {
+    return "ค่าปรับ/ค่าเสียหายตามเงื่อนไขการจอง ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม";
+  }
+  return code || "ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม";
+}
+
+function thaiWhtTreatment(value: unknown): string {
+  const code = clean(value);
+  if (code === "not_subject_to_wht") return "ไม่ใช่เอกสารหัก ณ ที่จ่าย";
+  return code || "ไม่ใช่เอกสารหัก ณ ที่จ่าย";
+}
+
+function thaiRecognitionType(value: unknown): string {
+  const code = clean(value);
+  if (code === "booking_deposit_forfeiture_income") {
+    return "รายได้ค่าปรับ/ค่าเสียหายจากการริบเงินมัดจำจอง";
+  }
+  return code || "รายได้ค่าปรับ/ค่าเสียหายจากการริบเงินมัดจำจอง";
+}
+
 const noShowCurrency = computed(() =>
   String(
     pick(financialRecognition.value, "currency_code", "currencyCode") ||
@@ -116,7 +171,13 @@ const forfeitedAmount = computed(
     pick(financialRecognition.value, "recognized_amount", "recognizedAmount") ??
     pick(depositDisposition.value, "forfeited_amount", "forfeitedAmount") ??
     documentRow.value?.totalAmount ??
-    0,
+    null,
+);
+const noShowReason = computed(
+  () =>
+    clean(pick(noShow.value, "reason")) ||
+    clean(pick(depositDisposition.value, "reason")) ||
+    "ลูกค้าไม่มารับสินค้าตามวันและเวลาที่นัดหมาย",
 );
 const termsReference = computed(
   () =>
@@ -409,50 +470,35 @@ onMounted(() => void load());
       v-else-if="snapshot && isNoShowForfeitureDocument"
       class="sheet no-show-sheet"
     >
-      <header class="form-header">
-        <div class="brand-block">
-          <div class="logo-fallback">H</div>
-          <div>
-            <p class="company-name">
-              {{ snapshot.header?.displayName || "HOPNIC" }}
-            </p>
-            <p class="muted">
-              {{
-                isNoShowForfeitureReceipt
-                  ? "Non-tax ordinary receipt"
-                  : "Contractual / operational notice"
-              }}
-            </p>
-          </div>
-        </div>
-        <div class="doc-meta">
-          <h1>{{ title }}</h1>
-          <p>Document: {{ snapshot.document.document_number }}</p>
-          <p>Issued: {{ formatDateTime(snapshot.document.issued_at) }}</p>
-          <p>Booking: {{ booking.reference || booking.id || "—" }}</p>
-        </div>
-      </header>
+      <OfficialDocumentHeader
+        :header="documentHeader"
+        :title="title"
+        :document-number="snapshot.document.document_number"
+        :issued-at-text="formatDateTime(snapshot.document.issued_at)"
+        :booking-reference="booking.reference || booking.id || '—'"
+        show-booking-reference
+      />
 
       <section class="two-col compact-section">
         <div>
-          <h2>Customer</h2>
+          <h2>ข้อมูลลูกค้า</h2>
           <dl>
-            <dt>Name</dt>
+            <dt>ชื่อลูกค้า</dt>
             <dd>{{ customer.display_name || customer.booker_name || "—" }}</dd>
-            <dt>Phone</dt>
+            <dt>เบอร์โทรศัพท์</dt>
             <dd>{{ customer.phone || "—" }}</dd>
-            <dt>Email</dt>
+            <dt>อีเมล</dt>
             <dd>{{ customer.email || "—" }}</dd>
           </dl>
         </div>
         <div>
-          <h2>Booking</h2>
+          <h2>รายละเอียดการจอง</h2>
           <dl>
-            <dt>Reference</dt>
+            <dt>เลขที่การจอง</dt>
             <dd>{{ booking.reference || booking.id || "—" }}</dd>
-            <dt>Item</dt>
+            <dt>รายการเช่า</dt>
             <dd>{{ booking.item_name || "—" }}</dd>
-            <dt>Pickup date</dt>
+            <dt>วันที่นัดรับสินค้า</dt>
             <dd>
               {{
                 formatDate(
@@ -460,68 +506,93 @@ onMounted(() => void load());
                 )
               }}
             </dd>
-            <dt>Branch</dt>
+            <dt>สาขา/จุดรับสินค้า</dt>
             <dd>{{ booking.hub_name || booking.hub_id || "—" }}</dd>
           </dl>
         </div>
       </section>
 
       <section v-if="isNoShowForfeitureReceipt" class="compact-section">
-        <h2>Ordinary Receipt Details</h2>
+        <h2>รายละเอียดใบรับเงินค่าริบเงินมัดจำจอง</h2>
         <dl>
-          <dt>Forfeited amount</dt>
-          <dd>{{ formatCurrency(forfeitedAmount, noShowCurrency) }}</dd>
-          <dt>Recognized at</dt>
+          <dt>จำนวนเงินมัดจำจองที่ถูกริบ</dt>
+          <dd>{{ formatOptionalCurrency(forfeitedAmount, noShowCurrency) }}</dd>
+          <dt>วันที่บันทึกไม่มารับสินค้า</dt>
+          <dd>{{ formatDateTime(noShow.marked_at) }}</dd>
+          <dt>วันที่รับรู้การริบเงินมัดจำ</dt>
           <dd>{{ formatDateTime(financialRecognition.recognized_at) }}</dd>
-          <dt>Tax status</dt>
-          <dd>Not a tax invoice · VAT 0 · Not subject to WHT</dd>
-          <dt>Tax treatment</dt>
+          <dt>เหตุผล</dt>
+          <dd>{{ noShowReason }}</dd>
+          <dt>ลักษณะรายการ</dt>
+          <dd>
+            {{ thaiRecognitionType(financialRecognition.recognition_type) }}
+          </dd>
+          <dt>สถานะภาษี</dt>
           <dd>
             {{
-              tax.tax_treatment ||
-              financialRecognition.tax_treatment ||
-              "non_vat_contractual_penalty"
+              thaiTaxTreatment(
+                tax.tax_treatment || financialRecognition.tax_treatment,
+              )
             }}
           </dd>
-          <dt>WHT treatment</dt>
+          <dt>การหัก ณ ที่จ่าย</dt>
           <dd>
             {{
-              tax.wht_treatment ||
-              financialRecognition.wht_treatment ||
-              "not_subject_to_wht"
+              thaiWhtTreatment(
+                tax.wht_treatment || financialRecognition.wht_treatment,
+              )
             }}
           </dd>
+          <dt>เงื่อนไขอ้างอิง</dt>
+          <dd>{{ termsReference }}</dd>
         </dl>
+        <p class="muted mt-2">{{ RECEIPT_NON_TAX_NOTE }}</p>
+        <p class="muted mt-2">{{ RECEIPT_PAID_EARLIER_NOTE }}</p>
       </section>
 
       <section v-else class="compact-section">
-        <h2>No-show Notice Details</h2>
+        <h2>รายละเอียดหนังสือแจ้งการริบเงินมัดจำจอง</h2>
         <dl>
-          <dt>No-show marked</dt>
-          <dd>{{ formatDateTime(noShow.marked_at) }}</dd>
-          <dt>Deposit outcome</dt>
+          <dt>วันที่นัดรับสินค้า</dt>
           <dd>
             {{
-              noShow.deposit_outcome ||
-              depositDisposition.disposition ||
-              "forfeited"
+              formatDate(
+                noShow.pickup_date_snapshot || booking.scheduled_pickup_date,
+              )
             }}
           </dd>
-          <dt>Forfeited amount</dt>
-          <dd>{{ formatCurrency(forfeitedAmount, noShowCurrency) }}</dd>
-          <dt>Terms reference</dt>
+          <dt>วันที่บันทึกไม่มารับสินค้า</dt>
+          <dd>{{ formatDateTime(noShow.marked_at) }}</dd>
+          <dt>จำนวนเงินมัดจำจองที่ถูกริบ</dt>
+          <dd>{{ formatOptionalCurrency(forfeitedAmount, noShowCurrency) }}</dd>
+          <dt>ยอดเงินคืน</dt>
+          <dd>{{ formatCurrency(0, noShowCurrency) }}</dd>
+          <dt>ผลการดำเนินการ</dt>
+          <dd>
+            {{
+              thaiDepositOutcome(
+                noShow.deposit_outcome || depositDisposition.disposition,
+              )
+            }}
+          </dd>
+          <dt>เหตุผล</dt>
+          <dd>{{ noShowReason }}</dd>
+          <dt>เงื่อนไขอ้างอิง</dt>
           <dd>{{ termsReference }}</dd>
         </dl>
+        <p class="muted mt-2">{{ NOTICE_NON_TAX_NOTE }}</p>
         <p class="muted mt-2">
-          This document is a no-show forfeiture notice only. It is not a receipt
-          and not a tax invoice.
+          ลูกค้าไม่มารับสินค้าตามวันที่นัดหมาย
+          รายการจองจึงถูกบันทึกเป็นไม่มารับสินค้า และ HOPNIC
+          ริบเงินมัดจำจองตามเงื่อนไขการจอง โดยไม่มีเงินคืน
         </p>
       </section>
 
       <footer class="disclaimer">
         <p>{{ snapshot.disclaimer?.th }}</p>
-        <p>{{ snapshot.disclaimer?.en }}</p>
-        <p class="muted">Print count: {{ documentRow?.printCount ?? 0 }}</p>
+        <p class="muted">
+          จำนวนครั้งที่พิมพ์: {{ documentRow?.printCount ?? 0 }}
+        </p>
       </footer>
     </article>
   </main>
@@ -596,15 +667,21 @@ body {
   display: flex;
   gap: 4mm;
 }
+.logo,
+.logo-fallback {
+  height: 12mm;
+  width: 12mm;
+}
+.logo {
+  object-fit: contain;
+}
 .logo-fallback {
   align-items: center;
   border: 0.25mm solid #111827;
   display: flex;
   font-size: 12pt;
   font-weight: 700;
-  height: 12mm;
   justify-content: center;
-  width: 12mm;
 }
 .company-name {
   font-size: 12pt;

@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import QrcodeVue from "qrcode.vue";
+import OfficialDocumentHeader from "~/components/documents/OfficialDocumentHeader.vue";
 import type { AdminOfficialDocumentDetail } from "~/types/admin-documents";
+
+const NO_SHOW_RECEIPT_TITLE = "ใบรับเงินค่าริบเงินมัดจำจองกรณีไม่มารับสินค้า";
+const NO_SHOW_NOTICE_TITLE = "หนังสือแจ้งการริบเงินมัดจำจองกรณีไม่มารับสินค้า";
+const RECEIPT_NON_TAX_NOTE =
+  "เอกสารฉบับนี้เป็นใบรับเงินค่าริบเงินมัดจำจองกรณีไม่มารับสินค้า ไม่ใช่ใบกำกับภาษี ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม และไม่ใช่เอกสารหัก ณ ที่จ่าย";
+const RECEIPT_PAID_EARLIER_NOTE =
+  "เงินจำนวนนี้ได้รับชำระไว้แล้วในวันจอง และถูกริบตามเงื่อนไขการจอง ณ วันที่ระบุในเอกสารฉบับนี้";
+const NOTICE_NON_TAX_NOTE =
+  "เอกสารฉบับนี้เป็นหนังสือแจ้งการริบเงินมัดจำจองกรณีไม่มารับสินค้า ไม่ใช่ใบเสร็จรับเงิน และไม่ใช่ใบกำกับภาษี";
 
 definePageMeta({ layout: false });
 
@@ -26,6 +36,9 @@ const depositDisposition = computed(
 const noShow = computed(() => snapshot.value.no_show ?? {});
 const terms = computed(() => snapshot.value.terms ?? {});
 const tax = computed(() => snapshot.value.tax ?? {});
+const documentHeader = computed<Record<string, unknown>>(
+  () => snapshot.value.header ?? {},
+);
 const isCancellationDoc = computed(
   () => doc.value.document_type === "rental_booking_cancellation_confirmation",
 );
@@ -50,6 +63,9 @@ function pick(source: Record<string, unknown>, ...keys: string[]) {
     if (value !== undefined && value !== null && value !== "") return value;
   }
   return null;
+}
+function clean(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 const bookingReference = computed(
   () =>
@@ -163,7 +179,7 @@ const forfeitedAmount = computed(
     pick(financialRecognition.value, "recognized_amount", "recognizedAmount") ??
     pick(depositDisposition.value, "forfeited_amount", "forfeitedAmount") ??
     documentRow.value?.totalAmount ??
-    0,
+    null,
 );
 const noShowPickupDate = computed(
   () => pick(noShow.value, "pickup_date_snapshot") || bookingStartDate.value,
@@ -176,23 +192,21 @@ const termsReference = computed(
     pick(terms.value, "booking_deposit_agreement_id") ||
     "—",
 );
+const noShowReason = computed(
+  () =>
+    clean(pick(noShow.value, "reason")) ||
+    clean(pick(depositDisposition.value, "reason")) ||
+    "ลูกค้าไม่มารับสินค้าตามวันและเวลาที่นัดหมาย",
+);
 const operationalDisclaimer =
   "เอกสารนี้เป็นเอกสารยืนยันรายการเพื่อการบริการเท่านั้น ไม่ใช่ใบเสร็จรับเงิน และไม่ใช่ใบกำกับภาษี";
-const hopnicHeader = {
-  companyNameTh: "บริษัท ฮอปนิค จำกัด",
-  companyNameEn: "HOPNIC Co., Ltd.",
-  branch: "สำนักงานใหญ่",
-  addressTh: "888/8 ม.1 ต.พนมสารคาม อ.พนมสารคาม จ.ฉะเชิงเทรา 24120",
-  phone: "095-479-2333",
-  email: "info@hopnic.co.th",
-};
 const footerDisclaimer = computed(() => {
   const disclaimer = (snapshot.value.disclaimer ?? {}) as Record<
     string,
     unknown
   >;
   if (isNoShowForfeitureDocument.value) {
-    return [disclaimer.th, disclaimer.en].filter(Boolean).join(" / ");
+    return clean(disclaimer.th);
   }
   return operationalDisclaimer;
 });
@@ -209,9 +223,9 @@ function title(type: string) {
   if (type === "rental_booking_deposit_refund_confirmation")
     return "ใบยืนยันการคืนเงินมัดจำจอง";
   if (type === "booking_deposit_forfeiture_ordinary_receipt")
-    return "ใบรับเงินธรรมดา — Booking Deposit ที่ถูกริบ";
+    return NO_SHOW_RECEIPT_TITLE;
   if (type === "rental_booking_no_show_forfeiture_notice")
-    return "หนังสือแจ้งการไม่มารับสินค้าและการดำเนินการ Booking Deposit";
+    return NO_SHOW_NOTICE_TITLE;
   return "ใบยืนยันการจองเช่า";
 }
 function moneyText(value: unknown, currency = "THB") {
@@ -243,6 +257,38 @@ function dateTime(value: unknown) {
         timeZone: "Asia/Bangkok",
       }).format(new Date(String(value)))
     : "—";
+}
+function optionalMoneyText(value: unknown, currency = "THB") {
+  if (value === undefined || value === null || value === "") return "—";
+  const amount = Number(value);
+  return Number.isFinite(amount) ? moneyText(amount, currency) : "—";
+}
+function thaiDepositOutcome(value: unknown): string {
+  const code = clean(value);
+  if (code === "booking_deposit_forfeited_no_refund") {
+    return "ริบเงินมัดจำจอง และไม่มีเงินคืน";
+  }
+  if (code === "forfeited") return "ริบเงินมัดจำแล้ว";
+  return code || "ริบเงินมัดจำแล้ว";
+}
+function thaiTaxTreatment(value: unknown): string {
+  const code = clean(value);
+  if (code === "non_vat_contractual_penalty") {
+    return "ค่าปรับ/ค่าเสียหายตามเงื่อนไขการจอง ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม";
+  }
+  return code || "ไม่อยู่ในฐานภาษีมูลค่าเพิ่ม";
+}
+function thaiWhtTreatment(value: unknown): string {
+  const code = clean(value);
+  if (code === "not_subject_to_wht") return "ไม่ใช่เอกสารหัก ณ ที่จ่าย";
+  return code || "ไม่ใช่เอกสารหัก ณ ที่จ่าย";
+}
+function thaiRecognitionType(value: unknown): string {
+  const code = clean(value);
+  if (code === "booking_deposit_forfeiture_income") {
+    return "รายได้ค่าปรับ/ค่าเสียหายจากการริบเงินมัดจำจอง";
+  }
+  return code || "รายได้ค่าปรับ/ค่าเสียหายจากการริบเงินมัดจำจอง";
 }
 function eligibilityText(value: unknown) {
   return value === true
@@ -295,22 +341,12 @@ onMounted(() => void load());
       {{ error }}
     </section>
     <article v-else-if="documentRow" class="sheet">
-      <header class="header">
-        <div>
-          <p class="brand">{{ hopnicHeader.companyNameTh }}</p>
-          <p class="brand-en">{{ hopnicHeader.companyNameEn }}</p>
-          <p class="muted">{{ hopnicHeader.branch }}</p>
-          <p class="muted">{{ hopnicHeader.addressTh }}</p>
-          <p class="muted">
-            โทร {{ hopnicHeader.phone }} · {{ hopnicHeader.email }}
-          </p>
-        </div>
-        <div class="right">
-          <h1>{{ title(doc.document_type) }}</h1>
-          <p>เลขที่เอกสาร: {{ doc.document_number }}</p>
-          <p>วันที่ออกเอกสาร: {{ date(doc.issued_at) }}</p>
-        </div>
-      </header>
+      <OfficialDocumentHeader
+        :header="documentHeader"
+        :title="title(doc.document_type)"
+        :document-number="doc.document_number"
+        :issued-at-text="date(doc.issued_at)"
+      />
       <section class="box">
         <h2>ข้อมูลการจองเช่า</h2>
         <dl>
@@ -327,60 +363,77 @@ onMounted(() => void load());
         </dl>
       </section>
       <section v-if="isNoShowForfeitureReceipt" class="box">
-        <h2>รายละเอียดใบรับเงินธรรมดา Booking Deposit ที่ถูกริบ</h2>
+        <h2>รายละเอียดใบรับเงินค่าริบเงินมัดจำจอง</h2>
         <dl>
-          <dt>จำนวนเงินที่รับรู้ / ถูกริบ</dt>
-          <dd>{{ moneyText(forfeitedAmount, noShowCurrency) }}</dd>
-          <dt>วันที่รับรู้รายการ</dt>
+          <dt>จำนวนเงินมัดจำจองที่ถูกริบ</dt>
+          <dd>{{ optionalMoneyText(forfeitedAmount, noShowCurrency) }}</dd>
+          <dt>วันที่บันทึกไม่มารับสินค้า</dt>
+          <dd>{{ dateTime(noShowMarkedAt) }}</dd>
+          <dt>วันที่รับรู้การริบเงินมัดจำ</dt>
           <dd>{{ dateTime(financialRecognition.recognized_at) }}</dd>
+          <dt>เหตุผล</dt>
+          <dd>{{ noShowReason }}</dd>
+          <dt>ลักษณะรายการ</dt>
+          <dd>
+            {{ thaiRecognitionType(financialRecognition.recognition_type) }}
+          </dd>
           <dt>สถานะภาษี</dt>
-          <dd>ไม่ใช่ใบกำกับภาษี · VAT 0 · ไม่อยู่ในบังคับหัก ณ ที่จ่าย</dd>
-          <dt>Tax treatment</dt>
           <dd>
             {{
-              tax.tax_treatment ||
-              financialRecognition.tax_treatment ||
-              "non_vat_contractual_penalty"
+              thaiTaxTreatment(
+                tax.tax_treatment || financialRecognition.tax_treatment,
+              )
             }}
           </dd>
-          <dt>WHT treatment</dt>
+          <dt>การหัก ณ ที่จ่าย</dt>
           <dd>
             {{
-              tax.wht_treatment ||
-              financialRecognition.wht_treatment ||
-              "not_subject_to_wht"
+              thaiWhtTreatment(
+                tax.wht_treatment || financialRecognition.wht_treatment,
+              )
             }}
           </dd>
+          <dt>เงื่อนไขอ้างอิง</dt>
+          <dd>{{ termsReference }}</dd>
         </dl>
         <p class="muted mt">
-          ใบรับเงินธรรมดานี้ออกสำหรับ Booking Deposit ที่ถูกริบจากเหตุ No-show
-          เท่านั้น ไม่ใช่ใบกำกับภาษี และไม่มีปุ่มหรือสิทธิ์แปลงเป็นใบกำกับภาษี
+          {{ RECEIPT_NON_TAX_NOTE }}
+        </p>
+        <p class="muted mt">
+          {{ RECEIPT_PAID_EARLIER_NOTE }}
         </p>
       </section>
       <section v-else-if="isNoShowForfeitureNotice" class="box">
-        <h2>รายละเอียดหนังสือแจ้ง No-show</h2>
+        <h2>รายละเอียดหนังสือแจ้งการริบเงินมัดจำจอง</h2>
         <dl>
           <dt>วันที่นัดรับสินค้า</dt>
           <dd>{{ date(noShowPickupDate) }}</dd>
-          <dt>วันที่บันทึก No-show</dt>
+          <dt>วันที่บันทึกไม่มารับสินค้า</dt>
           <dd>{{ dateTime(noShowMarkedAt) }}</dd>
-          <dt>จำนวน Booking Deposit ที่ถูกริบ</dt>
-          <dd>{{ moneyText(forfeitedAmount, noShowCurrency) }}</dd>
+          <dt>จำนวนเงินมัดจำจองที่ถูกริบ</dt>
+          <dd>{{ optionalMoneyText(forfeitedAmount, noShowCurrency) }}</dd>
+          <dt>ยอดเงินคืน</dt>
+          <dd>{{ moneyText(0, noShowCurrency) }}</dd>
           <dt>ผลการดำเนินการ</dt>
           <dd>
             {{
-              depositDisposition.disposition ||
-              noShow.deposit_outcome ||
-              "forfeited"
+              thaiDepositOutcome(
+                noShow.deposit_outcome || depositDisposition.disposition,
+              )
             }}
           </dd>
+          <dt>เหตุผล</dt>
+          <dd>{{ noShowReason }}</dd>
           <dt>อ้างอิงเงื่อนไข</dt>
           <dd>{{ termsReference }}</dd>
         </dl>
         <p class="muted mt">
-          เอกสารนี้เป็นหนังสือแจ้งการไม่มารับสินค้าตามกำหนดและการดำเนินการกับ
-          Booking Deposit ตามเงื่อนไขที่เกี่ยวข้อง ไม่ใช่ใบเสร็จรับเงิน
-          และไม่ใช่ใบกำกับภาษี
+          {{ NOTICE_NON_TAX_NOTE }}
+        </p>
+        <p class="muted mt">
+          ลูกค้าไม่มารับสินค้าตามวันที่นัดหมาย
+          รายการจองจึงถูกบันทึกเป็นไม่มารับสินค้า และ HOPNIC
+          ริบเงินมัดจำจองตามเงื่อนไขการจอง โดยไม่มีเงินคืน
         </p>
       </section>
       <section v-else-if="!isCancellationDoc && !isRefundDoc" class="box">
@@ -554,6 +607,16 @@ body {
   justify-content: space-between;
   gap: 24px;
   padding-bottom: 12px;
+}
+.brand-block {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+.logo {
+  height: 18mm;
+  object-fit: contain;
+  width: 18mm;
 }
 .brand {
   font-size: 18pt;

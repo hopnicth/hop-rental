@@ -243,6 +243,15 @@ describe("mixed checkout finalization", () => {
     });
     expect(c.calls).toEqual(["f_apply_order_inventory"]);
     expect(confirmRentalBooking).toHaveBeenCalledTimes(1);
+    expect(confirmRentalBooking).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requireBookingDepositPaid: true,
+        requireBookingDepositHeldBalanceEvent: {
+          sourceType: "mixed_payment_allocation",
+          sourceId: "al-book",
+        },
+      }),
+    );
     expect(
       db.mixed_payment_allocations.every((a) => a.status === "finalized"),
     ).toBe(true);
@@ -419,6 +428,42 @@ describe("mixed checkout finalization", () => {
       result: { ...paid, raw: { id: "ch1", amount: 130000, currency: "thb" } },
     });
     expect(db.rental_held_balance_events).toHaveLength(0);
+    expect(
+      db.mixed_payment_allocations.find((a) => a.id === "al-book")?.status,
+    ).toBe("paid_confirm_failed");
+    expect(db.mixed_checkout_sessions[0].status).toBe("partial_finalized");
+    expect(
+      db.payment_alerts.some((a) => a.kind === "mixed_booking_confirm_failed"),
+    ).toBe(true);
+  });
+
+  it("held-balance event conflict blocks booking confirmation safely", async () => {
+    const db = seed({
+      rental_held_balance_events: [
+        {
+          id: "event-1",
+          rental_booking_id: "b1",
+          event_type: "booking_deposit_collection",
+          amount: 300,
+          currency_code: "THB",
+          status: "posted",
+          source_type: "mixed_payment_allocation",
+          source_id: "al-book",
+        },
+      ],
+    });
+    const c = client(db);
+    await applyMixedCheckoutGatewayResult({
+      client: c,
+      session: db.mixed_checkout_sessions[0],
+      attempt: db.mixed_payment_attempts[0],
+      result: paid,
+    });
+    expect(confirmRentalBooking).not.toHaveBeenCalled();
+    expect(db.rental_held_balance_events).toHaveLength(1);
+    expect(db.rental_bookings[0].booking_deposit_payment_status).toBe(
+      "paid_confirm_failed",
+    );
     expect(
       db.mixed_payment_allocations.find((a) => a.id === "al-book")?.status,
     ).toBe("paid_confirm_failed");

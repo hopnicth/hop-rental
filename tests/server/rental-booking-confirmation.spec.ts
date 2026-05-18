@@ -30,12 +30,18 @@ function booking(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockClient() {
+function mockClient(
+  input: { heldBalanceEvents?: Record<string, unknown>[] } = {},
+) {
   return {
     from(table: string) {
+      const filters: Array<[string, unknown]> = [];
       const chain = {
         select: () => chain,
-        eq: () => chain,
+        eq: (key: string, value: unknown) => (
+          filters.push([key, value]),
+          chain
+        ),
         maybeSingle: async () => {
           if (table === "store_branches") {
             return { data: { id: "hub-1", is_active: true }, error: null };
@@ -59,6 +65,12 @@ function mockClient() {
               },
               error: null,
             };
+          }
+          if (table === "rental_held_balance_events") {
+            const row = (input.heldBalanceEvents ?? []).find((event) =>
+              filters.every(([key, value]) => event[key] === value),
+            );
+            return { data: row ?? null, error: null };
           }
           return { data: null, error: null };
         },
@@ -99,6 +111,90 @@ describe("rental booking confirmation Booking Deposit guard", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("rejects paid compatibility fields without held-balance event in strict canonical path", async () => {
+    await expect(
+      validateRentalBookingForConfirmation({
+        adminClient: mockClient() as never,
+        booking: booking({
+          booking_deposit_payment_status: "paid",
+          booking_deposit_paid_amount: 200,
+        }),
+        userId: "user-1",
+        requireBookingDepositPaid: true,
+        requireBookingDepositHeldBalanceEvent: {
+          sourceType: "rental_booking_payment_attempt",
+          sourceId: "attempt-1",
+        },
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: "BOOKING_DEPOSIT_HELD_BALANCE_EVENT_REQUIRED",
+    });
+  });
+
+  it("allows strict canonical confirmation with matching posted held-balance event", async () => {
+    await expect(
+      validateRentalBookingForConfirmation({
+        adminClient: mockClient({
+          heldBalanceEvents: [
+            {
+              rental_booking_id: "booking-1",
+              event_type: "booking_deposit_collection",
+              amount: 200,
+              currency_code: "THB",
+              status: "posted",
+              source_type: "rental_booking_payment_attempt",
+              source_id: "attempt-1",
+            },
+          ],
+        }) as never,
+        booking: booking({
+          booking_deposit_payment_status: "paid",
+          booking_deposit_paid_amount: 200,
+        }),
+        userId: "user-1",
+        requireBookingDepositPaid: true,
+        requireBookingDepositHeldBalanceEvent: {
+          sourceType: "rental_booking_payment_attempt",
+          sourceId: "attempt-1",
+        },
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it("rejects strict canonical confirmation when held-balance event mismatches", async () => {
+    await expect(
+      validateRentalBookingForConfirmation({
+        adminClient: mockClient({
+          heldBalanceEvents: [
+            {
+              rental_booking_id: "booking-1",
+              event_type: "booking_deposit_collection",
+              amount: 300,
+              currency_code: "THB",
+              status: "posted",
+              source_type: "rental_booking_payment_attempt",
+              source_id: "attempt-1",
+            },
+          ],
+        }) as never,
+        booking: booking({
+          booking_deposit_payment_status: "paid",
+          booking_deposit_paid_amount: 200,
+        }),
+        userId: "user-1",
+        requireBookingDepositPaid: true,
+        requireBookingDepositHeldBalanceEvent: {
+          sourceType: "rental_booking_payment_attempt",
+          sourceId: "attempt-1",
+        },
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "BOOKING_DEPOSIT_HELD_BALANCE_EVENT_MISMATCH",
+    });
+  });
+
   it("preserves admin/POS/internal bypass when explicitly requested", async () => {
     await expect(
       validateRentalBookingForConfirmation({
@@ -106,9 +202,31 @@ describe("rental booking confirmation Booking Deposit guard", () => {
         booking: booking(),
         userId: "user-1",
         requireBookingDepositPaid: true,
+        requireBookingDepositHeldBalanceEvent: {
+          sourceType: "rental_booking_payment_attempt",
+          sourceId: "attempt-1",
+        },
         bypassBookingDepositRequirement: true,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("keeps current zero Booking Deposit due limitation for paid-required path", async () => {
+    await expect(
+      validateRentalBookingForConfirmation({
+        adminClient: mockClient() as never,
+        booking: booking({
+          deposit_amount: 0,
+          booking_deposit_payment_status: "paid",
+          booking_deposit_paid_amount: 0,
+        }),
+        userId: "user-1",
+        requireBookingDepositPaid: true,
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 402,
+      statusMessage: "BOOKING_DEPOSIT_PAYMENT_REQUIRED",
+    });
   });
 
   it("keeps existing internal default confirmation behavior valid", async () => {

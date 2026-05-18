@@ -4,6 +4,7 @@ import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import QrcodeVue from "qrcode.vue";
 
 type BadgeColor = "neutral" | "info" | "warning" | "success" | "error";
+type PickupSortDirection = "asc" | "desc";
 
 const { t, locale } = useI18n();
 const route = useRoute();
@@ -15,6 +16,7 @@ const {
   bookingTotalRental,
   loading,
 } = useBooking();
+const pickupSortDirection = ref<PickupSortDirection>("asc");
 
 watchEffect(() => {
   if (import.meta.client && !isLoggedIn.value) {
@@ -22,14 +24,19 @@ watchEffect(() => {
   }
 });
 
+const pickupSortButtonLabel = computed(() =>
+  t(
+    pickupSortDirection.value === "asc"
+      ? "rentalsPage.sortPickupEarliest"
+      : "rentalsPage.sortPickupLatest",
+  ),
+);
+
 const sortedBookings = computed(() =>
   bookingItems.value
     .filter((b) => b.status !== "cancelled")
     .slice()
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    ),
+    .sort(compareBookingsByPickupDate),
 );
 
 const submittedBookingCount = computed(() => {
@@ -54,6 +61,84 @@ function formatDate(value: string): string {
     dateStyle: "medium",
     timeStyle: "short",
   });
+}
+
+function togglePickupSort() {
+  pickupSortDirection.value =
+    pickupSortDirection.value === "asc" ? "desc" : "asc";
+}
+
+function bookingDateOnly(value?: string): string {
+  const date = String(value ?? "").slice(0, 10);
+  return /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date) ? date : "";
+}
+
+function pickupDisplayDate(value?: string): Date | null {
+  const date = bookingDateOnly(value);
+  return date ? new Date(`${date}T00:00:00+07:00`) : null;
+}
+
+function pickupSortTime(booking: BookingItem): number | null {
+  const date = pickupDisplayDate(booking.startDate);
+  const time = date?.getTime() ?? Number.NaN;
+  return Number.isFinite(time) ? time : null;
+}
+
+function createdAtSortTime(booking: BookingItem): number {
+  const time = new Date(booking.createdAt).getTime();
+  return Number.isFinite(time) ? time : 0;
+}
+
+function compareBookingsByPickupDate(a: BookingItem, b: BookingItem): number {
+  const aTime = pickupSortTime(a);
+  const bTime = pickupSortTime(b);
+  if (aTime === null && bTime !== null) return 1;
+  if (aTime !== null && bTime === null) return -1;
+  if (aTime !== null && bTime !== null && aTime !== bTime) {
+    const direction = pickupSortDirection.value === "asc" ? 1 : -1;
+    return (aTime - bTime) * direction;
+  }
+  return createdAtSortTime(b) - createdAtSortTime(a);
+}
+
+function formatPickupDatePart(
+  booking: BookingItem,
+  options: Intl.DateTimeFormatOptions,
+): string {
+  const date = pickupDisplayDate(booking.startDate);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat(String(locale.value), {
+    ...options,
+    timeZone: "Asia/Bangkok",
+  }).format(date);
+}
+
+function pickupDayNumber(booking: BookingItem): string {
+  return formatPickupDatePart(booking, { day: "2-digit" });
+}
+
+function pickupMonthLabel(booking: BookingItem): string {
+  return formatPickupDatePart(booking, { month: "short" });
+}
+
+function pickupWeekdayLabel(booking: BookingItem): string {
+  return formatPickupDatePart(booking, { weekday: "short" });
+}
+
+function isPickupTomorrow(booking: BookingItem): boolean {
+  return bookingDateOnly(booking.startDate) === addDays(bangkokLocalDate(), 1);
+}
+
+function pickupCardClass(booking: BookingItem): string {
+  return isPickupTomorrow(booking)
+    ? "border-2 border-error/80 ring-2 ring-error/25"
+    : "";
+}
+
+function pickupDayClass(booking: BookingItem): string {
+  return isPickupTomorrow(booking)
+    ? "border-error/70 bg-error/10 text-error"
+    : "border-primary/20 bg-primary/5 text-primary";
 }
 
 function statusLabel(status: BookingStatus): string {
@@ -216,6 +301,21 @@ watch(
       >
     </div>
 
+    <div
+      v-if="sortedBookings.length > 0"
+      class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p class="text-sm text-muted">{{ t("rentalsPage.sortByPickup") }}</p>
+      <UButton
+        :label="pickupSortButtonLabel"
+        icon="bx:sort"
+        variant="soft"
+        color="primary"
+        size="sm"
+        @click="togglePickupSort"
+      />
+    </div>
+
     <div v-if="loading && sortedBookings.length === 0" class="space-y-4">
       <div
         v-for="i in 3"
@@ -235,64 +335,97 @@ watch(
     </UCard>
 
     <div v-else class="space-y-4">
-      <UCard v-for="booking in sortedBookings" :key="booking.bookingId">
+      <UCard
+        v-for="booking in sortedBookings"
+        :key="booking.bookingId"
+        :class="pickupCardClass(booking)"
+      >
         <div
-          class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
+          class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between"
         >
-          <div class="space-y-2">
-            <div>
-              <p class="font-semibold">{{ bookingTitle(booking) }}</p>
-              <p class="text-xs text-muted">
-                {{ t("rentalsPage.reference", { id: booking.bookingId }) }}
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
+            <div
+              :class="[
+                'w-full shrink-0 rounded-2xl border p-3 text-center sm:w-24',
+                pickupDayClass(booking),
+              ]"
+            >
+              <p class="text-[11px] font-semibold uppercase tracking-wide">
+                {{ t("rentalsPage.pickupDayEyebrow") }}
+              </p>
+              <p class="mt-1 text-4xl font-black leading-none">
+                {{ pickupDayNumber(booking) }}
+              </p>
+              <p class="mt-1 text-sm font-semibold">
+                {{ pickupMonthLabel(booking) }}
+              </p>
+              <p class="text-xs opacity-75">
+                {{ pickupWeekdayLabel(booking) }}
               </p>
             </div>
-            <div class="flex flex-wrap gap-2">
-              <UBadge :color="statusColor(booking.status)" variant="subtle">{{
-                t("rentalsPage.badges.status", {
-                  status: statusLabel(booking.status),
-                })
-              }}</UBadge>
-            </div>
-            <div class="space-y-1 text-sm text-muted">
-              <p>
-                <span class="font-medium text-default"
-                  >{{ t("rentalsPage.createdAt") }}:</span
+
+            <div class="space-y-2">
+              <div>
+                <p class="font-semibold">{{ bookingTitle(booking) }}</p>
+                <p class="text-xs text-muted">
+                  {{ t("rentalsPage.reference", { id: booking.bookingId }) }}
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <UBadge :color="statusColor(booking.status)" variant="subtle">{{
+                  t("rentalsPage.badges.status", {
+                    status: statusLabel(booking.status),
+                  })
+                }}</UBadge>
+                <UBadge
+                  v-if="isPickupTomorrow(booking)"
+                  color="error"
+                  variant="solid"
                 >
-                {{ formatDate(booking.createdAt) }}
-              </p>
-              <p>
-                <span class="font-medium text-default"
-                  >{{ t("rentalsPage.rentalPeriod") }}:</span
-                >
-                {{ rentalPeriodLabel(booking) }}
-              </p>
-              <p>
-                <span class="font-medium text-default"
-                  >{{ t("rentalsPage.pickupHub") }}:</span
-                >
-                {{ booking.hubName || t("rentalsPage.noHub") }}
-              </p>
-              <p v-if="booking.bookerName">
-                <span class="font-medium text-default"
-                  >{{ t("rentalsPage.bookerName") }}:</span
-                >
-                {{ booking.bookerName }}
-              </p>
-              <p v-if="booking.bookerPhone">
-                <span class="font-medium text-default"
-                  >{{ t("rentalsPage.bookerPhone") }}:</span
-                >
-                <a
-                  :href="`tel:${booking.bookerPhone}`"
-                  class="text-primary hover:underline"
-                >
-                  {{ booking.bookerPhone }}
-                </a>
-              </p>
+                  {{ t("rentalsPage.pickupTomorrowBadge") }}
+                </UBadge>
+              </div>
+              <div class="space-y-1 text-sm text-muted">
+                <p>
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.createdAt") }}:</span
+                  >
+                  {{ formatDate(booking.createdAt) }}
+                </p>
+                <p>
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.rentalPeriod") }}:</span
+                  >
+                  {{ rentalPeriodLabel(booking) }}
+                </p>
+                <p>
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.pickupHub") }}:</span
+                  >
+                  {{ booking.hubName || t("rentalsPage.noHub") }}
+                </p>
+                <p v-if="booking.bookerName">
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.bookerName") }}:</span
+                  >
+                  {{ booking.bookerName }}
+                </p>
+                <p v-if="booking.bookerPhone">
+                  <span class="font-medium text-default"
+                    >{{ t("rentalsPage.bookerPhone") }}:</span
+                  >
+                  <a
+                    :href="`tel:${booking.bookerPhone}`"
+                    class="text-primary hover:underline"
+                  >
+                    {{ booking.bookerPhone }}
+                  </a>
+                </p>
+              </div>
             </div>
           </div>
 
-          <div class="flex flex-col gap-3 text-left sm:items-end sm:text-right">
+          <div class="flex flex-col gap-3 text-left md:items-end md:text-right">
             <div>
               <p class="text-sm text-muted">
                 {{ t("rentalsPage.rentalTotal") }}

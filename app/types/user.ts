@@ -49,8 +49,12 @@ export type CustomerTaxProfileReviewStatus =
 export interface UserProfile {
   /** UUID — same as auth.users.id */
   id: string;
-  /** Display name */
+  /** Display name (legacy / computed) */
   fullName: string | null;
+  /** Given name */
+  firstName: string | null;
+  /** Family name */
+  lastName: string | null;
   /** Phone number */
   phone: string | null;
   /** Avatar image URL (from Google OAuth or uploaded) */
@@ -259,7 +263,17 @@ export interface Address {
   contactPhone: string | null;
   /** Whether this is the default address for the owner */
   isDefault: boolean;
-  /** Full address text */
+  /** House / unit number (เลขที่) */
+  houseNo: string | null;
+  /** Village / moo number (หมู่) */
+  moo: string | null;
+  /** Room number (ห้อง) */
+  roomNo: string | null;
+  /** Building name (อาคาร) */
+  building: string | null;
+  /** Street / road name (ถนน) */
+  street: string | null;
+  /** Full address text (legacy free-text; kept for backward compat) */
   fullAddress: string;
   /** Sub-district (ตำบล/แขวง) */
   subDistrict: string | null;

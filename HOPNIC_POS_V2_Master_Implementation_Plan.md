@@ -4,6 +4,8 @@
 
 > **Reality sync status — 2026-05-15:** This file is the canonical POS V2 control plan and is staged for Git tracking. Code reality: POS V2 Phase 1 shell is code-present; POS-track Rental Money Summary / Settlement Preview remains separate **NEXT** work; Pickup V2, Return & Settlement V2, POS V2 fulfillment, POS fiscal documents, ABB → Full replacement, POS void/return/refund controls, WHT evidence capture, and shared accounting source tagging are approved Core POS V2 scope but are not code-complete. Daily reports, cashier shift closing, full accounting export, bank reconciliation automation, WHT statutory automation, deep B2B billing/credit workflow, and restriction unblocking remain **future/parked unless explicitly approved**. Section 1.4 excessive-cancellation rule is **locked design** and is not yet implemented in schema/code. Customer rental booking detail/documents/cancellation/manual-refund/admin-refund-queue design is locked in `docs/customer-rental-booking-cancellation-refund-design.md` for future Phase C.1.
 
+> **POS V3 note — 2026-05-17:** Future POS V3 work is governed by `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md` as a **draft reconciliation blueprint**. Keep this POS V2 plan for legacy/V2 context and reusable foundations only; do not use it to expand POS V3 money, pickup/return, WHT, document, checkout, or register/shift scope until the POS V3 blueprint gates are reconciled and approved.
+
 ---
 
 ## 0. Core Principle
@@ -19,6 +21,7 @@ The approved strategy is:
 - Do not break current working operations.
 - Do not duplicate backend systems that already exist.
 - Treat this document as approved scope only for **Core POS V2**. Future candidate items require separate owner approval before coding.
+- Treat POS V3 as a separate direction. POS V3 Phase 1 is already a small operational-entry shell at `/admin/pos-v3`; deeper POS V3 implementation must follow the POS V3 master blueprint draft after approval.
 
 ### 0.1 Default Build Philosophy
 
