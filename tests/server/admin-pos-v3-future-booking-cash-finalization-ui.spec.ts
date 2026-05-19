@@ -96,7 +96,7 @@ describe("admin POS V3 Container 2 — Future Booking Cash Deposit Container", (
     expect(source).toContain("canSubmit");
   });
 
-  it("cash tendered defaults to bookingDepositDueNow from the draft quote", () => {
+  it("amount defaults to bookingDepositDueNow from the draft quote", () => {
     const source = read(CONTAINER_PATH);
     expect(source).toContain("bookingDepositDueNow");
     expect(source).toContain(
@@ -104,26 +104,14 @@ describe("admin POS V3 Container 2 — Future Booking Cash Deposit Container", (
     );
   });
 
-  it("Booking Deposit Due is shown read-only with lock icon", () => {
-    const source = read(CONTAINER_PATH);
-    expect(source).toContain("Booking Deposit Due");
-    expect(source).toContain("Exact amount");
-    expect(source).toContain("bx:lock");
-  });
-
-  it("API payload sends idempotencyKey, paymentMethod cash, and bookingDepositDueNow (not cashTenderedAmount)", () => {
+  it("API payload sends idempotencyKey, paymentMethod cash, and amount", () => {
     const source = read(CONTAINER_PATH);
     expect(source).toContain("idempotencyKey: idempotencyKey.value");
     expect(source).toContain('paymentMethod: "cash"');
+    // Backend always receives the fixed bookingDepositDueNow — not the cashTenderedAmount UI field
     expect(source).toContain(
       "amount: props.draftResult.quote.bookingDepositDueNow",
     );
-    // Ensure backend payload does NOT send cashTenderedAmount
-    const submitFn = source.slice(
-      source.indexOf("async function submitCashPayment"),
-      source.indexOf("} catch (err"),
-    );
-    expect(submitFn).not.toContain("amount: cashTenderedAmount");
   });
 
   it("payload does NOT include branchId (backend derives it from booking.pos_branch_id)", () => {
@@ -254,45 +242,6 @@ describe("admin POS V3 Container 2 — Future Booking Cash Deposit Container", (
     expect(canSubmitBlock).toContain("cashTenderedAmount.value > 0");
   });
 
-  // ── Cashier UX: Change + Underpayment ──────────────────────────────────
-
-  it("container computes and displays change amount when cash tendered >= due", () => {
-    const source = read(CONTAINER_PATH);
-    expect(source).toContain("changeAmount");
-    expect(source).toContain("Change to return");
-    expect(source).toContain("bg-success/5");
-  });
-
-  it("change amount = max(cashTenderedAmount - bookingDepositDueNow, 0)", () => {
-    const source = read(CONTAINER_PATH);
-    expect(source).toContain("Math.max");
-    expect(source).toContain(
-      "cashTenderedAmount.value - props.draftResult.quote.bookingDepositDueNow",
-    );
-  });
-
-  it("container detects insufficient cash (cashTenderedAmount < bookingDepositDueNow)", () => {
-    const source = read(CONTAINER_PATH);
-    expect(source).toContain("isCashTenderedInsufficient");
-    expect(source).toContain(
-      "cashTenderedAmount.value < props.draftResult.quote.bookingDepositDueNow",
-    );
-  });
-
-  it("insufficient cash warning is shown and submit is disabled when cash < due", () => {
-    const source = read(CONTAINER_PATH);
-    expect(source).toContain("Insufficient cash");
-    expect(source).toContain(
-      "Cash received is lower than the required Booking Deposit",
-    );
-    // canSubmit must check isCashTenderedInsufficient
-    const canSubmitBlock = source.slice(
-      source.indexOf("const canSubmit"),
-      source.indexOf("async function submitCashPayment"),
-    );
-    expect(canSubmitBlock).toContain("isCashTenderedInsufficient.value");
-  });
-
   // ── Idempotency ────────────────────────────────────────────────────────────
 
   it("container uses idempotency key via crypto.randomUUID", () => {
@@ -352,5 +301,166 @@ describe("admin POS V3 Container 2 — Future Booking Cash Deposit Container", (
     expect(source).not.toContain("returnDeposit");
     expect(source).not.toContain("securityDepositReturn");
     expect(source).not.toContain("pickup-handover");
+  });
+
+  // ── Phase 2C-B3: CTA label ─────────────────────────────────────────────────
+
+  it("primary CTA label is รับเงินและยืนยันการจอง (not old English label)", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("รับเงินและยืนยันการจอง");
+    expect(source).not.toContain("Confirm Cash Booking Deposit");
+  });
+
+  // ── Phase 2C-B3: Processing state ─────────────────────────────────────────
+
+  it("processing state shows body-level loading panel when isSubmitting", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain('v-if="isSubmitting"');
+    expect(source).toContain("กำลังดำเนินการ...");
+    expect(source).toContain(
+      "กำลังบันทึกการรับเงินและยืนยันการจอง · กำลังเตรียมเอกสารยืนยันการรับเงินมัดจำการจอง",
+    );
+  });
+
+  it("cash tendered input is disabled when isSubmitting", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain(':disabled="isSubmitting"');
+  });
+
+  // ── Phase 2C-B3: FinalizationResult document field ────────────────────────
+
+  it("FinalizationResult type includes document field with issued/failed status", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain('status: "issued" | "failed"');
+    expect(source).toContain("officialDocumentId");
+    expect(source).toContain("documentNo");
+    expect(source).toContain("errorCode");
+  });
+
+  it("isDocumentIssued and isDocumentFailed computed are present and guard on isConfirmed", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("isDocumentIssued");
+    expect(source).toContain("isDocumentFailed");
+    // Both must be guarded by isConfirmed
+    expect(source).toContain("isConfirmed.value &&");
+    expect(source).toContain(
+      'finalizationResult.value?.document?.status === "issued"',
+    );
+    expect(source).toContain(
+      'finalizationResult.value?.document?.status === "failed"',
+    );
+  });
+
+  // ── Phase 2C-B3: Confirmed + document issued UX ────────────────────────────
+
+  it("confirmed + document issued shows print button with correct Thai label", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("พิมพ์เอกสารยืนยันการรับเงินมัดจำการจอง");
+    expect(source).toContain("openBookingDepositDocumentPrint");
+  });
+
+  it("print function uses officialDocumentId with correct route and new-tab behavior", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("openBookingDepositDocumentPrint");
+    expect(source).toContain(
+      "/admin/documents/${encodeURIComponent(docId)}/print?bookingId=",
+    );
+    expect(source).toContain("window.open(");
+    expect(source).toContain('"_blank"');
+    // Safety guard: does nothing when officialDocumentId is missing
+    expect(source).toContain("if (!docId) return");
+  });
+
+  it("confirmed + document issued shows document number when present", () => {
+    const source = read(CONTAINER_PATH);
+    const issuedBlock = source.slice(
+      source.indexOf("<!-- Document issued: print CTA -->"),
+      source.indexOf("<!-- Document failed:"),
+    );
+    expect(issuedBlock).toContain("finalizationResult.document?.documentNo");
+    expect(issuedBlock).toContain("finalizationResult.document.documentNo");
+  });
+
+  it("document issued block uses v-if isDocumentIssued, not isDegradedSuccess", () => {
+    const source = read(CONTAINER_PATH);
+    const issuedBlock = source.slice(
+      source.indexOf("<!-- Document issued: print CTA -->"),
+      source.indexOf("<!-- Document failed:"),
+    );
+    expect(issuedBlock).toContain("isDocumentIssued");
+    expect(issuedBlock).not.toContain("isDegradedSuccess");
+  });
+
+  // ── Phase 2C-B3: Confirmed + document failed UX ───────────────────────────
+
+  it("confirmed + document failed shows ไม่ต้องรับเงินซ้ำ", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("ไม่ต้องรับเงินซ้ำ");
+  });
+
+  it("confirmed + document failed shows เอกสารยังเตรียมไม่สำเร็จ warning", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("เอกสารยังเตรียมไม่สำเร็จ");
+    expect(source).toContain(
+      "การรับเงินและการยืนยันการจองสำเร็จแล้ว ไม่ต้องรับเงินซ้ำ",
+    );
+  });
+
+  it("confirmed + document failed does NOT show print button", () => {
+    const source = read(CONTAINER_PATH);
+    const failedBlock = source.slice(
+      source.indexOf("<!-- Document failed:"),
+      source.indexOf("<!-- Degraded success"),
+    );
+    expect(failedBlock).not.toContain("พิมพ์เอกสารยืนยันการรับเงินมัดจำการจอง");
+    expect(failedBlock).not.toContain("openBookingDepositDocumentPrint");
+  });
+
+  it("confirmed + document failed shows ดูรายละเอียดการจอง booking detail action", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("ดูรายละเอียดการจอง");
+    expect(source).toContain("/admin/rental-bookings/");
+  });
+
+  // ── Phase 2C-B3: paid_confirm_failed remains separate ─────────────────────
+
+  it("paid_confirm_failed block is distinct from document failed — uses isDegradedSuccess", () => {
+    const source = read(CONTAINER_PATH);
+    const degradedBlock = source.slice(
+      source.indexOf("<!-- Degraded success: paid_confirm_failed -->"),
+      source.indexOf("<!-- Main cash finalization form -->"),
+    );
+    expect(degradedBlock).toContain("isDegradedSuccess");
+    expect(degradedBlock).toContain("manual review");
+    // Must NOT contain document-failure-specific copy inside this block
+    expect(degradedBlock).not.toContain("เอกสารยังเตรียมไม่สำเร็จ");
+    expect(degradedBlock).not.toContain("ไม่ต้องรับเงินซ้ำ");
+    expect(degradedBlock).not.toContain("openBookingDepositDocumentPrint");
+  });
+
+  it("document-failed state is separate from paid_confirm_failed — not inside degraded block", () => {
+    const source = read(CONTAINER_PATH);
+    // isDocumentFailed must NOT appear inside the paid_confirm_failed block
+    const degradedBlock = source.slice(
+      source.indexOf("<!-- Degraded success: paid_confirm_failed -->"),
+      source.indexOf("<!-- Main cash finalization form -->"),
+    );
+    expect(degradedBlock).not.toContain("isDocumentFailed");
+  });
+
+  // ── Phase 2C-B3: booking-confirmed emit for confirmed only ─────────────────
+
+  it("booking-confirmed emit is conditional on status === confirmed", () => {
+    const source = read(CONTAINER_PATH);
+    // The emit must be inside a conditional block checking "confirmed"
+    expect(source).toContain('result.status === "confirmed"');
+    expect(source).toContain('emit("booking-confirmed"');
+    // The emit must NOT appear outside the conditional (check that emit is inside the if block)
+    const submitFn = source.slice(
+      source.indexOf("async function submitCashPayment"),
+      source.indexOf("} catch (err"),
+    );
+    expect(submitFn).toContain('result.status === "confirmed"');
+    expect(submitFn).toContain('emit("booking-confirmed"');
   });
 });

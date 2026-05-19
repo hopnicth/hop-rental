@@ -50,6 +50,16 @@ interface FinalizationResult {
   };
   warnings?: string[];
   idempotent?: boolean;
+  /** Best-effort document issuance result — only present when status === "confirmed" */
+  document?: {
+    status: "issued" | "failed";
+    taskId?: string | null;
+    officialDocumentId?: string | null;
+    documentNo?: string | null;
+    alreadyIssued?: boolean;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+  };
 }
 
 const props = defineProps<{ draftResult: DraftBookingResult }>();
@@ -85,6 +95,17 @@ const isConfirmed = computed(
 );
 const isDegradedSuccess = computed(
   () => finalizationResult.value?.status === "paid_confirm_failed",
+);
+// Document sub-states — only meaningful when isConfirmed is true
+const isDocumentIssued = computed(
+  () =>
+    isConfirmed.value &&
+    finalizationResult.value?.document?.status === "issued",
+);
+const isDocumentFailed = computed(
+  () =>
+    isConfirmed.value &&
+    finalizationResult.value?.document?.status === "failed",
 );
 
 // Normalize paid amount/currency across both response shapes:
@@ -146,7 +167,10 @@ async function submitCashPayment() {
       },
     );
     finalizationResult.value = result;
-    emit("booking-confirmed", result);
+    // Emit only for confirmed booking — not for paid_confirm_failed
+    if (result.status === "confirmed") {
+      emit("booking-confirmed", result);
+    }
   } catch (err: unknown) {
     const msg =
       err instanceof Error ? err.message : "Payment finalization failed";
@@ -163,6 +187,18 @@ function fmt(value: number, currency = "THB") {
     currency,
     maximumFractionDigits: 0,
   }).format(Number(value ?? 0));
+}
+
+/** Open the BDC print route in a new tab using the issued officialDocumentId. */
+function openBookingDepositDocumentPrint() {
+  const docId = finalizationResult.value?.document?.officialDocumentId;
+  const bookingId =
+    finalizationResult.value?.booking?.id || props.draftResult.booking.id;
+  if (!docId) return;
+  window.open(
+    `/admin/documents/${encodeURIComponent(docId)}/print?bookingId=${encodeURIComponent(bookingId)}`,
+    "_blank",
+  );
 }
 </script>
 
@@ -224,6 +260,59 @@ function fmt(value: number, currency = "THB") {
           </p>
         </div>
       </div>
+
+      <!-- Document issued: print CTA -->
+      <div v-if="isDocumentIssued" class="space-y-3 pt-1">
+        <div class="flex flex-wrap items-center gap-2">
+          <UBadge color="success" variant="soft" icon="bx:file">
+            เอกสารยืนยันพร้อมพิมพ์
+          </UBadge>
+          <span
+            v-if="finalizationResult.document?.documentNo"
+            class="font-mono text-xs text-muted"
+          >
+            {{ finalizationResult.document.documentNo }}
+          </span>
+        </div>
+        <UButton
+          icon="bx:printer"
+          color="primary"
+          variant="soft"
+          @click="openBookingDepositDocumentPrint"
+        >
+          พิมพ์เอกสารยืนยันการรับเงินมัดจำการจอง
+        </UButton>
+      </div>
+
+      <!-- Document failed: confirmed but document not ready — must NOT show print CTA -->
+      <div v-else-if="isDocumentFailed" class="space-y-3 pt-1">
+        <UAlert
+          color="success"
+          variant="soft"
+          title="การจองสำเร็จแล้ว · รับเงินมัดจำแล้ว"
+          description="ไม่ต้องรับเงินซ้ำ"
+        />
+        <UAlert
+          color="warning"
+          variant="soft"
+          title="เอกสารยังเตรียมไม่สำเร็จ"
+          description="การรับเงินและการยืนยันการจองสำเร็จแล้ว ไม่ต้องรับเงินซ้ำ กรุณาติดตามการออกเอกสารภายหลังตามขั้นตอนของระบบ"
+        />
+        <p
+          v-if="finalizationResult.document?.errorCode"
+          class="font-mono text-xs text-muted"
+        >
+          Error: {{ finalizationResult.document.errorCode }}
+        </p>
+        <UButton
+          icon="bx:detail"
+          color="neutral"
+          variant="soft"
+          :to="`/admin/rental-bookings/${encodeURIComponent(finalizationResult.booking?.id || draftResult.booking.id)}`"
+        >
+          ดูรายละเอียดการจอง
+        </UButton>
+      </div>
     </div>
 
     <!-- Degraded success: paid_confirm_failed -->
@@ -261,6 +350,16 @@ function fmt(value: number, currency = "THB") {
 
     <!-- Main cash finalization form -->
     <div v-else class="space-y-5">
+      <!-- Processing state: body-level loading panel shown while API call is in flight -->
+      <UAlert
+        v-if="isSubmitting"
+        color="info"
+        variant="soft"
+        icon="bx:loader-circle"
+        title="กำลังดำเนินการ..."
+        description="กำลังบันทึกการรับเงินและยืนยันการจอง · กำลังเตรียมเอกสารยืนยันการรับเงินมัดจำการจอง"
+      />
+
       <!-- E2: Draft Booking Summary (read-only staff review) -->
       <div class="space-y-2">
         <p class="text-xs font-semibold uppercase tracking-wide text-muted">
@@ -418,6 +517,7 @@ function fmt(value: number, currency = "THB") {
                 type="number"
                 :min="0"
                 :step="1"
+                :disabled="isSubmitting"
                 icon="bx:wallet"
                 placeholder="Enter cash amount"
               />
@@ -464,7 +564,7 @@ function fmt(value: number, currency = "THB") {
         :disabled="!canSubmit"
         @click="submitCashPayment"
       >
-        Confirm Cash Booking Deposit
+        รับเงินและยืนยันการจอง
       </UButton>
     </div>
   </UCard>
