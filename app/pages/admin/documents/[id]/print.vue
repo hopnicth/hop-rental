@@ -63,7 +63,15 @@ const isNoShowForfeitureNotice = computed(
 const isNoShowForfeitureDocument = computed(
   () => isNoShowForfeitureReceipt.value || isNoShowForfeitureNotice.value,
 );
+const isBdcDocument = computed(
+  () =>
+    snapshot.value?.document?.template_key ===
+    "rental_booking_deposit_confirmation_v1",
+);
 const title = computed(() => {
+  if (isBdcDocument.value) {
+    return "เอกสารยืนยันการรับเงินมัดจำการจอง";
+  }
   if (isNoShowForfeitureReceipt.value) {
     return NO_SHOW_RECEIPT_TITLE;
   }
@@ -272,6 +280,78 @@ onMounted(() => void load());
       <p>{{ error }}</p>
       <button class="print-button" @click="load">Retry</button>
     </section>
+
+    <!-- BDC: เอกสารยืนยันการรับเงินมัดจำการจอง -->
+    <article v-else-if="snapshot && isBdcDocument" class="sheet">
+      <OfficialDocumentHeader
+        :header="documentHeader"
+        :title="title"
+        :document-number="snapshot.document.document_number"
+        :issued-at-text="formatDateTime(snapshot.document.issued_at)"
+        :booking-reference="booking.reference || booking.id || '—'"
+        show-booking-reference
+      />
+
+      <section class="compact-section">
+        <p>
+          เอกสารนี้ยืนยันว่าได้รับเงินมัดจำการจองเรียบร้อยแล้ว
+          เงินมัดจำดังกล่าวจะถูกนำมาหักกับยอดชำระเมื่อคืนสินค้า
+        </p>
+      </section>
+
+      <section class="two-col compact-section">
+        <div>
+          <h2>ข้อมูลเงินมัดจำ</h2>
+          <dl>
+            <dt>จำนวนเงินมัดจำ</dt>
+            <dd>
+              {{
+                formatOptionalCurrency(
+                  snapshot.held_balance_event?.amount,
+                  snapshot.held_balance_event?.currency_code || "THB",
+                )
+              }}
+            </dd>
+            <dt>วิธีชำระ</dt>
+            <dd>{{ snapshot.held_balance_event?.payment_method || "—" }}</dd>
+            <dt>วันที่รับเงิน</dt>
+            <dd>
+              {{ formatDateTime(snapshot.held_balance_event?.occurred_at) }}
+            </dd>
+          </dl>
+        </div>
+        <div>
+          <h2>ข้อมูลการจอง</h2>
+          <dl>
+            <dt>เลขที่การจอง</dt>
+            <dd>{{ booking.reference || booking.id || "—" }}</dd>
+            <dt>วันที่เริ่มเช่า</dt>
+            <dd>{{ formatDate(booking.start_date) }}</dd>
+            <dt>วันที่สิ้นสุด</dt>
+            <dd>{{ formatDate(booking.end_date) }}</dd>
+            <dt>จำนวนวัน</dt>
+            <dd>{{ booking.rental_days || "—" }}</dd>
+          </dl>
+        </div>
+      </section>
+
+      <section class="compact-section">
+        <h2>ข้อมูลลูกค้า</h2>
+        <dl>
+          <dt>ชื่อผู้จอง</dt>
+          <dd>{{ customer.display_name || "—" }}</dd>
+          <dt>เบอร์โทรศัพท์</dt>
+          <dd>{{ customer.walk_in_phone || "—" }}</dd>
+        </dl>
+      </section>
+
+      <footer class="disclaimer">
+        <p>{{ snapshot.disclaimer?.th }}</p>
+        <p class="muted">
+          จำนวนครั้งที่พิมพ์: {{ documentRow?.printCount ?? 0 }}
+        </p>
+      </footer>
+    </article>
 
     <article
       v-else-if="snapshot && payload && !isNoShowForfeitureDocument"

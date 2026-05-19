@@ -438,6 +438,67 @@ describe("operational rental document issuance", () => {
     });
   });
 
+  it("B2: BDC print template — recognizes rental_booking_deposit_confirmation_v1 and renders Thai-only content", () => {
+    const issuedPrint = readFileSync(
+      resolve(process.cwd(), "app/pages/admin/documents/[id]/print.vue"),
+      "utf8",
+    );
+
+    // 1. BDC template key is recognized — isBdcDocument computed gates the new article branch
+    expect(issuedPrint).toContain("rental_booking_deposit_confirmation_v1");
+    expect(issuedPrint).toContain("isBdcDocument");
+
+    // 2. Thai customer-facing document title is rendered for BDC
+    expect(issuedPrint).toContain("เอกสารยืนยันการรับเงินมัดจำการจอง");
+
+    // 3. Key snapshot fields from A3 contract are rendered
+    //    document section
+    expect(issuedPrint).toContain("snapshot.document.document_number");
+    expect(issuedPrint).toContain("snapshot.document.issued_at");
+    //    held_balance_event section
+    expect(issuedPrint).toContain("held_balance_event?.amount");
+    expect(issuedPrint).toContain("held_balance_event?.currency_code");
+    expect(issuedPrint).toContain("held_balance_event?.occurred_at");
+    expect(issuedPrint).toContain("held_balance_event?.payment_method");
+    //    booking section
+    expect(issuedPrint).toContain("booking.reference");
+    expect(issuedPrint).toContain("booking.start_date");
+    expect(issuedPrint).toContain("booking.end_date");
+    expect(issuedPrint).toContain("booking.rental_days");
+    //    customer section
+    expect(issuedPrint).toContain("customer.display_name");
+    expect(issuedPrint).toContain("customer.walk_in_phone");
+
+    // 4. No new live booking fetch added — BDC renders purely from official_documents snapshot
+    //    The page has exactly 2 $fetch calls: load() and recordAndPrint() — no more
+    const fetchCount = (issuedPrint.match(/\$fetch/g) ?? []).length;
+    expect(fetchCount).toBeLessThanOrEqual(2);
+
+    // 5. BDC renders only Thai disclaimer — uses snapshot.disclaimer?.th, not disclaimer.en
+    expect(issuedPrint).toContain("snapshot.disclaimer?.th");
+
+    // 6. Existing operational document templates are not regressed
+    expect(issuedPrint).toContain(
+      "booking_deposit_forfeiture_ordinary_receipt",
+    );
+    expect(issuedPrint).toContain("rental_booking_no_show_forfeiture_notice");
+    expect(issuedPrint).toContain(
+      "ใบรับเงินค่าริบเงินมัดจำจองกรณีไม่มารับสินค้า",
+    );
+    expect(issuedPrint).toContain(
+      "หนังสือแจ้งการริบเงินมัดจำจองกรณีไม่มารับสินค้า",
+    );
+    expect(issuedPrint).toContain("window.print()");
+    expect(issuedPrint).toContain("OfficialDocumentHeader");
+    // pickup/return article branch still present
+    expect(issuedPrint).toContain(
+      "snapshot && payload && !isNoShowForfeitureDocument",
+    );
+
+    // 7. BDC is a separate article branch — not merged with pickup/return or no-show
+    expect(issuedPrint).toContain("snapshot && isBdcDocument");
+  });
+
   it("wires admin-only APIs, booking ops metadata, issued print UI, and legacy preview route", () => {
     const files = [
       "server/api/admin/documents/preview.post.ts",
