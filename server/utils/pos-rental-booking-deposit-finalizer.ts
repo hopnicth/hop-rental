@@ -1,6 +1,10 @@
 import { recordBookingDepositHeldBalanceCollection } from "~~/server/utils/rental-held-balance-events";
 import { confirmRentalBooking } from "~~/server/utils/rental-booking-confirmation";
 import type { BookingDepositSourceType } from "~~/server/utils/rental-held-balance-events";
+import {
+  issueBookingDepositConfirmationDocument,
+  BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE,
+} from "~~/server/utils/admin-rental-booking-deposit-confirmation-document";
 
 // The canonical POS payment attempt source type for held-balance events.
 // Shared between cash (Phase 2B) and future QR (Phase 2C+).
@@ -33,6 +37,17 @@ export interface PosBookingDepositFinalizerInput {
   idempotencyKey: string;
 }
 
+/** Best-effort document issuance result — always present when status === 'confirmed'. */
+export interface PosBookingDepositDocumentResult {
+  status: "issued" | "failed";
+  taskId: string | null;
+  officialDocumentId: string | null;
+  documentNo: string | null;
+  alreadyIssued: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
 export interface PosBookingDepositFinalizationResult {
   status: "confirmed" | "paid_confirm_failed";
   bookingDepositPaidAmount: number;
@@ -47,6 +62,8 @@ export interface PosBookingDepositFinalizationResult {
   };
   /** Present when status === 'paid_confirm_failed' */
   warnings?: string[];
+  /** Best-effort document issuance result. Present when status === 'confirmed'. */
+  document?: PosBookingDepositDocumentResult;
 }
 
 /**
@@ -90,7 +107,9 @@ export async function finalizePosRentalBookingDeposit(
   // Model B: Booking Deposit is a held liability until Return Settlement.
   // recordBookingDepositHeldBalanceCollection is idempotent — a unique-violation
   // replay resolves to the existing matching event without error.
-  await recordBookingDepositHeldBalanceCollection({
+  // Capture the returned event row — its .id is the canonical FK used by
+  // pos_document_issuance_tasks and official_documents (source_id).
+  const heldBalanceEvent = await recordBookingDepositHeldBalanceCollection({
     client: adminClient,
     booking,
     amount,
@@ -173,6 +192,153 @@ export async function finalizePosRentalBookingDeposit(
     };
   }
 
+  // ── Step 5: Best-effort document issuance ─────────────────────────────────
+  // Phase B — ISOLATED from Phase A. Document failure MUST NOT revert booking
+  // confirmation, payment status, or the held-balance event.
+  let taskId: string | null = null;
+  let documentResult: PosBookingDepositDocumentResult = {
+    status: "failed",
+    taskId: null,
+    officialDocumentId: null,
+    documentNo: null,
+    alreadyIssued: false,
+    errorCode: "DOCUMENT_ISSUANCE_NOT_ATTEMPTED",
+    errorMessage: null,
+  };
+
+  try {
+    const docType = BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE;
+    const heldEventId = text(heldBalanceEvent.id);
+
+    // ── 5a: Create issuance task row (idempotent: reload on 23505 race) ──────
+    const { data: insertedTask, error: insertTaskErr } = await adminClient
+      .from("pos_document_issuance_tasks")
+      .insert({
+        document_type: docType,
+        rental_booking_id: bookingId,
+        held_balance_event_id: heldEventId,
+        payment_source_type: POS_BOOKING_DEPOSIT_SOURCE_TYPE,
+        payment_source_id: attemptId,
+        status: "pending",
+        attempt_count: 0,
+        last_attempted_at: null,
+      })
+      .select("id, status, official_document_id, attempt_count")
+      .single();
+
+    let task: AnyRecord | null = null;
+    if (insertTaskErr) {
+      if (insertTaskErr.code === "23505") {
+        // Concurrent request already created the task row — reload it
+        const { data: existing } = await adminClient
+          .from("pos_document_issuance_tasks")
+          .select("id, status, official_document_id, attempt_count")
+          .eq("held_balance_event_id", heldEventId)
+          .eq("document_type", docType)
+          .maybeSingle();
+        task = (existing as AnyRecord | null) ?? null;
+      } else {
+        throw insertTaskErr;
+      }
+    } else {
+      task = insertedTask as AnyRecord;
+    }
+
+    taskId = task ? text(task.id) : null;
+
+    // ── 5b: Short-circuit if task already successfully issued ────────────────
+    // Idempotent replay: booking was confirmed earlier, document was already
+    // issued by a prior run. Return the stable issued state immediately.
+    if (task && text(task.status) === "issued") {
+      documentResult = {
+        status: "issued",
+        taskId,
+        officialDocumentId: text(task.official_document_id) || null,
+        documentNo: null,
+        alreadyIssued: true,
+        errorCode: null,
+        errorMessage: null,
+      };
+    } else {
+      // ── 5c: Track attempt ──────────────────────────────────────────────────
+      const attemptNow = new Date().toISOString();
+      if (taskId) {
+        await adminClient
+          .from("pos_document_issuance_tasks")
+          .update({
+            last_attempted_at: attemptNow,
+            attempt_count: Number(task?.attempt_count ?? 0) + 1,
+          })
+          .eq("id", taskId);
+      }
+
+      // ── 5d: Issue document via A3 utility ──────────────────────────────────
+      const issueResult = await issueBookingDepositConfirmationDocument({
+        client: adminClient as any,
+        heldBalanceEvent,
+        booking,
+        staffUserId,
+        branchId,
+      });
+
+      // ── 5e: Update task to issued ──────────────────────────────────────────
+      if (taskId) {
+        await adminClient
+          .from("pos_document_issuance_tasks")
+          .update({
+            status: "issued",
+            official_document_id: issueResult.document.id,
+            issued_at: issueResult.document.issuedAt ?? attemptNow,
+            error_code: null,
+            error_message: null,
+          })
+          .eq("id", taskId);
+      }
+
+      documentResult = {
+        status: "issued",
+        taskId,
+        officialDocumentId: issueResult.document.id,
+        documentNo: issueResult.document.documentNo,
+        alreadyIssued: issueResult.alreadyIssued,
+        errorCode: null,
+        errorMessage: null,
+      };
+    }
+  } catch (docErr: unknown) {
+    // Document failure is ISOLATED. Booking stays confirmed, payment stays paid.
+    const errMsg = docErr instanceof Error ? docErr.message : String(docErr);
+    const errCode =
+      typeof docErr === "object" && docErr !== null && "statusCode" in docErr
+        ? `HTTP_${(docErr as { statusCode: unknown }).statusCode}`
+        : "DOCUMENT_ISSUANCE_FAILED";
+
+    if (taskId) {
+      try {
+        await adminClient
+          .from("pos_document_issuance_tasks")
+          .update({
+            status: "failed",
+            error_code: errCode,
+            error_message: errMsg,
+          })
+          .eq("id", taskId);
+      } catch {
+        // ignore — task status update is also best-effort
+      }
+    }
+
+    documentResult = {
+      status: "failed",
+      taskId,
+      officialDocumentId: null,
+      documentNo: null,
+      alreadyIssued: false,
+      errorCode: errCode,
+      errorMessage: errMsg,
+    };
+  }
+
   return {
     status: "confirmed",
     bookingDepositPaidAmount: amount,
@@ -184,5 +350,6 @@ export async function finalizePosRentalBookingDeposit(
       bookingDepositPaidAmount: amount,
       currencyCode,
     },
+    document: documentResult,
   };
 }

@@ -13,6 +13,13 @@ const mockState = vi.hoisted(() => ({
   confirmShouldFail: false,
   availabilityConflict: false,
   heldBalanceEventCalls: [] as Record<string, unknown>[],
+  // Document issuance tracking
+  issueDocumentShouldFail: false,
+  documentAlreadyIssued: false,
+  existingDocumentTask: null as Record<string, unknown> | null,
+  insertTaskError: null as { code?: string; message?: string } | null,
+  documentTasksInserted: [] as Record<string, unknown>[],
+  documentTasksUpdated: [] as Record<string, unknown>[],
 }));
 
 vi.mock("h3", () => ({
@@ -39,9 +46,58 @@ vi.mock("~~/server/utils/rental-held-balance-events", () => ({
   recordBookingDepositHeldBalanceCollection: vi.fn(
     async (input: Record<string, unknown>) => {
       mockState.heldBalanceEventCalls.push({ ...input });
+      // Return a minimal held-balance event row so finalizer can read .id
+      return {
+        id: "event-1",
+        event_type: "booking_deposit_collection",
+        amount: input.amount,
+        currency_code: "THB",
+        source_type: input.sourceType,
+        source_id: input.sourceId,
+        payment_method: input.paymentMethod ?? "cash",
+        occurred_at: new Date().toISOString(),
+      };
     },
   ),
 }));
+
+vi.mock(
+  "~~/server/utils/admin-rental-booking-deposit-confirmation-document",
+  () => ({
+    issueBookingDepositConfirmationDocument: vi.fn(async () => {
+      if (mockState.issueDocumentShouldFail) {
+        const err: any = new Error("DOCUMENT_ISSUANCE_ERROR");
+        err.statusCode = 500;
+        throw err;
+      }
+      return {
+        document: {
+          id: "doc-1",
+          documentType: "rental_booking_deposit_confirmation",
+          documentNo: "BDC-202605-0001",
+          status: "issued",
+          issuedAt: "2026-05-21T10:00:00.000Z",
+          sourceType: "rental_held_balance_event",
+          sourceId: "event-1",
+          currencyCode: "THB",
+          subtotal: 200,
+          vatAmount: 0,
+          totalAmount: 200,
+          templateKey: "rental_booking_deposit_confirmation_v1",
+          templateVersion: 1,
+          snapshot: {},
+          printCount: 0,
+          lastPrintedAt: null,
+          branchId: "branch-hq",
+        },
+        alreadyIssued: mockState.documentAlreadyIssued,
+      };
+    }),
+    BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE:
+      "rental_booking_deposit_confirmation",
+    BOOKING_DEPOSIT_CONFIRMATION_TITLE_TH: "เอกสารยืนยันการรับเงินมัดจำการจอง",
+  }),
+);
 
 vi.mock("~~/server/utils/rental-booking-confirmation", async () => {
   const { createError } = await import("h3");
@@ -131,6 +187,57 @@ vi.mock("~~/server/utils/admin", () => ({
             },
           };
         }
+        if (table === "pos_document_issuance_tasks") {
+          return {
+            insert: (payload: Record<string, unknown>) => {
+              const insertErr = mockState.insertTaskError;
+              const taskRow = insertErr
+                ? null
+                : {
+                    id: "task-1",
+                    status: "pending",
+                    official_document_id: null,
+                    attempt_count: 0,
+                    ...payload,
+                  };
+              if (!insertErr)
+                mockState.documentTasksInserted.push(
+                  taskRow as Record<string, unknown>,
+                );
+              return {
+                select: () => ({
+                  single: async () => ({
+                    data: taskRow,
+                    error: insertErr ?? null,
+                  }),
+                }),
+              };
+            },
+            select: () => {
+              const chain: any = {
+                eq: () => chain,
+                maybeSingle: async () => ({
+                  data: mockState.existingDocumentTask,
+                  error: null,
+                }),
+              };
+              return chain;
+            },
+            update: (payload: Record<string, unknown>) => {
+              mockState.documentTasksUpdated.push({ ...payload });
+              return qr({ data: null, error: null });
+            },
+          };
+        }
+        // Tables accessed only by the A3 issuance utility (mocked at module level)
+        if (
+          table === "official_documents" ||
+          table === "document_events" ||
+          table === "system_configs" ||
+          table === "branch_document_settings"
+        ) {
+          return qr({ data: null, error: null });
+        }
         throw new Error(`Unexpected table: ${table}`);
       },
     },
@@ -163,6 +270,12 @@ describe("admin POS V3 booking deposit payments", () => {
     mockState.confirmShouldFail = false;
     mockState.availabilityConflict = false;
     mockState.heldBalanceEventCalls = [];
+    mockState.issueDocumentShouldFail = false;
+    mockState.documentAlreadyIssued = false;
+    mockState.existingDocumentTask = null;
+    mockState.insertTaskError = null;
+    mockState.documentTasksInserted = [];
+    mockState.documentTasksUpdated = [];
   });
 
   it("happy path: records attempt, held-balance event, updates booking, confirms", async () => {
@@ -369,5 +482,139 @@ describe("admin POS V3 booking deposit payments", () => {
     expect(mockState.insertedAttempts[0]).toMatchObject({
       rental_booking_id: "booking-1",
     });
+  });
+
+  // ── Phase 2C-A4: Document issuance integration tests ─────────────────────
+
+  it("A4: success + document issued — task created, task updated to issued, response includes document", async () => {
+    const result = await endpoint(event);
+
+    expect(result.status).toBe("confirmed");
+    // Task was created
+    expect(mockState.documentTasksInserted).toHaveLength(1);
+    expect(mockState.documentTasksInserted[0]).toMatchObject({
+      document_type: "rental_booking_deposit_confirmation",
+      rental_booking_id: "booking-1",
+      held_balance_event_id: "event-1",
+      payment_source_type: "pos_rental_payment_attempt",
+      payment_source_id: "attempt-1",
+      status: "pending",
+    });
+    // Task updated: attempt tracking + issued
+    const updatePayloads = mockState.documentTasksUpdated.map(
+      (u) => u.status ?? "__attempt__",
+    );
+    expect(updatePayloads).toContain("issued");
+    // Response includes document result
+    expect(result.document).toMatchObject({
+      status: "issued",
+      taskId: "task-1",
+      officialDocumentId: "doc-1",
+      documentNo: "BDC-202605-0001",
+      alreadyIssued: false,
+      errorCode: null,
+    });
+  });
+
+  it("A4: success + A3 utility returns alreadyIssued:true — task still marked issued, response reflects alreadyIssued", async () => {
+    mockState.documentAlreadyIssued = true;
+
+    const result = await endpoint(event);
+
+    expect(result.status).toBe("confirmed");
+    expect(result.document).toMatchObject({
+      status: "issued",
+      alreadyIssued: true,
+      officialDocumentId: "doc-1",
+      errorCode: null,
+    });
+    // Task still updated to issued with the existing document id
+    const issuedUpdate = mockState.documentTasksUpdated.find(
+      (u) => u.status === "issued",
+    );
+    expect(issuedUpdate).toBeDefined();
+    expect(issuedUpdate?.official_document_id).toBe("doc-1");
+  });
+
+  it("A4: success + document issuance fails — booking stays confirmed, task marked failed, response includes failed document", async () => {
+    mockState.issueDocumentShouldFail = true;
+
+    const result = await endpoint(event);
+
+    // Phase A: booking confirmed, payment paid — UNCHANGED
+    expect(result.status).toBe("confirmed");
+    expect(result.paymentAttemptId).toBe("attempt-1");
+    expect(result.booking).toMatchObject({
+      id: "booking-1",
+      status: "confirmed",
+      bookingDepositPaymentStatus: "paid",
+    });
+    // Phase B: document failed — task updated to failed
+    const failedUpdate = mockState.documentTasksUpdated.find(
+      (u) => u.status === "failed",
+    );
+    expect(failedUpdate).toBeDefined();
+    expect(failedUpdate?.error_code).toMatch(
+      /HTTP_500|DOCUMENT_ISSUANCE_FAILED/,
+    );
+    expect(failedUpdate?.error_message).toBeTruthy();
+    // Response indicates document failed
+    expect(result.document).toMatchObject({
+      status: "failed",
+      taskId: "task-1",
+      officialDocumentId: null,
+      errorCode: expect.stringMatching(/HTTP_500|DOCUMENT_ISSUANCE_FAILED/),
+    });
+    // paid_confirm_failed NOT used
+    expect(result.status).not.toBe("paid_confirm_failed");
+    const confirmFailUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "paid_confirm_failed",
+    );
+    expect(confirmFailUpdate).toBeUndefined();
+  });
+
+  it("A4: idempotent replay — task already issued — short-circuits without re-issuing", async () => {
+    mockState.insertTaskError = { code: "23505", message: "unique violation" };
+    mockState.existingDocumentTask = {
+      id: "task-existing",
+      status: "issued",
+      official_document_id: "doc-existing",
+      attempt_count: 1,
+    };
+
+    const result = await endpoint(event);
+
+    expect(result.status).toBe("confirmed");
+    // No new task row inserted (conflict returned existing)
+    expect(mockState.documentTasksInserted).toHaveLength(0);
+    // No attempt tracking update (short-circuited)
+    const attemptUpdate = mockState.documentTasksUpdated.find(
+      (u) => u.last_attempted_at !== undefined,
+    );
+    expect(attemptUpdate).toBeUndefined();
+    // Response reflects already-issued
+    expect(result.document).toMatchObject({
+      status: "issued",
+      taskId: "task-existing",
+      officialDocumentId: "doc-existing",
+      alreadyIssued: true,
+    });
+  });
+
+  it("A4: paid_confirm_failed path — no document issuance task created", async () => {
+    mockState.confirmShouldFail = true;
+
+    const result = await endpoint(event);
+
+    // Phase A failed — still paid_confirm_failed
+    expect(result.status).toBe("paid_confirm_failed");
+    expect(result.warnings).toContain(
+      "BOOKING_CONFIRMATION_FAILED_MANUAL_REVIEW_REQUIRED",
+    );
+    // No document task created — document issuance never runs on failed Phase A
+    expect(mockState.documentTasksInserted).toHaveLength(0);
+    expect(mockState.documentTasksUpdated).toHaveLength(0);
+    // No document field on paid_confirm_failed response
+    expect(result.document).toBeUndefined();
   });
 });

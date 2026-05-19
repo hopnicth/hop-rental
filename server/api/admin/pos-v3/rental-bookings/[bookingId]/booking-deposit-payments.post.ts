@@ -271,5 +271,6 @@ export default defineEventHandler(async (event) => {
     status: "confirmed",
     booking: finalizerResult.booking,
     paymentAttemptId: attemptId,
+    document: finalizerResult.document,
   };
 });
