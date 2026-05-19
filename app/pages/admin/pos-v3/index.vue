@@ -6,6 +6,7 @@ import AdminPosV3BookingContext from "~/components/admin/pos/AdminPosV3BookingCo
 import AdminPosV3OrderContext from "~/components/admin/pos/AdminPosV3OrderContext.vue";
 import AdminPosV3FutureBookingDraftContainer from "~/components/admin/pos/AdminPosV3FutureBookingDraftContainer.vue";
 import AdminPosV3FutureBookingDepositCashContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositCashContainer.vue";
+import AdminPosV3FutureBookingDepositQrContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositQrContainer.vue";
 import type {
   AdminRentalBookingRow,
   AdminSaleOrderQueueResponse,
@@ -24,6 +25,7 @@ definePageMeta({
 });
 
 type AdminPosV3Mode = "sale" | "booking" | "kyc";
+type FutureBookingDepositPaymentMethod = "cash" | "promptpay_qr";
 type ScannerKind =
   | "order"
   | "booking"
@@ -93,8 +95,13 @@ const orderError = ref<string | null>(null);
 
 // Container 1 — Future Booking Draft result (drives Container 2 mount)
 const latestDraftResult = ref<any>(null);
+const selectedPaymentMethod = ref<FutureBookingDepositPaymentMethod | null>(
+  null,
+);
 function handleDraftCreated(result: unknown) {
   latestDraftResult.value = result;
+  latestConfirmedFutureBookingResult.value = null;
+  selectedPaymentMethod.value = null;
 }
 
 // Container 1 — Same-Day Rental intent (preserved for future Same-Day Rental flow)
@@ -108,6 +115,11 @@ function handleSameDayIntent(payload: unknown) {
 const latestConfirmedFutureBookingResult = ref<unknown>(null);
 function handleBookingConfirmed(result: unknown) {
   latestConfirmedFutureBookingResult.value = result;
+}
+
+function selectPaymentMethod(method: FutureBookingDepositPaymentMethod) {
+  if (selectedPaymentMethod.value !== null) return;
+  selectedPaymentMethod.value = method;
 }
 
 const resolverBusy = computed(
@@ -475,10 +487,78 @@ function handleScannerDecoded(payload: {
       @same-day-rental-intent="handleSameDayIntent"
     />
 
-    <!-- Container 2: Future Booking Cash Deposit Finalization
-         Mounts only when a future draft exists. Never mounts for same-day intents. -->
+    <!-- Payment method selector: visible after a Future Booking Draft exists.
+         Once selected, switching is locked to avoid unsafe QR/cash ambiguity. -->
+    <UCard
+      v-if="
+        activeMode === 'booking' &&
+        latestDraftResult !== null &&
+        selectedPaymentMethod === null
+      "
+      class="border-primary/20"
+    >
+      <template #header>
+        <div>
+          <h2 class="text-lg font-semibold">เลือกวิธีรับเงินมัดจำการจอง</h2>
+          <p class="text-sm text-muted">
+            เลือกวิธีรับชำระ Booking Deposit สำหรับ Future Booking Draft นี้
+          </p>
+        </div>
+      </template>
+      <div class="grid gap-3 md:grid-cols-2">
+        <button
+          type="button"
+          class="rounded-xl border border-default bg-elevated/50 p-4 text-left transition hover:border-primary hover:bg-primary/5"
+          @click="selectPaymentMethod('cash')"
+        >
+          <div class="flex items-center gap-3">
+            <UIcon name="bx:money" class="text-2xl text-success" />
+            <div>
+              <p class="font-semibold">เงินสด</p>
+              <p class="text-sm text-muted">
+                รับเงินสดและยืนยันการจองด้วย Cash container เดิม
+              </p>
+            </div>
+          </div>
+        </button>
+        <button
+          type="button"
+          class="rounded-xl border border-default bg-elevated/50 p-4 text-left transition hover:border-primary hover:bg-primary/5"
+          @click="selectPaymentMethod('promptpay_qr')"
+        >
+          <div class="flex items-center gap-3">
+            <UIcon name="bx:qr" class="text-2xl text-primary" />
+            <div>
+              <p class="font-semibold">PromptPay QR</p>
+              <p class="text-sm text-muted">
+                สร้าง QR ให้ลูกค้าสแกน ระบบจะตรวจสอบและยืนยันอัตโนมัติ
+              </p>
+            </div>
+          </div>
+        </button>
+      </div>
+    </UCard>
+
+    <!-- Container 2A: Future Booking Cash Deposit Finalization
+         Mounts only when a future draft exists and Cash is selected. -->
     <AdminPosV3FutureBookingDepositCashContainer
-      v-if="activeMode === 'booking' && latestDraftResult !== null"
+      v-if="
+        activeMode === 'booking' &&
+        latestDraftResult !== null &&
+        selectedPaymentMethod === 'cash'
+      "
+      :draft-result="latestDraftResult"
+      @booking-confirmed="handleBookingConfirmed"
+    />
+
+    <!-- Container 2B: Future Booking PromptPay QR Deposit Finalization
+         Mounts only when a future draft exists and PromptPay QR is selected. -->
+    <AdminPosV3FutureBookingDepositQrContainer
+      v-if="
+        activeMode === 'booking' &&
+        latestDraftResult !== null &&
+        selectedPaymentMethod === 'promptpay_qr'
+      "
       :draft-result="latestDraftResult"
       @booking-confirmed="handleBookingConfirmed"
     />

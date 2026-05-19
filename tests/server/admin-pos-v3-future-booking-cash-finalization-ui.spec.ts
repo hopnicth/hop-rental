@@ -22,10 +22,11 @@ describe("admin POS V3 Container 2 — Future Booking Cash Deposit Container", (
     expect(page).toContain("AdminPosV3FutureBookingDepositCashContainer");
   });
 
-  it("container is shown only when latestDraftResult is non-null", () => {
+  it("container is shown only when latestDraftResult is non-null and Cash is selected", () => {
     const page = read(PAGE_PATH);
-    // The v-if attribute and latestDraftResult must appear on the same line
-    expect(page).toMatch(/v-if=.*latestDraftResult/);
+    expect(page).toMatch(
+      /AdminPosV3FutureBookingDepositCashContainer\s[\s\S]*?v-if="[\s\S]*?latestDraftResult !== null[\s\S]*?selectedPaymentMethod === 'cash'/,
+    );
     expect(page).toContain("AdminPosV3FutureBookingDepositCashContainer");
   });
 
