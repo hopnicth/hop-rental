@@ -25,14 +25,16 @@ const STALE_RECON_BOOKING_SELECT =
 /**
  * Admin QR polling/status endpoint for POS V3 Booking Deposit QR.
  *
- * Phase 2D-B2: Stale reconciliation before local expiry.
+ * Phase 2D-B2.1: Active live-charge reconciliation for all pending/finalizing attempts.
  *
  * Primary finalization path: Omise webhook → retrieveOmiseCharge → applyPosRentalQrGatewayResult.
- * Polling is for UI status display only and must NOT become an always-on provider polling loop.
+ * Poll is the webhook-miss fallback: performs live charge reconciliation for every
+ * pending/finalizing attempt that has a gateway_charge_id, regardless of whether
+ * the QR window has expired.
  *
- * Stale reconciliation trigger (runs only when both conditions are true):
- *   1. status IN ('pending', 'finalizing') AND expires_at is past
- *   2. gateway_charge_id is present (i.e. charge exists at Omise)
+ * Reconciliation trigger (runs when both conditions are true):
+ *   1. status IN ('pending', 'finalizing')
+ *   2. gateway_charge_id is present (i.e. charge was created at Omise)
  *
  * Reconciliation behavior:
  *   1. Call retrieveOmiseCharge(event, gatewayChargeId) — authoritative live status
@@ -45,7 +47,7 @@ const STALE_RECON_BOOKING_SELECT =
  *
  * No-charge-ID edge case:
  *   Should not occur for promptpay_qr in normal operation.
- *   Local expiry is applied (no Omise charge to verify).
+ *   Local expiry is applied only when the window has closed and no Omise charge exists.
  */
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requirePlatformAdmin(event);
@@ -91,13 +93,14 @@ export default defineEventHandler(async (event) => {
     expiresAtStr !== null && new Date(expiresAtStr).getTime() <= Date.now();
   const gatewayChargeId = asText(attempt.gateway_charge_id);
 
-  const STALE_RECON_STATUSES = ["pending", "finalizing"];
-  if (STALE_RECON_STATUSES.includes(currentStatus) && isExpiredWindow) {
+  const LIVE_RECON_STATUSES = ["pending", "finalizing"];
+  if (LIVE_RECON_STATUSES.includes(currentStatus)) {
     if (gatewayChargeId) {
-      // ── Stale reconciliation: authoritative live charge check ─────────────
-      // Only for stale attempts with a known Omise charge ID.
-      // Prevents marking an attempt expired when the customer already paid at
-      // Omise (e.g. webhook missed or live-charge retrieval failed transiently).
+      // ── Active live-charge reconciliation (webhook-miss fallback) ─────────
+      // Runs for ALL pending/finalizing attempts with a known Omise charge ID,
+      // whether the QR window is still open or has already expired.
+      // This is the primary recovery path when the Omise webhook was not
+      // delivered (e.g. dev environment, transient network failure, missed retry).
       try {
         const liveCharge = await retrieveOmiseCharge(event, gatewayChargeId);
         const attemptBookingId = asText(attempt.rental_booking_id);
@@ -121,9 +124,9 @@ export default defineEventHandler(async (event) => {
         // Safe: do NOT mark expired. Return current status unchanged.
         // Payment may have succeeded at Omise — local expiry here would be incorrect.
       }
-    } else if (currentStatus === "pending") {
-      // ── Local expiry: no gateway_charge_id (edge case) ─────────────────────
-      // No Omise charge to verify. Safe to expire locally.
+    } else if (currentStatus === "pending" && isExpiredWindow) {
+      // ── Local expiry: no gateway_charge_id AND window closed (edge case) ────
+      // No Omise charge to verify and the QR has expired. Safe to expire locally.
       // Should not occur for promptpay_qr attempts in normal operation.
       await adminClient
         .from("pos_rental_payment_attempts")

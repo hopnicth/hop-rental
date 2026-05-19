@@ -586,18 +586,104 @@ describe("admin POS V3 QR booking deposit poll", () => {
     expect(mockState.updatedAttempts).toHaveLength(0);
   });
 
-  it("fresh pending attempt with gateway_charge_id: no retrieveOmiseCharge call", async () => {
+  it("active-window: pending attempt with gateway_charge_id and Omise still pending → retrieve called, status preserved", async () => {
+    // Webhook-miss fallback fires even within the valid QR window.
+    // When the live Omise charge is still pending, the attempt stays pending (no-op transition).
     mockState.existingAttemptByKey = {
       ...staleQrAttempt,
-      expires_at: futureExpiry, // not yet expired
+      expires_at: futureExpiry, // still in active window
     };
+    mockState.bookingRow = { ...baseBooking };
+    mockState.liveChargeStatus = "pending"; // Omise: customer has not paid yet
 
     const result = await pollEndpoint(event);
 
     expect(result.status).toBe("pending");
-    // Omise NOT called — guard: only for stale (past expires_at) attempts
-    expect(mockState.retrieveChargeCalls).toHaveLength(0);
+    // Active-window reconciliation: retrieve IS called now (webhook-miss fallback)
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    expect(mockState.retrieveChargeCalls[0]).toBe("chrg_test_001");
+  });
+
+  // ── Active-window live-charge reconciliation tests (Phase 2D-B2.1) ──────────
+  // These tests prove that the poll endpoint can recover a real paid QR charge
+  // even when the Omise webhook was not delivered, before the QR window expires.
+
+  it("active-window: live charge paid before expiry → booking finalized → returns paid", async () => {
+    // Core smoke-failure recovery scenario:
+    // Customer pays QR → webhook not delivered → poll detects paid charge → finalizes booking.
+    mockState.existingAttemptByKey = {
+      ...staleQrAttempt,
+      expires_at: futureExpiry, // still in active window
+    };
+    mockState.bookingRow = { ...baseBooking };
+    mockState.liveChargeStatus = "paid";
+
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("paid");
+    // retrieveOmiseCharge was called with the attempt's gateway_charge_id
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    expect(mockState.retrieveChargeCalls[0]).toBe("chrg_test_001");
+    // Full paid finalization path: finalizing transition + paid confirmation
+    const finalizingUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "finalizing",
+    );
+    const paidUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "paid",
+    );
+    expect(finalizingUpdate).toBeDefined();
+    expect(paidUpdate).toBeDefined();
+    expect(paidUpdate?.paid_at).toBeTruthy();
+  });
+
+  it("active-window: retrieveOmiseCharge throws → status preserved, no DB writes", async () => {
+    // Retrieve failure is safe: do NOT expire or fail the attempt.
+    // Payment may have succeeded at Omise — local expiry here would be incorrect.
+    mockState.existingAttemptByKey = {
+      ...staleQrAttempt,
+      expires_at: futureExpiry, // still in active window
+    };
+    mockState.bookingRow = { ...baseBooking };
+    mockState.retrieveChargeShouldThrow = true;
+
+    const result = await pollEndpoint(event);
+
+    // Status stays pending — safe: payment may have succeeded at Omise
+    expect(result.status).toBe("pending");
+    // Retrieve was attempted
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    // NO DB updates — attempt must not be blindly marked expired or failed
     expect(mockState.updatedAttempts).toHaveLength(0);
+  });
+
+  it("active-window: finalizing attempt + live paid charge → crash-recovery → returns paid", async () => {
+    // A 'finalizing' attempt within the active window: process crashed mid-finalization.
+    // Active reconciliation re-enters the paid path via the helper (idempotent).
+    // The helper skips the finalizing→finalizing transition write since already there.
+    mockState.existingAttemptByKey = {
+      ...staleQrAttempt,
+      status: "finalizing",
+      expires_at: futureExpiry, // still in active window
+    };
+    mockState.bookingRow = { ...baseBooking };
+    mockState.liveChargeStatus = "paid";
+
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("paid");
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    expect(mockState.retrieveChargeCalls[0]).toBe("chrg_test_001");
+    // Only ONE DB write: paid confirmation (no finalizing transition — already in finalizing)
+    expect(mockState.updatedAttempts).toHaveLength(1);
+    const paidUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "paid",
+    );
+    expect(paidUpdate).toBeDefined();
+    expect(paidUpdate?.paid_at).toBeTruthy();
+    // No spurious finalizing write
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "finalizing"),
+    ).toBeUndefined();
   });
 
   it("stale reconciliation: finalizing attempt + live paid charge → crash-recovery → returns paid", async () => {
