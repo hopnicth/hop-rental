@@ -5,12 +5,19 @@ import {
   extractOmiseCharge,
   verifyOmiseWebhookSignature,
 } from "~~/server/utils/payment-core";
-import { normalizeOmiseCharge } from "~~/server/utils/omise";
+import {
+  normalizeOmiseCharge,
+  retrieveOmiseCharge,
+} from "~~/server/utils/omise";
 import {
   MIXED_CHECKOUT_SESSION_SELECT,
   MIXED_PAYMENT_ATTEMPT_SELECT,
   applyMixedCheckoutGatewayResult,
 } from "~~/server/utils/mixed-checkout-finalization";
+import {
+  POS_QR_ATTEMPT_SELECT,
+  applyPosRentalQrGatewayResult,
+} from "~~/server/utils/pos-rental-qr-booking-deposit";
 import {
   applyGatewayResult,
   assertGatewayAmountMatches,
@@ -230,6 +237,78 @@ export default defineEventHandler(async (event) => {
           })
           .eq("id", paymentEvent.id);
         return { ok: true, mixedWebhookFailed: true };
+      }
+    }
+
+    // ── POS V3 QR Booking Deposit fan-out ────────────────────────────────────
+    const { data: posRentalAttempt } = await adminClient
+      .from("pos_rental_payment_attempts")
+      .select(POS_QR_ATTEMPT_SELECT)
+      .eq("gateway", "omise")
+      .eq("gateway_charge_id", gatewayChargeId)
+      .maybeSingle();
+
+    if (posRentalAttempt) {
+      const posBookingId = String(posRentalAttempt.rental_booking_id);
+      try {
+        const { data: posBooking } = await adminClient
+          .from("rental_bookings")
+          .select(
+            "id, user_id, walk_in_phone, status, asset_id, asset_name, booker_name, sku_id, start_date, end_date, rental_days, hub_id, deposit_amount, currency_code, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, pos_staff_user_id",
+          )
+          .eq("id", posBookingId)
+          .maybeSingle();
+        if (!posBooking) {
+          await adminClient
+            .from("payment_events")
+            .update({
+              pos_rental_payment_attempt_id: posRentalAttempt.id,
+              status: "failed",
+              processing_error: "POS_RENTAL_BOOKING_NOT_FOUND",
+            })
+            .eq("id", paymentEvent.id);
+          return { ok: true, missingPosRentalBooking: true };
+        }
+        const liveCharge = await retrieveOmiseCharge(event, gatewayChargeId);
+        await applyPosRentalQrGatewayResult({
+          client: adminClient,
+          posAttempt: posRentalAttempt as Record<string, unknown>,
+          booking: posBooking as Record<string, unknown>,
+          result: liveCharge,
+        });
+        await adminClient
+          .from("payment_events")
+          .update({
+            pos_rental_payment_attempt_id: posRentalAttempt.id,
+            status: "processed",
+            processed_at: new Date().toISOString(),
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, posRentalQr: true };
+      } catch (err) {
+        await recordPaymentAlert(adminClient, {
+          bookingId: posBookingId,
+          kind: "booking_deposit_webhook_failed",
+          audience: "admin",
+          severity: "critical",
+          message:
+            err instanceof Error
+              ? err.message
+              : "POS V3 QR Booking Deposit webhook failed.",
+          metadata: { gatewayEventId, gatewayChargeId },
+        });
+        await adminClient
+          .from("payment_events")
+          .update({
+            pos_rental_payment_attempt_id: posRentalAttempt.id,
+            status: "failed",
+            processing_error:
+              err instanceof Error
+                ? err.message
+                : "POS_RENTAL_QR_WEBHOOK_FAILED",
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, posRentalQrWebhookFailed: true };
       }
     }
 
