@@ -104,3 +104,29 @@ export interface AdminDocumentIssueResponse {
   alreadyIssued: boolean;
   printUrl: string;
 }
+
+// ── Booking Deposit Confirmation (BDC) document read model ────────────────────
+
+export type BookingDepositConfirmationDocumentState =
+  | "issued"
+  | "failed"
+  | "pending"
+  | "missing"
+  | "not_applicable";
+
+export interface AdminBookingDepositConfirmationDocument {
+  /** Derived state from the pos_document_issuance_tasks row. */
+  state: BookingDepositConfirmationDocumentState;
+  /** official_documents.id — present when state === 'issued'. */
+  officialDocumentId: string | null;
+  /** Human-readable document number (e.g. "BDC-202605-0001"). */
+  documentNo: string | null;
+  /** ISO string from official_documents.issued_at. */
+  issuedAt: string | null;
+  /** Print count from official_documents. */
+  printCount: number;
+  /** Error code stored on the task row when state === 'failed'. */
+  errorCode: string | null;
+  /** True when state is 'failed', 'missing', or 'pending'. */
+  canRetry: boolean;
+}

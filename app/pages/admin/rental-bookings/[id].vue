@@ -44,6 +44,7 @@ const error = ref<string | null>(null);
 const updating = ref(false);
 const markingNoShow = ref(false);
 const issuingNoShowDocuments = ref(false);
+const retryingBdc = ref(false);
 const issuingDocument = ref<OperationalRentalDocumentType | null>(null);
 const operationalDocumentTypes: OperationalRentalDocumentType[] = [
   "rental_pickup_form",
@@ -337,6 +338,44 @@ async function issueDocument(
   }
 }
 
+const showBdcCard = computed(() => {
+  const bdcDoc = ops.value?.bookingDepositConfirmationDocument;
+  return !!bdcDoc && bdcDoc.state !== "not_applicable";
+});
+
+const bdcDocument = computed(
+  () => ops.value?.bookingDepositConfirmationDocument ?? null,
+);
+
+function bdcPrintUrl(): string {
+  const id = bdcDocument.value?.officialDocumentId;
+  return id ? documentPrintUrl(id) : "#";
+}
+
+async function retryBdcDocument(): Promise<void> {
+  if (!bookingId.value) return;
+  retryingBdc.value = true;
+  try {
+    await $fetch(
+      `/api/admin/rental-bookings/${bookingId.value}/documents/booking-deposit-confirmation/retry`,
+      { method: "POST" },
+    );
+    await loadOps();
+    toast.add({
+      title: "Booking Deposit Confirmation document issued",
+      color: "success",
+    });
+  } catch (e) {
+    toast.add({
+      title: "Document retry failed",
+      description: e instanceof Error ? e.message : "Unknown error",
+      color: "error",
+    });
+  } finally {
+    retryingBdc.value = false;
+  }
+}
+
 async function issueMissingNoShowDocuments(): Promise<void> {
   if (!bookingId.value || booking.value?.status !== "no_show") return;
   issuingNoShowDocuments.value = true;
@@ -579,6 +618,109 @@ async function issueMissingNoShowDocuments(): Promise<void> {
               />
             </div>
           </div>
+        </div>
+      </UCard>
+
+      <!-- Booking Deposit Confirmation Document card -->
+      <UCard v-if="showBdcCard">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h3 class="font-semibold">
+                Booking Deposit Confirmation Document
+              </h3>
+              <p class="text-xs text-muted">
+                เอกสารยืนยันการรับเงินมัดจำการจอง — non-tax confirmation issued
+                at cash collection.
+              </p>
+            </div>
+            <UBadge
+              v-if="bdcDocument?.state === 'issued'"
+              color="success"
+              variant="subtle"
+            >
+              Issued
+            </UBadge>
+            <UBadge
+              v-else-if="bdcDocument?.state === 'failed'"
+              color="error"
+              variant="soft"
+            >
+              Failed
+            </UBadge>
+            <UBadge
+              v-else-if="bdcDocument?.state === 'missing'"
+              color="warning"
+              variant="soft"
+            >
+              Missing
+            </UBadge>
+            <UBadge
+              v-else-if="bdcDocument?.state === 'pending'"
+              color="neutral"
+              variant="soft"
+            >
+              Pending
+            </UBadge>
+          </div>
+        </template>
+
+        <template v-if="bdcDocument?.state === 'issued'">
+          <p class="text-sm">
+            No.
+            <span class="font-medium">{{ bdcDocument.documentNo || "—" }}</span>
+          </p>
+          <p class="text-xs text-muted">
+            Issued {{ formatDate(bdcDocument.issuedAt || "") }} · Print count
+            {{ bdcDocument.printCount }}
+          </p>
+        </template>
+        <template v-else-if="bdcDocument?.state === 'failed'">
+          <p class="text-sm text-error">
+            Issuance failed.
+            <span v-if="bdcDocument.errorCode" class="font-mono text-xs">
+              ({{ bdcDocument.errorCode }})
+            </span>
+          </p>
+          <p class="text-xs text-muted">
+            Use the retry action to re-attempt document generation.
+          </p>
+        </template>
+        <template v-else-if="bdcDocument?.state === 'missing'">
+          <p class="text-sm text-warning">
+            No issuance task found — the document was never issued for this
+            booking deposit.
+          </p>
+          <p class="text-xs text-muted">
+            Use the retry action to issue the document now.
+          </p>
+        </template>
+        <template v-else-if="bdcDocument?.state === 'pending'">
+          <p class="text-sm text-muted">
+            Document issuance is in progress. Refresh to see the latest state.
+          </p>
+        </template>
+
+        <div class="mt-3 flex flex-wrap gap-2">
+          <UButton
+            v-if="bdcDocument?.state === 'issued'"
+            size="sm"
+            color="neutral"
+            variant="soft"
+            icon="bx:printer"
+            label="Open / print"
+            @click="openWindow(bdcPrintUrl())"
+          />
+          <UButton
+            v-if="bdcDocument?.canRetry"
+            size="sm"
+            color="warning"
+            variant="soft"
+            icon="bx:refresh"
+            label="Retry issuance"
+            :loading="retryingBdc"
+            @click="void retryBdcDocument()"
+          />
         </div>
       </UCard>
 

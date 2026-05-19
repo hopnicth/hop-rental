@@ -17,7 +17,9 @@ import type {
   AssetDocumentVisibility,
   RentalBookingDocumentType,
 } from "~~/app/types/admin-booking-ops";
+import type { AdminBookingDepositConfirmationDocument } from "~~/app/types/admin-documents";
 import { mapIssuedDocumentSummary } from "~~/server/utils/admin-documents";
+import { BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE } from "~~/server/utils/admin-rental-booking-deposit-confirmation-document";
 import {
   FORFEITURE_RECEIPT_DOCUMENT_TYPE,
   NO_SHOW_FORFEITURE_NOTICE_DOCUMENT_TYPE,
@@ -318,6 +320,125 @@ export async function fetchBookingFulfillmentStatus(
   };
 }
 
+const BDC_NOT_APPLICABLE: AdminBookingDepositConfirmationDocument = {
+  state: "not_applicable",
+  officialDocumentId: null,
+  documentNo: null,
+  issuedAt: null,
+  printCount: 0,
+  errorCode: null,
+  canRetry: false,
+};
+
+/**
+ * Derives the BDC document read-model for a booking.
+ * Returns `not_applicable` when the booking is not confirmed or the deposit
+ * is not in `paid` / `paid_confirm_failed` state.
+ */
+export async function fetchBookingDepositConfirmationDocument(
+  adminClient: SupabaseClient,
+  bookingId: string,
+): Promise<AdminBookingDepositConfirmationDocument> {
+  // 1. Check booking eligibility (status + deposit payment status)
+  const { data: bookingRow, error: bookingErr } = await adminClient
+    .from("rental_bookings")
+    .select("status, booking_deposit_payment_status")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (bookingErr) throw new Error(bookingErr.message);
+
+  const bStatus = toStr((bookingRow as Record<string, unknown> | null)?.status);
+  const depositStatus = toStr(
+    (bookingRow as Record<string, unknown> | null)
+      ?.booking_deposit_payment_status,
+  );
+
+  if (
+    bStatus !== "confirmed" ||
+    !["paid", "paid_confirm_failed"].includes(depositStatus)
+  ) {
+    return BDC_NOT_APPLICABLE;
+  }
+
+  // 2. Query the issuance task
+  const { data: task, error: taskErr } = await adminClient
+    .from("pos_document_issuance_tasks")
+    .select("id, status, official_document_id, issued_at, error_code")
+    .eq("rental_booking_id", bookingId)
+    .eq("document_type", BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE)
+    .maybeSingle();
+  if (taskErr) throw new Error(taskErr.message);
+
+  if (!task) {
+    return {
+      state: "missing",
+      officialDocumentId: null,
+      documentNo: null,
+      issuedAt: null,
+      printCount: 0,
+      errorCode: null,
+      canRetry: true,
+    };
+  }
+
+  const t = task as Record<string, unknown>;
+  const taskStatus = toStr(t.status);
+
+  if (taskStatus === "issued") {
+    const officialDocId = toStrOrNull(t.official_document_id);
+    let documentNo: string | null = null;
+    let printCount = 0;
+    let issuedAt = toStrOrNull(t.issued_at);
+
+    if (officialDocId) {
+      const { data: docRow } = await adminClient
+        .from("official_documents")
+        .select("document_no, print_count, issued_at")
+        .eq("id", officialDocId)
+        .maybeSingle();
+      if (docRow) {
+        const d = docRow as Record<string, unknown>;
+        documentNo = toStrOrNull(d.document_no);
+        printCount = Number(d.print_count ?? 0);
+        issuedAt = toStrOrNull(d.issued_at) ?? issuedAt;
+      }
+    }
+
+    return {
+      state: "issued",
+      officialDocumentId: officialDocId,
+      documentNo,
+      issuedAt,
+      printCount,
+      errorCode: null,
+      canRetry: false,
+    };
+  }
+
+  if (taskStatus === "failed") {
+    return {
+      state: "failed",
+      officialDocumentId: null,
+      documentNo: null,
+      issuedAt: null,
+      printCount: 0,
+      errorCode: toStrOrNull(t.error_code),
+      canRetry: true,
+    };
+  }
+
+  // pending (or any unrecognised status — treated as pending)
+  return {
+    state: "pending",
+    officialDocumentId: null,
+    documentNo: null,
+    issuedAt: null,
+    printCount: 0,
+    errorCode: null,
+    canRetry: false,
+  };
+}
+
 export async function loadBookingOpsPayload(
   adminClient: SupabaseClient,
   bookingId: string,
@@ -330,6 +451,7 @@ export async function loadBookingOpsPayload(
     issuedDocuments,
     noShowForfeitureDocuments,
     fulfillmentStatus,
+    bookingDepositConfirmationDocument,
   ] = await Promise.all([
     fetchBookingChecklists(adminClient, bookingId),
     fetchBookingDocuments(adminClient, bookingId),
@@ -339,6 +461,7 @@ export async function loadBookingOpsPayload(
     fetchIssuedOperationalDocuments(adminClient, bookingId),
     fetchIssuedNoShowForfeitureDocuments(adminClient, bookingId),
     fetchBookingFulfillmentStatus(adminClient, bookingId),
+    fetchBookingDepositConfirmationDocument(adminClient, bookingId),
   ]);
   return {
     checklists,
@@ -347,6 +470,7 @@ export async function loadBookingOpsPayload(
     noShowForfeitureDocuments,
     fulfillmentStatus,
     templates,
+    bookingDepositConfirmationDocument,
   };
 }
 

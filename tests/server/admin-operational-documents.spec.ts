@@ -497,6 +497,27 @@ describe("operational rental document issuance", () => {
 
     // 7. BDC is a separate article branch — not merged with pickup/return or no-show
     expect(issuedPrint).toContain("snapshot && isBdcDocument");
+
+    // 8. D-enhancement: "รายการของที่จอง" booked-items section is present
+    expect(issuedPrint).toContain("รายการของที่จอง");
+    expect(issuedPrint).toContain("bookedItem");
+    expect(issuedPrint).toContain("bookedItem.asset_name");
+
+    // 9. D-enhancement: Booking ID QR code — qr_value passed to OfficialDocumentHeader
+    expect(issuedPrint).toContain("booking.qr_value");
+    expect(issuedPrint).toContain("qr-value");
+
+    // 10. D-enhancement: OfficialDocumentHeader now accepts optional qrValue prop
+    const officialHeaderSrc = readFileSync(
+      resolve(
+        process.cwd(),
+        "app/components/documents/OfficialDocumentHeader.vue",
+      ),
+      "utf8",
+    );
+    expect(officialHeaderSrc).toContain("qrValue");
+    expect(officialHeaderSrc).toContain("QrcodeVue");
+    expect(officialHeaderSrc).toContain("รหัสการจอง");
   });
 
   it("wires admin-only APIs, booking ops metadata, issued print UI, and legacy preview route", () => {
@@ -596,5 +617,194 @@ describe("operational rental document issuance", () => {
         "utf8",
       ),
     ).toContain("/api/admin/rental-bookings/${bookingId.value}/print-form");
+  });
+
+  it("C2: fetchBookingDepositConfirmationDocument — returns not_applicable for non-confirmed bookings", async () => {
+    const { fetchBookingDepositConfirmationDocument } =
+      await import("../../server/utils/admin-bookings-ops");
+
+    function makeOpsClient(
+      bookingRow: Record<string, unknown> | null,
+      taskRow: Record<string, unknown> | null = null,
+      docRow: Record<string, unknown> | null = null,
+    ) {
+      return {
+        from(table: string) {
+          const chain: any = {
+            select: () => chain,
+            eq: () => chain,
+            maybeSingle: async () => {
+              if (table === "rental_bookings")
+                return { data: bookingRow, error: null };
+              if (table === "pos_document_issuance_tasks")
+                return { data: taskRow, error: null };
+              if (table === "official_documents")
+                return { data: docRow, error: null };
+              return { data: null, error: null };
+            },
+          };
+          return chain;
+        },
+      };
+    }
+
+    // Non-confirmed booking → not_applicable
+    const r1 = await fetchBookingDepositConfirmationDocument(
+      makeOpsClient({
+        status: "draft",
+        booking_deposit_payment_status: "unpaid",
+      }) as any,
+      "booking-1",
+    );
+    expect(r1.state).toBe("not_applicable");
+    expect(r1.canRetry).toBe(false);
+
+    // Confirmed but deposit not paid → not_applicable
+    const r2 = await fetchBookingDepositConfirmationDocument(
+      makeOpsClient({
+        status: "confirmed",
+        booking_deposit_payment_status: "unpaid",
+      }) as any,
+      "booking-1",
+    );
+    expect(r2.state).toBe("not_applicable");
+
+    // Confirmed + paid, no task → missing + canRetry
+    const r3 = await fetchBookingDepositConfirmationDocument(
+      makeOpsClient({
+        status: "confirmed",
+        booking_deposit_payment_status: "paid",
+      }) as any,
+      "booking-1",
+    );
+    expect(r3.state).toBe("missing");
+    expect(r3.canRetry).toBe(true);
+
+    // Confirmed + paid_confirm_failed, no task → missing + canRetry
+    const r4 = await fetchBookingDepositConfirmationDocument(
+      makeOpsClient({
+        status: "confirmed",
+        booking_deposit_payment_status: "paid_confirm_failed",
+      }) as any,
+      "booking-1",
+    );
+    expect(r4.state).toBe("missing");
+    expect(r4.canRetry).toBe(true);
+
+    // Task status = failed → failed + canRetry
+    const r5 = await fetchBookingDepositConfirmationDocument(
+      makeOpsClient(
+        { status: "confirmed", booking_deposit_payment_status: "paid" },
+        {
+          id: "task-1",
+          status: "failed",
+          official_document_id: null,
+          issued_at: null,
+          error_code: "HTTP_500",
+        },
+      ) as any,
+      "booking-1",
+    );
+    expect(r5.state).toBe("failed");
+    expect(r5.errorCode).toBe("HTTP_500");
+    expect(r5.canRetry).toBe(true);
+
+    // Task status = pending → pending + !canRetry
+    const r6 = await fetchBookingDepositConfirmationDocument(
+      makeOpsClient(
+        { status: "confirmed", booking_deposit_payment_status: "paid" },
+        {
+          id: "task-1",
+          status: "pending",
+          official_document_id: null,
+          issued_at: null,
+          error_code: null,
+        },
+      ) as any,
+      "booking-1",
+    );
+    expect(r6.state).toBe("pending");
+    expect(r6.canRetry).toBe(false);
+
+    // Task status = issued with official doc → issued state
+    const r7 = await fetchBookingDepositConfirmationDocument(
+      makeOpsClient(
+        { status: "confirmed", booking_deposit_payment_status: "paid" },
+        {
+          id: "task-1",
+          status: "issued",
+          official_document_id: "doc-1",
+          issued_at: "2026-05-13T01:00:00Z",
+          error_code: null,
+        },
+        {
+          document_no: "BDC-202605-0001",
+          print_count: 2,
+          issued_at: "2026-05-13T01:00:00Z",
+        },
+      ) as any,
+      "booking-1",
+    );
+    expect(r7.state).toBe("issued");
+    expect(r7.officialDocumentId).toBe("doc-1");
+    expect(r7.documentNo).toBe("BDC-202605-0001");
+    expect(r7.printCount).toBe(2);
+    expect(r7.canRetry).toBe(false);
+  });
+
+  it("C2: booking detail page — BDC card wiring and retry endpoint file structure", () => {
+    const detailPage = readFileSync(
+      resolve(process.cwd(), "app/pages/admin/rental-bookings/[id].vue"),
+      "utf8",
+    );
+
+    // BDC card present in template
+    expect(detailPage).toContain("Booking Deposit Confirmation Document");
+    expect(detailPage).toContain("เอกสารยืนยันการรับเงินมัดจำการจอง");
+    expect(detailPage).toContain("showBdcCard");
+    expect(detailPage).toContain("bdcDocument");
+    expect(detailPage).toContain("retryBdcDocument");
+    expect(detailPage).toContain("retryingBdc");
+
+    // All 4 BDC states rendered
+    expect(detailPage).toContain("bdcDocument?.state === 'issued'");
+    expect(detailPage).toContain("bdcDocument?.state === 'failed'");
+    expect(detailPage).toContain("bdcDocument?.state === 'missing'");
+    expect(detailPage).toContain("bdcDocument?.state === 'pending'");
+
+    // Print and retry actions wired
+    expect(detailPage).toContain("bdcPrintUrl()");
+    expect(detailPage).toContain("bdcDocument?.canRetry");
+    expect(detailPage).toContain("booking-deposit-confirmation/retry");
+
+    // ops payload includes bookingDepositConfirmationDocument
+    const opsSrc = readFileSync(
+      resolve(process.cwd(), "server/utils/admin-bookings-ops.ts"),
+      "utf8",
+    );
+    expect(opsSrc).toContain("fetchBookingDepositConfirmationDocument");
+    expect(opsSrc).toContain("bookingDepositConfirmationDocument");
+    expect(opsSrc).toContain("BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE");
+
+    // Retry endpoint exists and gates on requirePlatformAdmin
+    const retryEndpoint = readFileSync(
+      resolve(
+        process.cwd(),
+        "server/api/admin/rental-bookings/[id]/documents/booking-deposit-confirmation/retry.post.ts",
+      ),
+      "utf8",
+    );
+    expect(retryEndpoint).toContain("requirePlatformAdmin");
+    expect(retryEndpoint).toContain("BOOKING_NOT_ELIGIBLE_FOR_DOCUMENT_RETRY");
+    expect(retryEndpoint).toContain("issueBookingDepositConfirmationDocument");
+    expect(retryEndpoint).toContain("HELD_BALANCE_EVENT_NOT_FOUND");
+    expect(retryEndpoint).toContain("pos_document_issuance_tasks");
+
+    // Canonical held-balance resolution: payment-method agnostic.
+    // Must use rental_booking_id + event_type — NOT booking_deposit_pos_attempt_id.
+    expect(retryEndpoint).toContain("rental_booking_id");
+    expect(retryEndpoint).toContain("BOOKING_DEPOSIT_COLLECTION_EVENT");
+    expect(retryEndpoint).not.toContain("booking_deposit_pos_attempt_id");
+    expect(retryEndpoint).not.toContain("POS_BOOKING_DEPOSIT_SOURCE_TYPE");
   });
 });

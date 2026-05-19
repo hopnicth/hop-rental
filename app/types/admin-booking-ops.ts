@@ -1,4 +1,5 @@
 import type {
+  AdminBookingDepositConfirmationDocument,
   AdminBookingFulfillmentStatus,
   AdminIssuedDocumentSummary,
 } from "~/types/admin-documents";
@@ -120,6 +121,7 @@ export interface AdminBookingOpsPayload {
   noShowForfeitureDocuments: AdminIssuedDocumentSummary[];
   fulfillmentStatus: AdminBookingFulfillmentStatus;
   templates: AssetChecklistTemplateSummary[];
+  bookingDepositConfirmationDocument: AdminBookingDepositConfirmationDocument;
 }
 
 export interface CreateChecklistFromTemplatePayload {
