@@ -511,3 +511,109 @@ describe("admin POS V3 Phase 2D-B3.2 Active QR Resume & Session Resilience", () 
     expect(source).toContain('"no_active_attempt"');
   });
 });
+
+// ── Phase 2D-B5: Locked Draft Summary UI ──────────────────────────────────────
+//
+// These are source-structure assertions: they verify that the correct conditional
+// guards, UI strings, and data bindings are present in index.vue.  They do not
+// mount the Vue component but assert the page source shape that drives runtime
+// rendering.
+
+describe("admin POS V3 Phase 2D-B5 Locked Draft Summary UI", () => {
+  it("editable create-draft form is guarded: shown only when latestDraftResult is null", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // The draft container must only mount when no draft result exists
+    expect(page).toContain(
+      "v-if=\"activeMode === 'booking' && latestDraftResult === null\"",
+    );
+    // And must NOT use the old unchecked guard
+    expect(page).not.toContain("v-if=\"activeMode === 'booking'\"");
+  });
+
+  it("locked draft summary renders when latestDraftResult is not null", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // Summary card v-if must gate on latestDraftResult !== null
+    expect(page).toContain(
+      "v-if=\"activeMode === 'booking' && latestDraftResult !== null\"",
+    );
+    expect(page).toContain("Draft การจองที่สร้างแล้ว");
+    expect(page).toContain(
+      "สร้าง Draft แล้ว กรุณาดำเนินการรับชำระเงินมัดจำการจองต่อ",
+    );
+    expect(page).toContain("draft · unpaid");
+  });
+
+  it("locked summary shows asset name and code from latestDraftResult", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("latestDraftResult?.booking?.asset?.name");
+    expect(page).toContain("latestDraftResult?.booking?.asset?.code");
+  });
+
+  it("locked summary shows customer name and phone from latestDraftResult", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("latestDraftResult?.booking?.customer?.bookerName");
+    expect(page).toContain("latestDraftResult?.booking?.customer?.walkInPhone");
+    expect(page).toContain("latestDraftResult?.booking?.customer?.userId");
+    expect(page).toContain(
+      'latestDraftResult?.booking?.customer?.kind === "account"',
+    );
+  });
+
+  it("locked summary shows rental period from latestDraftResult", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("latestDraftResult?.booking?.dates?.startDate");
+    expect(page).toContain(
+      "latestDraftResult?.booking?.dates?.customerReturnDate",
+    );
+    expect(page).toContain("latestDraftResult?.booking?.dates?.rentalDays");
+  });
+
+  it("locked summary shows booking deposit amount and booking ID", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("latestDraftResult?.quote?.bookingDepositDueNow");
+    expect(page).toContain("latestDraftResult?.quote?.currencyCode");
+    expect(page).toContain("latestDraftResult?.booking?.id");
+    // fmtDeposit helper must be present for currency formatting
+    expect(page).toContain("fmtDeposit(");
+  });
+
+  it("locked summary section has no active asset search, date picker, or create-draft CTA", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // Slice from the start of the locked summary to the payment method selector comment
+    const summaryStart = page.indexOf("Phase 2D-B5: Locked Draft Summary");
+    const paymentSelectorStart = page.indexOf("Payment method selector:");
+    expect(summaryStart).toBeGreaterThan(-1);
+    expect(paymentSelectorStart).toBeGreaterThan(summaryStart);
+    const lockedSection = page.slice(summaryStart, paymentSelectorStart);
+    // Must not contain the draft creation form component or calendar
+    expect(lockedSection).not.toContain(
+      "AdminPosV3FutureBookingDraftContainer",
+    );
+    expect(lockedSection).not.toContain("ProductsRentalBookingCalendar");
+    expect(lockedSection).not.toContain("submitDraft");
+    expect(lockedSection).not.toContain("Create Future Rental Booking");
+  });
+
+  it("payment method selector and payment containers remain intact after B5 change", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // Payment method selector still conditional on latestDraftResult !== null
+    expect(page).toContain("เลือกวิธีรับเงินมัดจำการจอง");
+    // Payment containers still present
+    expect(page).toContain("AdminPosV3FutureBookingDepositCashContainer");
+    expect(page).toContain("AdminPosV3FutureBookingDepositQrContainer");
+    expect(page).toContain("selectedPaymentMethod === 'cash'");
+    expect(page).toContain("selectedPaymentMethod === 'promptpay_qr'");
+  });
+
+  it("QR session restore path sets latestDraftResult which causes locked summary to render and editable form to hide", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // onMounted restore sets latestDraftResult.value — the same ref that gates both guards
+    expect(page).toContain(
+      "latestDraftResult.value = buildDraftResultFromBookingDetail",
+    );
+    // The restore sets selectedPaymentMethod to promptpay_qr — QR container mounts
+    expect(page).toContain('selectedPaymentMethod.value = "promptpay_qr"');
+    // The draft container guard ensures form is hidden post-restore
+    expect(page).toContain("latestDraftResult === null");
+  });
+});

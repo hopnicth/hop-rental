@@ -123,6 +123,15 @@ function selectPaymentMethod(method: FutureBookingDepositPaymentMethod) {
   selectedPaymentMethod.value = method;
 }
 
+// Phase 2D-B5: formats the booking deposit amount for the locked draft summary.
+function fmtDeposit(amount: unknown, currency: unknown) {
+  return new Intl.NumberFormat("th-TH", {
+    style: "currency",
+    currency: typeof currency === "string" ? currency : "THB",
+    maximumFractionDigits: 0,
+  }).format(Number(amount ?? 0));
+}
+
 const resolverBusy = computed(
   () => pendingLoading.value || bookingLoading.value || orderLoading.value,
 );
@@ -600,13 +609,89 @@ onMounted(async () => {
       description="No user pending list, booking context, or order context is shown until a booking or user payload is resolved."
     />
 
-    <!-- Container 1: Future Booking Draft Creation (Booking mode only) -->
+    <!-- Container 1: Future Booking Draft Creation (Booking mode only)
+         Hidden once a draft result exists — replaced by locked summary below. -->
     <AdminPosV3FutureBookingDraftContainer
-      v-if="activeMode === 'booking'"
+      v-if="activeMode === 'booking' && latestDraftResult === null"
       :user-context="userContext"
       @draft-created="handleDraftCreated"
       @same-day-rental-intent="handleSameDayIntent"
     />
+
+    <!-- Phase 2D-B5: Locked Draft Summary
+         Shown when a Future Booking Draft already exists in the payment flow.
+         Read-only: no editable inputs, no asset search, no create-draft CTA.
+         Populated from latestDraftResult — valid for normal creation, QR session
+         restore after refresh, and manual POS re-entry resume. -->
+    <UCard
+      v-if="activeMode === 'booking' && latestDraftResult !== null"
+      class="border-neutral-200 dark:border-neutral-700"
+    >
+      <template #header>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-semibold">Draft การจองที่สร้างแล้ว</h2>
+            <p class="text-sm text-muted">
+              สร้าง Draft แล้ว กรุณาดำเนินการรับชำระเงินมัดจำการจองต่อ
+            </p>
+          </div>
+          <UBadge color="warning" variant="soft">draft · unpaid</UBadge>
+        </div>
+      </template>
+      <div class="grid gap-4 text-sm md:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <p class="text-xs text-muted">สินทรัพย์</p>
+          <p class="font-semibold">
+            {{ latestDraftResult?.booking?.asset?.name ?? "—" }}
+          </p>
+          <p class="text-xs text-muted">
+            {{ latestDraftResult?.booking?.asset?.code ?? "—" }}
+          </p>
+        </div>
+        <div>
+          <p class="text-xs text-muted">ลูกค้า</p>
+          <p class="font-semibold">
+            {{
+              latestDraftResult?.booking?.customer?.bookerName ||
+              (latestDraftResult?.booking?.customer?.kind === "account"
+                ? "Account customer"
+                : "Walk-in")
+            }}
+          </p>
+          <p class="text-xs text-muted">
+            {{
+              latestDraftResult?.booking?.customer?.walkInPhone ||
+              latestDraftResult?.booking?.customer?.userId ||
+              "—"
+            }}
+          </p>
+        </div>
+        <div>
+          <p class="text-xs text-muted">ช่วงเช่า</p>
+          <p class="font-semibold">
+            {{ latestDraftResult?.booking?.dates?.startDate }} →
+            {{ latestDraftResult?.booking?.dates?.customerReturnDate }}
+          </p>
+          <p class="text-xs text-muted">
+            {{ latestDraftResult?.booking?.dates?.rentalDays }} วัน
+          </p>
+        </div>
+        <div>
+          <p class="text-xs text-muted">ยอดมัดจำ</p>
+          <p class="font-semibold">
+            {{
+              fmtDeposit(
+                latestDraftResult?.quote?.bookingDepositDueNow,
+                latestDraftResult?.quote?.currencyCode,
+              )
+            }}
+          </p>
+          <p class="truncate text-xs text-muted">
+            {{ latestDraftResult?.booking?.id }}
+          </p>
+        </div>
+      </div>
+    </UCard>
 
     <!-- Payment method selector: visible after a Future Booking Draft exists.
          Once selected, switching is locked to avoid unsafe QR/cash ambiguity. -->
