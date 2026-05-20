@@ -42,6 +42,12 @@ interface QrAttemptResponse {
   currency: string;
   expiresAt: string | null;
   status: QrAttemptStatus;
+  /** BDC document data — only populated when status === "paid". Null when document not yet issued or lookup failed. */
+  document?: {
+    officialDocumentId: string | null;
+    documentNo: string | null;
+    issuanceStatus: string | null;
+  } | null;
 }
 
 interface QrBookingConfirmedResult extends QrAttemptResponse {
@@ -96,6 +102,9 @@ const canRegenerate = computed(
 const isZeroDue = computed(
   () => props.draftResult.quote.bookingDepositDueNow <= 0,
 );
+const isDocumentIssued = computed(
+  () => isPaid.value && !!attempt.value?.document?.officialDocumentId,
+);
 
 const expiresAtMs = computed(() =>
   attempt.value?.expiresAt ? new Date(attempt.value.expiresAt).getTime() : 0,
@@ -116,6 +125,17 @@ const isLocallyPastExpiry = computed(() =>
     (isPending.value || isRequiresAction.value),
   ),
 );
+
+/** Open the BDC print route in a new tab using the issued officialDocumentId. */
+function openBookingDepositDocumentPrint() {
+  const docId = attempt.value?.document?.officialDocumentId;
+  const bookingId = props.draftResult.booking.id;
+  if (!docId) return;
+  window.open(
+    `/admin/documents/${encodeURIComponent(docId)}/print?bookingId=${encodeURIComponent(bookingId)}`,
+    "_blank",
+  );
+}
 
 function fmt(value: number, currency = "THB") {
   return new Intl.NumberFormat("th-TH", {
@@ -508,10 +528,54 @@ onBeforeUnmount(() => {
           </div>
           <div>
             <p class="text-muted">Document</p>
-            <p class="text-xs text-muted">
-              Poll response does not expose document number or print link.
+            <p
+              v-if="isPaid && attempt.document?.documentNo"
+              class="font-mono text-xs font-semibold"
+            >
+              {{ attempt.document.documentNo }}
             </p>
+            <p v-else class="text-xs text-muted">—</p>
           </div>
+        </div>
+
+        <!-- B7: BDC print CTA — only when paid + document issued -->
+        <div v-if="isPaid && isDocumentIssued" class="space-y-3 pt-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <UBadge color="success" variant="soft" icon="bx:file">
+              เอกสารยืนยันพร้อมพิมพ์
+            </UBadge>
+            <span
+              v-if="attempt.document?.documentNo"
+              class="font-mono text-xs text-muted"
+            >
+              {{ attempt.document.documentNo }}
+            </span>
+          </div>
+          <UButton
+            icon="bx:printer"
+            color="primary"
+            variant="soft"
+            @click="openBookingDepositDocumentPrint"
+          >
+            พิมพ์ใบยืนยันรับเงินมัดจำการจอง
+          </UButton>
+        </div>
+        <!-- B7: Document not ready — note to staff (paid but doc missing/failed) -->
+        <div v-else-if="isPaid && !isDocumentIssued" class="pt-1">
+          <p class="text-sm text-muted">
+            เอกสารยังไม่พร้อม · เปิด Booking Detail เพื่อตรวจสอบหรือพิมพ์เอกสาร
+          </p>
+        </div>
+        <!-- B7: Booking Detail secondary link — always in paid success state -->
+        <div v-if="isPaid" class="pt-1">
+          <UButton
+            :to="`/admin/rental-bookings/${draftResult.booking.id}`"
+            icon="bx:detail"
+            color="neutral"
+            variant="soft"
+          >
+            เปิด Booking Detail
+          </UButton>
         </div>
 
         <UAlert

@@ -187,14 +187,59 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     expect(source).toContain("booking-deposit-qr/active");
   });
 
-  it("does not invent BDC document print UI because poll response has no document fields", () => {
+  // ── Phase 2D-B7: Print BDC CTA ────────────────────────────────────────────
+
+  it("B7: QrAttemptResponse interface includes optional document field", () => {
     const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("officialDocumentId");
+    expect(source).toContain("documentNo");
+    expect(source).toContain("issuanceStatus");
+    // field is on the interface (optional)
+    expect(source).toContain("document?:");
+  });
+
+  it("B7: isDocumentIssued computed is defined and gates on officialDocumentId", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("isDocumentIssued");
+    expect(source).toContain("isPaid.value");
+    expect(source).toContain("attempt.value?.document?.officialDocumentId");
+  });
+
+  it("B7: openBookingDepositDocumentPrint function opens print route with bookingId query param", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("openBookingDepositDocumentPrint");
+    expect(source).toContain("/admin/documents/");
+    expect(source).toContain("/print?bookingId=");
+    expect(source).toContain("window.open(");
+    expect(source).toContain('"_blank"');
+  });
+
+  it("B7: print button uses correct Thai label", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("พิมพ์ใบยืนยันรับเงินมัดจำการจอง");
+  });
+
+  it("B7: print CTA is gated on isPaid && isDocumentIssued — not shown for finalizing or paid_confirm_failed", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // Print CTA appears only inside v-if with isDocumentIssued condition
+    expect(source).toContain("isPaid && isDocumentIssued");
+    // paid_confirm_failed must not reach the print CTA section
+    expect(source).not.toContain("isDegradedSuccess && isDocumentIssued");
+  });
+
+  it("B7: document-not-ready fallback note shown for paid without document", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // The v-else-if for paid but no doc
+    expect(source).toContain("isPaid && !isDocumentIssued");
+    expect(source).toContain("เอกสารยังไม่พร้อม");
+  });
+
+  it("B7: Booking Detail secondary link present in paid success state", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("เปิด Booking Detail");
     expect(source).toContain(
-      "Poll response does not expose document number or print link.",
+      "/admin/rental-bookings/${draftResult.booking.id}",
     );
-    expect(source).not.toContain("officialDocumentId");
-    expect(source).not.toContain("openBookingDepositDocumentPrint");
-    expect(source).not.toContain("พิมพ์เอกสารยืนยันการรับเงินมัดจำการจอง");
   });
 });
 

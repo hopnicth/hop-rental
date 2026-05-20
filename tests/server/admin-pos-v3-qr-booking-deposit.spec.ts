@@ -25,6 +25,9 @@ const mockState = vi.hoisted(() => ({
   liveChargeStatus: "paid" as string,
   // Payment alert mocks
   paymentAlertCalls: [] as Record<string, unknown>[],
+  // B7: document enrichment mocks
+  issuanceTaskRow: null as Record<string, unknown> | null,
+  officialDocumentRow: null as Record<string, unknown> | null,
 }));
 
 // ── h3 mock ───────────────────────────────────────────────────────────────────
@@ -150,6 +153,17 @@ function makeAdminClient() {
       if (table === "rental_bookings")
         return {
           select: () => chain({ data: mockState.bookingRow, error: null }),
+        };
+
+      if (table === "pos_document_issuance_tasks")
+        return {
+          select: () => chain({ data: mockState.issuanceTaskRow, error: null }),
+        };
+
+      if (table === "official_documents")
+        return {
+          select: () =>
+            chain({ data: mockState.officialDocumentRow, error: null }),
         };
 
       if (table === "pos_rental_payment_attempts") {
@@ -610,6 +624,9 @@ describe("admin POS V3 QR booking deposit poll", () => {
     mockState.retrieveChargeCalls = [];
     mockState.liveChargeStatus = "paid";
     mockState.finalizerShouldFail = false;
+    // B7: reset document enrichment state
+    mockState.issuanceTaskRow = null;
+    mockState.officialDocumentRow = null;
     // Point existingAttemptByKey to our poll attempt (poll uses .select(POS_QR_ATTEMPT_SELECT))
     mockState.existingAttemptByKey = {
       id: "attempt-qr-1",
@@ -681,6 +698,94 @@ describe("admin POS V3 QR booking deposit poll", () => {
     const result = await pollEndpoint(event);
     expect(result.status).toBe("paid");
     expect(mockState.updatedAttempts).toHaveLength(0);
+    // document is null when no issuance task exists (default mock state)
+    expect(result.document).toBeNull();
+  });
+
+  // ── B7: Document enrichment tests ─────────────────────────────────────────
+  it("B7: paid poll response includes document fields when issued BDC exists", async () => {
+    mockState.existingAttemptByKey = {
+      id: "attempt-qr-1",
+      status: "paid",
+      amount: 200,
+      currency_code: "THB",
+      qr_image_url: null,
+      expires_at: null,
+    };
+    mockState.issuanceTaskRow = {
+      id: "task-1",
+      status: "issued",
+      official_document_id: "doc-official-1",
+    };
+    mockState.officialDocumentRow = {
+      id: "doc-official-1",
+      document_no: "BDC-202606-0001",
+    };
+
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("paid");
+    expect(result.document).not.toBeNull();
+    expect(result.document?.officialDocumentId).toBe("doc-official-1");
+    expect(result.document?.documentNo).toBe("BDC-202606-0001");
+    expect(result.document?.issuanceStatus).toBe("issued");
+    expect(mockState.updatedAttempts).toHaveLength(0);
+  });
+
+  it("B7: paid poll response returns null document when no issuance task exists", async () => {
+    mockState.existingAttemptByKey = {
+      id: "attempt-qr-1",
+      status: "paid",
+      amount: 200,
+      currency_code: "THB",
+      qr_image_url: null,
+      expires_at: null,
+    };
+    // issuanceTaskRow defaults to null — no task found
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("paid");
+    expect(result.document).toBeNull();
+  });
+
+  it("B7: non-paid poll response does not include document field", async () => {
+    // pending attempt — document enrichment must not run
+    mockState.existingAttemptByKey = {
+      id: "attempt-qr-1",
+      status: "pending",
+      amount: 200,
+      currency_code: "THB",
+      qr_image_url: "https://cdn.omise.co/qr/test.png",
+      expires_at: futureExpiry,
+    };
+
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("pending");
+    expect((result as Record<string, unknown>).document).toBeUndefined();
+  });
+
+  it("B7: paid poll response returns null document when issuance task has no official_document_id", async () => {
+    mockState.existingAttemptByKey = {
+      id: "attempt-qr-1",
+      status: "paid",
+      amount: 200,
+      currency_code: "THB",
+      qr_image_url: null,
+      expires_at: null,
+    };
+    mockState.issuanceTaskRow = {
+      id: "task-1",
+      status: "failed",
+      official_document_id: null,
+    };
+
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("paid");
+    expect(result.document?.officialDocumentId).toBeNull();
+    expect(result.document?.documentNo).toBeNull();
+    expect(result.document?.issuanceStatus).toBe("failed");
   });
 
   it("404 when attempt not found", async () => {

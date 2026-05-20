@@ -7,6 +7,7 @@ import {
   applyPosRentalQrGatewayResult,
 } from "~~/server/utils/pos-rental-qr-booking-deposit";
 import { retrieveOmiseCharge } from "~~/server/utils/omise";
+import { BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE } from "~~/server/utils/admin-rental-booking-deposit-confirmation-document";
 
 type AnyRecord = Record<string, unknown>;
 
@@ -140,5 +141,57 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  return mapPosQrAttemptResponse(attempt);
+  const finalStatus = asText(attempt.status);
+  const baseResponse = mapPosQrAttemptResponse(attempt);
+
+  if (finalStatus !== "paid") {
+    return baseResponse;
+  }
+
+  // ── B7: Enrich paid response with BDC document data ──────────────────────────
+  // The BDC is issued synchronously by the finalizer before the attempt reaches
+  // 'paid'. This lookup is conditional (paid only), read-only, and never creates
+  // or mutates documents. Failure must never block the paid poll response.
+  let document: {
+    officialDocumentId: string | null;
+    documentNo: string | null;
+    issuanceStatus: string | null;
+  } | null = null;
+
+  try {
+    const { data: taskData } = await adminClient
+      .from("pos_document_issuance_tasks")
+      .select("id, status, official_document_id")
+      .eq("rental_booking_id", bookingId)
+      .eq("document_type", BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE)
+      .maybeSingle();
+
+    if (taskData) {
+      const task = taskData as AnyRecord;
+      const officialDocumentId = asText(task.official_document_id) || null;
+      let documentNo: string | null = null;
+
+      if (officialDocumentId) {
+        const { data: docData } = await adminClient
+          .from("official_documents")
+          .select("document_no")
+          .eq("id", officialDocumentId)
+          .maybeSingle();
+        if (docData) {
+          documentNo = asText((docData as AnyRecord).document_no) || null;
+        }
+      }
+
+      document = {
+        officialDocumentId,
+        documentNo,
+        issuanceStatus: asText(task.status) || null,
+      };
+    }
+  } catch {
+    // Document lookup failure must never block the paid poll response.
+    // document remains null; UI shows the fallback Booking Detail link.
+  }
+
+  return { ...baseResponse, document };
 });
