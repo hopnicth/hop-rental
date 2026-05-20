@@ -152,6 +152,40 @@ const rentalCategoryLabels = computed<Record<string, string> | undefined>(
   },
 );
 
+// ── Product-listing category options ─────────────────────────────────────────
+// Drives the Category dropdown for /product-all and /product-sale.
+// Source: storefrontMainCategories (already fetched as "product" entity type
+// for product listing modes via mainCategoryEntityType).
+// Returns undefined (not []) when no categories are loaded yet so SearchFilters
+// falls back gracefully rather than showing only the "All" sentinel.
+
+const productCategoryOptions = computed<CategorySelectOption[] | undefined>(
+  () => {
+    if (listingMode.value !== "products") return undefined;
+    const optionsByValue = new Map<string, CategorySelectOption>();
+    for (const item of storefrontMainCategories.value) {
+      optionsByValue.set(item.key, {
+        value: item.key,
+        label: localizedMainCategoryLabel(item),
+      });
+    }
+    const result = [...optionsByValue.values()];
+    return result.length > 0 ? result : undefined;
+  },
+);
+
+const productCategoryLabels = computed<Record<string, string> | undefined>(
+  () => {
+    if (listingMode.value !== "products") return undefined;
+    return Object.fromEntries(
+      (productCategoryOptions.value ?? []).map((option) => [
+        option.value,
+        option.label,
+      ]),
+    );
+  },
+);
+
 // Main-category context for dynamic filter groups.
 //   • Category-scoped routes (/product-power_tools, …) → use the route group.
 //   • Reserved routes (/product-all, /product-sale, /product-rental) → derive
@@ -624,8 +658,16 @@ const recommendedProducts = computed(() => filteredProducts.value.slice(0, 3));
           :brand-counts="brandFacetCounts"
           :dynamic-option-counts="dynamicFacetCounts"
           :filter-groups-loading="filterGroupsPending"
-          :category-options="rentalCategoryOptions"
-          :category-labels="rentalCategoryLabels"
+          :category-options="
+            listingMode === 'assets'
+              ? rentalCategoryOptions
+              : productCategoryOptions
+          "
+          :category-labels="
+            listingMode === 'assets'
+              ? rentalCategoryLabels
+              : productCategoryLabels
+          "
           @reset="resetFilters"
         />
       </div>
@@ -791,8 +833,16 @@ const recommendedProducts = computed(() => filteredProducts.value.slice(0, 3));
         :brand-counts="brandFacetCounts"
         :dynamic-option-counts="dynamicFacetCounts"
         :filter-groups-loading="filterGroupsPending"
-        :category-options="rentalCategoryOptions"
-        :category-labels="rentalCategoryLabels"
+        :category-options="
+          listingMode === 'assets'
+            ? rentalCategoryOptions
+            : productCategoryOptions
+        "
+        :category-labels="
+          listingMode === 'assets'
+            ? rentalCategoryLabels
+            : productCategoryLabels
+        "
         @reset="resetFilters"
       />
     </MobileFloatingPanel>
