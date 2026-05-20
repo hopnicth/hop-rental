@@ -716,6 +716,81 @@ describe("admin POS V3 QR booking deposit poll", () => {
     );
     expect(finalizingUpdate).toBeUndefined();
   });
+
+  // ── requires_action recovery tests (Phase 2D-B2.2) ──────────────────────────
+  // A PromptPay attempt may have been incorrectly written to DB as "requires_action"
+  // by a previous mapper version. The poll must re-trigger live reconciliation to
+  // recover these attempts rather than treating them as stuck non-pending state.
+
+  it("requires_action recovery: live Omise charge still pending → live recon fires, status corrected to pending", async () => {
+    // DB has requires_action (poisoned by old mapper).
+    // Omise live charge is still pending (customer hasn't paid yet).
+    // Expected: live recon fires, status corrected back to pending.
+    mockState.existingAttemptByKey = {
+      ...staleQrAttempt,
+      status: "requires_action",
+      expires_at: futureExpiry,
+    };
+    mockState.bookingRow = { ...baseBooking };
+    mockState.liveChargeStatus = "pending";
+
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("pending");
+    // Live recon was triggered — retrieveOmiseCharge called
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    expect(mockState.retrieveChargeCalls[0]).toBe("chrg_test_001");
+  });
+
+  it("requires_action recovery: live Omise charge is paid → booking finalized → returns paid", async () => {
+    // DB has requires_action (poisoned by old mapper).
+    // Omise live charge shows paid — customer paid during the stuck period.
+    // Expected: full finalization path, returns paid.
+    mockState.existingAttemptByKey = {
+      ...staleQrAttempt,
+      status: "requires_action",
+      expires_at: futureExpiry,
+    };
+    mockState.bookingRow = { ...baseBooking };
+    mockState.liveChargeStatus = "paid";
+
+    const result = await pollEndpoint(event);
+
+    expect(result.status).toBe("paid");
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    // Full paid finalization: finalizing transition + paid confirmation
+    const finalizingUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "finalizing",
+    );
+    const paidUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "paid",
+    );
+    expect(finalizingUpdate).toBeDefined();
+    expect(paidUpdate).toBeDefined();
+    expect(paidUpdate?.paid_at).toBeTruthy();
+  });
+
+  it("requires_action recovery: past expiry + live charge still pending → retrieve called, status preserved pending", async () => {
+    // DB has requires_action with past expiry.
+    // Omise still pending — must not local-expire because gateway_charge_id exists.
+    mockState.existingAttemptByKey = {
+      ...staleQrAttempt,
+      status: "requires_action",
+      expires_at: pastExpiry,
+    };
+    mockState.bookingRow = { ...baseBooking };
+    mockState.liveChargeStatus = "pending";
+
+    const result = await pollEndpoint(event);
+
+    // Corrected to pending after live recon (not local-expired)
+    expect(result.status).toBe("pending");
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    // No local expiry DB write
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "expired"),
+    ).toBeUndefined();
+  });
 });
 
 // ════════════════════════════════════════════════════════════════════════════

@@ -11,8 +11,33 @@ describe("payment-core", () => {
   it("maps Omise charge states to internal payment attempt statuses", () => {
     expect(mapOmiseChargeStatus({ successful: true })).toBe("paid");
     expect(mapOmiseChargeStatus({ status: "failed" })).toBe("failed");
-    expect(mapOmiseChargeStatus({ status: "pending", authorize_uri: "https://3ds" })).toBe("requires_action");
+    expect(
+      mapOmiseChargeStatus({ status: "pending", authorize_uri: "https://3ds" }),
+    ).toBe("requires_action");
     expect(mapOmiseChargeStatus({ status: "expired" })).toBe("expired");
+  });
+
+  it("does NOT map PromptPay charges with authorize_uri to requires_action", () => {
+    // PromptPay charges include authorize_uri even when unpaid — must stay "pending".
+    expect(
+      mapOmiseChargeStatus({
+        status: "pending",
+        authorize_uri: "https://api.omise.co/payments/pp-link",
+        source: { type: "promptpay" },
+      }),
+    ).toBe("pending");
+    // Card 3DS with no source.type → still requires_action
+    expect(
+      mapOmiseChargeStatus({
+        status: "pending",
+        authorize_uri: "https://api.omise.co/payments/3ds-link",
+        source: { type: "credit_card" },
+      }),
+    ).toBe("requires_action");
+    // No source at all → still requires_action (original behaviour preserved)
+    expect(
+      mapOmiseChargeStatus({ status: "pending", authorize_uri: "https://3ds" }),
+    ).toBe("requires_action");
   });
 
   it("converts THB amount to Omise smallest-unit amount", () => {

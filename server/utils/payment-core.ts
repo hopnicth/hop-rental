@@ -63,7 +63,14 @@ export function mapOmiseChargeStatus(charge: unknown): PaymentAttemptStatus {
   if (status === "failed" || charge.failure_code || charge.failure_message) {
     return "failed";
   }
-  if (asPaymentNonEmptyString(charge.authorize_uri)) return "requires_action";
+  // PromptPay charges include authorize_uri (web-payment link) even when unpaid.
+  // Only treat authorize_uri as a 3DS-style redirect signal for non-PromptPay sources.
+  const source = isRecord(charge.source) ? charge.source : null;
+  const isPromptPaySource =
+    source !== null && asPaymentNonEmptyString(source.type) === "promptpay";
+  if (!isPromptPaySource && asPaymentNonEmptyString(charge.authorize_uri)) {
+    return "requires_action";
+  }
   return "pending";
 }
 

@@ -93,7 +93,10 @@ export default defineEventHandler(async (event) => {
     expiresAtStr !== null && new Date(expiresAtStr).getTime() <= Date.now();
   const gatewayChargeId = asText(attempt.gateway_charge_id);
 
-  const LIVE_RECON_STATUSES = ["pending", "finalizing"];
+  // "requires_action" is included for recovery: a PromptPay charge may have been
+  // incorrectly mapped to requires_action by an earlier mapper version. Live
+  // reconciliation re-evaluates the charge and corrects the status.
+  const LIVE_RECON_STATUSES = ["pending", "finalizing", "requires_action"];
   if (LIVE_RECON_STATUSES.includes(currentStatus)) {
     if (gatewayChargeId) {
       // ── Active live-charge reconciliation (webhook-miss fallback) ─────────

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-const read = (path: string) => readFileSync(resolve(process.cwd(), path), "utf8");
+const read = (path: string) =>
+  readFileSync(resolve(process.cwd(), path), "utf8");
 
 const PAGE_PATH = "app/pages/admin/pos-v3/index.vue";
 const QR_CONTAINER_PATH =
@@ -34,8 +35,8 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     expect(page).toContain("AdminPosV3FutureBookingDepositQrContainer");
     expect(page).toContain("selectedPaymentMethod === 'cash'");
     expect(page).toContain("selectedPaymentMethod === 'promptpay_qr'");
-    expect(page).toContain(":draft-result=\"latestDraftResult\"");
-    expect(page).toContain("@booking-confirmed=\"handleBookingConfirmed\"");
+    expect(page).toContain(':draft-result="latestDraftResult"');
+    expect(page).toContain('@booking-confirmed="handleBookingConfirmed"');
   });
 
   it("leaves the existing Cash container source behaviorally separate from PromptPay QR", () => {
@@ -48,7 +49,9 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
 
   it("creates the new QR container with aligned props and booking-confirmed emit", () => {
     const source = read(QR_CONTAINER_PATH);
-    expect(source).toContain("defineProps<{ draftResult: DraftBookingResult }>");
+    expect(source).toContain(
+      "defineProps<{ draftResult: DraftBookingResult }>",
+    );
     expect(source).toContain('"booking-confirmed"');
     expect(source).toContain('emit("booking-confirmed"');
     expect(source).toContain('paymentMethod: "promptpay_qr"');
@@ -60,7 +63,9 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     expect(source).toContain("crypto.randomUUID()");
     expect(source).toContain("booking-deposit-qr");
     expect(source).toContain("idempotencyKey: idempotencyKey.value");
-    expect(source).toContain("amount: props.draftResult.quote.bookingDepositDueNow");
+    expect(source).toContain(
+      "amount: props.draftResult.quote.bookingDepositDueNow",
+    );
     expect(source).toContain("onMounted");
     expect(source).toContain("void createQrAttempt()");
   });
@@ -79,6 +84,7 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     }
     for (const status of [
       "pending",
+      "requires_action",
       "finalizing",
       "paid",
       "paid_confirm_failed",
@@ -88,6 +94,28 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     ]) {
       expect(source).toContain(`"${status}"`);
     }
+  });
+
+  it("treats requires_action as a non-terminal QR-visible state (Phase 2D-B2.2 resilience)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // terminalStatuses must contain the 5 expected terminal states
+    expect(source).toContain('"paid"');
+    expect(source).toContain('"paid_confirm_failed"');
+    expect(source).toContain('"expired"');
+    expect(source).toContain('"failed"');
+    expect(source).toContain('"cancelled"');
+    // requires_action must NOT appear in terminalStatuses — checked by absence of the pattern
+    // that would place it as a terminal array element:
+    expect(source).not.toContain('"requires_action",\n  "finalizing"');
+    expect(source).not.toContain('"requires_action",\n  "paid"');
+    // isRequiresAction computed must be defined
+    expect(source).toContain('attempt.value?.status === "requires_action"');
+    // QR image container stays visible when requires_action
+    expect(source).toContain("isPending || isRequiresAction || isFinalizing");
+    // Polling continues on requires_action
+    expect(source).toContain('"requires_action", "finalizing"');
+    // isLocallyPastExpiry includes requires_action for countdown UI
+    expect(source).toContain("isPending.value || isRequiresAction.value");
   });
 
   it("implements countdown as visual-only state and does not finalize locally", () => {
@@ -105,8 +133,12 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     const source = read(QR_CONTAINER_PATH);
     expect(source).toContain("async function pollQrAttempt");
     expect(source).toContain("booking-deposit-qr/poll");
-    expect(source).toContain("paymentAttemptId: attempt.value.paymentAttemptId");
-    expect(source).toContain("if (!attempt.value || isPolling.value || isTerminalStatus.value) return");
+    expect(source).toContain(
+      "paymentAttemptId: attempt.value.paymentAttemptId",
+    );
+    expect(source).toContain(
+      "if (!attempt.value || isPolling.value || isTerminalStatus.value) return",
+    );
     expect(source).toContain("setInterval(() => void pollQrAttempt(), 3000)");
     expect(source).toContain("terminalStatuses.includes(result.status)");
     expect(source).toContain("stopPolling()");
@@ -125,9 +157,13 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
   it("renders state-specific UI for pending, finalizing, paid, and paid_confirm_failed", () => {
     const source = read(QR_CONTAINER_PATH);
     expect(source).toContain("สแกน QR เพื่อชำระเงินมัดจำการจอง");
-    expect(source).toContain("เมื่อลูกค้าชำระสำเร็จ ระบบจะยืนยันการจองให้อัตโนมัติ");
+    expect(source).toContain(
+      "เมื่อลูกค้าชำระสำเร็จ ระบบจะยืนยันการจองให้อัตโนมัติ",
+    );
     expect(source).toContain("ตรวจพบการชำระเงินแล้ว");
-    expect(source).toContain("กำลังยืนยันการจองและเตรียมข้อมูลที่เกี่ยวข้อง กรุณารอสักครู่");
+    expect(source).toContain(
+      "กำลังยืนยันการจองและเตรียมข้อมูลที่เกี่ยวข้อง กรุณารอสักครู่",
+    );
     expect(source).toContain("Booking Deposit received");
     expect(source).toContain("ได้รับชำระเงินแล้ว · ต้องตรวจสอบด้วยตนเอง");
     expect(source).toContain("Staff must not collect payment again");
@@ -145,7 +181,9 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
 
   it("does not invent BDC document print UI because poll response has no document fields", () => {
     const source = read(QR_CONTAINER_PATH);
-    expect(source).toContain("Poll response does not expose document number or print link.");
+    expect(source).toContain(
+      "Poll response does not expose document number or print link.",
+    );
     expect(source).not.toContain("officialDocumentId");
     expect(source).not.toContain("openBookingDepositDocumentPrint");
     expect(source).not.toContain("พิมพ์เอกสารยืนยันการรับเงินมัดจำการจอง");
