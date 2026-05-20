@@ -5,6 +5,7 @@ import {
 } from "~~/server/utils/payment-core";
 import type { NormalizedGatewayCharge } from "~~/server/utils/omise";
 import { finalizePosRentalBookingDeposit } from "~~/server/utils/pos-rental-booking-deposit-finalizer";
+import { recordPaymentAlert } from "~~/server/utils/payments";
 
 type AnyRecord = Record<string, unknown>;
 type AnyClient = { from(table: string): any };
@@ -45,12 +46,13 @@ export interface ApplyPosQrGatewayResultOutput {
  * Called by the Omise webhook handler and the stale-poll reconciliation path.
  *
  * Responsibilities:
+ *   0. Late payment recovery: 'expired' local + 'paid' gateway (see below)
  *   1. Skip permanently-terminal attempts (paid, paid_confirm_failed, expired, failed, cancelled)
  *   1b. Preserve 'finalizing' + non-paid gateway result (no downgrade — manual review needed)
  *   2. Assert gateway amount/currency matches stored attempt
  *   3. Non-paid results (pending only) → update attempt status directly
  *   4. Paid result (pending or finalizing recovery):
- *        a. Transition attempt → 'finalizing' ONLY if currently 'pending' (skip if already there)
+ *        a. Transition attempt → 'finalizing' ONLY if currently 'pending'/'expired' (skip if already there)
  *        b. Call finalizePosRentalBookingDeposit() — idempotent, safe to replay
  *        c. Finalizer confirmed → update attempt → 'paid'
  *        d. Finalizer paid_confirm_failed → finalizer already updated attempt; return that status
@@ -61,6 +63,13 @@ export interface ApplyPosQrGatewayResultOutput {
  *   or stale-poll reconciliation can safely re-enter via the paid path because
  *   finalizePosRentalBookingDeposit() is idempotent (held-balance event + booking update
  *   are both replay-safe via unique constraint guards).
+ *
+ * Late payment recovery rationale:
+ *   PromptPay charges cannot be immediately expired via gateway API. A QR replacement
+ *   may have locally marked an attempt as 'expired' while the Omise charge remained
+ *   live and payable. If the customer then paid before natural gateway expiry, the
+ *   webhook delivers a 'paid' result against a locally 'expired' attempt. We must
+ *   recover the payment rather than silently drop it.
  *
  * Does NOT own: payment_events linkage, loading booking from DB, HTTP response mapping.
  */
@@ -75,7 +84,39 @@ export async function applyPosRentalQrGatewayResult(input: {
   const currentStatus = text(posAttempt.status);
   const mappedStatus = result.status;
 
+  // ── 0. Late payment recovery: locally expired, gateway confirms paid ──────
+  // PromptPay charges cannot be immediately expired via gateway API. A prior QR
+  // replacement may have locally marked this attempt as "expired" while the Omise
+  // charge remained live and was subsequently paid by the customer.
+  // Do NOT silently skip — record a critical alert and re-enter the paid path.
+  const isLatePaymentOnExpired =
+    currentStatus === "expired" && mappedStatus === "paid";
+  if (isLatePaymentOnExpired) {
+    try {
+      await recordPaymentAlert(client, {
+        bookingId: text(posAttempt.rental_booking_id),
+        kind: "late_payment_on_locally_expired_qr_attempt",
+        audience: "admin",
+        severity: "critical",
+        message:
+          "A PromptPay QR charge was paid at the gateway after the local attempt " +
+          "was marked expired. This likely occurred because a QR replacement locally " +
+          "expired the old attempt while the Omise charge remained live. " +
+          "Finalization is proceeding idempotently. Verify the booking state and held balance.",
+        metadata: {
+          attemptId,
+          gatewayChargeId: text(posAttempt.gateway_charge_id),
+        },
+      });
+    } catch {
+      // Alert failure must never block payment finalization.
+    }
+    // Fall through to the paid finalization path below.
+    // Step 4a will transition 'expired' → 'finalizing', then run finalizePosRentalBookingDeposit.
+  }
+
   // ── 1. Skip permanently-terminal attempts ────────────────────────────────
+  // Exception: 'expired' + gateway 'paid' is handled above (late-payment recovery).
   const TERMINAL = [
     "paid",
     "paid_confirm_failed",
@@ -83,7 +124,7 @@ export async function applyPosRentalQrGatewayResult(input: {
     "failed",
     "cancelled",
   ];
-  if (TERMINAL.includes(currentStatus)) {
+  if (!isLatePaymentOnExpired && TERMINAL.includes(currentStatus)) {
     return { attemptStatus: currentStatus };
   }
 

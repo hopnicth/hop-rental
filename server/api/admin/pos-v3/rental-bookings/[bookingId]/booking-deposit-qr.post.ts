@@ -4,11 +4,12 @@ import { calculateBookingDepositDueNow } from "~~/app/utils/rental-payment-lines
 import { assertRentalBookingAvailability } from "~~/server/utils/rental-booking-availability";
 import {
   createOmisePromptPayCharge,
-  expireOmiseCharge,
+  retrieveOmiseCharge,
 } from "~~/server/utils/omise";
 import {
   mapPosQrAttemptResponse,
   POS_QR_ATTEMPT_SELECT,
+  applyPosRentalQrGatewayResult,
 } from "~~/server/utils/pos-rental-qr-booking-deposit";
 
 const BOOKING_SELECT =
@@ -39,45 +40,92 @@ async function assertPosBranchAccess(input: {
     .eq("branch_id", input.branchId)
     .eq("can_pos", true)
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
-  if (!data) throw createError({ statusCode: 403, statusMessage: "No POS access for selected branch" });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  if (!data)
+    throw createError({
+      statusCode: 403,
+      statusMessage: "No POS access for selected branch",
+    });
 }
 
 export default defineEventHandler(async (event) => {
-  const { adminClient, userId: staffUserId, platformRole } = await requirePlatformAdmin(event);
+  const {
+    adminClient,
+    userId: staffUserId,
+    platformRole,
+  } = await requirePlatformAdmin(event);
   const bookingId = asText(event.context.params?.bookingId);
-  if (!bookingId) throw createError({ statusCode: 422, statusMessage: "bookingId is required" });
+  if (!bookingId)
+    throw createError({
+      statusCode: 422,
+      statusMessage: "bookingId is required",
+    });
 
   const body = (await readBody<Record<string, unknown>>(event)) ?? {};
   const idempotencyKey = asText(body.idempotencyKey);
   const amount = asMoney(body.amount);
-  if (!idempotencyKey) throw createError({ statusCode: 422, statusMessage: "idempotencyKey is required" });
+  if (!idempotencyKey)
+    throw createError({
+      statusCode: 422,
+      statusMessage: "idempotencyKey is required",
+    });
 
   const { data: bookingData, error: bookingError } = await adminClient
     .from("rental_bookings")
     .select(BOOKING_SELECT)
     .eq("id", bookingId)
     .maybeSingle();
-  if (bookingError) throw createError({ statusCode: 500, statusMessage: bookingError.message });
-  if (!bookingData) throw createError({ statusCode: 404, statusMessage: "Rental booking not found" });
+  if (bookingError)
+    throw createError({ statusCode: 500, statusMessage: bookingError.message });
+  if (!bookingData)
+    throw createError({
+      statusCode: 404,
+      statusMessage: "Rental booking not found",
+    });
   const booking = bookingData as AnyRecord;
 
   const posBranchId = asText(booking.pos_branch_id);
-  if (!posBranchId) throw createError({ statusCode: 422, statusMessage: "Booking is not a POS V3 booking" });
-  await assertPosBranchAccess({ adminClient, platformRole, userId: staffUserId, branchId: posBranchId });
+  if (!posBranchId)
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Booking is not a POS V3 booking",
+    });
+  await assertPosBranchAccess({
+    adminClient,
+    platformRole,
+    userId: staffUserId,
+    branchId: posBranchId,
+  });
 
   if (asText(booking.status) !== "draft")
-    throw createError({ statusCode: 422, statusMessage: "Only draft bookings can accept QR payment" });
-  const depositStatus = asText(booking.booking_deposit_payment_status || "unpaid");
-  if (depositStatus === "paid") throw createError({ statusCode: 409, statusMessage: "Booking deposit is already paid" });
-  if (amount <= 0) throw createError({ statusCode: 422, statusMessage: "ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Only draft bookings can accept QR payment",
+    });
+  const depositStatus = asText(
+    booking.booking_deposit_payment_status || "unpaid",
+  );
+  if (depositStatus === "paid")
+    throw createError({
+      statusCode: 409,
+      statusMessage: "Booking deposit is already paid",
+    });
+  if (amount <= 0)
+    throw createError({
+      statusCode: 422,
+      statusMessage: "ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED",
+    });
 
   const expectedDepositAmount = calculateBookingDepositDueNow({
     rentalDays: Number(booking.rental_days ?? 0),
     requiredSecurityDepositAmount: Number(booking.deposit_amount ?? 0),
   });
   if (Math.abs(amount - expectedDepositAmount) > 0.01)
-    throw createError({ statusCode: 422, statusMessage: "BOOKING_DEPOSIT_AMOUNT_MISMATCH" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "BOOKING_DEPOSIT_AMOUNT_MISMATCH",
+    });
 
   const currencyCode = asText(booking.currency_code) || "THB";
 
@@ -93,11 +141,18 @@ export default defineEventHandler(async (event) => {
 
   if (existingByKey) {
     const s = asText(existingByKey.status);
-    if (s === "pending") return mapPosQrAttemptResponse(existingByKey as AnyRecord);
+    if (s === "pending")
+      return mapPosQrAttemptResponse(existingByKey as AnyRecord);
     if (s === "paid" || s === "finalizing" || s === "paid_confirm_failed")
-      throw createError({ statusCode: 409, statusMessage: "PAYMENT_ALREADY_PROCESSED" });
+      throw createError({
+        statusCode: 409,
+        statusMessage: "PAYMENT_ALREADY_PROCESSED",
+      });
     // expired / failed / cancelled: return existing terminal — client must use new key to retry
-    return { ...mapPosQrAttemptResponse(existingByKey as AnyRecord), idempotent: true };
+    return {
+      ...mapPosQrAttemptResponse(existingByKey as AnyRecord),
+      idempotent: true,
+    };
   }
 
   // Inventory availability guard (drafts do not hold inventory)
@@ -109,25 +164,94 @@ export default defineEventHandler(async (event) => {
     excludeBookingId: bookingId,
   });
 
-  // One-active-pending-QR rule: expire any other pending QR for this booking+purpose
-  const { data: pendingQr } = await adminClient
+  // One-active-attempt rule: live-verify any existing non-terminal QR attempt.
+  // PromptPay charges cannot be immediately expired via gateway API, so we must
+  // gate on actual gateway state rather than locally expiring the old attempt.
+  const ACTIVE_QR_STATUSES = ["pending", "requires_action", "finalizing"];
+  const { data: activeQr } = await adminClient
     .from("pos_rental_payment_attempts")
-    .select("id, gateway_charge_id")
+    .select(POS_QR_ATTEMPT_SELECT)
     .eq("rental_booking_id", bookingId)
     .eq("payment_purpose", "booking_deposit")
     .eq("payment_method", "promptpay_qr")
-    .eq("status", "pending")
+    .in("status", ACTIVE_QR_STATUSES)
+    .order("created_at", { ascending: false })
+    .limit(1)
     .maybeSingle();
 
-  if (pendingQr) {
-    const oldChargeId = asText(pendingQr.gateway_charge_id);
-    if (oldChargeId) {
-      try { await expireOmiseCharge(event, oldChargeId); } catch { /* best-effort: expire locally regardless */ }
+  if (activeQr) {
+    const oldChargeId = asText(activeQr.gateway_charge_id);
+
+    if (!oldChargeId) {
+      // No gateway charge ID — cannot confirm liveness. Fail closed.
+      throw createError({
+        statusCode: 409,
+        statusMessage: "EXISTING_ACTIVE_QR_NOT_EXPIRED",
+      });
     }
+
+    let liveCharge: Awaited<ReturnType<typeof retrieveOmiseCharge>>;
+    try {
+      liveCharge = await retrieveOmiseCharge(event, oldChargeId);
+    } catch {
+      // Cannot confirm gateway state. Do NOT replace the existing attempt.
+      throw createError({
+        statusCode: 409,
+        statusMessage: "EXISTING_ACTIVE_QR_NOT_EXPIRED",
+      });
+    }
+
+    const gwStatus = liveCharge.status;
+    const localStatus = asText(activeQr.status);
+
+    if (localStatus === "finalizing") {
+      // Payment was already being finalized. Never allow a new QR.
+      if (gwStatus === "paid") {
+        // Crash-recovery: re-run finalization idempotently.
+        await applyPosRentalQrGatewayResult({
+          client: adminClient,
+          posAttempt: activeQr as AnyRecord,
+          booking,
+          result: liveCharge,
+        });
+      }
+      throw createError({
+        statusCode: 409,
+        statusMessage: "PAYMENT_ALREADY_PROCESSED",
+      });
+    }
+
+    if (gwStatus === "paid") {
+      // Charge already paid — apply finalization and report the conflict.
+      await applyPosRentalQrGatewayResult({
+        client: adminClient,
+        posAttempt: activeQr as AnyRecord,
+        booking,
+        result: liveCharge,
+      });
+      throw createError({
+        statusCode: 409,
+        statusMessage: "PAYMENT_ALREADY_PROCESSED",
+      });
+    }
+
+    if (gwStatus === "pending" || gwStatus === "requires_action") {
+      // Old QR is still live and payable at the gateway. Do NOT create a new one.
+      throw createError({
+        statusCode: 409,
+        statusMessage: "EXISTING_ACTIVE_QR_NOT_EXPIRED",
+      });
+    }
+
+    // Gateway confirms the old charge is terminal (expired / failed / refunded).
+    // Safe to update local status and proceed with new QR creation.
+    const terminalUpdate: AnyRecord = { status: gwStatus };
+    if (gwStatus === "expired")
+      terminalUpdate.expired_at = new Date().toISOString();
     await adminClient
       .from("pos_rental_payment_attempts")
-      .update({ status: "expired", expired_at: new Date().toISOString() })
-      .eq("id", pendingQr.id);
+      .update(terminalUpdate)
+      .eq("id", asText(activeQr.id));
   }
 
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
@@ -146,7 +270,10 @@ export default defineEventHandler(async (event) => {
       staff_user_id: staffUserId,
       idempotency_key: idempotencyKey,
       expires_at: expiresAt,
-      metadata: { source: "pos_v3_booking_deposit_promptpay_qr", bookingChannel: "admin_pos_v3" },
+      metadata: {
+        source: "pos_v3_booking_deposit_promptpay_qr",
+        bookingChannel: "admin_pos_v3",
+      },
     })
     .select(POS_QR_ATTEMPT_SELECT)
     .single();
@@ -168,7 +295,10 @@ export default defineEventHandler(async (event) => {
 
   const attemptId = String(attempt.id);
   const proto = getHeader(event, "x-forwarded-proto") ?? "http";
-  const host = getHeader(event, "x-forwarded-host") ?? getHeader(event, "host") ?? "localhost";
+  const host =
+    getHeader(event, "x-forwarded-host") ??
+    getHeader(event, "host") ??
+    "localhost";
   const returnUri = `${proto}://${host}/admin/pos-v3/rental-bookings/${encodeURIComponent(bookingId)}`;
 
   try {
@@ -205,7 +335,10 @@ export default defineEventHandler(async (event) => {
       status: "pending",
     };
   } catch (err) {
-    await adminClient.from("pos_rental_payment_attempts").update({ status: "failed" }).eq("id", attemptId);
+    await adminClient
+      .from("pos_rental_payment_attempts")
+      .update({ status: "failed" })
+      .eq("id", attemptId);
     throw err;
   }
 });

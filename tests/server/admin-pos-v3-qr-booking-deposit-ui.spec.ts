@@ -179,6 +179,14 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     expect(source).toContain("idempotencyKey.value = crypto.randomUUID()");
   });
 
+  it("handles 409 EXISTING_ACTIVE_QR_NOT_EXPIRED by resuming active attempt instead of showing error", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("EXISTING_ACTIVE_QR_NOT_EXPIRED");
+    expect(source).toContain("isExistingActiveQrConflict");
+    expect(source).toContain("resumeExistingActiveAttempt");
+    expect(source).toContain("booking-deposit-qr/active");
+  });
+
   it("does not invent BDC document print UI because poll response has no document fields", () => {
     const source = read(QR_CONTAINER_PATH);
     expect(source).toContain(

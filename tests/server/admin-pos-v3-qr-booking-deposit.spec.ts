@@ -9,7 +9,7 @@ const mockState = vi.hoisted(() => ({
   bookingRow: null as Record<string, unknown> | null,
   // QR attempt DB state
   existingAttemptByKey: null as Record<string, unknown> | null,
-  pendingQrAttempt: null as Record<string, unknown> | null,
+  activeQrAttempt: null as Record<string, unknown> | null,
   insertAttemptError: null as { code?: string; message?: string } | null,
   insertedAttempts: [] as Record<string, unknown>[],
   updatedAttempts: [] as Record<string, unknown>[],
@@ -19,10 +19,12 @@ const mockState = vi.hoisted(() => ({
   availabilityConflict: false,
   // Helper unit test mocks
   finalizerShouldFail: false,
-  // Stale reconciliation mocks (poll endpoint)
+  // Stale reconciliation / creation gate mocks
   retrieveChargeShouldThrow: false,
   retrieveChargeCalls: [] as string[],
   liveChargeStatus: "paid" as string,
+  // Payment alert mocks
+  paymentAlertCalls: [] as Record<string, unknown>[],
 }));
 
 // ── h3 mock ───────────────────────────────────────────────────────────────────
@@ -90,6 +92,15 @@ vi.mock("~~/server/utils/omise", () => ({
   }),
 }));
 
+// ── Payment alerts mock ───────────────────────────────────────────────────────
+vi.mock("~~/server/utils/payments", () => ({
+  recordPaymentAlert: vi.fn(
+    async (_client: unknown, payload: Record<string, unknown>) => {
+      mockState.paymentAlertCalls.push(payload);
+    },
+  ),
+}));
+
 // ── Shared finalizer mock (for helper unit tests) ────────────────────────────
 vi.mock("~~/server/utils/pos-rental-booking-deposit-finalizer", () => ({
   finalizePosRentalBookingDeposit: vi.fn(async () => {
@@ -115,6 +126,10 @@ function chain(result: { data: unknown; error: unknown }) {
   const c: any = {
     select: (_cols?: string) => c,
     eq: () => c,
+    neq: () => c,
+    in: () => c,
+    order: () => c,
+    limit: () => c,
     single: async () => result,
     maybeSingle: async () => result,
     then: (resolve: (v: any) => unknown) =>
@@ -139,11 +154,32 @@ function makeAdminClient() {
 
       if (table === "pos_rental_payment_attempts") {
         return {
-          select: (cols: string) => {
-            // distinguish pending-QR lookup (narrow cols) vs by-key lookup
-            if (cols === "id, gateway_charge_id")
-              return chain({ data: mockState.pendingQrAttempt, error: null });
-            return chain({ data: mockState.existingAttemptByKey, error: null });
+          select: (_cols: string) => {
+            // Distinguish active-QR lookup (.in() called) from by-key lookup (.eq() only).
+            let isActiveQuery = false;
+            const q: any = {
+              eq: () => q,
+              neq: () => q,
+              in: () => {
+                isActiveQuery = true;
+                return q;
+              },
+              order: () => q,
+              limit: () => q,
+              maybeSingle: async () => ({
+                data: isActiveQuery
+                  ? mockState.activeQrAttempt
+                  : mockState.existingAttemptByKey,
+                error: null,
+              }),
+              single: async () => ({
+                data: mockState.existingAttemptByKey,
+                error: null,
+              }),
+              then: (resolve: any) =>
+                Promise.resolve({ data: null, error: null }).then(resolve),
+            };
+            return q;
           },
           insert: (payload: Record<string, unknown>) => {
             mockState.insertedAttempts.push({ ...payload });
@@ -199,6 +235,24 @@ const baseBooking = {
   pos_staff_user_id: "staff-1",
 };
 
+// ── Active QR fixture used in creation gate tests ─────────────────────────────
+const activeQrAttemptFixture: Record<string, unknown> = {
+  id: "attempt-old",
+  rental_booking_id: "booking-1",
+  status: "pending",
+  amount: 200,
+  currency_code: "THB",
+  qr_image_url: "https://cdn.omise.co/qr/old.png",
+  expires_at: new Date(Date.now() + 300_000).toISOString(),
+  gateway_charge_id: "chrg_old_001",
+  payment_purpose: "booking_deposit",
+  payment_method: "promptpay_qr",
+  idempotency_key: "qr-key-old",
+  created_at: new Date().toISOString(),
+  branch_id: "branch-hq",
+  staff_user_id: "staff-1",
+};
+
 // ── Import endpoints under test ───────────────────────────────────────────────
 const qrEndpoint = (
   await import("../../server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-qr.post")
@@ -216,13 +270,17 @@ describe("admin POS V3 QR booking deposit creation", () => {
     mockState.branchAccess = true;
     mockState.bookingRow = { ...baseBooking };
     mockState.existingAttemptByKey = null;
-    mockState.pendingQrAttempt = null;
+    mockState.activeQrAttempt = null;
     mockState.insertAttemptError = null;
     mockState.insertedAttempts = [];
     mockState.updatedAttempts = [];
     mockState.expiredChargeIds = [];
     mockState.createChargeError = null;
     mockState.availabilityConflict = false;
+    mockState.retrieveChargeCalls = [];
+    mockState.retrieveChargeShouldThrow = false;
+    mockState.liveChargeStatus = "expired";
+    mockState.paymentAlertCalls = [];
   });
 
   it("happy path: inserts pending attempt, calls Omise, returns QR response", async () => {
@@ -301,27 +359,135 @@ describe("admin POS V3 QR booking deposit creation", () => {
     await expect(qrEndpoint(event)).rejects.toMatchObject({ statusCode: 409 });
   });
 
-  it("one-active-QR rule: expires old pending QR before creating new one", async () => {
-    mockState.pendingQrAttempt = {
-      id: "attempt-old",
-      gateway_charge_id: "chrg_old_001",
+  // ── One-active-QR rule (live-verify gate) ────────────────────────────────────
+
+  it("one-active-QR rule: no active QR → proceeds to create new one", async () => {
+    // Default: mockState.activeQrAttempt = null
+    const result = await qrEndpoint(event);
+    expect(result.status).toBe("pending");
+    expect(mockState.insertedAttempts).toHaveLength(1);
+    expect(mockState.retrieveChargeCalls).toHaveLength(0);
+  });
+
+  it("one-active-QR rule: active QR has no charge ID → 409 EXISTING_ACTIVE_QR_NOT_EXPIRED (fail-closed)", async () => {
+    mockState.activeQrAttempt = {
+      ...activeQrAttemptFixture,
+      gateway_charge_id: null,
     };
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "EXISTING_ACTIVE_QR_NOT_EXPIRED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    expect(mockState.retrieveChargeCalls).toHaveLength(0);
+  });
 
-    await qrEndpoint(event);
+  it("one-active-QR rule: gateway retrieve throws → 409 EXISTING_ACTIVE_QR_NOT_EXPIRED (fail-closed)", async () => {
+    mockState.activeQrAttempt = { ...activeQrAttemptFixture };
+    mockState.retrieveChargeShouldThrow = true;
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "EXISTING_ACTIVE_QR_NOT_EXPIRED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+  });
 
-    expect(mockState.expiredChargeIds).toContain("chrg_old_001");
+  it("one-active-QR rule: gateway confirms charge still pending → 409 EXISTING_ACTIVE_QR_NOT_EXPIRED", async () => {
+    mockState.activeQrAttempt = { ...activeQrAttemptFixture };
+    mockState.liveChargeStatus = "pending";
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "EXISTING_ACTIVE_QR_NOT_EXPIRED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+  });
+
+  it("one-active-QR rule: gateway confirms charge already paid → 409 PAYMENT_ALREADY_PROCESSED + finalization", async () => {
+    mockState.activeQrAttempt = { ...activeQrAttemptFixture };
+    mockState.liveChargeStatus = "paid";
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "PAYMENT_ALREADY_PROCESSED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    // Finalization path entered: finalizing transition + paid DB update
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "finalizing"),
+    ).toBeDefined();
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "paid"),
+    ).toBeDefined();
+  });
+
+  it("one-active-QR rule: finalizing attempt + gateway paid → 409 PAYMENT_ALREADY_PROCESSED", async () => {
+    mockState.activeQrAttempt = {
+      ...activeQrAttemptFixture,
+      status: "finalizing",
+    };
+    mockState.liveChargeStatus = "paid";
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "PAYMENT_ALREADY_PROCESSED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+  });
+
+  it("one-active-QR rule: gateway confirms terminal (expired) → old attempt updated, new QR created", async () => {
+    mockState.activeQrAttempt = { ...activeQrAttemptFixture };
+    mockState.liveChargeStatus = "expired";
+    const result = await qrEndpoint(event);
+    expect(result.status).toBe("pending");
+    expect(mockState.insertedAttempts).toHaveLength(1);
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    // Old attempt marked expired with timestamp
     const expiredUpdate = mockState.updatedAttempts.find(
       (u) => u.status === "expired",
     );
     expect(expiredUpdate).toBeDefined();
+    expect(expiredUpdate?.expired_at).toBeTruthy();
   });
 
-  it("one-active-QR rule: skips Omise expire call if old attempt has no charge id", async () => {
-    mockState.pendingQrAttempt = { id: "attempt-old", gateway_charge_id: null };
+  it("one-active-QR rule: requires_action local attempt + gateway still pending → 409 EXISTING_ACTIVE_QR_NOT_EXPIRED", async () => {
+    // requires_action is a stale DB value from a prior mapper version, but the
+    // Omise charge is still live. Replacement must be blocked — same as pending.
+    mockState.activeQrAttempt = {
+      ...activeQrAttemptFixture,
+      status: "requires_action",
+    };
+    mockState.liveChargeStatus = "pending";
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "EXISTING_ACTIVE_QR_NOT_EXPIRED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    // Old attempt is NOT locally expired — only the gateway result may change that
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "expired"),
+    ).toBeUndefined();
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+  });
 
-    await qrEndpoint(event);
-
-    expect(mockState.expiredChargeIds).toHaveLength(0);
+  it("one-active-QR rule: gateway confirms terminal (failed) → old attempt updated to failed, new QR created", async () => {
+    // Gateway failed is a distinct terminal status from expired: no expired_at,
+    // status written as "failed". New QR must be allowed to proceed.
+    mockState.activeQrAttempt = { ...activeQrAttemptFixture };
+    mockState.liveChargeStatus = "failed";
+    const result = await qrEndpoint(event);
+    expect(result.status).toBe("pending");
+    expect(mockState.insertedAttempts).toHaveLength(1);
+    expect(mockState.retrieveChargeCalls).toHaveLength(1);
+    // Old attempt updated to failed — no expired_at field
+    const failedUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "failed",
+    );
+    expect(failedUpdate).toBeDefined();
+    expect(failedUpdate?.expired_at).toBeUndefined();
+    // No expired update (different branch from gateway expired)
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "expired"),
+    ).toBeUndefined();
   });
 
   it("rejects non-draft booking", async () => {
@@ -845,6 +1011,7 @@ function matchedCharge(status: string, amountSatang = 20000) {
 describe("applyPosRentalQrGatewayResult helper", () => {
   beforeEach(() => {
     mockState.finalizerShouldFail = false;
+    mockState.paymentAlertCalls = [];
   });
 
   it("skips already-terminal attempt (paid) — idempotency guard", async () => {
@@ -1013,5 +1180,61 @@ describe("applyPosRentalQrGatewayResult helper", () => {
     // No second update to "paid"
     const paidUpdate = client.ops.find((o) => o.payload.status === "paid");
     expect(paidUpdate).toBeUndefined();
+  });
+
+  // ── Late payment recovery tests (Fix A) ──────────────────────────────────────
+
+  it("late-payment recovery: locally expired + gateway paid → critical alert + finalization → returns paid", async () => {
+    // Core scenario: QR replacement locally marked attempt as "expired" while
+    // Omise charge remained live. Customer paid → webhook delivers paid result
+    // against a locally expired attempt. Must recover, not silently drop.
+    const client = makeHelperClient();
+    const result = await applyPosRentalQrGatewayResult({
+      client,
+      posAttempt: {
+        ...pendingAttempt,
+        status: "expired",
+        rental_booking_id: "booking-1",
+        gateway_charge_id: "chrg_test_001",
+      },
+      booking: bookingFixture,
+      result: matchedCharge("paid"),
+    });
+    expect(result.attemptStatus).toBe("paid");
+    expect(result.finalizerStatus).toBe("confirmed");
+    // Critical payment alert was raised
+    expect(mockState.paymentAlertCalls).toHaveLength(1);
+    expect(mockState.paymentAlertCalls[0]).toMatchObject({
+      kind: "late_payment_on_locally_expired_qr_attempt",
+      severity: "critical",
+      audience: "admin",
+    });
+    // DB writes: finalizing transition + paid confirmation
+    const finalizingOp = client.ops.find(
+      (o) => o.payload.status === "finalizing",
+    );
+    const paidOp = client.ops.find((o) => o.payload.status === "paid");
+    expect(finalizingOp).toBeDefined();
+    expect(paidOp).toBeDefined();
+    expect(paidOp?.payload.paid_at).toBeTruthy();
+  });
+
+  it("late-payment recovery: locally expired + gateway NOT paid → terminal guard fires, no recovery", async () => {
+    // Expired + expired (or failed) — gateway is also terminal. No recovery needed.
+    const client = makeHelperClient();
+    const result = await applyPosRentalQrGatewayResult({
+      client,
+      posAttempt: {
+        ...pendingAttempt,
+        status: "expired",
+        rental_booking_id: "booking-1",
+        gateway_charge_id: "chrg_test_001",
+      },
+      booking: bookingFixture,
+      result: matchedCharge("expired"),
+    });
+    expect(result.attemptStatus).toBe("expired");
+    expect(mockState.paymentAlertCalls).toHaveLength(0);
+    expect(client.ops).toHaveLength(0);
   });
 });

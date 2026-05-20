@@ -186,10 +186,57 @@ async function createQrAttempt() {
     emitConfirmedOnce(result);
     startPolling();
   } catch (err: unknown) {
+    if (isExistingActiveQrConflict(err)) {
+      // Server refused: an active QR already exists at the gateway.
+      // Resume that attempt instead of showing an error.
+      await resumeExistingActiveAttempt();
+      return;
+    }
     createError.value =
       err instanceof Error ? err.message : "ไม่สามารถสร้าง QR ได้";
   } finally {
     isCreating.value = false;
+  }
+}
+
+/**
+ * Returns true if the server responded 409 EXISTING_ACTIVE_QR_NOT_EXPIRED.
+ * This signals that the old PromptPay charge is still live and cannot be
+ * replaced. The UI must resume the existing attempt via the active endpoint.
+ */
+function isExistingActiveQrConflict(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "statusCode" in err &&
+    (err as { statusCode: number }).statusCode === 409 &&
+    "statusMessage" in err &&
+    (err as { statusMessage: string }).statusMessage ===
+      "EXISTING_ACTIVE_QR_NOT_EXPIRED"
+  );
+}
+
+/**
+ * Called when createQrAttempt receives 409 EXISTING_ACTIVE_QR_NOT_EXPIRED.
+ * Loads the existing active attempt from the server and starts polling it.
+ */
+async function resumeExistingActiveAttempt() {
+  try {
+    const { attempt: active } = await $fetch<{
+      attempt: QrAttemptResponse | null;
+    }>(
+      `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(props.draftResult.booking.id)}/booking-deposit-qr/active`,
+    );
+    if (!componentActive) return;
+    if (active) {
+      attempt.value = active;
+      emitConfirmedOnce(active);
+      startPolling();
+    } else {
+      createError.value = "มี QR ที่ยังใช้งานอยู่ กรุณารอสักครู่แล้วลองใหม่";
+    }
+  } catch {
+    createError.value = "ไม่สามารถโหลดข้อมูล QR ได้";
   }
 }
 
