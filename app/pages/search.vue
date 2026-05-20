@@ -11,6 +11,11 @@ import type {
   ProductSearchResult,
 } from "~/composables/useProductSearch";
 import type { ContentPage, ContentType } from "~/types/content";
+import type {
+  CategorySelectOption,
+  StorefrontMainCategory,
+} from "~/types/category";
+import { useMainCategories } from "~/composables/useMainCategories";
 import MobileFloatingPanel from "~/components/mobile/MobileFloatingPanel.vue";
 import { mainCategories, mockSubCategories } from "~/mock/categories";
 import {
@@ -30,13 +35,16 @@ import {
 } from "~/utils/filter-query";
 import { assetMatchesSearchText } from "~/utils/asset-search";
 import type { Product } from "~/types/product";
+import type { Asset } from "~/types/asset";
 
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const { search } = useProductSearch();
 const { products, getDisplayPrice, getTotalStock } = useProducts();
 const { assets, getAssetShowPath, loading: assetsLoading } = useAssets();
+const { categories: productMainCategories } = useMainCategories("product");
+const { categories: rentalMainCategories } = useMainCategories("asset");
 const { fetchContentPages, searchContentPages } = useContentPages();
 
 const SEARCH_FACET_LIMIT = 1000;
@@ -59,9 +67,34 @@ const subToMainCategory = new Map(
   mockSubCategories.map((item) => [item.id, item.mainCategoryKey] as const),
 );
 
+// DB-backed category key set — mirrors the storefrontMainCategoryKeySet pattern
+// used in /product-[group]/index.vue, but unions ALL scopes relevant to /search
+// (product + asset) so that the resolver is not limited to rental-only DB keys.
+//
+// Service scope (and other content scopes) intentionally omitted here:
+// the filter sidebar is hidden for all content scopes (showProductFilters = false),
+// so useFilterGroups is never triggered for service/blog/review/promotion.
+// Service category key resolution can be added when a filter sidebar is introduced
+// for those scopes.
+const storefrontMainCategoryKeySet = computed(() => {
+  const keys = new Set<string>();
+  for (const item of productMainCategories.value) keys.add(item.key);
+  for (const item of rentalMainCategories.value) keys.add(item.key);
+  return keys;
+});
+
+// Union of the hardcoded mock keys (product-era) and the DB-backed asset keys.
+// This is the same allMainCategoryKeySet pattern from /product-[group]/index.vue.
+const allMainCategoryKeySet = computed(
+  () => new Set([...mainCategoryKeySet, ...storefrontMainCategoryKeySet.value]),
+);
+
 function readCategoryQuery(value: unknown): string {
-  const raw = readQueryString(value);
-  return raw && mainCategoryKeySet.has(raw) ? raw : "all";
+  // Accept any non-empty string — do NOT gate on the hardcoded product-era
+  // mainCategoryKeySet. Asset-only category keys are valid on the rental scope
+  // and must survive URL parsing. The result filtering (rentalResults computed)
+  // and the available category options are the authoritative scope gates.
+  return readQueryString(value) || "all";
 }
 
 function readTypeQuery(value: unknown): CatalogType | "all" {
@@ -100,7 +133,9 @@ let progressTimer: ReturnType<typeof setTimeout> | null = null;
 const mainCategoryKey = computed<string | null>(() => {
   const selected = selectedCategory.value;
   if (!selected || selected === "all") return null;
-  if (mainCategoryKeySet.has(selected)) return selected;
+  // Check the combined mock + DB-backed key set (same resolution order as
+  // /product-[group]/index.vue's allMainCategoryKeySet check).
+  if (allMainCategoryKeySet.value.has(selected)) return selected;
   return subToMainCategory.get(selected) ?? null;
 });
 
@@ -141,6 +176,129 @@ const filterSearchLabelsByKey = computed(() => {
   return map;
 });
 
+// ── Rental-scope category options ─────────────────────────────────────────────
+// Mirrors the pattern from app/pages/product-[group]/index.vue (rental/assets
+// listing path). When activeScope is "rental" these are passed to both
+// SearchFilters instances so the dropdown shows asset-relevant categories
+// instead of the default product-catalog-derived fallback.
+
+function localizedMainCategoryLabel(item: StorefrontMainCategory): string {
+  if (locale.value === "th") return item.labelTh || item.labelEn || item.key;
+  return item.labelEn || item.labelTh || item.key;
+}
+
+const rentalCategoryOptions = computed<CategorySelectOption[] | undefined>(
+  () => {
+    if (activeScope.value !== "rental") return undefined;
+    const optionsByValue = new Map<string, CategorySelectOption>();
+    for (const item of rentalMainCategories.value) {
+      optionsByValue.set(item.key, {
+        value: item.key,
+        label: localizedMainCategoryLabel(item),
+      });
+    }
+    // Include any mainCategoryKey values used by loaded assets that were not
+    // already represented by the DB-backed list (graceful fallback).
+    for (const asset of assets.value) {
+      const key = asset.mainCategoryKey;
+      if (key && !optionsByValue.has(key)) {
+        optionsByValue.set(key, { value: key, label: key });
+      }
+    }
+    // Return undefined (not []) when no options are available yet — an empty
+    // array passed to SearchFilters is treated as "use these options" (truthy),
+    // which produces only the "All" sentinel and hides the dropdown entirely.
+    // undefined signals SearchFilters to fall back gracefully.
+    const result = [...optionsByValue.values()];
+    return result.length > 0 ? result : undefined;
+  },
+);
+
+const rentalCategoryLabels = computed<Record<string, string> | undefined>(
+  () => {
+    if (activeScope.value !== "rental") return undefined;
+    return Object.fromEntries(
+      (rentalCategoryOptions.value ?? []).map((option) => [
+        option.value,
+        option.label,
+      ]),
+    );
+  },
+);
+
+// ── Product-scope category options ────────────────────────────────────────────
+// When activeScope is "product" these are passed to both SearchFilters instances
+// so the dropdown shows DB-backed product main categories instead of falling
+// back to the legacy products.value scan + 7-key mock gate inside SearchFilters.
+
+const productCategoryOptions = computed<CategorySelectOption[] | undefined>(
+  () => {
+    if (activeScope.value !== "product") return undefined;
+    const optionsByValue = new Map<string, CategorySelectOption>();
+    for (const item of productMainCategories.value) {
+      optionsByValue.set(item.key, {
+        value: item.key,
+        label: localizedMainCategoryLabel(item),
+      });
+    }
+    // Return undefined (not []) when no options are available yet — an empty
+    // array passed to SearchFilters is treated as "use these options" (truthy),
+    // which produces only the "All" sentinel and hides the dropdown entirely.
+    const result = [...optionsByValue.values()];
+    return result.length > 0 ? result : undefined;
+  },
+);
+
+const productCategoryLabels = computed<Record<string, string> | undefined>(
+  () => {
+    if (activeScope.value !== "product") return undefined;
+    return Object.fromEntries(
+      (productCategoryOptions.value ?? []).map((option) => [
+        option.value,
+        option.label,
+      ]),
+    );
+  },
+);
+
+// ── All-scope category options ────────────────────────────────────────────────
+// Union of active product main categories + active asset main categories from
+// `main_categories`. Deduplication is key-first: if the same key exists in both
+// sources the product-set label wins (product rows are iterated first).
+// Returns undefined (not []) when both sources are empty so SearchFilters falls
+// back gracefully rather than hiding its dropdown.
+
+const allCategoryOptions = computed<CategorySelectOption[] | undefined>(() => {
+  if (activeScope.value !== "all") return undefined;
+  const optionsByValue = new Map<string, CategorySelectOption>();
+  for (const item of productMainCategories.value) {
+    optionsByValue.set(item.key, {
+      value: item.key,
+      label: localizedMainCategoryLabel(item),
+    });
+  }
+  for (const item of rentalMainCategories.value) {
+    if (!optionsByValue.has(item.key)) {
+      optionsByValue.set(item.key, {
+        value: item.key,
+        label: localizedMainCategoryLabel(item),
+      });
+    }
+  }
+  const result = [...optionsByValue.values()];
+  return result.length > 0 ? result : undefined;
+});
+
+const allCategoryLabels = computed<Record<string, string> | undefined>(() => {
+  if (activeScope.value !== "all") return undefined;
+  return Object.fromEntries(
+    (allCategoryOptions.value ?? []).map((option) => [
+      option.value,
+      option.label,
+    ]),
+  );
+});
+
 // ── Pagination ──
 const pageSize = 12;
 const page = ref(1);
@@ -163,14 +321,46 @@ function contentResultsFor(scope: ContentType) {
   return contentResults.value.filter((item) => item.contentType === scope);
 }
 
+// Coerce specSummary (Record<string, unknown>) into the string-valued shape
+// expected by the dynamic-filter matcher's number_range branch.
+// Mirrors assetSpecForMatcher from /product-[group]/index.vue exactly.
+function assetSpecForMatcher(asset: Asset): Record<string, string | undefined> {
+  const out: Record<string, string | undefined> = {};
+  for (const [k, v] of Object.entries(asset.specSummary)) {
+    if (typeof v === "string") out[k] = v;
+    else if (typeof v === "number" || typeof v === "boolean")
+      out[k] = String(v);
+  }
+  return out;
+}
+
 const rentalResults = computed(() =>
   assets.value.filter((asset) => {
+    // 1. Text / query match (unchanged)
     if (!assetMatchesSearchText(asset, q.value)) return false;
-    if (selectedCategory.value === "all") return true;
-    return (
-      asset.mainCategoryKey === selectedCategory.value ||
-      asset.categories.includes(selectedCategory.value)
-    );
+    // 2. Category match — skip when "all" is selected (unchanged)
+    if (
+      selectedCategory.value !== "all" &&
+      asset.mainCategoryKey !== selectedCategory.value &&
+      !asset.categories.includes(selectedCategory.value)
+    ) {
+      return false;
+    }
+    // 3. Dynamic filter match — rental scope only.
+    //    Only applied when the user is actively viewing the rental scope so that
+    //    rental assets shown inside the "all" scope panel are not affected until
+    //    all-scope dynamic-filter semantics are addressed in a later phase.
+    if (
+      activeScope.value === "rental" &&
+      !productMatchesDynamicFilters(
+        { filterKeys: asset.filterKeys, spec: assetSpecForMatcher(asset) },
+        selectedDynamicFilters.value,
+        filterGroupById.value,
+      )
+    ) {
+      return false;
+    }
+    return true;
   }),
 );
 
@@ -530,6 +720,9 @@ watch(
 watch(activeScope, () => {
   if (isApplyingRouteQuery.value) return;
   page.value = 1;
+  // Clear the selected category so a product-era key cannot leak into the rental
+  // zone (or vice-versa) when the user switches scope tabs.
+  selectedCategory.value = "all";
 });
 
 // Reset pagination + scroll to top when filters change
@@ -699,6 +892,24 @@ watch(mainCategoryKey, (next, previous) => {
           :brand-counts="brandFacetCounts"
           :dynamic-option-counts="dynamicFacetCounts"
           :filter-groups-loading="filterGroupsPending"
+          :category-options="
+            activeScope === 'all'
+              ? allCategoryOptions
+              : activeScope === 'product'
+                ? productCategoryOptions
+                : activeScope === 'rental'
+                  ? rentalCategoryOptions
+                  : undefined
+          "
+          :category-labels="
+            activeScope === 'all'
+              ? allCategoryLabels
+              : activeScope === 'product'
+                ? productCategoryLabels
+                : activeScope === 'rental'
+                  ? rentalCategoryLabels
+                  : undefined
+          "
           @reset="resetFilters"
         />
       </aside>
@@ -939,6 +1150,24 @@ watch(mainCategoryKey, (next, previous) => {
         :brand-counts="brandFacetCounts"
         :dynamic-option-counts="dynamicFacetCounts"
         :filter-groups-loading="filterGroupsPending"
+        :category-options="
+          activeScope === 'all'
+            ? allCategoryOptions
+            : activeScope === 'product'
+              ? productCategoryOptions
+              : activeScope === 'rental'
+                ? rentalCategoryOptions
+                : undefined
+        "
+        :category-labels="
+          activeScope === 'all'
+            ? allCategoryLabels
+            : activeScope === 'product'
+              ? productCategoryLabels
+              : activeScope === 'rental'
+                ? rentalCategoryLabels
+                : undefined
+        "
         @reset="resetFilters"
       />
     </MobileFloatingPanel>
