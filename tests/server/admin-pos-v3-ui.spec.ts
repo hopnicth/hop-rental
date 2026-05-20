@@ -478,7 +478,8 @@ describe("admin POS V3 Phase 2D-B3.2 Active QR Resume & Session Resilience", () 
 
   it("index.vue has manual re-entry resume in loadBookingContext", () => {
     const page = read("app/pages/admin/pos-v3/index.vue");
-    expect(page).toContain("Manual re-entry resume");
+    // Comment updated in B6 to "Manual re-entry / query re-entry resume"
+    expect(page).toContain("Manual re-entry");
     expect(page).toContain("booking-deposit-qr/active");
     expect(page).toContain('detail.status === "draft"');
     expect(page).toContain("!latestDraftResult.value");
@@ -520,13 +521,12 @@ describe("admin POS V3 Phase 2D-B3.2 Active QR Resume & Session Resilience", () 
 // rendering.
 
 describe("admin POS V3 Phase 2D-B5 Locked Draft Summary UI", () => {
-  it("editable create-draft form is guarded: shown only when latestDraftResult is null", () => {
+  it("editable create-draft form is guarded: shown only when latestDraftResult is null and not in query mode", () => {
     const page = read("app/pages/admin/pos-v3/index.vue");
-    // The draft container must only mount when no draft result exists
-    expect(page).toContain(
-      "v-if=\"activeMode === 'booking' && latestDraftResult === null\"",
-    );
-    // And must NOT use the old unchecked guard
+    // Guard must check latestDraftResult === null (B5) and !bookingIdQueryMode (B6)
+    expect(page).toContain("latestDraftResult === null");
+    expect(page).toContain("!bookingIdQueryMode");
+    // And must NOT use the old unchecked single-condition guard
     expect(page).not.toContain("v-if=\"activeMode === 'booking'\"");
   });
 
@@ -615,5 +615,103 @@ describe("admin POS V3 Phase 2D-B5 Locked Draft Summary UI", () => {
     expect(page).toContain('selectedPaymentMethod.value = "promptpay_qr"');
     // The draft container guard ensures form is hidden post-restore
     expect(page).toContain("latestDraftResult === null");
+  });
+});
+
+// ── Phase 2D-B6: Booking Detail Resume Booking Deposit Collection CTA ─────────
+//
+// Source-structure assertions for:
+//   A. Booking Detail page — CTA eligibility gate and navigation
+//   B. POS V3 index — query re-entry mode, draft form suppression, Cases 1–3
+
+describe("admin POS V3 Phase 2D-B6 Booking Detail CTA & POS Query Re-entry", () => {
+  // ── A. Booking Detail CTA ──────────────────────────────────────────────────
+
+  it("Booking Detail: canResumeDepositCollection gates on draft + unpaid status", () => {
+    const page = read("app/pages/admin/rental-bookings/[id].vue");
+    // Computed must check both booking status and bookingDepositPaymentStatus
+    expect(page).toContain('booking.value?.status === "draft"');
+    expect(page).toContain(
+      'booking.value?.bookingDepositPaymentStatus === "unpaid"',
+    );
+    expect(page).toContain("canResumeDepositCollection");
+  });
+
+  it("Booking Detail: CTA button is guarded by canResumeDepositCollection", () => {
+    const page = read("app/pages/admin/rental-bookings/[id].vue");
+    expect(page).toContain('v-if="canResumeDepositCollection"');
+  });
+
+  it("Booking Detail: CTA button has Thai label", () => {
+    const page = read("app/pages/admin/rental-bookings/[id].vue");
+    expect(page).toContain("ดำเนินการรับเงินมัดจำการจอง");
+  });
+
+  it("Booking Detail: CTA navigates to POS V3 with bookingId query param", () => {
+    const page = read("app/pages/admin/rental-bookings/[id].vue");
+    expect(page).toContain("/admin/pos-v3?bookingId=");
+    expect(page).toContain("bookingId");
+  });
+
+  it("Booking Detail: supporting alert text references unpaid deposit state", () => {
+    const page = read("app/pages/admin/rental-bookings/[id].vue");
+    expect(page).toContain(
+      "Booking Draft ยังไม่ได้รับชำระเงิน — ไปที่ POS V3 เพื่อรับมัดจำ",
+    );
+  });
+
+  // ── B. POS V3 query re-entry ───────────────────────────────────────────────
+
+  it("POS index: bookingIdQueryMode ref is declared", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("bookingIdQueryMode");
+    expect(page).toContain("bookingIdQueryMode = ref(false)");
+  });
+
+  it("POS index: useRoute is called to read the query param", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("const route = useRoute()");
+    expect(page).toContain("route.query.bookingId");
+  });
+
+  it("POS index: draft container guard includes !bookingIdQueryMode", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("!bookingIdQueryMode");
+    // Guard must still also check latestDraftResult === null
+    expect(page).toContain("latestDraftResult === null");
+  });
+
+  it("POS index Case 1: query entry + no active QR → sets latestDraftResult via calculateBookingDepositDueNow", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // Must calculate deposit amount from detail fields when no active attempt
+    expect(page).toContain("calculateBookingDepositDueNow");
+    expect(page).toContain("bookingIdQueryMode.value");
+    // Sets latestDraftResult for the no-active-QR path
+    expect(page).toContain(
+      "latestDraftResult.value = buildDraftResultFromBookingDetail",
+    );
+  });
+
+  it("POS index Case 1: bookingDepositPaymentStatus === unpaid is required before active-QR check", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // Safety: only attempt QR resume / query entry for unpaid deposits
+    expect(page).toContain('detail.bookingDepositPaymentStatus === "unpaid"');
+  });
+
+  it("POS index Case 3: ineligible alert is shown when bookingIdQueryMode + no latestDraftResult", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("ไม่สามารถรับชำระเงินมัดจำได้");
+    expect(page).toContain(
+      "การจองนี้ไม่อยู่ในสถานะที่สามารถดำเนินการรับเงินมัดจำได้",
+    );
+    // Alert is conditional on bookingIdQueryMode and latestDraftResult === null
+    expect(page).toContain("bookingIdQueryMode");
+  });
+
+  it("POS index: onMounted reads route.query.bookingId and calls loadBookingContext", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("queryBookingId");
+    expect(page).toContain("bookingIdQueryMode.value = true");
+    expect(page).toContain("loadBookingContext(queryBookingId");
   });
 });

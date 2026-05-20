@@ -8,6 +8,7 @@ import AdminPosV3FutureBookingDraftContainer from "~/components/admin/pos/AdminP
 import AdminPosV3FutureBookingDepositCashContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositCashContainer.vue";
 import AdminPosV3FutureBookingDepositQrContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositQrContainer.vue";
 import { runQrSessionRestore } from "~/utils/pos-qr-session-restore";
+import { calculateBookingDepositDueNow } from "~/utils/rental-payment-lines";
 import type {
   AdminRentalBookingRow,
   AdminSaleOrderQueueResponse,
@@ -72,9 +73,14 @@ interface PendingWorkItem extends AdminPosV3PendingWorkItem {
   order?: AdminSaleOrderQueueRow;
 }
 
+const route = useRoute();
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const activeMode = ref<AdminPosV3Mode>("booking");
+// Phase 2D-B6: true when page entered with ?bookingId= query param.
+// Suppresses the create-draft form and shows the ineligible-booking alert (Case 3).
+const bookingIdQueryMode = ref(false);
 const resolverNotice = ref<ResolverNotice | null>(null);
 const lastResolved = ref<string | null>(null);
 
@@ -275,10 +281,13 @@ async function loadBookingContext(
           "Pickup readiness preview is unavailable for this booking.";
       }
     }
-    // Phase 2D-B3.2: Manual re-entry resume.
-    // When staff re-opens a draft booking that already has an active QR attempt,
-    // automatically mount the QR payment flow so they can resume without losing the QR.
-    if (detail.status === "draft" && !latestDraftResult.value) {
+    // Phase 2D-B3.2 + B6: Manual re-entry / query re-entry resume.
+    // Condition: draft booking with unpaid deposit only — blocks paid_confirm_failed re-collection.
+    if (
+      detail.status === "draft" &&
+      detail.bookingDepositPaymentStatus === "unpaid" &&
+      !latestDraftResult.value
+    ) {
       try {
         const { attempt: activeAttempt } = await $fetch<{
           attempt: unknown | null;
@@ -286,11 +295,24 @@ async function loadBookingContext(
           `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(detail.id)}/booking-deposit-qr/active`,
         );
         if (activeAttempt) {
+          // Case 2: active QR exists — resume QR flow (B3.2 behavior).
           latestDraftResult.value = buildDraftResultFromBookingDetail(
             detail,
             activeAttempt,
           );
           selectedPaymentMethod.value = "promptpay_qr";
+        } else if (bookingIdQueryMode.value) {
+          // Phase 2D-B6 Case 1: no active QR, entered via ?bookingId= query param.
+          // Show locked draft summary + payment method selector so staff can choose cash or QR.
+          const dueNow = calculateBookingDepositDueNow({
+            rentalDays: detail.rentalDays,
+            requiredSecurityDepositAmount: detail.depositAmount,
+          });
+          latestDraftResult.value = buildDraftResultFromBookingDetail(detail, {
+            amount: dueNow,
+            currency: detail.currencyCode,
+          });
+          // selectedPaymentMethod stays null → payment method selector is shown.
         }
       } catch {
         // Non-critical: re-entry check failed silently; normal manual flow continues.
@@ -506,15 +528,16 @@ function buildDraftResultFromBookingDetail(
 }
 
 /**
- * Phase 2D-B3.2: Same-tab refresh restore.
+ * Phase 2D-B3.2 + B6: Mount restore sequence.
  *
- * Reads the session buffer written by AdminPosV3FutureBookingDepositQrContainer
- * and, if the booking is still draft and an active QR attempt exists, restores
- * latestDraftResult + selectedPaymentMethod so the QR container remounts and
- * resumes polling the same attempt.
+ * 1. Session buffer restore (B3.2): if a QR session buffer exists, validate + restore.
+ * 2. Query re-entry (B6): if ?bookingId= is present and no session restore ran,
+ *    load the booking and resume/prepare the deposit collection flow.
  */
 onMounted(async () => {
   if (typeof window === "undefined") return;
+
+  // Phase 2D-B3.2: Same-tab refresh QR session restore.
   const outcome = await runQrSessionRestore<AdminRentalBookingDetail>({
     storage: window.sessionStorage,
     fetchDetail: (id) =>
@@ -527,12 +550,26 @@ onMounted(async () => {
       ),
     isRestorable: (d) => d.status === "draft",
   });
-  if (outcome.kind !== "restored") return;
-  latestDraftResult.value = buildDraftResultFromBookingDetail(
-    outcome.detail,
-    outcome.activeAttempt,
-  );
-  selectedPaymentMethod.value = "promptpay_qr";
+  if (outcome.kind === "restored") {
+    latestDraftResult.value = buildDraftResultFromBookingDetail(
+      outcome.detail,
+      outcome.activeAttempt,
+    );
+    selectedPaymentMethod.value = "promptpay_qr";
+  }
+
+  // Phase 2D-B6: Query re-entry mode — ?bookingId=<id> from Booking Detail CTA.
+  const queryBookingId =
+    typeof route.query.bookingId === "string"
+      ? route.query.bookingId.trim()
+      : "";
+  if (queryBookingId) {
+    bookingIdQueryMode.value = true;
+    // Only load if session restore did not already populate latestDraftResult.
+    if (!latestDraftResult.value) {
+      await loadBookingContext(queryBookingId, { clearUser: true });
+    }
+  }
 });
 </script>
 
@@ -610,12 +647,32 @@ onMounted(async () => {
     />
 
     <!-- Container 1: Future Booking Draft Creation (Booking mode only)
-         Hidden once a draft result exists — replaced by locked summary below. -->
+         Hidden once a draft result exists — replaced by locked summary below.
+         Phase 2D-B6: also hidden in bookingIdQueryMode (existing booking targeted via URL). -->
     <AdminPosV3FutureBookingDraftContainer
-      v-if="activeMode === 'booking' && latestDraftResult === null"
+      v-if="
+        activeMode === 'booking' &&
+        latestDraftResult === null &&
+        !bookingIdQueryMode
+      "
       :user-context="userContext"
       @draft-created="handleDraftCreated"
       @same-day-rental-intent="handleSameDayIntent"
+    />
+
+    <!-- Phase 2D-B6 Case 3: Query-entry mode — booking no longer eligible for deposit collection.
+         Shown when entered via ?bookingId= but booking is already paid/confirmed/cancelled/paid_confirm_failed.
+         Prevents accidental new draft creation and informs staff the booking cannot be re-processed. -->
+    <UAlert
+      v-if="
+        activeMode === 'booking' &&
+        bookingIdQueryMode &&
+        latestDraftResult === null
+      "
+      color="neutral"
+      icon="bx:info-circle"
+      title="ไม่สามารถรับชำระเงินมัดจำได้"
+      description="การจองนี้ไม่อยู่ในสถานะที่สามารถดำเนินการรับเงินมัดจำได้"
     />
 
     <!-- Phase 2D-B5: Locked Draft Summary

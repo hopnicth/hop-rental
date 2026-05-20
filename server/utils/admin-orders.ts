@@ -24,6 +24,7 @@ import type {
   OrderStatus,
 } from "~~/app/types/order";
 import type {
+  RentalBookingDepositPaymentStatus,
   RentalBookingStatus,
   RentalPricingBreakdownRow,
 } from "~~/app/types/rental-booking";
@@ -617,7 +618,7 @@ export const ADMIN_ORDER_ITEMS_SELECT =
   "id, product_id, sku_id, name, thumbnail, unit_price, original_unit_price, discount_percent, quantity, line_total";
 
 export const ADMIN_RENTAL_BOOKING_DETAIL_SELECT =
-  "id, user_id, walk_in_phone, status, asset_id, asset_code, asset_name, asset_thumbnail, asset_snapshot, product_id, sku_id, product_name, matched_product_id, matched_product_name, thumbnail, hub_id, hub_name, start_date, end_date, rental_days, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, no_show_at, no_show_marked_by_user_id, no_show_reason, no_show_source_event_id, pricing_breakdown, booker_name, booker_phone, created_at, updated_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+  "id, user_id, walk_in_phone, status, asset_id, asset_code, asset_name, asset_thumbnail, asset_snapshot, product_id, sku_id, product_name, matched_product_id, matched_product_name, thumbnail, hub_id, hub_name, start_date, end_date, rental_days, pricing_model, currency_code, daily_rate, weekly_rate, monthly_rate, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_method, deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, no_show_at, no_show_marked_by_user_id, no_show_reason, no_show_source_event_id, pricing_breakdown, booker_name, booker_phone, booking_deposit_payment_status, created_at, updated_at, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
 
 function mapRentalPaymentLine(row: unknown): RentalPaymentLine {
   const r = asRow(row);
@@ -860,6 +861,10 @@ export function mapAdminRentalBookingDetail(
     createdAt: String(r.created_at ?? ""),
     updatedAt: String(r.updated_at ?? ""),
     customer,
+    bookingDepositPaymentStatus:
+      typeof r.booking_deposit_payment_status === "string"
+        ? (r.booking_deposit_payment_status as RentalBookingDepositPaymentStatus)
+        : null,
   };
 }
 

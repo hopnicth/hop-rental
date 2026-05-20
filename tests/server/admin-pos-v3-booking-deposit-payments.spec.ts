@@ -385,7 +385,24 @@ describe("admin POS V3 booking deposit payments", () => {
       booking_deposit_payment_status: "paid",
     };
 
-    await expect(endpoint(event)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(endpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "BOOKING_DEPOSIT_PAYMENT_ALREADY_CAPTURED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+  });
+
+  // Phase 2D-B6: paid_confirm_failed double-payment safety guard
+  it("rejects paid_confirm_failed deposit — double-payment safety", async () => {
+    mockState.bookingRow = {
+      ...baseBooking,
+      booking_deposit_payment_status: "paid_confirm_failed",
+    };
+
+    await expect(endpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "BOOKING_DEPOSIT_PAYMENT_ALREADY_CAPTURED",
+    });
     expect(mockState.insertedAttempts).toHaveLength(0);
   });
 
@@ -598,6 +615,37 @@ describe("admin POS V3 booking deposit payments", () => {
       taskId: "task-existing",
       officialDocumentId: "doc-existing",
       alreadyIssued: true,
+    });
+  });
+
+  it("A4: task insert fails with non-23505 error (e.g. missing table) — booking confirmed, document still issued, taskId null", async () => {
+    // Reproduces the real production failure: migration 091 not yet applied,
+    // pos_document_issuance_tasks does not exist → PostgREST 42P01 error.
+    // Expected: best-effort task tracking is skipped; document issuance proceeds.
+    mockState.insertTaskError = {
+      code: "42P01",
+      message: 'relation "public.pos_document_issuance_tasks" does not exist',
+    };
+
+    const result = await endpoint(event);
+
+    // Booking confirmed, payment recorded — UNAFFECTED
+    expect(result.status).toBe("confirmed");
+    expect(result.paymentAttemptId).toBe("attempt-1");
+    expect(result.booking).toMatchObject({
+      id: "booking-1",
+      status: "confirmed",
+      bookingDepositPaymentStatus: "paid",
+    });
+    // No task row inserted (table unavailable)
+    expect(mockState.documentTasksInserted).toHaveLength(0);
+    // Document was still issued (best-effort — no task tracking needed)
+    expect(result.document).toMatchObject({
+      status: "issued",
+      taskId: null, // no task row available
+      officialDocumentId: "doc-1",
+      documentNo: "BDC-202605-0001",
+      errorCode: null,
     });
   });
 

@@ -8,7 +8,7 @@ const ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED =
   "ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED";
 
 const BOOKING_SELECT =
-  "id, user_id, walk_in_phone, status, asset_id, sku_id, start_date, end_date, rental_days, hub_id, deposit_amount, currency_code, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, pos_staff_user_id";
+  "id, user_id, walk_in_phone, status, asset_id, asset_name, booker_name, sku_id, start_date, end_date, rental_days, hub_id, deposit_amount, currency_code, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, pos_staff_user_id";
 
 type AnyRecord = Record<string, unknown>;
 type AnyClient = { from(table: string): any };
@@ -138,10 +138,12 @@ export default defineEventHandler(async (event) => {
   const depositStatus = asText(
     booking.booking_deposit_payment_status || "unpaid",
   );
-  if (depositStatus === "paid")
+  // Phase 2D-B6: fail-closed — block any non-unpaid status including paid_confirm_failed.
+  // paid_confirm_failed means money was already captured; allowing a new attempt risks double-collection.
+  if (depositStatus !== "unpaid")
     throw createError({
       statusCode: 409,
-      statusMessage: "Booking deposit is already paid",
+      statusMessage: "BOOKING_DEPOSIT_PAYMENT_ALREADY_CAPTURED",
     });
 
   // Idempotency guard — return existing attempt if key matches

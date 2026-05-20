@@ -15,6 +15,7 @@ import type {
   OrderStatus,
 } from "~/types/order";
 import type {
+  RentalBookingDepositPaymentStatus,
   RentalDepositPaymentMethod,
   RentalDepositPaymentStatus,
   RentalDepositRefundStatus,
@@ -148,6 +149,8 @@ export interface AdminRentalBookingDetail {
   createdAt: string;
   updatedAt: string;
   customer: AdminCustomerProfile;
+  /** POS V3 booking deposit payment status. Null for non-POS bookings. */
+  bookingDepositPaymentStatus: RentalBookingDepositPaymentStatus | null;
 }
 
 /** Allowed PATCH payload for sale orders. Each field is optional; sender supplies only what changed. */

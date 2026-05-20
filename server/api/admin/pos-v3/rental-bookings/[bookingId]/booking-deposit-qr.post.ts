@@ -106,10 +106,12 @@ export default defineEventHandler(async (event) => {
   const depositStatus = asText(
     booking.booking_deposit_payment_status || "unpaid",
   );
-  if (depositStatus === "paid")
+  // Phase 2D-B6: fail-closed — block any non-unpaid status including paid_confirm_failed.
+  // paid_confirm_failed means money was already captured; allowing a new attempt risks double-collection.
+  if (depositStatus !== "unpaid")
     throw createError({
       statusCode: 409,
-      statusMessage: "Booking deposit is already paid",
+      statusMessage: "BOOKING_DEPOSIT_PAYMENT_ALREADY_CAPTURED",
     });
   if (amount <= 0)
     throw createError({

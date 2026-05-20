@@ -500,7 +500,27 @@ describe("admin POS V3 QR booking deposit creation", () => {
       ...baseBooking,
       booking_deposit_payment_status: "paid",
     };
-    await expect(qrEndpoint(event)).rejects.toMatchObject({ statusCode: 409 });
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "BOOKING_DEPOSIT_PAYMENT_ALREADY_CAPTURED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    expect(mockState.retrieveChargeCalls).toHaveLength(0);
+  });
+
+  // Phase 2D-B6: paid_confirm_failed double-payment safety guard
+  it("rejects paid_confirm_failed deposit — double-payment safety", async () => {
+    mockState.bookingRow = {
+      ...baseBooking,
+      booking_deposit_payment_status: "paid_confirm_failed",
+    };
+    await expect(qrEndpoint(event)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "BOOKING_DEPOSIT_PAYMENT_ALREADY_CAPTURED",
+    });
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    // No live gateway call — rejected before reaching active-QR check
+    expect(mockState.retrieveChargeCalls).toHaveLength(0);
   });
 
   it("rejects zero amount", async () => {

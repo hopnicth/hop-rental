@@ -198,6 +198,15 @@ const isOverdueConfirmed = computed(
     booking.value.startDate < bangkokTodayLocalDate(),
 );
 
+// Phase 2D-B6: CTA to resume booking deposit collection in POS V3.
+// Only eligible when the booking is draft AND deposit is unpaid.
+// Hides for paid, paid_confirm_failed, confirmed, cancelled, no_show, returned, picked_up.
+const canResumeDepositCollection = computed(
+  () =>
+    booking.value?.status === "draft" &&
+    booking.value?.bookingDepositPaymentStatus === "unpaid",
+);
+
 const allowedStatuses = computed<RentalBookingStatus[]>(() =>
   booking.value
     ? (RENTAL_BOOKING_STATUS_TRANSITIONS[booking.value.status] ?? [])
@@ -473,6 +482,26 @@ async function issueMissingNoShowDocuments(): Promise<void> {
             title="Marked as no-show"
             :description="`Booking Deposit retained / refund not applicable${booking.noShowAt ? ` · ${formatDate(booking.noShowAt)}` : ''}`"
           />
+
+          <!-- Phase 2D-B6: Resume Booking Deposit collection CTA -->
+          <UAlert
+            v-if="canResumeDepositCollection"
+            color="warning"
+            icon="bx:credit-card"
+            title="Booking Draft ยังไม่ได้รับชำระเงิน — ไปที่ POS V3 เพื่อรับมัดจำ"
+            class="mb-2"
+          >
+            <template #description>
+              <UButton
+                size="sm"
+                color="primary"
+                variant="solid"
+                icon="bx:credit-card"
+                label="ดำเนินการรับเงินมัดจำการจอง"
+                :to="`/admin/pos-v3?bookingId=${bookingId}`"
+              />
+            </template>
+          </UAlert>
 
           <div class="flex flex-wrap gap-2">
             <UButton
