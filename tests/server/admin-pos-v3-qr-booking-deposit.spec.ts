@@ -23,6 +23,10 @@ const mockState = vi.hoisted(() => ({
   retrieveChargeShouldThrow: false,
   retrieveChargeCalls: [] as string[],
   liveChargeStatus: "paid" as string,
+  // Phase 2D-B3.2: active attempt lookup (active.get endpoint)
+  activeAttemptForBooking: null as Record<string, unknown> | null,
+  // Phase 2D-B4: cancel endpoint
+  expireChargeShouldThrow: false,
 }));
 
 // ── h3 mock ───────────────────────────────────────────────────────────────────
@@ -71,6 +75,8 @@ vi.mock("~~/server/utils/omise", () => ({
     };
   }),
   expireOmiseCharge: vi.fn(async (_event: unknown, chargeId: string) => {
+    if (mockState.expireChargeShouldThrow)
+      throw new Error("OMISE_EXPIRE_FAILED");
     mockState.expiredChargeIds.push(chargeId);
   }),
   retrieveOmiseCharge: vi.fn(async (_event: unknown, chargeId: string) => {
@@ -115,10 +121,39 @@ function chain(result: { data: unknown; error: unknown }) {
   const c: any = {
     select: (_cols?: string) => c,
     eq: () => c,
+    in: () => c,
+    order: () => c,
+    limit: () => c,
     single: async () => result,
     maybeSingle: async () => result,
     then: (resolve: (v: any) => unknown) =>
       Promise.resolve(result).then(resolve),
+  };
+  return c;
+}
+
+/** Stateful chain for pos_rental_payment_attempts that detects `.in()` calls.
+ *  When `.in()` is called (active-endpoint pattern), returns activeAttemptForBooking.
+ *  Otherwise returns existingAttemptByKey (creation / poll endpoint pattern). */
+function makeAttemptSelectChain() {
+  let usedIn = false;
+  const result = () =>
+    usedIn
+      ? { data: mockState.activeAttemptForBooking, error: null }
+      : { data: mockState.existingAttemptByKey, error: null };
+  const c: any = {
+    select: () => c,
+    eq: () => c,
+    in: () => {
+      usedIn = true;
+      return c;
+    },
+    order: () => c,
+    limit: () => c,
+    single: async () => result(),
+    maybeSingle: async () => result(),
+    then: (resolve: (v: any) => unknown) =>
+      Promise.resolve(result()).then(resolve),
   };
   return c;
 }
@@ -140,10 +175,11 @@ function makeAdminClient() {
       if (table === "pos_rental_payment_attempts") {
         return {
           select: (cols: string) => {
-            // distinguish pending-QR lookup (narrow cols) vs by-key lookup
+            // distinguish pending-QR lookup (narrow cols) vs full-select lookup
             if (cols === "id, gateway_charge_id")
               return chain({ data: mockState.pendingQrAttempt, error: null });
-            return chain({ data: mockState.existingAttemptByKey, error: null });
+            // Full-select: use stateful chain (active endpoint uses .in(); others don't)
+            return makeAttemptSelectChain();
           },
           insert: (payload: Record<string, unknown>) => {
             mockState.insertedAttempts.push({ ...payload });
@@ -202,6 +238,12 @@ const baseBooking = {
 // ── Import endpoints under test ───────────────────────────────────────────────
 const qrEndpoint = (
   await import("../../server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-qr.post")
+).default;
+const activeEndpoint = (
+  await import("../../server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-qr/active.get")
+).default;
+const cancelEndpoint = (
+  await import("../../server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-qr/cancel.post")
 ).default;
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -1013,5 +1055,286 @@ describe("applyPosRentalQrGatewayResult helper", () => {
     // No second update to "paid"
     const paidUpdate = client.ops.find((o) => o.payload.status === "paid");
     expect(paidUpdate).toBeUndefined();
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 2D-B3.2: Active QR Attempt Lookup Endpoint Tests
+// ════════════════════════════════════════════════════════════════════════════
+describe("admin POS V3 QR active attempt endpoint (Phase 2D-B3.2)", () => {
+  const event = { context: { params: { bookingId: "booking-1" } } };
+
+  const activeAttemptRow = {
+    id: "attempt-active-1",
+    rental_booking_id: "booking-1",
+    payment_purpose: "booking_deposit",
+    payment_method: "promptpay_qr",
+    amount: 200,
+    currency_code: "THB",
+    status: "pending",
+    gateway: "omise",
+    gateway_charge_id: "chrg_active_001",
+    gateway_source_id: "src_active_001",
+    qr_image_url: "https://cdn.omise.co/qr/active.png",
+    expires_at: new Date(Date.now() + 300_000).toISOString(),
+    expired_at: null,
+    idempotency_key: "qr-active-key",
+    branch_id: "branch-hq",
+    staff_user_id: "staff-1",
+    created_at: new Date().toISOString(),
+  };
+
+  beforeEach(() => {
+    mockState.platformRole = "staff";
+    mockState.branchAccess = true;
+    mockState.bookingRow = { ...baseBooking };
+    mockState.activeAttemptForBooking = null;
+    mockState.insertedAttempts = [];
+    mockState.updatedAttempts = [];
+  });
+
+  it("returns active attempt when a pending attempt exists for the booking", async () => {
+    mockState.activeAttemptForBooking = { ...activeAttemptRow };
+    const result = await activeEndpoint(event);
+    expect(result.attempt).not.toBeNull();
+    expect(result.attempt?.paymentAttemptId).toBe("attempt-active-1");
+    expect(result.attempt?.status).toBe("pending");
+    expect(result.attempt?.qrImageUrl).toBe(
+      "https://cdn.omise.co/qr/active.png",
+    );
+    expect(result.attempt?.amount).toBe(200);
+    expect(result.attempt?.currency).toBe("THB");
+  });
+
+  it("returns active attempt when attempt status is requires_action (stale mapper recovery)", async () => {
+    mockState.activeAttemptForBooking = {
+      ...activeAttemptRow,
+      status: "requires_action",
+    };
+    const result = await activeEndpoint(event);
+    expect(result.attempt).not.toBeNull();
+    expect(result.attempt?.status).toBe("requires_action");
+  });
+
+  it("returns active attempt when attempt status is finalizing", async () => {
+    mockState.activeAttemptForBooking = {
+      ...activeAttemptRow,
+      status: "finalizing",
+    };
+    const result = await activeEndpoint(event);
+    expect(result.attempt).not.toBeNull();
+    expect(result.attempt?.status).toBe("finalizing");
+  });
+
+  it("returns { attempt: null } when no active attempt exists (only terminal attempts)", async () => {
+    mockState.activeAttemptForBooking = null;
+    const result = await activeEndpoint(event);
+    expect(result.attempt).toBeNull();
+  });
+
+  it("enforces branch access guard — 403 when staff has no POS access", async () => {
+    mockState.branchAccess = false;
+    await expect(activeEndpoint(event)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: "No POS access for selected branch",
+    });
+  });
+
+  it("returns 404 when booking does not exist", async () => {
+    mockState.bookingRow = null;
+    await expect(activeEndpoint(event)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: "Rental booking not found",
+    });
+  });
+
+  it("returns 422 when booking has no pos_branch_id (not a POS V3 booking)", async () => {
+    mockState.bookingRow = { ...baseBooking, pos_branch_id: null };
+    await expect(activeEndpoint(event)).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: "Booking is not a POS V3 booking",
+    });
+  });
+
+  it("super_admin bypasses branch access check", async () => {
+    mockState.platformRole = "super_admin";
+    mockState.branchAccess = false; // would fail for staff
+    mockState.activeAttemptForBooking = { ...activeAttemptRow };
+    const result = await activeEndpoint(event);
+    expect(result.attempt).not.toBeNull();
+    expect(result.attempt?.paymentAttemptId).toBe("attempt-active-1");
+  });
+
+  it("does not insert or update any records — endpoint is read-only", async () => {
+    mockState.activeAttemptForBooking = { ...activeAttemptRow };
+    await activeEndpoint(event);
+    expect(mockState.insertedAttempts).toHaveLength(0);
+    expect(mockState.updatedAttempts).toHaveLength(0);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 2D-B4: Cancel Active QR Attempt Endpoint Tests
+// ════════════════════════════════════════════════════════════════════════════
+describe("admin POS V3 QR cancel endpoint (Phase 2D-B4)", () => {
+  const event = { context: { params: { bookingId: "booking-1" } } };
+
+  const cancelableAttempt = {
+    id: "attempt-cancel-1",
+    rental_booking_id: "booking-1",
+    payment_purpose: "booking_deposit",
+    payment_method: "promptpay_qr",
+    amount: 200,
+    currency_code: "THB",
+    status: "pending",
+    gateway: "omise",
+    gateway_charge_id: "chrg_cancel_001",
+    gateway_source_id: "src_cancel_001",
+    qr_image_url: "https://cdn.omise.co/qr/cancel.png",
+    expires_at: new Date(Date.now() + 300_000).toISOString(),
+    expired_at: null,
+    idempotency_key: "qr-cancel-key",
+    branch_id: "branch-hq",
+    staff_user_id: "staff-1",
+    created_at: new Date().toISOString(),
+  };
+
+  beforeEach(() => {
+    mockState.platformRole = "staff";
+    mockState.branchAccess = true;
+    mockState.bookingRow = { ...baseBooking };
+    mockState.activeAttemptForBooking = null;
+    mockState.insertedAttempts = [];
+    mockState.updatedAttempts = [];
+    mockState.expiredChargeIds = [];
+    mockState.expireChargeShouldThrow = false;
+    mockState.retrieveChargeShouldThrow = false;
+    mockState.retrieveChargeCalls = [];
+    mockState.liveChargeStatus = "expired";
+  });
+
+  it("happy path: expires Omise charge, marks attempt cancelled, returns { cancelled: true }", async () => {
+    mockState.activeAttemptForBooking = { ...cancelableAttempt };
+    const result = await cancelEndpoint(event);
+
+    expect(result.cancelled).toBe(true);
+    expect(result.paymentAttemptId).toBe("attempt-cancel-1");
+    expect(mockState.expiredChargeIds).toContain("chrg_cancel_001");
+    const cancelUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "cancelled",
+    );
+    expect(cancelUpdate).toBeDefined();
+  });
+
+  it("returns { cancelled: false, reason: 'no_cancelable_attempt' } when no pending attempt exists", async () => {
+    mockState.activeAttemptForBooking = null;
+    const result = await cancelEndpoint(event);
+    expect(result.cancelled).toBe(false);
+    expect(result.reason).toBe("no_cancelable_attempt");
+    // No writes to DB
+    expect(mockState.updatedAttempts).toHaveLength(0);
+    expect(mockState.expiredChargeIds).toHaveLength(0);
+  });
+
+  it("requires_action attempt is also cancelable", async () => {
+    mockState.activeAttemptForBooking = {
+      ...cancelableAttempt,
+      status: "requires_action",
+    };
+    const result = await cancelEndpoint(event);
+    expect(result.cancelled).toBe(true);
+    expect(mockState.expiredChargeIds).toContain("chrg_cancel_001");
+  });
+
+  it("fail-closed: expire fails but retrieve confirms dead → allows local cancel", async () => {
+    mockState.activeAttemptForBooking = { ...cancelableAttempt };
+    mockState.expireChargeShouldThrow = true;
+    mockState.liveChargeStatus = "expired"; // gateway confirms already dead
+
+    const result = await cancelEndpoint(event);
+    expect(result.cancelled).toBe(true);
+    expect(mockState.retrieveChargeCalls).toContain("chrg_cancel_001");
+    const cancelUpdate = mockState.updatedAttempts.find(
+      (u) => u.status === "cancelled",
+    );
+    expect(cancelUpdate).toBeDefined();
+  });
+
+  it("fail-closed: expire fails and retrieve shows live charge → throws 502", async () => {
+    mockState.activeAttemptForBooking = { ...cancelableAttempt };
+    mockState.expireChargeShouldThrow = true;
+    mockState.liveChargeStatus = "pending"; // still live at gateway
+
+    await expect(cancelEndpoint(event)).rejects.toMatchObject({
+      statusCode: 502,
+      statusMessage: "GATEWAY_CANCEL_FAILED",
+    });
+    // Attempt status must NOT be updated to cancelled
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "cancelled"),
+    ).toBeUndefined();
+  });
+
+  it("fail-closed: both expire and retrieve throw → throws 502, no local update", async () => {
+    mockState.activeAttemptForBooking = { ...cancelableAttempt };
+    mockState.expireChargeShouldThrow = true;
+    mockState.retrieveChargeShouldThrow = true;
+
+    await expect(cancelEndpoint(event)).rejects.toMatchObject({
+      statusCode: 502,
+      statusMessage: "GATEWAY_CANCEL_FAILED",
+    });
+    expect(
+      mockState.updatedAttempts.find((u) => u.status === "cancelled"),
+    ).toBeUndefined();
+  });
+
+  it("no gateway_charge_id: cancels locally without calling Omise", async () => {
+    mockState.activeAttemptForBooking = {
+      ...cancelableAttempt,
+      gateway_charge_id: null,
+    };
+    const result = await cancelEndpoint(event);
+    expect(result.cancelled).toBe(true);
+    expect(mockState.expiredChargeIds).toHaveLength(0);
+    expect(mockState.retrieveChargeCalls).toHaveLength(0);
+  });
+
+  it("enforces branch access guard — 403 when staff has no POS access", async () => {
+    mockState.branchAccess = false;
+    await expect(cancelEndpoint(event)).rejects.toMatchObject({
+      statusCode: 403,
+      statusMessage: "No POS access for selected branch",
+    });
+  });
+
+  it("returns 404 when booking does not exist", async () => {
+    mockState.bookingRow = null;
+    await expect(cancelEndpoint(event)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: "Rental booking not found",
+    });
+  });
+
+  it("returns 422 when booking has no pos_branch_id (not a POS V3 booking)", async () => {
+    mockState.bookingRow = { ...baseBooking, pos_branch_id: null };
+    await expect(cancelEndpoint(event)).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: "Booking is not a POS V3 booking",
+    });
+  });
+
+  it("super_admin bypasses branch access check", async () => {
+    mockState.platformRole = "super_admin";
+    mockState.branchAccess = false;
+    mockState.activeAttemptForBooking = { ...cancelableAttempt };
+    const result = await cancelEndpoint(event);
+    expect(result.cancelled).toBe(true);
+  });
+
+  it("does not insert any records — cancel is update-only", async () => {
+    mockState.activeAttemptForBooking = { ...cancelableAttempt };
+    await cancelEndpoint(event);
+    expect(mockState.insertedAttempts).toHaveLength(0);
   });
 });

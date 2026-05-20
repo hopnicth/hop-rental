@@ -67,7 +67,8 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
       "amount: props.draftResult.quote.bookingDepositDueNow",
     );
     expect(source).toContain("onMounted");
-    expect(source).toContain("void createQrAttempt()");
+    // Phase 2D-B3.2: onMounted now calls mountOrResumeQrAttempt which calls createQrAttempt
+    expect(source).toContain("void mountOrResumeQrAttempt()");
   });
 
   it("models the exact B2 QR response contract fields and statuses", () => {
@@ -187,5 +188,229 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     expect(source).not.toContain("officialDocumentId");
     expect(source).not.toContain("openBookingDepositDocumentPrint");
     expect(source).not.toContain("พิมพ์เอกสารยืนยันการรับเงินมัดจำการจอง");
+  });
+
+  // ── Phase 2D-B3.2: Resume-first behavior & session buffer ────────────────
+  it("implements resume-first mountOrResumeQrAttempt that calls active endpoint before create", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("async function mountOrResumeQrAttempt");
+    expect(source).toContain("booking-deposit-qr/active");
+    expect(source).toContain("attempt: activeAttempt");
+    // Path 1: server confirmed active attempt — resume without creating
+    expect(source).toContain("attempt.value = activeAttempt");
+    expect(source).toContain("startPolling()");
+    // Path 2: server explicitly returned no active attempt — safe to create new QR
+    expect(source).toContain("await createQrAttempt()");
+    expect(source).toContain(
+      "// Path 2: server explicitly returned no active attempt",
+    );
+    // Path 3: lookup error — fail-closed; do NOT create new QR
+    expect(source).toContain(
+      "// Path 3: Active lookup failed — session buffer preserved; do NOT create new QR",
+    );
+  });
+
+  it("fail-closed: active lookup error sets resumeError and does NOT fall through to createQrAttempt", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // resumeError ref exists
+    expect(source).toContain("const resumeError = ref<string | null>(null)");
+    // Error message is set in catch, not a fall-through
+    expect(source).toContain(
+      '"ไม่สามารถตรวจสอบรายการ QR เดิมได้ กรุณาลองอีกครั้ง"',
+    );
+    expect(source).toContain("resumeError.value =");
+    // createQrAttempt() only called inside the try on explicit no-active (Path 2),
+    // NOT inside the catch block
+    expect(source).not.toContain("} catch {\n    await createQrAttempt()");
+  });
+
+  it("retryResumeCheck function exists and clears resumeError then re-runs active lookup", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("async function retryResumeCheck");
+    expect(source).toContain("resumeError.value = null");
+    expect(source).toContain("await mountOrResumeQrAttempt()");
+  });
+
+  it("template shows resumeError alert with retry button — no new QR created on lookup failure", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // Alert shown when resumeError is set
+    expect(source).toContain('v-else-if="resumeError"');
+    expect(source).toContain("ตรวจสอบ QR ไม่สำเร็จ");
+    // Retry button wired to retryResumeCheck (not createQrAttempt)
+    expect(source).toContain('v-if="resumeError"');
+    expect(source).toContain('@click="retryResumeCheck"');
+    expect(source).toContain("ลองอีกครั้ง");
+    // Loading text distinguishes resume-check from create
+    expect(source).toContain("กำลังตรวจสอบ QR เดิม...");
+  });
+
+  it("session buffer is NOT cleared when active lookup fails (preserved for retry)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // clearSessionBuffer is NOT called inside the catch block of mountOrResumeQrAttempt
+    // The catch block only sets resumeError
+    expect(source).toContain(
+      "// Path 3: Active lookup failed — session buffer preserved; do NOT create new QR",
+    );
+    // clearSessionBuffer is only called in emitConfirmedOnce (on paid/paid_confirm_failed)
+    // and retryResumeCheck does NOT call clearSessionBuffer before re-checking
+    expect(source).toContain("async function retryResumeCheck");
+    expect(source).not.toContain("retryResumeCheck(){\n    clearSessionBuffer");
+  });
+
+  it("session buffer is written to sessionStorage after create or resume with active lifecycle shape", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("hopnic:pos-v3:future-booking-qr-session:v1");
+    expect(source).toContain("function writeSessionBufferActive");
+    expect(source).toContain('"future_booking_qr_deposit"');
+    expect(source).toContain('"active"');
+    expect(source).toContain("lastKnownPaymentAttemptId");
+    expect(source).toContain("lastKnownAttemptExpiresAt");
+    expect(source).toContain("resumeUntil");
+    // Written after create success
+    expect(source).toContain(
+      "writeSessionBufferActive(result.paymentAttemptId, result.expiresAt)",
+    );
+    // Written after resume success (contains both args)
+    expect(source).toContain("activeAttempt.paymentAttemptId");
+    expect(source).toContain("activeAttempt.expiresAt");
+  });
+
+  it("session buffer is cleared on paid and paid_confirm_failed (terminal success states)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("function clearSessionBuffer");
+    expect(source).toContain(
+      'result.status === "paid" || result.status === "paid_confirm_failed"',
+    );
+    expect(source).toContain("clearSessionBuffer()");
+  });
+
+  it("isResumingAttempt ref shows loading state while active endpoint is checked", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("isResumingAttempt");
+    expect(source).toContain("isResumingAttempt.value = true");
+    expect(source).toContain("isResumingAttempt.value");
+    // Template shows loading skeleton during resume check
+    expect(source).toContain("isCreating || isResumingAttempt");
+  });
+});
+
+// ── Phase 2D-B4: Cancel Active QR Attempt UI tests ───────────────────────────
+describe("admin POS V3 Phase 2D-B4 — QR cancel button visibility and wiring", () => {
+  it("cancel button is visible for pending status (canCancel)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("canCancel");
+    // canCancel includes isPending
+    expect(source).toContain("isPending.value || isRequiresAction.value");
+    expect(source).toContain('v-if="canCancel"');
+    expect(source).toContain("ยกเลิก QR นี้");
+  });
+
+  it("cancel button is visible for requires_action status (canCancel)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // canCancel computed covers both pending and requires_action
+    expect(source).toContain("isPending.value || isRequiresAction.value");
+    expect(source).toContain('v-if="canCancel"');
+  });
+
+  it("cancel button is NOT shown for finalizing status", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // isFinalizing must not appear in canCancel
+    const canCancelBlock = source.slice(
+      source.indexOf("const canCancel"),
+      source.indexOf("const canCancel") + 300,
+    );
+    expect(canCancelBlock).not.toContain("isFinalizing");
+  });
+
+  it("cancel button is NOT shown for paid, paid_confirm_failed, expired, failed, cancelled statuses", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // All terminal statuses belong to terminalStatuses[], which stops polling but does
+    // not satisfy canCancel — confirm canCancel only tests pending/requires_action
+    const canCancelBlock = source.slice(
+      source.indexOf("const canCancel"),
+      source.indexOf("const canCancel") + 300,
+    );
+    expect(canCancelBlock).not.toContain('"paid"');
+    expect(canCancelBlock).not.toContain('"paid_confirm_failed"');
+    expect(canCancelBlock).not.toContain('"expired"');
+    expect(canCancelBlock).not.toContain('"failed"');
+    expect(canCancelBlock).not.toContain('"cancelled"');
+  });
+
+  it("cancel success path: cancel endpoint is wired to the correct URL", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("async function cancelQrAttempt");
+    expect(source).toContain("booking-deposit-qr/cancel");
+    expect(source).toContain('method: "POST"');
+  });
+
+  it("cancel success path: session buffer is cleared after successful cancel", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // clearSessionBuffer must be called inside cancelQrAttempt (success branch),
+    // not only in emitConfirmedOnce
+    const cancelFnStart = source.indexOf("async function cancelQrAttempt");
+    const cancelFnEnd = source.indexOf("\nasync function", cancelFnStart + 1);
+    const cancelFn = source.slice(
+      cancelFnStart,
+      cancelFnEnd > cancelFnStart ? cancelFnEnd : cancelFnStart + 800,
+    );
+    expect(cancelFn).toContain("clearSessionBuffer()");
+  });
+
+  it("cancel success path: qr-cancelled is emitted after successful cancel", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain('"qr-cancelled"');
+    expect(source).toContain('emit("qr-cancelled")');
+  });
+
+  it("cancel success path: no auto-create-new-QR is triggered after emit", () => {
+    const source = read(QR_CONTAINER_PATH);
+    const cancelFnStart = source.indexOf("async function cancelQrAttempt");
+    const cancelFnEnd = source.indexOf("\nasync function", cancelFnStart + 1);
+    const cancelFn = source.slice(
+      cancelFnStart,
+      cancelFnEnd > cancelFnStart ? cancelFnEnd : cancelFnStart + 800,
+    );
+    // cancelQrAttempt must not invoke createQrAttempt or mountOrResumeQrAttempt
+    expect(cancelFn).not.toContain("createQrAttempt");
+    expect(cancelFn).not.toContain("mountOrResumeQrAttempt");
+  });
+
+  it("cancel failure path: cancelError ref exists and is shown as an error alert", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("const cancelError = ref<string | null>(null)");
+    expect(source).toContain('v-if="cancelError"');
+    expect(source).toContain("ยกเลิก QR ไม่สำเร็จ");
+  });
+
+  it("cancel failure path: session buffer is NOT cleared on cancel failure", () => {
+    const source = read(QR_CONTAINER_PATH);
+    const cancelFnStart = source.indexOf("async function cancelQrAttempt");
+    const cancelFnEnd = source.indexOf("\nasync function", cancelFnStart + 1);
+    const cancelFn = source.slice(
+      cancelFnStart,
+      cancelFnEnd > cancelFnStart ? cancelFnEnd : cancelFnStart + 800,
+    );
+    // clearSessionBuffer must appear exactly once inside the function — inside the try
+    // success branch, not inside the catch
+    const catchStart = cancelFn.indexOf("} catch");
+    const catchBlock = cancelFn.slice(catchStart);
+    expect(catchBlock).not.toContain("clearSessionBuffer");
+  });
+
+  it("cancel failure path: QR flow is not reset on failure (polling is restarted)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    const cancelFnStart = source.indexOf("async function cancelQrAttempt");
+    const cancelFnEnd = source.indexOf("\nasync function", cancelFnStart + 1);
+    const cancelFn = source.slice(
+      cancelFnStart,
+      cancelFnEnd > cancelFnStart ? cancelFnEnd : cancelFnStart + 800,
+    );
+    const catchStart = cancelFn.indexOf("} catch");
+    const catchBlock = cancelFn.slice(catchStart);
+    // Polling is restarted in catch so QR remains visible
+    expect(catchBlock).toContain("startPolling()");
+    // emit("qr-cancelled") must NOT appear in catch block
+    expect(catchBlock).not.toContain('emit("qr-cancelled")');
   });
 });

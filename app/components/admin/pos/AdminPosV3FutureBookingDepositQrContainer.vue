@@ -50,14 +50,72 @@ interface QrBookingConfirmedResult extends QrAttemptResponse {
 const props = defineProps<{ draftResult: DraftBookingResult }>();
 const emit = defineEmits<{
   "booking-confirmed": [result: QrBookingConfirmedResult];
+  "qr-cancelled": [];
 }>();
+
+// ── Phase 2D-B3.2: Session buffer helpers ────────────────────────────────────
+// sessionStorage is used as a HINT only — the source of truth is always the server.
+const SS_KEY = "hopnic:pos-v3:future-booking-qr-session:v1";
+
+function writeSessionBufferActive(
+  attemptId: string,
+  attemptExpiresAt: string | null,
+) {
+  try {
+    const existing = (() => {
+      try {
+        const raw = window.sessionStorage.getItem(SS_KEY);
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    })();
+    const expiresMs = attemptExpiresAt
+      ? new Date(attemptExpiresAt).getTime()
+      : Date.now();
+    window.sessionStorage.setItem(
+      SS_KEY,
+      JSON.stringify({
+        ...existing,
+        version: 1,
+        flow: "future_booking_qr_deposit",
+        bookingId: props.draftResult.booking.id,
+        paymentMethod: "promptpay_qr",
+        phase: "active",
+        savedAt: new Date().toISOString(),
+        resumeUntil: new Date(expiresMs + 10 * 60 * 1000).toISOString(),
+        lastKnownPaymentAttemptId: attemptId,
+        lastKnownAttemptExpiresAt: attemptExpiresAt ?? undefined,
+      }),
+    );
+  } catch {
+    /* SSR / private-browsing guard */
+  }
+}
+
+function clearSessionBuffer() {
+  try {
+    window.sessionStorage.removeItem(SS_KEY);
+  } catch {
+    /* guard */
+  }
+}
 
 const attempt = ref<QrAttemptResponse | null>(null);
 const idempotencyKey = ref(crypto.randomUUID());
 const isCreating = ref(false);
+const isResumingAttempt = ref(false);
 const isPolling = ref(false);
 const createError = ref<string | null>(null);
+/**
+ * Phase 2D-B3.2 (fail-closed): set when the active-attempt lookup itself fails.
+ * While this is non-null no new QR is created — staff must retry the lookup first.
+ * Session buffer is intentionally preserved so the retry can re-validate.
+ */
+const resumeError = ref<string | null>(null);
 const pollError = ref<string | null>(null);
+const isCancelling = ref(false);
+const cancelError = ref<string | null>(null);
 const now = ref(Date.now());
 const hasEmittedConfirmed = ref(false);
 
@@ -90,6 +148,13 @@ const isFailed = computed(() => attempt.value?.status === "failed");
 const canRegenerate = computed(
   () =>
     isExpired.value || isFailed.value || attempt.value?.status === "cancelled",
+);
+/** Phase 2D-B4: only pending / requires_action can be cancelled by staff. */
+const canCancel = computed(
+  () =>
+    Boolean(attempt.value) &&
+    (isPending.value || isRequiresAction.value) &&
+    !isCancelling.value,
 );
 const isZeroDue = computed(
   () => props.draftResult.quote.bookingDepositDueNow <= 0,
@@ -156,6 +221,10 @@ function resetAttemptState() {
 }
 
 function emitConfirmedOnce(result: QrAttemptResponse) {
+  // Clear session buffer on terminal paid states (Phase 2D-B3.2)
+  if (result.status === "paid" || result.status === "paid_confirm_failed") {
+    clearSessionBuffer();
+  }
   if (hasEmittedConfirmed.value || result.status !== "paid") return;
   hasEmittedConfirmed.value = true;
   emit("booking-confirmed", {
@@ -183,6 +252,8 @@ async function createQrAttempt() {
     );
     if (!componentActive) return;
     attempt.value = result;
+    // Phase 2D-B3.2: update session buffer to active after successful create
+    writeSessionBufferActive(result.paymentAttemptId, result.expiresAt);
     emitConfirmedOnce(result);
     startPolling();
   } catch (err: unknown) {
@@ -190,6 +261,89 @@ async function createQrAttempt() {
       err instanceof Error ? err.message : "ไม่สามารถสร้าง QR ได้";
   } finally {
     isCreating.value = false;
+  }
+}
+
+/**
+ * Phase 2D-B3.2: Resume-first mount logic. FAIL-CLOSED.
+ *
+ * 1. Active attempt found  → resume it; skip create; session buffer preserved.
+ * 2. Explicit no-active    → server confirmed safe; fall through to createQrAttempt().
+ * 3. Transport/server error → set resumeError; DO NOT create new QR; session buffer
+ *    preserved so retry can revalidate. Staff must explicitly retry the lookup.
+ *
+ * This prevents expiring a still-live QR at the gateway under the one-active-pending
+ * rule enforced by the creation endpoint.
+ */
+async function mountOrResumeQrAttempt() {
+  if (isZeroDue.value) return;
+  resumeError.value = null;
+  isResumingAttempt.value = true;
+  try {
+    const { attempt: activeAttempt } = await $fetch<{
+      attempt: QrAttemptResponse | null;
+    }>(
+      `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(props.draftResult.booking.id)}/booking-deposit-qr/active`,
+    );
+    if (!componentActive) return;
+    if (activeAttempt) {
+      // Path 1: server confirmed active attempt — resume without creating
+      attempt.value = activeAttempt;
+      writeSessionBufferActive(
+        activeAttempt.paymentAttemptId,
+        activeAttempt.expiresAt,
+      );
+      emitConfirmedOnce(activeAttempt);
+      startPolling();
+      return;
+    }
+    // Path 2: server explicitly returned no active attempt — safe to create new QR
+    await createQrAttempt();
+  } catch {
+    // Path 3: Active lookup failed — session buffer preserved; do NOT create new QR
+    if (componentActive) {
+      resumeError.value = "ไม่สามารถตรวจสอบรายการ QR เดิมได้ กรุณาลองอีกครั้ง";
+    }
+  } finally {
+    isResumingAttempt.value = false;
+  }
+}
+
+/** Clears the resume error and retries the active-attempt lookup from scratch. */
+async function retryResumeCheck() {
+  resumeError.value = null;
+  await mountOrResumeQrAttempt();
+}
+
+/**
+ * Phase 2D-B4: Staff-initiated cancel of the active PromptPay QR attempt.
+ * Fail-closed: if the gateway cancel endpoint returns an error, the local state
+ * is NOT updated and an error message is shown. Polling is resumed so the QR
+ * remains visible until the issue is resolved.
+ */
+async function cancelQrAttempt() {
+  if (isCancelling.value || !attempt.value) return;
+  isCancelling.value = true;
+  cancelError.value = null;
+  stopPolling();
+  try {
+    await $fetch(
+      `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(props.draftResult.booking.id)}/booking-deposit-qr/cancel`,
+      { method: "POST" },
+    );
+    // Gateway cancel confirmed — discard session buffer so the cancelled QR
+    // is never resumed on refresh.
+    clearSessionBuffer();
+    emit("qr-cancelled");
+  } catch (err: unknown) {
+    cancelError.value =
+      err instanceof Error
+        ? err.message
+        : "ยกเลิก QR ไม่สำเร็จ กรุณาลองอีกครั้ง";
+    // Restart polling — QR may still be live.
+    startPolling();
+  } finally {
+    isCancelling.value = false;
   }
 }
 
@@ -219,12 +373,12 @@ async function pollQrAttempt() {
 
 watch(
   () => props.draftResult.booking.id,
-  () => void createQrAttempt(),
+  () => void mountOrResumeQrAttempt(),
 );
 onMounted(() => {
   componentActive = true;
   startTicker();
-  void createQrAttempt();
+  void mountOrResumeQrAttempt();
 });
 onBeforeUnmount(() => {
   componentActive = false;
@@ -315,13 +469,31 @@ onBeforeUnmount(() => {
         title="สร้าง QR ไม่สำเร็จ"
         :description="createError"
       />
+      <!--
+        Phase 2D-B3.2 fail-closed: shown when the active-attempt lookup itself failed.
+        createQrAttempt() is NOT triggered until staff explicitly retries and the lookup
+        succeeds with an explicit no-active response from the server.
+      -->
+      <UAlert
+        v-else-if="resumeError"
+        color="warning"
+        variant="soft"
+        title="ตรวจสอบ QR ไม่สำเร็จ"
+        :description="resumeError"
+      />
 
       <div
-        v-if="isCreating && !attempt"
+        v-if="(isCreating || isResumingAttempt) && !attempt"
         class="flex flex-col items-center gap-4 py-4"
       >
         <div class="h-72 w-72 animate-pulse rounded-lg bg-elevated" />
-        <p class="text-sm text-muted">กำลังสร้าง PromptPay QR...</p>
+        <p class="text-sm text-muted">
+          {{
+            isResumingAttempt
+              ? "กำลังตรวจสอบ QR เดิม..."
+              : "กำลังสร้าง PromptPay QR..."
+          }}
+        </p>
       </div>
 
       <div v-else-if="attempt" class="space-y-4">
@@ -434,6 +606,13 @@ onBeforeUnmount(() => {
           title="ตรวจสอบสถานะ QR ไม่สำเร็จ"
           :description="pollError"
         />
+        <UAlert
+          v-if="cancelError"
+          color="error"
+          variant="soft"
+          title="ยกเลิก QR ไม่สำเร็จ"
+          :description="cancelError"
+        />
       </div>
 
       <UButton
@@ -444,6 +623,28 @@ onBeforeUnmount(() => {
         :disabled="isZeroDue || isFinalizing"
         @click="createQrAttempt"
         >สร้าง QR ใหม่</UButton
+      >
+      <!-- Phase 2D-B3.2 fail-closed: retry active-lookup; only creates new QR if server
+           explicitly confirms no active attempt exists. -->
+      <UButton
+        v-if="resumeError"
+        icon="bx:refresh"
+        color="neutral"
+        variant="soft"
+        :loading="isResumingAttempt"
+        :disabled="isZeroDue"
+        @click="retryResumeCheck"
+        >ลองอีกครั้ง</UButton
+      >
+      <!-- Phase 2D-B4: Staff-initiated cancel of a pending/requires_action QR. -->
+      <UButton
+        v-if="canCancel"
+        icon="bx:x-circle"
+        color="error"
+        variant="soft"
+        :loading="isCancelling"
+        @click="cancelQrAttempt"
+        >ยกเลิก QR นี้</UButton
       >
     </div>
   </UCard>

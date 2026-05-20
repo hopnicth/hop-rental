@@ -7,6 +7,8 @@ import AdminPosV3OrderContext from "~/components/admin/pos/AdminPosV3OrderContex
 import AdminPosV3FutureBookingDraftContainer from "~/components/admin/pos/AdminPosV3FutureBookingDraftContainer.vue";
 import AdminPosV3FutureBookingDepositCashContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositCashContainer.vue";
 import AdminPosV3FutureBookingDepositQrContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositQrContainer.vue";
+import { calculateBookingDepositDueNow } from "~/utils/rental-payment-lines";
+import { runQrSessionRestore } from "~/utils/pos-qr-session-restore";
 import type {
   AdminRentalBookingRow,
   AdminSaleOrderQueueResponse,
@@ -93,6 +95,60 @@ const orderDetail = ref<AdminSaleOrderDetail | null>(null);
 const orderLoading = ref(false);
 const orderError = ref<string | null>(null);
 
+// ── Phase 2D-B3.2: Session buffer helpers ────────────────────────────────────
+// sessionStorage is used as a tab-scoped recovery HINT only.
+// The source of truth is always the server.
+const SS_KEY = "hopnic:pos-v3:future-booking-qr-session:v1";
+
+function clearSessionBuffer() {
+  try {
+    window.sessionStorage.removeItem(SS_KEY);
+  } catch {
+    /* SSR / private-browsing guard */
+  }
+}
+
+/**
+ * Reconstructs a minimal DraftBookingResult from a server booking detail.
+ * Used by both session-buffer restore and manual re-entry resume paths.
+ */
+function buildDraftResultFromDetail(detail: AdminRentalBookingDetail) {
+  const bookingDepositDueNow = calculateBookingDepositDueNow({
+    rentalDays: detail.rentalDays,
+    requiredSecurityDepositAmount: detail.depositAmount,
+  });
+  const remainingSecurityDepositDueAtPickup = Math.max(
+    0,
+    detail.depositAmount - bookingDepositDueNow,
+  );
+  return {
+    booking: {
+      id: detail.id,
+      asset: {
+        code: detail.assetCode,
+        name: detail.assetName || detail.productName,
+      },
+      customer: {
+        kind: detail.userId ? ("account" as const) : ("walk_in" as const),
+        userId: detail.userId,
+        walkInPhone: detail.walkInPhone,
+        bookerName: detail.bookerName,
+      },
+      dates: {
+        startDate: detail.startDate,
+        customerReturnDate: detail.endDate,
+        rentalDays: detail.rentalDays,
+      },
+    },
+    quote: {
+      currencyCode: detail.currencyCode,
+      bookingDepositDueNow,
+      requiredSecurityDepositAmount: detail.depositAmount,
+      remainingSecurityDepositDueAtPickup,
+    },
+  };
+}
+
 // Container 1 — Future Booking Draft result (drives Container 2 mount)
 const latestDraftResult = ref<any>(null);
 const selectedPaymentMethod = ref<FutureBookingDepositPaymentMethod | null>(
@@ -102,6 +158,8 @@ function handleDraftCreated(result: unknown) {
   latestDraftResult.value = result;
   latestConfirmedFutureBookingResult.value = null;
   selectedPaymentMethod.value = null;
+  // Phase 2D-B3.2: clear any stale session buffer when a new draft is created
+  clearSessionBuffer();
 }
 
 // Container 1 — Same-Day Rental intent (preserved for future Same-Day Rental flow)
@@ -120,6 +178,26 @@ function handleBookingConfirmed(result: unknown) {
 function selectPaymentMethod(method: FutureBookingDepositPaymentMethod) {
   if (selectedPaymentMethod.value !== null) return;
   selectedPaymentMethod.value = method;
+  // Phase 2D-B3.2: write initializing buffer so a refresh during QR creation
+  // can be recovered (phase is upgraded to "active" by QrContainer after create/resume).
+  if (method === "promptpay_qr" && latestDraftResult.value) {
+    try {
+      window.sessionStorage.setItem(
+        SS_KEY,
+        JSON.stringify({
+          version: 1,
+          flow: "future_booking_qr_deposit",
+          bookingId: latestDraftResult.value.booking.id,
+          paymentMethod: "promptpay_qr",
+          phase: "initializing",
+          savedAt: new Date().toISOString(),
+          resumeUntil: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+        }),
+      );
+    } catch {
+      /* SSR / private-browsing guard */
+    }
+  }
 }
 
 const resolverBusy = computed(
@@ -265,6 +343,30 @@ async function loadBookingContext(
           "Pickup readiness preview is unavailable for this booking.";
       }
     }
+    // Phase 2D-B3.2: manual re-entry resume — if this is a POS V3 draft booking
+    // with an unpaid deposit, check whether an active QR attempt exists and
+    // restore the QR payment flow automatically.
+    if (
+      detail.status === "draft" &&
+      detail.depositPaymentStatus !== "paid" &&
+      latestDraftResult.value === null
+    ) {
+      try {
+        const { attempt: activeAttempt } = await $fetch<{
+          attempt: unknown | null;
+        }>(
+          `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(detail.id)}/booking-deposit-qr/active`,
+        );
+        if (activeAttempt) {
+          latestDraftResult.value = buildDraftResultFromDetail(detail);
+          latestConfirmedFutureBookingResult.value = null;
+          selectedPaymentMethod.value = "promptpay_qr";
+        }
+      } catch {
+        // Non-blocking: if active check fails or booking is not POS V3, show
+        // normal booking context only — do not interrupt the resolved state.
+      }
+    }
   } catch (error) {
     clearBookingContext();
     bookingError.value = "Booking context could not be loaded.";
@@ -404,6 +506,46 @@ function handleScannerDecoded(payload: {
     description: payload.raw,
   };
 }
+
+/**
+ * Phase 2D-B4: Staff cancelled the active QR attempt.
+ * Reset the payment method selector so staff can choose a different payment
+ * method (e.g. cash). Booking draft context is preserved intact.
+ */
+function handleQrCancelled() {
+  selectedPaymentMethod.value = null;
+}
+
+/**
+ * Phase 2D-B3.2: Session-buffer auto-restore on page mount.
+ *
+ * All validation logic lives in runQrSessionRestore (app/utils/pos-qr-session-restore.ts)
+ * so it can be tested behaviorally without mounting this component.
+ * This callback only wires Nuxt dependencies and applies state on "restored" outcome.
+ */
+onMounted(async () => {
+  if (typeof window === "undefined") return;
+  const outcome = await runQrSessionRestore({
+    storage: window.sessionStorage,
+    fetchDetail: (bookingId) =>
+      $fetch<AdminRentalBookingDetail>(
+        `/api/admin/rental-bookings/${encodeURIComponent(bookingId)}`,
+      ),
+    fetchActiveAttempt: (bookingId) =>
+      $fetch<{ attempt: unknown | null }>(
+        `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(bookingId)}/booking-deposit-qr/active`,
+      ),
+    isRestorable: (detail: AdminRentalBookingDetail) =>
+      detail.status === "draft" && detail.depositPaymentStatus !== "paid",
+  });
+  if (outcome.kind !== "restored") return;
+  // Restore POS context — QrContainer will resume the active attempt on mount
+  bookingContext.value = outcome.detail;
+  lastResolved.value = `booking: ${outcome.detail.id}`;
+  latestDraftResult.value = buildDraftResultFromDetail(outcome.detail);
+  latestConfirmedFutureBookingResult.value = null;
+  selectedPaymentMethod.value = "promptpay_qr";
+});
 </script>
 
 <template>
@@ -561,6 +703,7 @@ function handleScannerDecoded(payload: {
       "
       :draft-result="latestDraftResult"
       @booking-confirmed="handleBookingConfirmed"
+      @qr-cancelled="handleQrCancelled"
     />
   </div>
 </template>
