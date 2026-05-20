@@ -7,6 +7,7 @@ import AdminPosV3OrderContext from "~/components/admin/pos/AdminPosV3OrderContex
 import AdminPosV3FutureBookingDraftContainer from "~/components/admin/pos/AdminPosV3FutureBookingDraftContainer.vue";
 import AdminPosV3FutureBookingDepositCashContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositCashContainer.vue";
 import AdminPosV3FutureBookingDepositQrContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositQrContainer.vue";
+import { runQrSessionRestore } from "~/utils/pos-qr-session-restore";
 import type {
   AdminRentalBookingRow,
   AdminSaleOrderQueueResponse,
@@ -265,6 +266,27 @@ async function loadBookingContext(
           "Pickup readiness preview is unavailable for this booking.";
       }
     }
+    // Phase 2D-B3.2: Manual re-entry resume.
+    // When staff re-opens a draft booking that already has an active QR attempt,
+    // automatically mount the QR payment flow so they can resume without losing the QR.
+    if (detail.status === "draft" && !latestDraftResult.value) {
+      try {
+        const { attempt: activeAttempt } = await $fetch<{
+          attempt: unknown | null;
+        }>(
+          `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(detail.id)}/booking-deposit-qr/active`,
+        );
+        if (activeAttempt) {
+          latestDraftResult.value = buildDraftResultFromBookingDetail(
+            detail,
+            activeAttempt,
+          );
+          selectedPaymentMethod.value = "promptpay_qr";
+        }
+      } catch {
+        // Non-critical: re-entry check failed silently; normal manual flow continues.
+      }
+    }
   } catch (error) {
     clearBookingContext();
     bookingError.value = "Booking context could not be loaded.";
@@ -404,6 +426,105 @@ function handleScannerDecoded(payload: {
     description: payload.raw,
   };
 }
+
+// ── Phase 2D-B3.2: QR session restore ────────────────────────────────────────
+
+/**
+ * Builds a DraftBookingResult-compatible object from AdminRentalBookingDetail
+ * (returned by the generic booking detail endpoint) + the active QR attempt
+ * (returned by the active.get.ts endpoint).
+ *
+ * Used both by the onMounted session-buffer restore and the manual re-entry
+ * check in loadBookingContext.  The QR container only uses booking.id,
+ * booking.asset.{code,name}, booking.customer.{kind,bookerName}, and
+ * quote.{bookingDepositDueNow,currencyCode} — so the transform only needs to
+ * populate those fields accurately.
+ */
+function buildDraftResultFromBookingDetail(
+  detail: AdminRentalBookingDetail,
+  activeAttempt: unknown,
+) {
+  const qa = (activeAttempt ?? {}) as {
+    amount?: number;
+    currency?: string;
+    expiresAt?: string | null;
+  };
+  const isAccount =
+    typeof detail.userId === "string" && detail.userId.trim() !== "";
+  return {
+    booking: {
+      id: detail.id,
+      status: detail.status,
+      asset: {
+        id: detail.assetId ?? "",
+        code: detail.assetCode,
+        name: detail.assetName ?? detail.productName,
+        thumbnailUrl: detail.assetThumbnail,
+      },
+      customer: {
+        kind: isAccount ? ("account" as const) : ("walk_in" as const),
+        userId: isAccount ? detail.userId : null,
+        walkInPhone: detail.walkInPhone,
+        bookerName: detail.bookerName,
+        bookerPhone: detail.bookerPhone,
+      },
+      branch: {
+        id: detail.storageBranchId ?? detail.hubId ?? "",
+        code: "",
+        name: detail.storageBranchName ?? detail.hubName ?? "",
+      },
+      dates: {
+        startDate: detail.startDate,
+        endDate: detail.endDate,
+        customerReturnDate: detail.endDate,
+        rentalDays: detail.rentalDays,
+      },
+    },
+    quote: {
+      currencyCode: qa.currency ?? detail.currencyCode,
+      bookingDepositDueNow: qa.amount ?? 0,
+      rentalTotalAmount: detail.rentalTotal,
+      requiredSecurityDepositAmount: detail.depositAmount,
+      remainingSecurityDepositDueAtPickup: detail.depositAmount,
+      estimatedPickupDueAmount: 0,
+    },
+    payment: {
+      bookingDepositPaymentStatus: "unpaid",
+      paymentRequired: (qa.amount ?? 0) > 0,
+    },
+    warnings: [],
+  };
+}
+
+/**
+ * Phase 2D-B3.2: Same-tab refresh restore.
+ *
+ * Reads the session buffer written by AdminPosV3FutureBookingDepositQrContainer
+ * and, if the booking is still draft and an active QR attempt exists, restores
+ * latestDraftResult + selectedPaymentMethod so the QR container remounts and
+ * resumes polling the same attempt.
+ */
+onMounted(async () => {
+  if (typeof window === "undefined") return;
+  const outcome = await runQrSessionRestore<AdminRentalBookingDetail>({
+    storage: window.sessionStorage,
+    fetchDetail: (id) =>
+      $fetch<AdminRentalBookingDetail>(
+        `/api/admin/rental-bookings/${encodeURIComponent(id)}`,
+      ),
+    fetchActiveAttempt: (id) =>
+      $fetch<{ attempt: unknown | null }>(
+        `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(id)}/booking-deposit-qr/active`,
+      ),
+    isRestorable: (d) => d.status === "draft",
+  });
+  if (outcome.kind !== "restored") return;
+  latestDraftResult.value = buildDraftResultFromBookingDetail(
+    outcome.detail,
+    outcome.activeAttempt,
+  );
+  selectedPaymentMethod.value = "promptpay_qr";
+});
 </script>
 
 <template>

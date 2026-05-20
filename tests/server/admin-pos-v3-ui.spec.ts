@@ -424,3 +424,90 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(page).not.toContain("AdminPosV3SameDayContainer");
   });
 });
+
+// ── Phase 2D-B3.2: Active QR Resume & Session Resilience ──────────────────────
+
+describe("admin POS V3 Phase 2D-B3.2 Active QR Resume & Session Resilience", () => {
+  it("pos-qr-session-restore utility exists and exports QR_SESSION_BUFFER_KEY + runQrSessionRestore", () => {
+    const source = read("app/utils/pos-qr-session-restore.ts");
+    expect(source).toContain("QR_SESSION_BUFFER_KEY");
+    expect(source).toContain("hopnic:pos-v3:future-booking-qr-session:v1");
+    expect(source).toContain("runQrSessionRestore");
+    expect(source).toContain("QrSessionRestoreOutcome");
+  });
+
+  it("active QR attempt endpoint exists and is read-only", () => {
+    const source = read(
+      "server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-qr/active.get.ts",
+    );
+    expect(source).toContain("defineEventHandler");
+    expect(source).toContain("pos_rental_payment_attempts");
+    expect(source).toContain('"pending"');
+    expect(source).toContain('"requires_action"');
+    expect(source).toContain('"finalizing"');
+    // Must be read-only: no insert/update/delete
+    expect(source).not.toContain(".insert(");
+    expect(source).not.toContain(".update(");
+    expect(source).not.toContain(".delete(");
+  });
+
+  it("index.vue imports runQrSessionRestore from pos-qr-session-restore", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("runQrSessionRestore");
+    expect(page).toContain("pos-qr-session-restore");
+  });
+
+  it("index.vue has onMounted session restore hook", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("onMounted");
+    expect(page).toContain("runQrSessionRestore");
+    expect(page).toContain("outcome.kind");
+    expect(page).toContain('"restored"');
+    expect(page).toContain("selectedPaymentMethod.value");
+    expect(page).toContain('"promptpay_qr"');
+  });
+
+  it("index.vue has buildDraftResultFromBookingDetail helper that maps detail + activeAttempt", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("buildDraftResultFromBookingDetail");
+    expect(page).toContain("outcome.activeAttempt");
+    expect(page).toContain("isAccount");
+    expect(page).toContain("bookingDepositDueNow");
+    expect(page).toContain("qa.amount");
+  });
+
+  it("index.vue has manual re-entry resume in loadBookingContext", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("Manual re-entry resume");
+    expect(page).toContain("booking-deposit-qr/active");
+    expect(page).toContain('detail.status === "draft"');
+    expect(page).toContain("!latestDraftResult.value");
+    expect(page).toContain("buildDraftResultFromBookingDetail");
+  });
+
+  it("restored outcome passes activeAttempt field (pos-qr-session-restore.ts)", () => {
+    const source = read("app/utils/pos-qr-session-restore.ts");
+    expect(source).toContain("activeAttempt: unknown");
+    expect(source).toContain('{ kind: "restored", detail, activeAttempt }');
+  });
+
+  it("session restore is server-authoritative: validates booking detail + active attempt before restoring", () => {
+    const source = read("app/utils/pos-qr-session-restore.ts");
+    expect(source).toContain("fetchDetail");
+    expect(source).toContain("fetchActiveAttempt");
+    expect(source).toContain("isRestorable");
+    expect(source).toContain('"no_active_attempt"');
+    expect(source).toContain('"booking_not_restorable"');
+    expect(source).toContain('"booking_fetch_error"');
+    expect(source).toContain('"active_fetch_error"');
+  });
+
+  it("session restore clears the buffer on all non-restored outcomes", () => {
+    const source = read("app/utils/pos-qr-session-restore.ts");
+    // storage.removeItem must appear for each clear reason
+    expect(source).toContain("storage.removeItem(QR_SESSION_BUFFER_KEY)");
+    expect(source).toContain('"invalid_buffer"');
+    expect(source).toContain('"booking_not_restorable"');
+    expect(source).toContain('"no_active_attempt"');
+  });
+});

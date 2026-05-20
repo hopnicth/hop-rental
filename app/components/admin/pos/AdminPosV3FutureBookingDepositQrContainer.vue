@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { QR_SESSION_BUFFER_KEY } from "~/utils/pos-qr-session-restore";
+
 interface DraftBookingResult {
   booking: {
     id: string;
@@ -147,8 +149,41 @@ function stopTicker() {
   clearInterval(tickHandle);
   tickHandle = null;
 }
+/**
+ * Phase 2D-B3.2: Write a session buffer to sessionStorage so that a same-tab
+ * browser refresh can restore the QR flow.  Only written when the QR has a
+ * valid expiresAt — the expiry time becomes the resumeUntil window.
+ */
+function writeSessionBuffer(bookingId: string, expiresAt: string | null) {
+  if (!expiresAt) return;
+  try {
+    sessionStorage.setItem(
+      QR_SESSION_BUFFER_KEY,
+      JSON.stringify({
+        version: 1,
+        flow: "future_booking_qr_deposit",
+        paymentMethod: "promptpay_qr",
+        bookingId,
+        resumeUntil: expiresAt,
+      }),
+    );
+  } catch {
+    /* sessionStorage unavailable (private-browsing / SSR guard) */
+  }
+}
+
+/** Clears the session buffer — called on terminal status or before regenerating. */
+function clearSessionBuffer() {
+  try {
+    sessionStorage.removeItem(QR_SESSION_BUFFER_KEY);
+  } catch {
+    /* sessionStorage unavailable */
+  }
+}
+
 function resetAttemptState() {
   stopPolling();
+  clearSessionBuffer();
   attempt.value = null;
   createError.value = null;
   pollError.value = null;
@@ -183,6 +218,7 @@ async function createQrAttempt() {
     );
     if (!componentActive) return;
     attempt.value = result;
+    writeSessionBuffer(props.draftResult.booking.id, result.expiresAt);
     emitConfirmedOnce(result);
     startPolling();
   } catch (err: unknown) {
@@ -230,6 +266,7 @@ async function resumeExistingActiveAttempt() {
     if (!componentActive) return;
     if (active) {
       attempt.value = active;
+      writeSessionBuffer(props.draftResult.booking.id, active.expiresAt);
       emitConfirmedOnce(active);
       startPolling();
     } else {
@@ -255,7 +292,10 @@ async function pollQrAttempt() {
     attempt.value = result;
     pollError.value = null;
     emitConfirmedOnce(result);
-    if (terminalStatuses.includes(result.status)) stopPolling();
+    if (terminalStatuses.includes(result.status)) {
+      stopPolling();
+      clearSessionBuffer();
+    }
   } catch (err: unknown) {
     pollError.value =
       err instanceof Error ? err.message : "ตรวจสอบสถานะ QR ไม่สำเร็จ";

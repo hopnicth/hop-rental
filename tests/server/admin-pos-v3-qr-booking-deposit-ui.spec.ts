@@ -197,3 +197,75 @@ describe("admin POS V3 Phase 2D-B3 — QR booking deposit UI", () => {
     expect(source).not.toContain("พิมพ์เอกสารยืนยันการรับเงินมัดจำการจอง");
   });
 });
+
+// ── Phase 2D-B3.2: Session Buffer Lifecycle ───────────────────────────────────
+
+describe("admin POS V3 QR container Phase 2D-B3.2 session buffer lifecycle", () => {
+  it("imports QR_SESSION_BUFFER_KEY from pos-qr-session-restore", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("QR_SESSION_BUFFER_KEY");
+    expect(source).toContain("pos-qr-session-restore");
+  });
+
+  it("defines writeSessionBuffer that writes to sessionStorage with required fields", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("writeSessionBuffer");
+    expect(source).toContain("sessionStorage.setItem");
+    expect(source).toContain("QR_SESSION_BUFFER_KEY");
+    expect(source).toContain("future_booking_qr_deposit");
+    expect(source).toContain("promptpay_qr");
+    expect(source).toContain("resumeUntil");
+  });
+
+  it("defines clearSessionBuffer that removes QR_SESSION_BUFFER_KEY from sessionStorage", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("clearSessionBuffer");
+    expect(source).toContain("sessionStorage.removeItem");
+  });
+
+  it("calls writeSessionBuffer after successful QR creation (createQrAttempt)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // writeSessionBuffer must be called right after attempt.value = result in createQrAttempt
+    expect(source).toContain(
+      "writeSessionBuffer(props.draftResult.booking.id, result.expiresAt)",
+    );
+  });
+
+  it("calls writeSessionBuffer after resuming active attempt (resumeExistingActiveAttempt)", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain(
+      "writeSessionBuffer(props.draftResult.booking.id, active.expiresAt)",
+    );
+  });
+
+  it("calls clearSessionBuffer when poll reaches a terminal status", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("terminalStatuses.includes(result.status)");
+    expect(source).toContain("clearSessionBuffer()");
+  });
+
+  it("calls clearSessionBuffer inside resetAttemptState so regeneration always clears the buffer", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // clearSessionBuffer must appear inside the resetAttemptState function body
+    const resetIdx = source.indexOf("function resetAttemptState()");
+    const clearIdx = source.indexOf("clearSessionBuffer()", resetIdx);
+    expect(resetIdx).toBeGreaterThan(-1);
+    expect(clearIdx).toBeGreaterThan(resetIdx);
+  });
+
+  it("writeSessionBuffer guards against null/undefined expiresAt before writing", () => {
+    const source = read(QR_CONTAINER_PATH);
+    expect(source).toContain("if (!expiresAt) return");
+  });
+
+  it("writeSessionBuffer and clearSessionBuffer are both wrapped in try/catch for SSR/private-browsing safety", () => {
+    const source = read(QR_CONTAINER_PATH);
+    // Both functions should have try/catch guards
+    const writeIdx = source.indexOf("function writeSessionBuffer");
+    const clearIdx = source.indexOf("function clearSessionBuffer");
+    const writeTryIdx = source.indexOf("try {", writeIdx);
+    const clearTryIdx = source.indexOf("try {", clearIdx);
+    expect(writeTryIdx).toBeGreaterThan(writeIdx);
+    expect(clearTryIdx).toBeGreaterThan(clearIdx);
+  });
+});
