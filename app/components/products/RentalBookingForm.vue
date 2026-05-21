@@ -28,16 +28,28 @@ interface RentalBookingCalendarPayload {
   isValid: boolean;
 }
 
+interface RentalCalendarBlockingBooking {
+  bookingId?: string;
+  skuId?: string;
+  assetId?: string;
+  startDate: string;
+  exclusiveEndDate?: string;
+  returnDate: string;
+  status?: string;
+}
+
 const props = withDefaults(
   defineProps<{
     selectedSku?: ProductSKU;
     asset?: Asset | null;
     loading?: boolean;
+    blockingBookings?: RentalCalendarBlockingBooking[] | null;
   }>(),
   {
     selectedSku: undefined,
     asset: null,
     loading: false,
+    blockingBookings: null,
   },
 );
 
@@ -231,6 +243,7 @@ watch([() => props.selectedSku?.id, () => props.asset?.id], () => {
       <ProductsRentalBookingCalendar
         :selected-sku="props.selectedSku"
         :asset="props.asset"
+        :blocking-bookings="props.blockingBookings"
         :loading="props.loading"
         @change="handleCalendarChange"
       />

@@ -21,6 +21,40 @@ const access = computed(() =>
   assets.value.find((item) => item.slug === slug.value),
 );
 
+// ── Online booking-block calendar data ──────────────────────────────────────
+// Fetch all confirmed/picked_up bookings for this asset so the calendar can
+// shade unavailable dates before the customer reaches checkout.
+// Failure is non-fatal: checkout prevalidation remains the authoritative guard.
+type OnlineBookingBlock = {
+  assetId?: string;
+  startDate: string;
+  returnDate: string;
+  status: string;
+};
+const onlineBookingBlocks = ref<OnlineBookingBlock[]>([]);
+
+// access must be declared before this computed references it.
+const assetIdForBlocks = computed(() => access.value?.id ?? "");
+watch(
+  assetIdForBlocks,
+  async (id) => {
+    if (!id) {
+      onlineBookingBlocks.value = [];
+      return;
+    }
+    try {
+      const res = await $fetch<{ items: OnlineBookingBlock[] }>(
+        `/api/assets/${id}/booking-blocks`,
+      );
+      onlineBookingBlocks.value = res.items ?? [];
+    } catch (e) {
+      console.warn("[Asset] booking-blocks fetch failed:", e);
+      onlineBookingBlocks.value = [];
+    }
+  },
+  { immediate: true },
+);
+
 const loginRedirectPath = computed(
   () => route.fullPath || `/asset/${slug.value}`,
 );
@@ -358,6 +392,7 @@ const { data: reviews } = await useAsyncData(
         <ProductsRentalBookingForm
           :selected-sku="bookingSku"
           :asset="access"
+          :blocking-bookings="onlineBookingBlocks"
           :loading="isSubmittingBooking"
           @submit="handleBookingSubmit"
           @cancel="showBookingForm = false"
