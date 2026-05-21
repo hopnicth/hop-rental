@@ -187,6 +187,83 @@ describe("rental money summary", () => {
     expect(summary.pickupDue.totalPickupDueAmount).toBe(5000);
   });
 
+  // ── Phase 2E-B1.5: remaining security deposit collected at pickup ─────────────
+
+  it("B1.5 Case B: totalPickupDueAmount is 0 after remaining security deposit is collected", () => {
+    // deposit=5000 / booking_deposit=200 / deposit_paid_amount=4800 / deposit_payment_status=paid
+    const summary = buildRentalMoneySummary({
+      booking: booking({
+        deposit_paid_amount: 4800,
+        deposit_payment_status: "paid",
+      }),
+      paymentLines: baseLines(),
+    });
+
+    expect(summary.refundableSecurityDeposit.remainingDueAtPickupAmount).toBe(
+      0,
+    );
+    expect(summary.pickupDue.totalPickupDueAmount).toBe(0);
+    expect(summary.pickupDue.remainingSecurityDepositDueAmount).toBe(0);
+  });
+
+  it("B1.5 Case A: totalPickupDueAmount is 4800 before remaining deposit is collected", () => {
+    // deposit=5000 / booking_deposit=200 / deposit_payment_status=unpaid (before collection)
+    const summary = buildRentalMoneySummary({
+      booking: booking({
+        deposit_paid_amount: 0,
+        deposit_payment_status: "unpaid",
+      }),
+      paymentLines: baseLines(),
+    });
+
+    expect(summary.refundableSecurityDeposit.remainingDueAtPickupAmount).toBe(
+      4800,
+    );
+    expect(summary.pickupDue.totalPickupDueAmount).toBe(4800);
+  });
+
+  it("B1.5 Case D: booking deposit covers full deposit — totalPickupDueAmount is 0", () => {
+    // deposit=150 / booking_deposit=150 / no remaining due
+    const summary = buildRentalMoneySummary({
+      booking: booking({
+        deposit_amount: 150,
+        booking_deposit_paid_amount: 150,
+        deposit_paid_amount: 0,
+        deposit_payment_status: "unpaid",
+      }),
+      paymentLines: [
+        line("rental_fee", 10000, { wht_amount: 500 }),
+        line("booking_deposit", 150, {
+          metadata: { securityDepositRequired: 150 },
+        }),
+        line("refundable_security_deposit", 0),
+      ],
+    });
+
+    expect(summary.pickupDue.totalPickupDueAmount).toBe(0);
+  });
+
+  it("B1.5: deposit_paid_amount is NOT credited when booking_deposit_paid_amount is 0 (legacy guard)", () => {
+    // Legacy booking: booking_deposit_paid_amount = 0 → POS V3 condition false
+    // deposit_paid_amount is ignored for pickup-due calculation (legacy path)
+    const summary = buildRentalMoneySummary({
+      booking: booking({
+        booking_deposit_paid_amount: 0,
+        deposit_paid_amount: 5000,
+        deposit_payment_status: "paid",
+      }),
+      paymentLines: [
+        line("rental_fee", 10000, { wht_amount: 500 }),
+        line("refundable_security_deposit", 5000),
+      ],
+    });
+
+    // Legacy booking: pickupRemainingDepositCovered = 0, no booking deposit line
+    // → bookingDepositPaid uses legacyDepositPaid capped at bookingDepositExpected (0)
+    // → remainingSecurityDue = 5000
+    expect(summary.pickupDue.totalPickupDueAmount).toBe(5000);
+  });
+
   it("warns instead of silently trusting legacy bookings without payment lines", () => {
     const summary = buildRentalMoneySummary({
       booking: booking(),

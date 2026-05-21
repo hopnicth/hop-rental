@@ -131,6 +131,22 @@ function handlePickupConfirmed(updated: AdminRentalBookingDetail) {
   bookingReadiness.value = null;
 }
 
+// Phase 2E-B1.5: Re-fetch pickup readiness after remaining security deposit is collected.
+async function handleDepositCollected() {
+  if (!bookingContext.value) return;
+  bookingReadiness.value = null;
+  bookingReadinessError.value = null;
+  try {
+    const response = await $fetch<PosV2ReadinessResponse>(
+      `/api/admin/pos-v2/rental-bookings/${encodeURIComponent(bookingContext.value.id)}/pickup-readiness`,
+    );
+    bookingReadiness.value = response.readiness as PickupReadinessPreview;
+  } catch {
+    bookingReadinessError.value =
+      "Pickup readiness preview is unavailable for this booking.";
+  }
+}
+
 function selectPaymentMethod(method: FutureBookingDepositPaymentMethod) {
   if (selectedPaymentMethod.value !== null) return;
   selectedPaymentMethod.value = method;
@@ -657,6 +673,7 @@ onMounted(async () => {
       :booking="bookingContext"
       :readiness="bookingReadiness"
       @pickup-confirmed="handlePickupConfirmed"
+      @deposit-collected="handleDepositCollected"
     />
 
     <UAlert

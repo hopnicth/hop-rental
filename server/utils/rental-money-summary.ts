@@ -340,9 +340,21 @@ export function buildRentalMoneySummary(input: {
     totalSecurityDepositExpected,
     bookingDepositPaid,
   );
+  // Phase 2E-B1.5: POS V3 remaining security deposit collected at pickup.
+  // deposit_paid_amount is credited toward pickup due ONLY when:
+  //   1. booking_deposit_paid_amount > 0  → confirms this is a POS V3 booking
+  //   2. deposit_payment_status === "paid" → remaining deposit was successfully collected
+  // Legacy bookings (booking_deposit_paid_amount = 0) use the legacy pool path below.
+  const pickupRemainingDepositCovered =
+    dedicatedBookingDepositPaid > 0 &&
+    text(booking.deposit_payment_status) === "paid"
+      ? money(booking.deposit_paid_amount)
+      : 0;
+  const totalDepositCovered =
+    bookingDepositApplied + pickupRemainingDepositCovered;
   const remainingSecurityDue = Math.max(
     0,
-    money(totalSecurityDepositExpected - bookingDepositApplied),
+    money(totalSecurityDepositExpected - totalDepositCovered),
   );
   const checkoutPaid = money(booking.checkout_paid_amount);
   const pickupPaidPool = checkoutPaid;

@@ -63,7 +63,7 @@ const REFUND_STATUSES = new Set<RentalDepositRefundStatus>([
 const REFUND_PROOF_STATUSES = new Set<RentalDepositRefundStatus>(["refunded"]);
 
 const CURRENT_BOOKING_SELECT =
-  "id, user_id, walk_in_phone, status, deposit_paid_amount, deposit_payment_status, booking_deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, pos_branch_id, asset:assets(storage_branch_id)";
+  "id, user_id, walk_in_phone, status, deposit_amount, deposit_paid_amount, deposit_payment_status, booking_deposit_paid_amount, booking_deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, pos_branch_id, asset:assets(storage_branch_id)";
 
 function cleanText(value: unknown): string | null {
   return typeof value === "string" ? value.trim() || null : null;
@@ -366,15 +366,40 @@ export async function assertRentalFulfillmentPrerequisites({
   await assertBranchAccess(adminClient, userId, platformRole, branchId);
   await assertNoDuplicateEvent(adminClient, bookingId, eventType);
   if (eventType === "pickup") {
-    if (
-      requirePaidPickupDeposit &&
-      cleanText(current.deposit_payment_status) !== "paid" &&
-      cleanText(current.booking_deposit_payment_status) !== "paid"
-    ) {
-      throw createError({
-        statusCode: 422,
-        statusMessage: "Pickup requires paid deposit/payment status",
-      });
+    if (requirePaidPickupDeposit) {
+      const bookingDepositPaid = money(current.booking_deposit_paid_amount);
+      if (bookingDepositPaid > 0) {
+        // Phase 2E-B1.5 POS V3 path: math-based remaining security deposit check.
+        // booking_deposit_paid_amount > 0 confirms this is a POS V3 booking.
+        const requiredDeposit = money(current.deposit_amount);
+        const pickupRemainingPaid =
+          cleanText(current.deposit_payment_status) === "paid"
+            ? money(current.deposit_paid_amount)
+            : 0;
+        const totalCovered = bookingDepositPaid + pickupRemainingPaid;
+        const remainingSecurityDue = Math.max(
+          0,
+          requiredDeposit - totalCovered,
+        );
+        if (remainingSecurityDue > 0) {
+          throw createError({
+            statusCode: 422,
+            statusMessage: "REMAINING_SECURITY_DEPOSIT_DUE",
+          });
+        }
+      } else {
+        // Legacy path: status-based OR-gate for pre-POS-V3 bookings.
+        // Both fields must fail to block pickup.
+        if (
+          cleanText(current.deposit_payment_status) !== "paid" &&
+          cleanText(current.booking_deposit_payment_status) !== "paid"
+        ) {
+          throw createError({
+            statusCode: 422,
+            statusMessage: "Pickup requires paid deposit/payment status",
+          });
+        }
+      }
     }
     await assertPickupCustomerEvidence(adminClient, current);
   }

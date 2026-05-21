@@ -908,6 +908,51 @@ describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
     expect(source).not.toContain("มียอดค้างชำระ — ยังไม่สามารถส่งมอบได้");
   });
 
+  // ── Phase 2E-B1.5: Remaining Security Deposit Collection ─────────────────────
+
+  it("B1.5: pickup container shows interactive collection card when deposit is due", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("ชำระเงินมัดจำประกันส่วนที่เหลือ");
+    expect(source).toContain("เงินมัดจำประกัน (คืนได้) — ไม่ใช่ค่าเช่า");
+    expect(source).toContain("รับเงินมัดจำประกัน (เงินสด)");
+  });
+
+  it("B1.5: pickup container emits deposit-collected after successful cash collection", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain('"deposit-collected"');
+    expect(source).toContain("collectRemainingDeposit");
+    expect(source).toContain("remaining-security-deposit-payments");
+  });
+
+  it("B1.5: pickup container uses pos-v3:remaining-deposit idempotency prefix", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("pos-v3:remaining-deposit:");
+  });
+
+  it("B1.5: pickup container tracks loading and error state for deposit collection", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("collectingDeposit");
+    expect(source).toContain("depositCollectError");
+  });
+
+  it("B1.5: page handles deposit-collected event and re-fetches pickup readiness", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("handleDepositCollected");
+    expect(page).toContain("@deposit-collected");
+    expect(page).toContain("pickup-readiness");
+  });
+
+  it("B1.5: rental-fulfillment uses math-based gate for POS V3 (REMAINING_SECURITY_DEPOSIT_DUE)", () => {
+    const source = read("server/utils/rental-fulfillment.ts");
+    expect(source).toContain("REMAINING_SECURITY_DEPOSIT_DUE");
+    expect(source).toContain("booking_deposit_paid_amount");
+    expect(source).toContain("deposit_amount");
+    // Legacy OR-gate still present for pre-POS-V3 bookings
+    expect(source).toContain(
+      'cleanText(current.booking_deposit_payment_status) !== "paid"',
+    );
+  });
+
   it("print.vue labels rental fee as deferred to return — not due at pickup", () => {
     const printPage = read("app/pages/admin/rental-bookings/[id]/print.vue");
     // Updated label: rental fee is deferred

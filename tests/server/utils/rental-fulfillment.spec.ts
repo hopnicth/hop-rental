@@ -318,6 +318,85 @@ describe("completeRentalBookingFulfillment", () => {
     "paid deposit",
   );
 
+  // ── Phase 2E-B1.5: POS V3 math-based remaining security deposit gate ─────────
+
+  it("B1.5: POS V3 pickup blocked when remaining security deposit is due (math gate)", async () => {
+    // booking_deposit_paid_amount > 0 → POS V3 path; deposit_payment_status unpaid → remaining due
+    try {
+      await completeRentalBookingFulfillment({
+        adminClient: mockClient({
+          booking: {
+            ...baseBooking("confirmed"),
+            deposit_amount: 5000,
+            booking_deposit_paid_amount: 200,
+            deposit_payment_status: "unpaid",
+            deposit_paid_amount: 0,
+          },
+          checklist: baseChecklist,
+          checklistItems: [baseChecklistItem],
+          users: [baseUser],
+        }),
+        userId: "staff-1",
+        platformRole: "staff",
+        bookingId: "booking-1",
+        eventType: "pickup",
+        payload: validPayload("pickup"),
+      });
+      expect.fail("Should have thrown REMAINING_SECURITY_DEPOSIT_DUE");
+    } catch (err: any) {
+      expect(err.statusCode).toBe(422);
+      expect(err.statusMessage).toBe("REMAINING_SECURITY_DEPOSIT_DUE");
+    }
+  });
+
+  it("B1.5: POS V3 pickup allowed when remaining deposit is fully collected", async () => {
+    // booking_deposit_paid=200 + deposit_paid_amount=4800 = total 5000 = deposit_amount
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: {
+          ...baseBooking("confirmed"),
+          deposit_amount: 5000,
+          booking_deposit_paid_amount: 200,
+          deposit_payment_status: "paid",
+          deposit_paid_amount: 4800,
+        },
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+  });
+
+  it("B1.5: POS V3 pickup allowed when booking deposit covers full deposit (no remaining due)", async () => {
+    // deposit=150, booking_deposit_paid=150 → totalCovered=150 = required → remainingSecurityDue=0
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: {
+          ...baseBooking("confirmed"),
+          deposit_amount: 150,
+          booking_deposit_paid_amount: 150,
+          deposit_payment_status: "unpaid",
+          deposit_paid_amount: 0,
+        },
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+  });
+
   // ── Phase 2E-B1 deposit guard safety ────────────────────────────────────────
 
   it("pickup allowed when booking_deposit_payment_status === paid (POS V3 deposit path)", async () => {

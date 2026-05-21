@@ -21,11 +21,14 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "pickup-confirmed", booking: AdminRentalBookingDetail): void;
+  (e: "deposit-collected"): void;
 }>();
 
 const signatureDataUrl = ref<string | null>(null);
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
+const collectingDeposit = ref(false);
+const depositCollectError = ref<string | null>(null);
 
 const isAlreadyPickedUp = computed(
   () =>
@@ -67,6 +70,39 @@ const canSubmit = computed(
     !hasPickupDue.value &&
     !readinessLoading.value,
 );
+
+async function collectRemainingDeposit() {
+  if (collectingDeposit.value) return;
+  collectingDeposit.value = true;
+  depositCollectError.value = null;
+  try {
+    await $fetch(
+      `/api/admin/pos-v3/rental-bookings/${encodeURIComponent(props.booking.id)}/remaining-security-deposit-payments`,
+      {
+        method: "POST",
+        body: {
+          idempotencyKey: `pos-v3:remaining-deposit:${props.booking.id}:${Date.now()}`,
+          amount: remainingDepositDue.value,
+          paymentMethod: "cash",
+        },
+      },
+    );
+    emit("deposit-collected");
+  } catch (e) {
+    const err = e as {
+      statusMessage?: string;
+      data?: { message?: string };
+      message?: string;
+    };
+    depositCollectError.value =
+      err.statusMessage ??
+      err.data?.message ??
+      err.message ??
+      "รับเงินมัดจำประกันไม่สำเร็จ";
+  } finally {
+    collectingDeposit.value = false;
+  }
+}
 
 async function submitPickup() {
   if (!canSubmit.value) return;
@@ -151,15 +187,47 @@ async function submitPickup() {
       กำลังตรวจสอบสถานะการรับมอบ…
     </div>
 
-    <!-- State 3: Security deposit still due — pickup is blocked until deposit is satisfied -->
+    <!-- State 3: Collect remaining security deposit — interactive cash collection card.
+         Rental fee is NOT collected here; it is deferred to return / settlement. -->
     <div v-else-if="hasPickupDue" class="space-y-3">
       <UAlert
         color="warning"
         variant="soft"
         icon="bx:lock"
         title="ยังไม่สามารถส่งมอบได้ — เงินมัดจำประกันยังไม่ครบ"
-        :description="`ยอดเงินมัดจำประกันที่ต้องชำระก่อนรับสินค้า: ฿${remainingDepositDue.toLocaleString()} · ค่าเช่าจะชำระวันคืนสินค้า / หลังจบงาน ตามนโยบายการเช่า`"
+        :description="`ยอดเงินมัดจำประกันที่ต้องชำระก่อนรับสินค้า: ฿${remainingDepositDue.toLocaleString()}`"
       />
+      <UCard>
+        <template #header>
+          <div>
+            <h3 class="font-semibold">ชำระเงินมัดจำประกันส่วนที่เหลือ</h3>
+            <p class="text-sm text-muted">
+              เงินมัดจำประกัน (คืนได้) — ไม่ใช่ค่าเช่า
+            </p>
+          </div>
+        </template>
+        <div class="space-y-3">
+          <p class="text-sm text-muted">
+            ค่าเช่าจะชำระวันคืนสินค้า / หลังจบงาน
+          </p>
+          <UAlert
+            v-if="depositCollectError"
+            color="error"
+            variant="soft"
+            :title="depositCollectError"
+          />
+          <div class="flex justify-end">
+            <UButton
+              color="primary"
+              :loading="collectingDeposit"
+              :disabled="collectingDeposit"
+              icon="bx:money"
+              :label="`รับเงินมัดจำประกัน (เงินสด) ฿${remainingDepositDue.toLocaleString()}`"
+              @click="collectRemainingDeposit"
+            />
+          </div>
+        </div>
+      </UCard>
     </div>
 
     <!-- State 4: Active pickup form
