@@ -5,6 +5,7 @@ const mockState = vi.hoisted(() => ({
   platformRole: "staff" as string,
   branchAccess: true,
   bookingRow: null as Record<string, unknown> | null,
+  paymentLines: [] as Record<string, unknown>[],
   existingPosAttempt: null as Record<string, unknown> | null,
   insertAttemptError: null as { code?: string; message?: string } | null,
   insertedAttempts: [] as Record<string, unknown>[],
@@ -63,6 +64,36 @@ const baseBooking = {
   currency_code: "THB",
 };
 
+const futureBookingPaymentLines = [
+  {
+    line_type: "booking_deposit",
+    status: "active",
+    source: "pos_v3_draft_quote",
+    metadata: {},
+  },
+  {
+    line_type: "refundable_security_deposit",
+    status: "active",
+    source: "pos_v3_draft_quote",
+    metadata: {},
+  },
+];
+
+const sameDayPaymentLines = [
+  {
+    line_type: "rental_fee",
+    status: "active",
+    source: "pos_v3_same_day_quote",
+    metadata: { bookingDepositPolicy: "not_applicable_same_day" },
+  },
+  {
+    line_type: "refundable_security_deposit",
+    status: "active",
+    source: "pos_v3_same_day_quote",
+    metadata: { bookingDepositPolicy: "not_applicable_same_day" },
+  },
+];
+
 vi.mock("~~/server/utils/admin", () => ({
   requirePlatformAdmin: async () => ({
     adminClient: {
@@ -83,6 +114,9 @@ vi.mock("~~/server/utils/admin", () => ({
               return qr({ data: null, error: err });
             },
           };
+        }
+        if (table === "rental_booking_payment_lines") {
+          return qr({ data: mockState.paymentLines, error: null });
         }
         if (table === "pos_rental_payment_attempts") {
           return {
@@ -124,6 +158,7 @@ describe("admin POS V3 remaining security deposit payments", () => {
     mockState.platformRole = "staff";
     mockState.branchAccess = true;
     mockState.bookingRow = { ...baseBooking };
+    mockState.paymentLines = [...futureBookingPaymentLines];
     mockState.existingPosAttempt = null;
     mockState.insertAttemptError = null;
     mockState.insertedAttempts = [];
@@ -182,6 +217,29 @@ describe("admin POS V3 remaining security deposit payments", () => {
       booking_deposit_payment_status: "unpaid",
     };
     await expect(endpoint(event)).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("allows POS V3 same-day booking with no booking deposit to collect full deposit", async () => {
+    mockState.bookingRow = {
+      ...baseBooking,
+      deposit_amount: 2500,
+      booking_deposit_payment_status: "unpaid",
+      booking_deposit_paid_amount: 0,
+    };
+    mockState.paymentLines = [...sameDayPaymentLines];
+    mockState.body = { ...mockState.body, amount: 2500 };
+
+    const result: any = await endpoint(event);
+
+    expect(result.status).toBe("paid");
+    expect(mockState.insertedAttempts[0]).toMatchObject({
+      payment_purpose: "remaining_security_deposit",
+      amount: 2500,
+    });
+    expect(mockState.updatedBookings[0]).toMatchObject({
+      deposit_paid_amount: 2500,
+      deposit_payment_status: "paid",
+    });
   });
 
   it("rejects when deposit is already paid (remaining already collected)", async () => {
@@ -248,5 +306,33 @@ describe("admin POS V3 remaining security deposit payments", () => {
     };
     mockState.body = { ...mockState.body, amount: 0 };
     await expect(endpoint(event)).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("does not mutate booking_deposit_paid_amount or booking_deposit_payment_status", async () => {
+    await endpoint(event);
+
+    expect(mockState.updatedBookings[0]).not.toHaveProperty(
+      "booking_deposit_paid_amount",
+    );
+    expect(mockState.updatedBookings[0]).not.toHaveProperty(
+      "booking_deposit_payment_status",
+    );
+  });
+
+  it("keeps future/online protection: unpaid booking deposit is rejected when same-day discriminator is absent", async () => {
+    mockState.bookingRow = {
+      ...baseBooking,
+      booking_deposit_payment_status: "unpaid",
+    };
+    mockState.paymentLines = [...futureBookingPaymentLines];
+
+    await expect(endpoint(event)).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("has no VAT/WHT/official document side effects", async () => {
+    await endpoint(event);
+
+    expect(mockState.insertedAttempts).toHaveLength(1);
+    expect(mockState.heldBalanceEventCalls).toHaveLength(1);
   });
 });

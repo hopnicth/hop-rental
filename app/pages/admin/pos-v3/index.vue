@@ -54,6 +54,20 @@ interface UserContext {
   phone: string | null;
   kycStatus?: string | null;
 }
+interface SameDayRentalIntentPayload {
+  branchId: string;
+  assetId: string;
+  startDate: string;
+  returnDate: string;
+  numDays: number;
+  userId: string | null;
+  walkInPhone: string | null;
+  bookerName: string | null;
+  bookerPhone: string | null;
+}
+interface SameDayRentalResponse {
+  booking: { id: string; status: string };
+}
 interface PosV2ReadinessResponse {
   readiness: Record<string, unknown>;
 }
@@ -112,11 +126,32 @@ function handleDraftCreated(result: unknown) {
   selectedPaymentMethod.value = null;
 }
 
-// Container 1 — Same-Day Rental intent (preserved for future Same-Day Rental flow)
-// This is separate from latestDraftResult and must NOT trigger Container 2.
+// Container 1 — Same-Day Rental intent/result
+// This stays separate from latestDraftResult so future Booking Deposit containers
+// never mount for same-day flow.
 const latestSameDayIntent = ref<unknown>(null);
-function handleSameDayIntent(payload: unknown) {
+async function handleSameDayIntent(payload: SameDayRentalIntentPayload) {
   latestSameDayIntent.value = payload;
+  latestDraftResult.value = null;
+  latestConfirmedFutureBookingResult.value = null;
+  selectedPaymentMethod.value = null;
+  try {
+    const result = await $fetch<SameDayRentalResponse>(
+      "/api/admin/pos-v3/rental-bookings/same-day",
+      {
+        method: "POST",
+        body: payload,
+      },
+    );
+    latestSameDayIntent.value = result;
+    await loadBookingContext(result.booking.id, { clearUser: false });
+  } catch (error) {
+    resolverNotice.value = {
+      color: "error",
+      title: "Same-day rental could not be created",
+      description: error instanceof Error ? error.message : undefined,
+    };
+  }
 }
 
 // Container 2 — Confirmed Future Booking result (stored for future routing/display)

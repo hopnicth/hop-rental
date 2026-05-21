@@ -10,6 +10,7 @@ const NO_REMAINING_SECURITY_DEPOSIT_DUE = "NO_REMAINING_SECURITY_DEPOSIT_DUE";
 
 const BOOKING_SELECT =
   "id, status, deposit_amount, deposit_paid_amount, deposit_payment_status, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, currency_code";
+const PAYMENT_LINE_SELECT = "line_type, status, source, metadata";
 
 type AnyRecord = Record<string, unknown>;
 type AnyClient = { from(table: string): any };
@@ -23,6 +24,12 @@ function asMoney(value: unknown): number {
   return Number.isFinite(parsed) && parsed >= 0
     ? Math.round(parsed * 100) / 100
     : 0;
+}
+
+function asMetadata(value: unknown): AnyRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as AnyRecord)
+    : {};
 }
 
 async function assertPosBranchAccess(input: {
@@ -65,6 +72,30 @@ async function loadBookingForDeposit(
       statusMessage: "Rental booking not found",
     });
   return data as AnyRecord;
+}
+
+async function loadPaymentLinesForDeposit(
+  adminClient: AnyClient,
+  bookingId: string,
+): Promise<AnyRecord[]> {
+  const { data, error } = await adminClient
+    .from("rental_booking_payment_lines")
+    .select(PAYMENT_LINE_SELECT)
+    .eq("booking_id", bookingId);
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  return Array.isArray(data) ? (data as AnyRecord[]) : [];
+}
+
+function isPosV3SameDayBooking(lines: AnyRecord[]): boolean {
+  return lines.some((line) => {
+    if (asText(line.status) === "voided") return false;
+    const metadata = asMetadata(line.metadata);
+    return (
+      asText(line.source) === "pos_v3_same_day_quote" ||
+      asText(metadata.bookingDepositPolicy) === "not_applicable_same_day"
+    );
+  });
 }
 
 async function findExistingPosAttempt(
@@ -119,6 +150,8 @@ export default defineEventHandler(async (event) => {
     });
 
   const booking = await loadBookingForDeposit(adminClient, bookingId);
+  const paymentLines = await loadPaymentLinesForDeposit(adminClient, bookingId);
+  const sameDayBooking = isPosV3SameDayBooking(paymentLines);
 
   const posBranchId = asText(booking.pos_branch_id);
   if (!posBranchId)
@@ -141,7 +174,10 @@ export default defineEventHandler(async (event) => {
         "Only confirmed bookings can collect remaining security deposit",
     });
 
-  if (asText(booking.booking_deposit_payment_status) !== "paid")
+  if (
+    !sameDayBooking &&
+    asText(booking.booking_deposit_payment_status) !== "paid"
+  )
     throw createError({
       statusCode: 422,
       statusMessage:

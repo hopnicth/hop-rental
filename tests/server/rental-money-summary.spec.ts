@@ -117,6 +117,20 @@ function baseLines(extra: Array<Record<string, unknown>> = []) {
   ];
 }
 
+function sameDayLines(extra: Array<Record<string, unknown>> = []) {
+  return [
+    line("rental_fee", 400, {
+      source: "pos_v3_same_day_quote",
+      metadata: { bookingDepositPolicy: "not_applicable_same_day" },
+    }),
+    line("refundable_security_deposit", 2500, {
+      source: "pos_v3_same_day_quote",
+      metadata: { bookingDepositPolicy: "not_applicable_same_day" },
+    }),
+    ...extra,
+  ];
+}
+
 describe("rental money summary", () => {
   it("keeps booking deposit, refundable security deposit, and rental fee separate", () => {
     const summary = buildRentalMoneySummary({
@@ -262,6 +276,68 @@ describe("rental money summary", () => {
     // → bookingDepositPaid uses legacyDepositPaid capped at bookingDepositExpected (0)
     // → remainingSecurityDue = 5000
     expect(summary.pickupDue.totalPickupDueAmount).toBe(5000);
+  });
+
+  it("same-day POS V3 before collection: full refundable security deposit is due at pickup", () => {
+    const summary = buildRentalMoneySummary({
+      booking: booking({
+        rental_total: 400,
+        deposit_amount: 2500,
+        booking_deposit_payment_status: "unpaid",
+        booking_deposit_paid_amount: 0,
+        deposit_payment_status: "unpaid",
+        deposit_paid_amount: 0,
+      }),
+      paymentLines: sameDayLines(),
+    });
+
+    expect(summary.bookingDeposit).toMatchObject({
+      expectedAmount: 0,
+      paidAmount: 0,
+    });
+    expect(summary.pickupDue).toMatchObject({
+      remainingSecurityDepositDueAmount: 2500,
+      totalPickupDueAmount: 2500,
+    });
+    expect(summary.rentalFee.outstandingAmount).toBe(400);
+  });
+
+  it("same-day POS V3 after collection: totalPickupDueAmount becomes 0", () => {
+    const summary = buildRentalMoneySummary({
+      booking: booking({
+        rental_total: 400,
+        deposit_amount: 2500,
+        booking_deposit_payment_status: "unpaid",
+        booking_deposit_paid_amount: 0,
+        deposit_payment_status: "paid",
+        deposit_paid_amount: 2500,
+      }),
+      paymentLines: sameDayLines(),
+    });
+
+    expect(summary.pickupDue).toMatchObject({
+      remainingSecurityDepositDueAmount: 0,
+      totalPickupDueAmount: 0,
+    });
+    expect(summary.rentalFee.outstandingAmount).toBe(400);
+  });
+
+  it("legacy booking with booking_deposit_paid_amount = 0 is not credited without same-day discriminator", () => {
+    const summary = buildRentalMoneySummary({
+      booking: booking({
+        rental_total: 400,
+        deposit_amount: 2500,
+        booking_deposit_paid_amount: 0,
+        deposit_paid_amount: 2500,
+        deposit_payment_status: "paid",
+      }),
+      paymentLines: [
+        line("rental_fee", 400),
+        line("refundable_security_deposit", 2500),
+      ],
+    });
+
+    expect(summary.pickupDue.totalPickupDueAmount).toBe(2500);
   });
 
   it("warns instead of silently trusting legacy bookings without payment lines", () => {

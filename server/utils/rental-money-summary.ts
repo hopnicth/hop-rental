@@ -129,6 +129,13 @@ function asMetadata(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function isPosV3SameDayLine(line: RentalPaymentLine): boolean {
+  return (
+    line.source === "pos_v3_same_day_quote" ||
+    text(line.metadata.bookingDepositPolicy) === "not_applicable_same_day"
+  );
+}
+
 export function mapRentalPaymentLineRow(row: unknown): RentalPaymentLine {
   const r = asMetadata(row);
   return {
@@ -197,6 +204,7 @@ export function buildRentalMoneySummary(input: {
     activeLines,
     "refundable_security_deposit",
   );
+  const hasPosV3SameDayPolicy = activeLines.some(isPosV3SameDayLine);
 
   if (!hasPaymentLines) {
     pushWarning(warnings, {
@@ -340,13 +348,14 @@ export function buildRentalMoneySummary(input: {
     totalSecurityDepositExpected,
     bookingDepositPaid,
   );
-  // Phase 2E-B1.5: POS V3 remaining security deposit collected at pickup.
-  // deposit_paid_amount is credited toward pickup due ONLY when:
-  //   1. booking_deposit_paid_amount > 0  → confirms this is a POS V3 booking
-  //   2. deposit_payment_status === "paid" → remaining deposit was successfully collected
-  // Legacy bookings (booking_deposit_paid_amount = 0) use the legacy pool path below.
+  // Phase 2E-B1.5 + same-day correction:
+  // deposit_paid_amount is credited toward pickup due ONLY when either:
+  //   1. booking_deposit_paid_amount > 0  → future POS V3 booking with booking deposit, or
+  //   2. active payment lines carry the same-day discriminator
+  //      (source/metadata => booking deposit not applicable for same-day).
+  // Legacy bookings with booking_deposit_paid_amount = 0 remain excluded.
   const pickupRemainingDepositCovered =
-    dedicatedBookingDepositPaid > 0 &&
+    (dedicatedBookingDepositPaid > 0 || hasPosV3SameDayPolicy) &&
     text(booking.deposit_payment_status) === "paid"
       ? money(booking.deposit_paid_amount)
       : 0;

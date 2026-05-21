@@ -55,6 +55,15 @@ const deferredRentalFee = computed(
   () => props.readiness?.moneySummary?.rentalFee?.expectedGrossAmount ?? 0,
 );
 
+const isSameDayNoBookingDeposit = computed(() =>
+  (props.booking.rentalPaymentLines ?? []).some(
+    (line) =>
+      line.source === "pos_v3_same_day_quote" ||
+      String(line.metadata?.bookingDepositPolicy ?? "") ===
+        "not_applicable_same_day",
+  ),
+);
+
 const readinessLoading = computed(
   () => props.readiness === null && !isAlreadyPickedUp.value,
 );
@@ -194,13 +203,47 @@ async function submitPickup() {
         color="warning"
         variant="soft"
         icon="bx:lock"
-        title="ยังไม่สามารถส่งมอบได้ — เงินมัดจำประกันยังไม่ครบ"
+        :title="
+          isSameDayNoBookingDeposit
+            ? 'ยังไม่สามารถส่งมอบได้ — ต้องรับเงินมัดจำประกันก่อน'
+            : 'ยังไม่สามารถส่งมอบได้ — เงินมัดจำประกันยังไม่ครบ'
+        "
         :description="`ยอดเงินมัดจำประกันที่ต้องชำระก่อนรับสินค้า: ฿${remainingDepositDue.toLocaleString()}`"
       />
+      <UCard v-if="isSameDayNoBookingDeposit">
+        <div class="grid gap-3 text-sm md:grid-cols-2">
+          <div>
+            <p class="text-muted">Rental fee</p>
+            <p class="font-semibold">ชำระวันคืนสินค้า / หลังจบงาน</p>
+          </div>
+          <div>
+            <p class="text-muted">Total refundable security deposit</p>
+            <p class="font-semibold">
+              ฿{{ booking.depositAmount.toLocaleString() }}
+            </p>
+          </div>
+          <div>
+            <p class="text-muted">Booking Deposit</p>
+            <p class="font-semibold">ไม่ใช้ / ฿0</p>
+          </div>
+          <div>
+            <p class="text-muted">Refundable security deposit due at pickup</p>
+            <p class="font-semibold">
+              ฿{{ remainingDepositDue.toLocaleString() }}
+            </p>
+          </div>
+        </div>
+      </UCard>
       <UCard>
         <template #header>
           <div>
-            <h3 class="font-semibold">ชำระเงินมัดจำประกันส่วนที่เหลือ</h3>
+            <h3 class="font-semibold">
+              {{
+                isSameDayNoBookingDeposit
+                  ? "รับเงินมัดจำประกันก่อนส่งมอบ"
+                  : "ชำระเงินมัดจำประกันส่วนที่เหลือ"
+              }}
+            </h3>
             <p class="text-sm text-muted">
               เงินมัดจำประกัน (คืนได้) — ไม่ใช่ค่าเช่า
             </p>

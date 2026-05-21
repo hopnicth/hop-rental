@@ -23,6 +23,8 @@ export type RentalPaymentCustomerKind = "individual" | "company" | "unknown";
 export type RentalPaymentLineSource =
   | "cart_preview"
   | "pos_booking_create"
+  | "pos_v3_draft_quote"
+  | "pos_v3_same_day_quote"
   | "server_recompute"
   | "system";
 

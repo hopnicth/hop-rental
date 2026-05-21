@@ -20,6 +20,7 @@ export interface CalculateRentalPaymentLinesInput {
   rentalDays?: number;
   rentalFeeAmount?: number;
   depositAmount?: number;
+  bookingDepositPolicy?: "standard" | "not_applicable_same_day";
   bookingDepositOverrideAmount?: number;
   bookingDepositOverrideReason?: string | null;
   deliveryFeeAmount?: number;
@@ -160,15 +161,24 @@ export function calculateRentalPaymentLines(
   const isCompany = customerKind === "company";
   const policy = { ...DEFAULT_POLICY, ...(input.policy ?? {}) };
   const securityDepositRequired = money(input.depositAmount ?? 0);
-  const bookingDepositDueNow = calculateBookingDepositDueNow({
-    rentalDays: input.rentalDays,
-    overrideAmount: input.bookingDepositOverrideAmount,
-    requiredSecurityDepositAmount: securityDepositRequired,
-  });
+  const bookingDepositPolicy = input.bookingDepositPolicy ?? "standard";
+  const bookingDepositDueNow =
+    bookingDepositPolicy === "not_applicable_same_day"
+      ? 0
+      : calculateBookingDepositDueNow({
+          rentalDays: input.rentalDays,
+          overrideAmount: input.bookingDepositOverrideAmount,
+          requiredSecurityDepositAmount: securityDepositRequired,
+        });
   const remainingSecurityDepositDueAtPickup = money(
     Math.max(0, securityDepositRequired - bookingDepositDueNow),
   );
-  const baseMetadata = { customerKind, policy, ...(input.metadata ?? {}) };
+  const baseMetadata = {
+    customerKind,
+    policy,
+    bookingDepositPolicy,
+    ...(input.metadata ?? {}),
+  };
   const source = input.source ?? "system";
   const candidates = [
     buildLine({
@@ -178,26 +188,28 @@ export function calculateRentalPaymentLines(
       source,
       metadata: baseMetadata,
     }),
-    buildLine({
-      lineType: "booking_deposit",
-      amount: bookingDepositDueNow,
-      whtRate: 0,
-      source,
-      metadata: {
-        ...baseMetadata,
-        refundable: true,
-        notRentalIncome: true,
-        notServiceIncome: true,
-        appliesToSecurityDeposit: true,
-        reducesRemainingSecurityDeposit: true,
-        securityDepositRequired,
-        remainingSecurityDepositDueAtPickup,
-        bookingDepositOverrideReason:
-          input.bookingDepositOverrideReason ?? null,
-      },
-      appliesToSecurityDeposit: true,
-      reducesRemainingSecurityDeposit: true,
-    }),
+    bookingDepositPolicy === "not_applicable_same_day"
+      ? null
+      : buildLine({
+          lineType: "booking_deposit",
+          amount: bookingDepositDueNow,
+          whtRate: 0,
+          source,
+          metadata: {
+            ...baseMetadata,
+            refundable: true,
+            notRentalIncome: true,
+            notServiceIncome: true,
+            appliesToSecurityDeposit: true,
+            reducesRemainingSecurityDeposit: true,
+            securityDepositRequired,
+            remainingSecurityDepositDueAtPickup,
+            bookingDepositOverrideReason:
+              input.bookingDepositOverrideReason ?? null,
+          },
+          appliesToSecurityDeposit: true,
+          reducesRemainingSecurityDeposit: true,
+        }),
     buildLine({
       lineType: "refundable_security_deposit",
       amount: remainingSecurityDepositDueAtPickup,

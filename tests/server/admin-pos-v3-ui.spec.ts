@@ -385,11 +385,13 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(page).toContain("handleDraftCreated");
   });
 
-  it("page has latestSameDayIntent state and same-day-rental-intent listener", () => {
+  it("page has latestSameDayIntent state, same-day-rental-intent listener, and same-day endpoint wiring", () => {
     const page = read("app/pages/admin/pos-v3/index.vue");
     expect(page).toContain("latestSameDayIntent");
     expect(page).toContain("handleSameDayIntent");
     expect(page).toContain("@same-day-rental-intent");
+    expect(page).toContain("/api/admin/pos-v3/rental-bookings/same-day");
+    expect(page).toContain("loadBookingContext(result.booking.id");
   });
 
   it("latestDraftResult and latestSameDayIntent are stored separately on the page", () => {
@@ -413,14 +415,14 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(page).toContain("AdminPosV3FutureBookingDraftContainer");
   });
 
-  it("Container 1 does not include cash finalization logic, same-day backend, or pickup controls", () => {
+  it("Container 1 does not include cash finalization or pickup controls", () => {
     const source = read(CONTAINER_PATH);
     const page = read("app/pages/admin/pos-v3/index.vue");
     // Container 1 source must never contain payment finalization or pickup logic
     expect(source).not.toContain("booking-deposit-payments");
     expect(source).not.toContain("pickup-complete");
     expect(source).not.toContain("instant-rental");
-    // Page must never contain the same-day container (not yet implemented)
+    // Page must continue to avoid introducing a separate same-day container.
     expect(page).not.toContain("AdminPosV3SameDayContainer");
   });
 });
@@ -903,6 +905,9 @@ describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
     expect(source).toContain(
       "ยังไม่สามารถส่งมอบได้ — เงินมัดจำประกันยังไม่ครบ",
     );
+    expect(source).toContain(
+      "ยังไม่สามารถส่งมอบได้ — ต้องรับเงินมัดจำประกันก่อน",
+    );
     expect(source).toContain("ยอดเงินมัดจำประกันที่ต้องชำระก่อนรับสินค้า");
     // Must NOT use generic pickup-due wording that implies rental fee is blocked
     expect(source).not.toContain("มียอดค้างชำระ — ยังไม่สามารถส่งมอบได้");
@@ -913,8 +918,17 @@ describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
   it("B1.5: pickup container shows interactive collection card when deposit is due", () => {
     const source = read(PICKUP_CONTAINER_PATH);
     expect(source).toContain("ชำระเงินมัดจำประกันส่วนที่เหลือ");
+    expect(source).toContain("รับเงินมัดจำประกันก่อนส่งมอบ");
     expect(source).toContain("เงินมัดจำประกัน (คืนได้) — ไม่ใช่ค่าเช่า");
     expect(source).toContain("รับเงินมัดจำประกัน (เงินสด)");
+  });
+
+  it("same-day pickup UI shows no Booking Deposit and keeps rental fee deferred", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("Booking Deposit");
+    expect(source).toContain("ไม่ใช้ / ฿0");
+    expect(source).toContain("Refundable security deposit due at pickup");
+    expect(source).not.toContain("รับชำระค่าเช่า");
   });
 
   it("B1.5: pickup container emits deposit-collected after successful cash collection", () => {
