@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import QrcodeVue from "qrcode.vue";
 import hopnicLogoUrl from "~/assets/hopnic-logo.svg";
 
 const HOPNIC_TAX_ID = "0105564155415";
@@ -10,6 +11,8 @@ const props = defineProps<{
   issuedAtText?: string;
   bookingReference?: unknown;
   showBookingReference?: boolean;
+  /** Optional Booking ID QR code to display under the company logo. */
+  qrValue?: string | null;
 }>();
 
 function clean(value: unknown): string {
@@ -47,13 +50,21 @@ const contactLine = computed(() => {
 });
 const footerNote = computed(() => clean(headerData.value.footerNote));
 const documentNumberText = computed(() => clean(props.documentNumber) || "—");
-const bookingReferenceText = computed(() => clean(props.bookingReference) || "—");
+const bookingReferenceText = computed(
+  () => clean(props.bookingReference) || "—",
+);
 </script>
 
 <template>
   <header class="official-document-header">
     <div class="company-block">
-      <img :src="logoSrc" alt="HOPNIC" class="company-logo" />
+      <div class="logo-qr-stack">
+        <img :src="logoSrc" alt="HOPNIC" class="company-logo" />
+        <div v-if="qrValue" class="qr-block">
+          <QrcodeVue :value="qrValue" :size="60" level="M" />
+          <p class="qr-label">รหัสการจอง</p>
+        </div>
+      </div>
       <div>
         <p class="brand-name">HOPNIC</p>
         <p v-if="companyNameTh && companyNameTh !== 'HOPNIC'" class="muted">
@@ -91,10 +102,28 @@ const bookingReferenceText = computed(() => clean(props.bookingReference) || "�
   display: flex;
   gap: 12px;
 }
+.logo-qr-stack {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
 .company-logo {
   height: 18mm;
   object-fit: contain;
   width: 18mm;
+}
+.qr-block {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.qr-label {
+  color: #4b5563;
+  font-size: 7pt;
+  margin: 0;
+  text-align: center;
 }
 .brand-name {
   font-size: 18pt;

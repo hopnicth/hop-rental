@@ -13,7 +13,8 @@ const mockState = vi.hoisted(() => ({
 
 vi.mock("h3", () => ({
   defineEventHandler: (handler: (event: unknown) => unknown) => handler,
-  getRouterParam: (_event: unknown, name: string) => mockState.routerParams[name],
+  getRouterParam: (_event: unknown, name: string) =>
+    mockState.routerParams[name],
   createError: (opts: { statusCode?: number; statusMessage?: string }) =>
     Object.assign(new Error(opts.statusMessage), opts),
 }));
@@ -60,13 +61,10 @@ vi.mock("~~/server/utils/admin", () => ({
   }),
 }));
 
-const { buildRentalPickupReadiness } = await import(
-  "../../server/utils/rental-pickup-readiness"
-);
+const { buildRentalPickupReadiness } =
+  await import("../../server/utils/rental-pickup-readiness");
 const endpoint = (
-  await import(
-    "../../server/api/admin/pos-v2/rental-bookings/[id]/pickup-readiness.get"
-  )
+  await import("../../server/api/admin/pos-v2/rental-bookings/[id]/pickup-readiness.get")
 ).default;
 
 function today() {
@@ -135,9 +133,7 @@ function line(lineType: string, grossAmount: number) {
     status: "active",
     source: "pos_booking_create",
     metadata:
-      lineType === "booking_deposit"
-        ? { securityDepositRequired: 5000 }
-        : {},
+      lineType === "booking_deposit" ? { securityDepositRequired: 5000 } : {},
   };
 }
 
@@ -163,10 +159,11 @@ describe("rental pickup readiness utility", () => {
     });
 
     expect(readiness.readiness.classification).toBe("ready");
+    // Rental fee unpaid does NOT block pickup; totalPickupDueAmount = deposit only.
     expect(readiness.moneySummary.pickupDue).toMatchObject({
       rentalFeeDueAmount: 1000,
       remainingSecurityDepositDueAmount: 5000,
-      totalPickupDueAmount: 6000,
+      totalPickupDueAmount: 5000,
     });
   });
 
@@ -216,9 +213,9 @@ describe("rental pickup readiness utility", () => {
     expect(readiness.moneyWarnings.map((warning) => warning.code)).toContain(
       "missing_payment_lines",
     );
-    expect(readiness.readiness.warnings.map((warning) => warning.code)).toContain(
-      "money_summary_warning",
-    );
+    expect(
+      readiness.readiness.warnings.map((warning) => warning.code),
+    ).toContain("money_summary_warning");
   });
 });
 
@@ -243,7 +240,10 @@ describe("admin POS V2 pickup readiness endpoint", () => {
 
     expect(result.readiness.booking.id).toBe("booking-1");
     expect(result.readiness.readiness.classification).toBe("ready");
-    expect(result.readiness.moneySummary.pickupDue.totalPickupDueAmount).toBe(6000);
+    // totalPickupDueAmount = remaining security deposit only (rental fee deferred).
+    expect(result.readiness.moneySummary.pickupDue.totalPickupDueAmount).toBe(
+      5000,
+    );
   });
 
   it("returns 404 when the booking is not found", async () => {

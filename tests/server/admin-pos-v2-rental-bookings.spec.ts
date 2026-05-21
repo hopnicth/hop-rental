@@ -25,7 +25,8 @@ function queryResult<T>(result: T) {
     limit: () => chain,
     maybeSingle: async () => result,
     single: async () => result,
-    then: (resolve: (value: T) => unknown) => Promise.resolve(result).then(resolve),
+    then: (resolve: (value: T) => unknown) =>
+      Promise.resolve(result).then(resolve),
   };
   return chain;
 }
@@ -146,20 +147,19 @@ describe("admin POS V2 future rental booking API", () => {
       pos_branch_id: "branch-hq",
       pos_staff_user_id: "staff-1",
     });
-    expect(mockState.insertedPaymentLines.map((line) => line.line_type)).toEqual([
-      "rental_fee",
-      "booking_deposit",
-      "refundable_security_deposit",
-    ]);
+    expect(
+      mockState.insertedPaymentLines.map((line) => line.line_type),
+    ).toEqual(["rental_fee", "booking_deposit", "refundable_security_deposit"]);
     expect(result.moneySummary.bookingDeposit).toMatchObject({
       expectedAmount: 200,
       paidAmount: 0,
       isRevenue: false,
     });
+    // totalPickupDueAmount = remaining security deposit only (rental fee deferred to return).
     expect(result.moneySummary.pickupDue).toMatchObject({
       rentalFeeDueAmount: 3000,
       remainingSecurityDepositDueAmount: 5000,
-      totalPickupDueAmount: 8000,
+      totalPickupDueAmount: 5000,
     });
   });
 

@@ -76,7 +76,10 @@ function nearlyEqual(a: number, b: number): boolean {
 function assertValidPaymentMethod(value: unknown): RentalDepositPaymentMethod {
   const method = text(value) as RentalDepositPaymentMethod;
   if (!PAYMENT_METHODS.has(method)) {
-    throw createError({ statusCode: 422, statusMessage: "Invalid payment method" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "Invalid payment method",
+    });
   }
   return method;
 }
@@ -91,14 +94,17 @@ function assertNoReadinessBlockers(readiness: RentalPickupReadiness): void {
   });
 }
 
-function assertCompletionWarningsAllowed(readiness: RentalPickupReadiness): void {
+function assertCompletionWarningsAllowed(
+  readiness: RentalPickupReadiness,
+): void {
   const futurePickup = readiness.readiness.warnings.find(
     (warning) => warning.code === "pickup_date_in_future",
   );
   if (futurePickup) {
     throw createError({
       statusCode: 422,
-      statusMessage: "Future pickup date cannot be completed in POS V2 Phase 4B1",
+      statusMessage:
+        "Future pickup date cannot be completed in POS V2 Phase 4B1",
     });
   }
 
@@ -138,11 +144,13 @@ async function recordPickupPayment(input: {
     .eq("status", "confirmed")
     .select("id, status, deposit_paid_amount, deposit_payment_status")
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
   if (!data) {
     throw createError({
       statusCode: 409,
-      statusMessage: "Pickup payment was not recorded because booking is no longer confirmed",
+      statusMessage:
+        "Pickup payment was not recorded because booking is no longer confirmed",
     });
   }
 }
@@ -170,7 +178,13 @@ export async function completePosV2RentalPickup(input: {
   const paymentMethod = assertValidPaymentMethod(input.payload.paymentMethod);
   const collectedAmount = money(input.payload.collectedAmount);
   const moneySummary = readiness.moneySummary;
-  const expectedPickupAmount = money(moneySummary.pickupDue.totalPickupDueAmount);
+  // POS V2 collects both rental fee and remaining security deposit at pickup.
+  // totalPickupDueAmount now reflects deposit-only gate (Phase 2E-B1+); use the
+  // explicit sum here to preserve POS V2 collection semantics unchanged.
+  const expectedPickupAmount = money(
+    moneySummary.pickupDue.rentalFeeDueAmount +
+      moneySummary.pickupDue.remainingSecurityDepositDueAmount,
+  );
   if (!nearlyEqual(collectedAmount, expectedPickupAmount)) {
     throw createError({
       statusCode: 422,
@@ -221,7 +235,11 @@ export async function completePosV2RentalPickup(input: {
       },
     });
   } catch (error) {
-    const err = error as { statusCode?: number; statusMessage?: string; message?: string };
+    const err = error as {
+      statusCode?: number;
+      statusMessage?: string;
+      message?: string;
+    };
     throw createError({
       statusCode: err.statusCode ?? 500,
       statusMessage: `Pickup payment was recorded but fulfillment failed: ${

@@ -144,7 +144,8 @@ describe("buildAdminRentalPrintFormPayload", () => {
     expect(payload.money.remainingSecurityDepositDueAtPickup).toBe(4800);
     expect(payload.money.whtTotal).toBe(50);
     expect(payload.money.netPayableNow).toBe(200);
-    expect(payload.money.netPayableAtPickup).toBe(5750);
+    // Rental fee deferred to return; netPayableAtPickup = remaining security deposit only.
+    expect(payload.money.netPayableAtPickup).toBe(4800);
     expect(payload.booking.qrValue).toBe("booking:booking-1");
   });
 
@@ -211,7 +212,40 @@ describe("buildAdminRentalPrintFormPayload", () => {
     expect(payload.money.securityDepositRequired).toBe(5000);
     expect(payload.money.remainingSecurityDepositDueAtPickup).toBe(4000);
     expect(payload.money.netPayableNow).toBe(1000);
-    expect(payload.money.netPayableAtPickup).toBe(5500);
+    // Rental fee deferred to return; netPayableAtPickup = remaining security deposit only.
+    expect(payload.money.netPayableAtPickup).toBe(4000);
+  });
+
+  it("netPayableAtPickup equals remaining security deposit — rental fee is NOT included (deferred to return)", () => {
+    const payload = buildAdminRentalPrintFormPayload({
+      type: "pickup",
+      booking: booking({
+        status: "confirmed",
+        depositPaidAmount: 0,
+        depositPaymentStatus: "unpaid",
+        rentalPaymentLines: calculateRentalPaymentLines({
+          customerKind: "individual",
+          rentalDays: 5,
+          rentalFeeAmount: 2000,
+          depositAmount: 5000,
+          source: "server_recompute",
+        }),
+      }),
+      fulfillment: null,
+      checklists: [],
+      documents: [],
+      branchName: null,
+      staffName: null,
+      idEvidenceRef: null,
+    });
+
+    // rentalFeeDue is tracked but must NOT appear in netPayableAtPickup.
+    expect(payload.money.rentalFeeDue).toBe(2000);
+    // Booking deposit = 200 (5 days × policy), so remaining security deposit = 4800.
+    expect(payload.money.remainingSecurityDepositDueAtPickup).toBe(4800);
+    // netPayableAtPickup = remaining security deposit only (4800).
+    // Must NOT include rental fee (2000) — that is deferred to return.
+    expect(payload.money.netPayableAtPickup).toBe(4800);
   });
 
   it("keeps the operational disclaimer and excludes official receipt fields", () => {

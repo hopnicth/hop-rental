@@ -237,9 +237,10 @@ export async function finalizePosRentalBookingDeposit(
           .eq("document_type", docType)
           .maybeSingle();
         task = (existing as AnyRecord | null) ?? null;
-      } else {
-        throw insertTaskErr;
       }
+      // Any other error (e.g. table not yet migrated, schema cache miss) —
+      // task tracking is unavailable. Best-effort: proceed to document issuance
+      // with task = null. official_documents remains the canonical record.
     } else {
       task = insertedTask as AnyRecord;
     }

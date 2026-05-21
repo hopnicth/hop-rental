@@ -190,7 +190,9 @@ function buildLegacySummary(
     remainingSecurityDepositDueAtPickup,
     rentalFeeDue: rentalFee,
     netPayableNow: depositPaid,
-    netPayableAtPickup: money(rentalFee + remainingSecurityDepositDueAtPickup),
+    // Rental fee is deferred to return (Phase 2E-B2+).
+    // Only the remaining security deposit is due at pickup.
+    netPayableAtPickup: remainingSecurityDepositDueAtPickup,
   };
 }
 

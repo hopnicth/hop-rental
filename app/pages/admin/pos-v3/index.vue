@@ -7,6 +7,7 @@ import AdminPosV3OrderContext from "~/components/admin/pos/AdminPosV3OrderContex
 import AdminPosV3FutureBookingDraftContainer from "~/components/admin/pos/AdminPosV3FutureBookingDraftContainer.vue";
 import AdminPosV3FutureBookingDepositCashContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositCashContainer.vue";
 import AdminPosV3FutureBookingDepositQrContainer from "~/components/admin/pos/AdminPosV3FutureBookingDepositQrContainer.vue";
+import AdminPosV3PickupContainer from "~/components/admin/pos/AdminPosV3PickupContainer.vue";
 import { runQrSessionRestore } from "~/utils/pos-qr-session-restore";
 import { calculateBookingDepositDueNow } from "~/utils/rental-payment-lines";
 import type {
@@ -122,6 +123,12 @@ function handleSameDayIntent(payload: unknown) {
 const latestConfirmedFutureBookingResult = ref<unknown>(null);
 function handleBookingConfirmed(result: unknown) {
   latestConfirmedFutureBookingResult.value = result;
+}
+
+// Phase 2E-B1: Pickup completion — updates bookingContext when pickup is confirmed.
+function handlePickupConfirmed(updated: AdminRentalBookingDetail) {
+  bookingContext.value = updated;
+  bookingReadiness.value = null;
 }
 
 function selectPaymentMethod(method: FutureBookingDepositPaymentMethod) {
@@ -636,6 +643,20 @@ onMounted(async () => {
       :detail="orderDetail"
       :loading="orderLoading"
       :error="orderError"
+    />
+
+    <!-- Phase 2E-B1: Pickup Foundation — shown for confirmed and picked_up bookings.
+         No new payment collection in this sub-phase; pickup only proceeds when
+         totalPickupDueAmount === 0 (enforced inside the container). -->
+    <AdminPosV3PickupContainer
+      v-if="
+        bookingContext &&
+        (bookingContext.status === 'confirmed' ||
+          bookingContext.status === 'picked_up')
+      "
+      :booking="bookingContext"
+      :readiness="bookingReadiness"
+      @pickup-confirmed="handlePickupConfirmed"
     />
 
     <UAlert

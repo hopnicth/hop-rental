@@ -285,7 +285,9 @@ onMounted(() => void load());
 
         <div class="money-summary-grid">
           <div class="money-summary-item">
-            <p class="money-summary-label">Rental Fee / ค่าเช่าอุปกรณ์</p>
+            <p class="money-summary-label">
+              Rental Fee (due at return) / ค่าเช่า (ชำระวันคืนสินค้า)
+            </p>
             <p class="money-summary-value">
               {{
                 formatCurrency(
@@ -366,7 +368,7 @@ onMounted(() => void load());
           </div>
           <div class="money-summary-item">
             <p class="money-summary-label">
-              Net payable at pickup / ชำระสุทธิวันรับสินค้า
+              Deposit due at pickup / รวมยอดมัดจำวันที่รับสินค้า
             </p>
             <p class="money-summary-value">
               {{

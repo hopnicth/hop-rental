@@ -154,14 +154,17 @@ const endpoint = (
 
 describe("admin POS V3 rental draft API", () => {
   beforeEach(() => {
+    // Phase 2D-B6 debt fix: compute future dates at test runtime so the
+    // fixture is immune to the same-day guard regardless of when tests run.
+    const today = toBangkokLocalDate(new Date());
     mockState.body = {
       idempotencyKey: "draft-key-1",
       walkInPhone: "0812345678",
       bookerName: "Walk In",
       assetId: "asset-1",
       branchId: "branch-hq",
-      startDate: "2026-05-21",
-      endDate: "2026-05-23",
+      startDate: addDaysToLocalDate(today, 1), // tomorrow — always future
+      endDate: addDaysToLocalDate(today, 3), // 3 days from now
     };
     mockState.platformRole = "staff";
     mockState.branchAccess = true;
@@ -352,10 +355,13 @@ describe("admin POS V3 rental draft API", () => {
   });
 
   it("rejects invalid date ranges", async () => {
+    // Use dynamic future dates (end before start) so this test stays valid
+    // regardless of when it runs — same pattern as beforeEach fixture above.
+    const today = toBangkokLocalDate(new Date());
     mockState.body = {
       ...mockState.body,
-      startDate: "2026-05-23",
-      endDate: "2026-05-21",
+      startDate: addDaysToLocalDate(today, 5), // 5 days out
+      endDate: addDaysToLocalDate(today, 3), // 3 days out — before startDate
     };
 
     await expect(endpoint({})).rejects.toMatchObject({ statusCode: 422 });

@@ -715,3 +715,207 @@ describe("admin POS V3 Phase 2D-B6 Booking Detail CTA & POS Query Re-entry", () 
     expect(page).toContain("loadBookingContext(queryBookingId");
   });
 });
+
+// ── Phase 2E-B1: POS V3 Pickup Foundation ─────────────────────────────────────
+
+const PICKUP_CONTAINER_PATH =
+  "app/components/admin/pos/AdminPosV3PickupContainer.vue";
+
+describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
+  it("pickup container file exists", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source.length).toBeGreaterThan(0);
+  });
+
+  it("pickup container accepts booking and readiness props", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("booking: AdminRentalBookingDetail");
+    expect(source).toContain("readiness: PickupReadinessPreview | null");
+  });
+
+  it("pickup container emits pickup-confirmed (not pickup-complete)", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain('"pickup-confirmed"');
+    expect(source).not.toContain('"pickup-complete"');
+  });
+
+  it("pickup container uses DigitalSignaturePad and AdminBookingHandoverItems", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("DigitalSignaturePad");
+    expect(source).toContain("AdminBookingHandoverItems");
+  });
+
+  it("pickup container posts to the rental booking pickup endpoint", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("/api/admin/rental-bookings/");
+    expect(source).toContain('method: "POST"');
+    expect(source).toContain("signatureDataUrl");
+  });
+
+  it("pickup container includes idempotencyKey with pos-v3:pickup prefix", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("pos-v3:pickup:");
+    expect(source).toContain("idempotencyKey");
+  });
+
+  it("pickup container renders already-picked-up state with direct print link", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("isAlreadyPickedUp");
+    expect(source).toContain("รับอุปกรณ์แล้ว");
+    expect(source).toContain("ดูรายละเอียดและพิมพ์ใบส่งมอบ");
+    // Must point directly to the print page with ?type=pickup, not just the booking detail
+    expect(source).toContain("/print?type=pickup");
+  });
+
+  it("pickup container shows deposit-specific blocker when security deposit is due at pickup", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("hasPickupDue");
+    expect(source).toContain("เงินมัดจำประกันยังไม่ครบ");
+    expect(source).toContain("totalPickupDue");
+    // Rental fee is NOT the blocker — deposit-specific wording only
+    expect(source).not.toContain("มียอดค้างชำระ — ยังไม่สามารถส่งมอบได้");
+  });
+
+  it("pickup container shows readiness-loading state when readiness is null", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("readinessLoading");
+    expect(source).toContain("กำลังตรวจสอบสถานะการรับมอบ");
+  });
+
+  it("pickup container disables submit when no signature or hasPickupDue", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("canSubmit");
+    expect(source).toContain("!!signatureDataUrl.value");
+    expect(source).toContain("!hasPickupDue.value");
+  });
+
+  it("pickup container shows checklist error hint with booking detail link", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("hasChecklistError");
+    expect(source).toContain("Pickup Checklist");
+  });
+
+  it("page imports and mounts the pickup container", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("AdminPosV3PickupContainer");
+    expect(page).toContain("@pickup-confirmed");
+    expect(page).toContain("handlePickupConfirmed");
+  });
+
+  it("page mounts pickup container for confirmed and picked_up statuses only", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("bookingContext.status === 'confirmed'");
+    expect(page).toContain("bookingContext.status === 'picked_up'");
+    // draft bookings must not trigger the pickup container
+    expect(page).not.toContain("bookingContext.status === 'draft'");
+  });
+
+  it("handlePickupConfirmed updates bookingContext and clears readiness", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("handlePickupConfirmed");
+    expect(page).toContain("bookingContext.value = updated");
+    expect(page).toContain("bookingReadiness.value = null");
+  });
+
+  it("Phase 1 clean test still passes: pickup-complete absent from shell files", () => {
+    const source = [
+      "app/pages/admin/pos-v3/index.vue",
+      "app/components/admin/pos/AdminPosV3ModeNav.vue",
+      "app/components/admin/pos/AdminPosV3ResolverPanel.vue",
+      "app/components/admin/pos/AdminPosV3PendingWorkList.vue",
+      "app/components/admin/pos/AdminPosV3BookingContext.vue",
+      "app/components/admin/pos/AdminPosV3OrderContext.vue",
+    ]
+      .map(read)
+      .join("\n");
+    // Phase 2E-B1 uses pickup-confirmed not pickup-complete
+    expect(source).not.toContain("pickup-complete");
+  });
+
+  it("rental-fulfillment accepts booking_deposit_payment_status === paid for pickup deposit check", () => {
+    const source = read("server/utils/rental-fulfillment.ts");
+    expect(source).toContain("booking_deposit_payment_status");
+    expect(source).toContain(
+      'cleanText(current.booking_deposit_payment_status) !== "paid"',
+    );
+    // Must still check both fields (AND logic — both must fail to block)
+    expect(source).toContain(
+      'cleanText(current.deposit_payment_status) !== "paid"',
+    );
+  });
+
+  // ── Case 1 & 2: Two-case pickup support ─────────────────────────────────────
+
+  it("Case 1 — future confirmed booking: page mounts pickup container when status is confirmed (regardless of startDate)", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // confirmed status triggers the pickup container; no date restriction in Phase 2E-B1
+    expect(page).toContain("bookingContext.status === 'confirmed'");
+    expect(page).toContain("AdminPosV3PickupContainer");
+    // No date gate that would prevent future bookings from showing the pickup form
+    expect(page).not.toContain("startDate ===");
+    expect(page).not.toContain("isToday");
+  });
+
+  it("Case 2 — same-day POS booking: pickup container appears for same-day confirmed booking with zero due", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // The component does NOT gate on startDate — same-day and future both work
+    // when status === 'confirmed' and totalPickupDueAmount === 0.
+    // startDate may appear as a display field but must NOT be used as a date comparison gate.
+    expect(source).not.toContain("isToday");
+    expect(source).not.toContain("startDate ===");
+    expect(source).not.toContain("startDate !==");
+    // Zero-due path: no pickup due check prevents access for same-day
+    expect(source).toContain("hasPickupDue");
+    expect(source).toContain("totalPickupDueAmount");
+  });
+
+  it("Blocked case — remaining security deposit due: shows deposit-specific blocker and no pickup action", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("hasPickupDue");
+    expect(source).toContain("เงินมัดจำประกันยังไม่ครบ");
+    expect(source).toContain("ค่าเช่าจะชำระวันคืนสินค้า");
+    // canSubmit guards against submission when hasPickupDue is true
+    expect(source).toContain("!hasPickupDue.value");
+  });
+
+  it("pickup container active form shows proactive Pickup Checklist hint before submission", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // Proactive (pre-submission) checklist readiness hint in the active form state
+    expect(source).toContain("ตรวจสอบ Pickup Checklist ก่อนส่งมอบ");
+    expect(source).toContain(
+      "ตรวจสอบว่า Pickup Checklist เสร็จสมบูรณ์แล้วก่อนยืนยัน",
+    );
+  });
+
+  // ── Phase 2E-B1 policy: deposit-only pickup gate ──────────────────────────
+
+  it("active pickup form renders informational deferred rental fee — not a blocker", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // deferredRentalFee computed and shown in active form
+    expect(source).toContain("deferredRentalFee");
+    expect(source).toContain("ค่าเช่าโดยประมาณ");
+    expect(source).toContain("ชำระวันคืนสินค้า / หลังจบงาน");
+  });
+
+  it("pickup blocker does not claim rental fee is due at pickup", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // New deposit-specific wording
+    expect(source).toContain(
+      "ยังไม่สามารถส่งมอบได้ — เงินมัดจำประกันยังไม่ครบ",
+    );
+    expect(source).toContain("ยอดเงินมัดจำประกันที่ต้องชำระก่อนรับสินค้า");
+    // Must NOT use generic pickup-due wording that implies rental fee is blocked
+    expect(source).not.toContain("มียอดค้างชำระ — ยังไม่สามารถส่งมอบได้");
+  });
+
+  it("print.vue labels rental fee as deferred to return — not due at pickup", () => {
+    const printPage = read("app/pages/admin/rental-bookings/[id]/print.vue");
+    // Updated label: rental fee is deferred
+    expect(printPage).toContain("ค่าเช่า (ชำระวันคืนสินค้า)");
+    // Deposit-only label for amount due at pickup
+    expect(printPage).toContain("รวมยอดมัดจำวันที่รับสินค้า");
+    // Old "rental fee due at pickup" wording must be absent
+    expect(printPage).not.toContain("ค่าเช่าที่ชำระวันรับสินค้า");
+    expect(printPage).not.toContain("ชำระสุทธิวันรับสินค้า");
+  });
+});

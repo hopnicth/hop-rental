@@ -68,6 +68,7 @@ const isBdcDocument = computed(
     snapshot.value?.document?.template_key ===
     "rental_booking_deposit_confirmation_v1",
 );
+const bookedItem = computed(() => snapshot.value?.booked_item ?? {});
 const title = computed(() => {
   if (isBdcDocument.value) {
     return "เอกสารยืนยันการรับเงินมัดจำการจอง";
@@ -289,6 +290,7 @@ onMounted(() => void load());
         :document-number="snapshot.document.document_number"
         :issued-at-text="formatDateTime(snapshot.document.issued_at)"
         :booking-reference="booking.reference || booking.id || '—'"
+        :qr-value="booking.qr_value || null"
         show-booking-reference
       />
 
@@ -297,6 +299,14 @@ onMounted(() => void load());
           เอกสารนี้ยืนยันว่าได้รับเงินมัดจำการจองเรียบร้อยแล้ว
           เงินมัดจำดังกล่าวจะถูกนำมาหักกับยอดชำระเมื่อคืนสินค้า
         </p>
+      </section>
+
+      <section class="compact-section">
+        <h2>รายการของที่จอง</h2>
+        <dl>
+          <dt>สินค้า</dt>
+          <dd>{{ bookedItem.asset_name || "—" }}</dd>
+        </dl>
       </section>
 
       <section class="two-col compact-section">

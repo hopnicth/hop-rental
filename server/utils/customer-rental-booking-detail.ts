@@ -49,7 +49,7 @@ export const CUSTOMER_SAFE_DOCUMENT_TYPES = [
 ] as const;
 
 const BOOKING_SELECT =
-  "id, user_id, status, product_name, thumbnail, asset_code, asset_name, asset_thumbnail, matched_product_name, start_date, end_date, rental_days, hub_id, hub_name, booker_name, booker_phone, rental_total, deposit_amount, daily_rate, weekly_rate, monthly_rate, currency_code, pricing_breakdown, booking_deposit_payment_status, booking_deposit_paid_amount, booking_deposit_paid_at, booking_deposit_payment_attempt_id, created_at, updated_at, cancelled_at, cancellation_source_event_id, cancellation_refund_eligible, cancellation_refund_amount_due, cancellation_refund_cutoff_date, no_show_source_event_id";
+  "id, user_id, walk_in_phone, pos_staff_user_id, status, product_name, thumbnail, asset_code, asset_name, asset_thumbnail, matched_product_name, start_date, end_date, rental_days, hub_id, hub_name, booker_name, booker_phone, rental_total, deposit_amount, daily_rate, weekly_rate, monthly_rate, currency_code, pricing_breakdown, booking_deposit_payment_status, booking_deposit_paid_amount, booking_deposit_paid_at, booking_deposit_payment_attempt_id, created_at, updated_at, cancelled_at, cancellation_source_event_id, cancellation_refund_eligible, cancellation_refund_amount_due, cancellation_refund_cutoff_date, no_show_source_event_id";
 const ATTEMPT_SELECT =
   "id, method, status, amount, currency_code, gateway_charge_id, gateway_source_id, created_at, updated_at";
 const EVENT_SELECT =
@@ -437,6 +437,11 @@ export async function getCustomerRentalBookingDetail(
       assetCode: text(booking.asset_code),
       thumbnail: text(booking.asset_thumbnail) || text(booking.thumbnail),
       qrValue: `booking:${booking.id}`,
+      // "pos" if created by staff via POS (walk-in or registered customer); "online" otherwise.
+      bookingSource:
+        text(booking.walk_in_phone) || text(booking.pos_staff_user_id)
+          ? "pos"
+          : "online",
     },
     money: {
       currencyCode,

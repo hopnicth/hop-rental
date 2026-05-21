@@ -289,9 +289,13 @@ export function summarizeRentalPaymentLines(
         summary.netPayableNow +
           (line.lineType === "booking_deposit" ? line.netPayableAmount : 0),
       ),
+      // Rental fee is deferred to return (Phase 2E-B2+); only refundable security
+      // deposit lines are counted as due at pickup.
       netPayableAtPickup: money(
         summary.netPayableAtPickup +
-          (line.lineType !== "booking_deposit" ? line.netPayableAmount : 0),
+          (line.lineType !== "booking_deposit" && line.lineType !== "rental_fee"
+            ? line.netPayableAmount
+            : 0),
       ),
     }),
     {

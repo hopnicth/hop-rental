@@ -20,6 +20,8 @@ const BASE_BOOKING: Row = {
   user_id: null,
   walk_in_phone: "0812345678",
   booker_name: "Test Customer",
+  asset_id: "asset-cam-001",
+  asset_name: "Camera Pro X",
   start_date: "2026-05-21",
   end_date: "2026-05-24",
   rental_days: 3,
@@ -49,7 +51,8 @@ function makeClient(opts: { existingDoc?: Row; insertError?: any } = {}) {
       limit: () => c,
       maybeSingle: async () => result,
       single: async () => result,
-      then: (resolve: (v: any) => unknown) => Promise.resolve(result).then(resolve),
+      then: (resolve: (v: any) => unknown) =>
+        Promise.resolve(result).then(resolve),
     };
     return c;
   };
@@ -156,9 +159,8 @@ const {
   issueBookingDepositConfirmationDocument,
   BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE,
   BOOKING_DEPOSIT_CONFIRMATION_TITLE_TH,
-} = await import(
-  "../../server/utils/admin-rental-booking-deposit-confirmation-document"
-);
+} =
+  await import("../../server/utils/admin-rental-booking-deposit-confirmation-document");
 
 describe("issueBookingDepositConfirmationDocument", () => {
   it("happy path: inserts official_documents and document_events with correct fields", async () => {
@@ -172,7 +174,9 @@ describe("issueBookingDepositConfirmationDocument", () => {
     });
 
     expect(result.alreadyIssued).toBe(false);
-    expect(result.document.documentType).toBe(BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE);
+    expect(result.document.documentType).toBe(
+      BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE,
+    );
     expect(result.document.status).toBe("issued");
     expect(result.document.sourceType).toBe("rental_held_balance_event");
     expect(result.document.sourceId).toBe("event-1");
@@ -213,11 +217,58 @@ describe("issueBookingDepositConfirmationDocument", () => {
 
     const snap = client.state.insertedDocs[0].snapshot as any;
     expect(snap.held_balance_event.amount).toBe(500);
-    expect(snap.document.document_title).toBe(BOOKING_DEPOSIT_CONFIRMATION_TITLE_TH);
+    expect(snap.document.document_title).toBe(
+      BOOKING_DEPOSIT_CONFIRMATION_TITLE_TH,
+    );
     expect(snap.source.source_type).toBe("rental_held_balance_event");
     expect(snap.source.source_id).toBe("event-1");
     // amount should NOT be 9999
     expect(snap.held_balance_event.amount).not.toBe(9999);
+  });
+
+  it("snapshot includes booked_item with asset_id and asset_name from booking row", async () => {
+    const client = makeClient();
+    await issueBookingDepositConfirmationDocument({
+      client: client as any,
+      heldBalanceEvent: BASE_EVENT,
+      booking: BASE_BOOKING,
+      staffUserId: "staff-1",
+      branchId: "branch-hq",
+    });
+
+    const snap = client.state.insertedDocs[0].snapshot as any;
+    expect(snap.booked_item).toBeDefined();
+    expect(snap.booked_item.asset_id).toBe("asset-cam-001");
+    expect(snap.booked_item.asset_name).toBe("Camera Pro X");
+  });
+
+  it("snapshot booking section includes qr_value in canonical booking:{id} format", async () => {
+    const client = makeClient();
+    await issueBookingDepositConfirmationDocument({
+      client: client as any,
+      heldBalanceEvent: BASE_EVENT,
+      booking: BASE_BOOKING,
+      staffUserId: "staff-1",
+      branchId: "branch-hq",
+    });
+
+    const snap = client.state.insertedDocs[0].snapshot as any;
+    expect(snap.booking.qr_value).toBe("booking:booking-1");
+  });
+
+  it("booked_item.asset_name is null when booking has no asset_name", async () => {
+    const client = makeClient();
+    await issueBookingDepositConfirmationDocument({
+      client: client as any,
+      heldBalanceEvent: BASE_EVENT,
+      booking: { ...BASE_BOOKING, asset_name: null, asset_id: null },
+      staffUserId: "staff-1",
+      branchId: "branch-hq",
+    });
+
+    const snap = client.state.insertedDocs[0].snapshot as any;
+    expect(snap.booked_item.asset_name).toBeNull();
+    expect(snap.booked_item.asset_id).toBeNull();
   });
 
   it("calls f_next_document_number with BDC prefix and correct document_type", async () => {
@@ -289,7 +340,11 @@ describe("issueBookingDepositConfirmationDocument", () => {
       branchId: "branch-hq",
     });
 
-    const forbidden = ["rental_bookings", "pos_rental_payment_attempts", "pos_document_issuance_tasks"];
+    const forbidden = [
+      "rental_bookings",
+      "pos_rental_payment_attempts",
+      "pos_document_issuance_tasks",
+    ];
     for (const table of forbidden) {
       expect(client.state.tablesAccessed).not.toContain(table);
     }

@@ -938,6 +938,15 @@ onUnmounted(() => {
             </UButton>
           </div>
 
+          <!-- Phase 2E-B1: POS V2 rental pickup uses LEGACY policy (collects rental fee + deposit
+               together at pickup). Current policy gates pickup on deposit only; rental fee is
+               deferred to return/settlement. Staff must use POS V3 for rental pickups. -->
+          <UAlert
+            color="warning"
+            variant="soft"
+            title="[Phase 2E-B1] ใช้ POS V3 สำหรับ Rental Pickup"
+            description="นโยบายปัจจุบัน (Phase 2E-B1+) กำหนดให้เก็บเฉพาะเงินมัดจำประกันที่วันรับสินค้า และเลื่อนค่าเช่าไปเก็บที่วันคืนสินค้า / หลังจบงาน — POS V2 ยังใช้นโยบายเดิม (เก็บค่าเช่า + มัดจำรวมกันที่วันรับ) กรุณาใช้ POS V3 (/admin/pos-v3) สำหรับ Rental Pickup แทน"
+          />
           <UAlert
             color="info"
             variant="soft"

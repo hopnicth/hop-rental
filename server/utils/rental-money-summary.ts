@@ -403,7 +403,9 @@ export function buildRentalMoneySummary(input: {
     pickupDue: {
       rentalFeeDueAmount: rentalFeeOutstanding,
       remainingSecurityDepositDueAmount: remainingSecurityDue,
-      totalPickupDueAmount: money(rentalFeeOutstanding + remainingSecurityDue),
+      // Rental fee is deferred to return/settlement (Phase 2E-B2+).
+      // Pickup is only gated on remaining security deposit.
+      totalPickupDueAmount: remainingSecurityDue,
     },
     source: {
       hasPaymentLines,

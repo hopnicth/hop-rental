@@ -318,6 +318,66 @@ describe("completeRentalBookingFulfillment", () => {
     "paid deposit",
   );
 
+  // ── Phase 2E-B1 deposit guard safety ────────────────────────────────────────
+
+  it("pickup allowed when booking_deposit_payment_status === paid (POS V3 deposit path)", async () => {
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: baseBooking("confirmed", {
+          deposit_payment_status: "unpaid",
+          booking_deposit_payment_status: "paid",
+        }),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+  });
+
+  makeErrorTest(
+    "pickup blocked if booking_deposit_payment_status === paid_confirm_failed (not paid)",
+    () => ({
+      client: mockClient({
+        booking: baseBooking("confirmed", {
+          deposit_payment_status: "unpaid",
+          booking_deposit_payment_status: "paid_confirm_failed",
+        }),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+      }),
+      payload: validPayload("pickup"),
+      eventType: "pickup",
+    }),
+    422,
+    "paid deposit",
+  );
+
+  makeErrorTest(
+    "pickup blocked if booking_deposit_payment_status === unpaid (both fields unpaid)",
+    () => ({
+      client: mockClient({
+        booking: baseBooking("confirmed", {
+          deposit_payment_status: "unpaid",
+          booking_deposit_payment_status: "unpaid",
+        }),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+      }),
+      payload: validPayload("pickup"),
+      eventType: "pickup",
+    }),
+    422,
+    "paid deposit",
+  );
+
   makeErrorTest(
     "pickup blocked if KYC is not verified (account user)",
     () => ({

@@ -120,12 +120,13 @@ describe("rental payment lines", () => {
       appliesToSecurityDeposit: true,
       reducesRemainingSecurityDeposit: true,
     });
+    // netPayableAtPickup = remaining security deposit only (rental fee deferred to return).
     expect(summarizeRentalPaymentLines(lines)).toMatchObject({
       securityDepositRequired: 5000,
       bookingDepositDueNow: 200,
       remainingSecurityDepositDueAtPickup: 4800,
       netPayableNow: 200,
-      netPayableAtPickup: 8300,
+      netPayableAtPickup: 4800,
     });
   });
 
@@ -136,12 +137,13 @@ describe("rental payment lines", () => {
       rentalFeeAmount: 3500,
       depositAmount: 5000,
     });
+    // netPayableAtPickup = remaining security deposit only (rental fee deferred to return).
     expect(summarizeRentalPaymentLines(lines)).toMatchObject({
       securityDepositRequired: 5000,
       bookingDepositDueNow: 1000,
       remainingSecurityDepositDueAtPickup: 4000,
       netPayableNow: 1000,
-      netPayableAtPickup: 7500,
+      netPayableAtPickup: 4000,
     });
   });
 

@@ -12,7 +12,8 @@ const mockState = vi.hoisted(() => ({
 
 vi.mock("h3", () => ({
   defineEventHandler: (handler: (event: unknown) => unknown) => handler,
-  getRouterParam: (_event: unknown, name: string) => mockState.routerParams[name],
+  getRouterParam: (_event: unknown, name: string) =>
+    mockState.routerParams[name],
   createError: (opts: { statusCode?: number; statusMessage?: string }) =>
     Object.assign(new Error(opts.statusMessage), opts),
 }));
@@ -102,9 +103,7 @@ function line(
     status: "active",
     source: "system",
     metadata:
-      lineType === "booking_deposit"
-        ? { securityDepositRequired: 5000 }
-        : {},
+      lineType === "booking_deposit" ? { securityDepositRequired: 5000 } : {},
     ...extra,
   };
 }
@@ -147,15 +146,52 @@ describe("rental money summary", () => {
       taxCategory: "rental_income",
       isRevenue: true,
     });
+    // Rental fee is deferred to return — totalPickupDueAmount = remaining security deposit only.
     expect(summary.pickupDue).toMatchObject({
       rentalFeeDueAmount: 9500,
       remainingSecurityDepositDueAmount: 4800,
-      totalPickupDueAmount: 14300,
+      totalPickupDueAmount: 4800,
     });
   });
 
+  it("rental fee outstanding does NOT increase totalPickupDueAmount — pickup gate is deposit-only", () => {
+    // booking() default has checkout_paid_amount = 0 (rental fee unpaid / deferred).
+    // baseLines() has rental_fee 10000 (9500 net after WHT), booking_deposit 200, security_deposit 4800.
+    const summary = buildRentalMoneySummary({
+      booking: booking(),
+      paymentLines: baseLines(),
+    });
+
+    expect(summary.rentalFee.outstandingAmount).toBeGreaterThan(0);
+    expect(summary.refundableSecurityDeposit.remainingDueAtPickupAmount).toBe(
+      4800,
+    );
+    // totalPickupDueAmount = remaining security deposit only — rental fee must NOT be included.
+    expect(summary.pickupDue.totalPickupDueAmount).toBe(4800);
+    expect(summary.pickupDue.rentalFeeDueAmount).toBeGreaterThan(0);
+  });
+
+  it("remaining security deposit due is reflected in totalPickupDueAmount (deposit-only gate)", () => {
+    // Scenario: booking deposit paid = 0 → full security deposit of 5000 still outstanding.
+    const summary = buildRentalMoneySummary({
+      booking: booking({ booking_deposit_paid_amount: 0 }),
+      paymentLines: [
+        line("rental_fee", 10000, { wht_amount: 500 }),
+        line("refundable_security_deposit", 5000),
+      ],
+    });
+
+    expect(summary.refundableSecurityDeposit.remainingDueAtPickupAmount).toBe(
+      5000,
+    );
+    expect(summary.pickupDue.totalPickupDueAmount).toBe(5000);
+  });
+
   it("warns instead of silently trusting legacy bookings without payment lines", () => {
-    const summary = buildRentalMoneySummary({ booking: booking(), paymentLines: [] });
+    const summary = buildRentalMoneySummary({
+      booking: booking(),
+      paymentLines: [],
+    });
 
     expect(summary.source).toMatchObject({
       hasPaymentLines: false,

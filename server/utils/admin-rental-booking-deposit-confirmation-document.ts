@@ -50,7 +50,8 @@ async function findExistingConfirmationDocument(
     .eq("source_id", heldBalanceEventId)
     .eq("document_type", BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE)
     .maybeSingle();
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
   return data ? mapOfficialDocumentRow(data as Row) : null;
 }
 
@@ -66,10 +67,14 @@ async function nextConfirmationDocumentNumber(
     p_period: documentPeriod(issuedAt),
     p_prefix: DOCUMENT_PREFIX,
   });
-  if (error) throw createError({ statusCode: 500, statusMessage: error.message });
+  if (error)
+    throw createError({ statusCode: 500, statusMessage: error.message });
   const no = text(data);
   if (!no)
-    throw createError({ statusCode: 500, statusMessage: "Document number allocation failed" });
+    throw createError({
+      statusCode: 500,
+      statusMessage: "Document number allocation failed",
+    });
   return no;
 }
 
@@ -100,12 +105,18 @@ export interface BookingDepositConfirmationDocumentInput {
  */
 export async function issueBookingDepositConfirmationDocument(
   input: BookingDepositConfirmationDocumentInput,
-): Promise<{ document: ReturnType<typeof mapOfficialDocumentRow>; alreadyIssued: boolean }> {
+): Promise<{
+  document: ReturnType<typeof mapOfficialDocumentRow>;
+  alreadyIssued: boolean;
+}> {
   const { client, heldBalanceEvent, booking, staffUserId, branchId } = input;
 
   const eventId = text(heldBalanceEvent.id);
   if (!eventId)
-    throw createError({ statusCode: 422, statusMessage: "heldBalanceEvent.id is required" });
+    throw createError({
+      statusCode: 422,
+      statusMessage: "heldBalanceEvent.id is required",
+    });
 
   // ── Step 1: Duplicate guard ──────────────────────────────────────────────
   const existing = await findExistingConfirmationDocument(client, eventId);
@@ -119,13 +130,19 @@ export async function issueBookingDepositConfirmationDocument(
 
   // ── Step 3: Allocate document number ────────────────────────────────────
   const issuedAt = new Date();
-  const documentNo = await nextConfirmationDocumentNumber(client, branchId, issuedAt);
+  const documentNo = await nextConfirmationDocumentNumber(
+    client,
+    branchId,
+    issuedAt,
+  );
 
   // ── Step 4: Build immutable snapshot ────────────────────────────────────
   // Amount is read from the held-balance event — NOT from booking quote fields.
   const eventAmount = money(heldBalanceEvent.amount);
   const currencyCode =
-    text(heldBalanceEvent.currency_code) || text(booking.currency_code) || "THB";
+    text(heldBalanceEvent.currency_code) ||
+    text(booking.currency_code) ||
+    "THB";
 
   const snapshot: Row = {
     schema_version: 1,
@@ -154,10 +171,15 @@ export async function issueBookingDepositConfirmationDocument(
     booking: {
       id: text(booking.id),
       reference: text(booking.id),
+      qr_value: `booking:${text(booking.id)}`,
       start_date: text(booking.start_date),
       end_date: text(booking.end_date),
       rental_days: Number(booking.rental_days ?? 0),
       hub_id: nullable(booking.hub_id) ?? nullable(booking.pos_branch_id),
+    },
+    booked_item: {
+      asset_id: nullable(booking.asset_id),
+      asset_name: nullable(booking.asset_name),
     },
     customer: {
       user_id: nullable(booking.user_id),
@@ -206,7 +228,10 @@ export async function issueBookingDepositConfirmationDocument(
     throw createError({ statusCode: 500, statusMessage: error.message });
   }
   if (!data)
-    throw createError({ statusCode: 500, statusMessage: "Document insert failed" });
+    throw createError({
+      statusCode: 500,
+      statusMessage: "Document insert failed",
+    });
 
   const document = mapOfficialDocumentRow(data as Row);
 

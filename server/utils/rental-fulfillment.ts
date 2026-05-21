@@ -63,7 +63,7 @@ const REFUND_STATUSES = new Set<RentalDepositRefundStatus>([
 const REFUND_PROOF_STATUSES = new Set<RentalDepositRefundStatus>(["refunded"]);
 
 const CURRENT_BOOKING_SELECT =
-  "id, user_id, walk_in_phone, status, deposit_paid_amount, deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, pos_branch_id, asset:assets(storage_branch_id)";
+  "id, user_id, walk_in_phone, status, deposit_paid_amount, deposit_payment_status, booking_deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, pos_branch_id, asset:assets(storage_branch_id)";
 
 function cleanText(value: unknown): string | null {
   return typeof value === "string" ? value.trim() || null : null;
@@ -368,7 +368,8 @@ export async function assertRentalFulfillmentPrerequisites({
   if (eventType === "pickup") {
     if (
       requirePaidPickupDeposit &&
-      cleanText(current.deposit_payment_status) !== "paid"
+      cleanText(current.deposit_payment_status) !== "paid" &&
+      cleanText(current.booking_deposit_payment_status) !== "paid"
     ) {
       throw createError({
         statusCode: 422,
