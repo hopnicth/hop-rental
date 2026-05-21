@@ -111,6 +111,17 @@ const bookingDepositPaidAt = computed(
     pick(payment.value, "paidAt", "paid_at") ||
     pick(booking.value, "bookingDepositPaidAt", "booking_deposit_paid_at"),
 );
+const bookingSourceLabel = computed<string | null>(() => {
+  const source = clean(pick(booking.value, "bookingSource") as unknown);
+  if (source === "pos") {
+    // Use hub name for the inline label, e.g. "POS หน้านิคมลาดกระบัง"
+    const hub = clean(pick(booking.value, "hubName", "hub_name") as unknown);
+    return hub ? `POS ${hub}` : "POS Booking";
+  }
+  if (source === "online") return "Online Booking";
+  // bookingSource absent in old snapshots — omit brackets entirely
+  return null;
+});
 const cancellationCancelledAt = computed(() =>
   pick(cancellation.value, "cancelledAt", "cancelled_at"),
 );
@@ -438,39 +449,49 @@ onMounted(() => void load());
       </section>
       <section v-else-if="!isCancellationDoc && !isRefundDoc" class="box">
         <h2>สรุปการชำระเงินและการรับสินค้า</h2>
-        <div class="money">
-          <p>
-            เงินมัดจำจอง<br /><b>{{
+        <!-- Phase 2E-B1: Approved five-row deposit breakdown.
+             Pickup total = remaining security deposit only; rental fee is deferred to return. -->
+        <dl class="money-breakdown mt">
+          <dt>เงินมัดจำประกันทั้งหมด</dt>
+          <dd>
+            {{ moneyText(money.securityDepositTotal, money.currencyCode) }}
+          </dd>
+          <dt>หักเงินมัดจำจองที่ชำระแล้ว</dt>
+          <dd>
+            {{
               moneyText(
                 money.bookingDepositPaid ?? money.bookingDepositDueNow,
                 money.currencyCode,
               )
-            }}</b>
-          </p>
-          <p>
-            ค่าเช่าที่ชำระวันรับสินค้า<br /><b>{{
-              moneyText(money.rentalFeeDueAtPickup, money.currencyCode)
-            }}</b>
-          </p>
-          <p>
-            เงินมัดจำประกันคงเหลือ<br /><b>{{
+            }}
+          </dd>
+          <dt>เงินมัดจำประกันคงเหลือที่ต้องชำระวันรับสินค้า</dt>
+          <dd>
+            {{
+              moneyText(
+                money.remainingRefundableSecurityDepositDueAtPickup,
+                money.currencyCode,
+              )
+            }}
+          </dd>
+          <dt>
+            ค่าเช่า <span class="muted">(ชำระวันคืนสินค้า / หลังจบงาน)</span>
+          </dt>
+          <dd>
+            {{ moneyText(money.rentalFeeDueAtPickup, money.currencyCode) }}
+          </dd>
+          <dt><b>รวมยอดที่ต้องชำระวันรับสินค้า</b></dt>
+          <dd>
+            <b>{{
               moneyText(
                 money.remainingRefundableSecurityDepositDueAtPickup,
                 money.currencyCode,
               )
             }}</b>
-          </p>
-          <p>
-            รวมยอดชำระวันรับสินค้า<br /><b>{{
-              moneyText(money.totalDueAtPickup, money.currencyCode)
-            }}</b>
-          </p>
-        </div>
-        <p class="muted">
-          วิธีชำระเงิน / เลขอ้างอิง: {{ payment.method || "—" }} /
-          {{ payment.reference || "—" }}
-        </p>
-        <dl class="mt">
+          </dd>
+        </dl>
+
+        <dl class="mt payment-detail">
           <dt>สถานะเงินมัดจำจอง</dt>
           <dd>{{ bookingDepositPaymentStatus }}</dd>
           <dt>จำนวนเงินมัดจำจองที่ชำระแล้ว</dt>
@@ -482,7 +503,7 @@ onMounted(() => void load());
               )
             }}
           </dd>
-          <dt>วันเวลาที่ชำระ</dt>
+          <dt>วันชำระเงิน</dt>
           <dd>{{ dateTime(bookingDepositPaidAt) }}</dd>
         </dl>
         <p class="muted mt">
@@ -541,7 +562,11 @@ onMounted(() => void load());
       </section>
       <section v-if="booking.qrValue" class="box qr">
         <div>
-          <h2>QR การจอง</h2>
+          <h2>
+            QR การจอง<template v-if="bookingSourceLabel">
+              [{{ bookingSourceLabel }}]</template
+            >
+          </h2>
           <p class="muted">
             ใช้เป็นข้อมูลอ้างอิงการจองเท่านั้น ไม่ใช่หลักฐานการส่งมอบสินค้า
           </p>
@@ -664,10 +689,28 @@ dt {
 dd {
   margin: 0;
 }
-.money {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(4, 1fr);
+.money-breakdown {
+  /* Accounting layout: label fills remaining space, amount column is right-aligned and auto-sized. */
+  grid-template-columns: minmax(0, 1fr) max-content;
+  column-gap: 16px;
+  row-gap: 8px;
+  align-items: baseline;
+}
+.money-breakdown dd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.payment-detail {
+  /* Same accounting layout as .money-breakdown for the lower deposit detail rows. */
+  grid-template-columns: minmax(0, 1fr) max-content;
+  column-gap: 16px;
+  align-items: baseline;
+}
+.payment-detail dd {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .qr {
   align-items: center;

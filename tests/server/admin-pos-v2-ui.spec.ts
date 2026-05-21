@@ -75,12 +75,148 @@ describe("admin POS V2 shell wiring", () => {
     expect(page).not.toContain("/api/admin/documents/issue");
   });
 
-  it("surfaces POS V2 in the admin navigation and keeps legacy POS available", () => {
+  it("surfaces POS V3 in the admin navigation and keeps legacy POS available", () => {
     const layout = read("app/layouts/admin.vue");
     const header = read("app/components/admin/pos/AdminPosHeader.vue");
 
     expect(layout).toContain('{ label: "POS", to: "/admin/pos" }');
-    expect(layout).toContain('{ label: "POS V2", to: "/admin/pos-v2" }');
+    // POS V2 nav entry was replaced by POS V3 as part of Phase 2C
+    expect(layout).toContain('{ label: "POS V3", to: "/admin/pos-v3" }');
     expect(header).toContain('to="/admin/pos"');
+  });
+
+  it("Phase 2E-B1: POS V2 pickup workspace shows legacy-policy warning directing staff to POS V3", () => {
+    const page = read("app/pages/admin/pos-v2/index.vue");
+
+    // Warning must be present in the Pickup Readiness workspace section
+    expect(page).toContain("[Phase 2E-B1] ใช้ POS V3 สำหรับ Rental Pickup");
+    // Must mention current deposit-only policy and deferred rental fee
+    expect(page).toContain("เงินมัดจำประกัน");
+    expect(page).toContain("ค่าเช่าไปเก็บที่วันคืนสินค้า");
+    // Must redirect staff to POS V3 path
+    expect(page).toContain("/admin/pos-v3");
+    // Warning must be color="warning" (not suppressed as info)
+    expect(page).toContain('color="warning"');
+  });
+});
+
+// ── Phase 2E-B1: Customer-facing document print policy ──────────────────────────
+
+describe("user document print page — Phase 2E-B1 approved five-row money summary", () => {
+  const PRINT_PAGE = "app/pages/user/documents/[id]/print.vue";
+
+  it("shows row 1: เงินมัดจำประกันทั้งหมด using securityDepositTotal", () => {
+    const page = read(PRINT_PAGE);
+    expect(page).toContain("เงินมัดจำประกันทั้งหมด");
+    expect(page).toContain("securityDepositTotal");
+  });
+
+  it("shows row 2: หักเงินมัดจำจองที่ชำระแล้ว using bookingDepositPaid", () => {
+    const page = read(PRINT_PAGE);
+    expect(page).toContain("หักเงินมัดจำจองที่ชำระแล้ว");
+    expect(page).toContain("bookingDepositPaid");
+  });
+
+  it("shows row 3: เงินมัดจำประกันคงเหลือที่ต้องชำระวันรับสินค้า using remainingRefundableSecurityDepositDueAtPickup", () => {
+    const page = read(PRINT_PAGE);
+    expect(page).toContain("เงินมัดจำประกันคงเหลือที่ต้องชำระวันรับสินค้า");
+    expect(page).toContain("remainingRefundableSecurityDepositDueAtPickup");
+  });
+
+  it("shows row 4: ค่าเช่า labeled as deferred to return, not due at pickup", () => {
+    const page = read(PRINT_PAGE);
+    // Old at-pickup wording must be gone
+    expect(page).not.toContain("ค่าเช่าที่ชำระวันรับสินค้า");
+    // Deferred label must be present
+    expect(page).toContain("ชำระวันคืนสินค้า / หลังจบงาน");
+    expect(page).toContain("rentalFeeDueAtPickup");
+  });
+
+  it("shows row 5: รวมยอดที่ต้องชำระวันรับสินค้า using deposit-only field", () => {
+    const page = read(PRINT_PAGE);
+    // New approved total label
+    expect(page).toContain("รวมยอดที่ต้องชำระวันรับสินค้า");
+    // Old combined-total labels must be gone
+    expect(page).not.toContain("รวมยอดชำระวันรับสินค้า");
+    expect(page).not.toContain("รวมยอดมัดจำวันที่รับสินค้า");
+    // totalDueAtPickup (which included rental fee) must not appear anywhere
+    expect(page).not.toContain("totalDueAtPickup");
+    // The pickup-day total row must use the deposit-only field
+    const totalRowIdx = page.indexOf("รวมยอดที่ต้องชำระวันรับสินค้า");
+    const depositFieldAfterTotal = page.indexOf(
+      "remainingRefundableSecurityDepositDueAtPickup",
+      totalRowIdx,
+    );
+    expect(depositFieldAfterTotal).toBeGreaterThan(totalRowIdx);
+    expect(depositFieldAfterTotal - totalRowIdx).toBeLessThan(300);
+  });
+
+  it("amount column uses accounting alignment: right-aligned and tabular-nums", () => {
+    const page = read(PRINT_PAGE);
+    // CSS must specify right-aligned amount column for .money-breakdown dd
+    expect(page).toContain("text-align: right");
+    expect(page).toContain("font-variant-numeric: tabular-nums");
+    expect(page).toContain("white-space: nowrap");
+    // Layout must use max-content for the amount column
+    expect(page).toContain("max-content");
+  });
+
+  it("payment method/reference row is removed", () => {
+    const page = read(PRINT_PAGE);
+    expect(page).not.toContain("วิธีชำระเงิน / เลขอ้างอิง");
+    // The "— / —" fallback pattern from that row must also be gone
+    expect(page).not.toContain('payment.method || "—"');
+    expect(page).not.toContain('payment.reference || "—"');
+  });
+
+  it("separate แหล่งที่มาของการจอง row is removed", () => {
+    const page = read(PRINT_PAGE);
+    expect(page).not.toContain("แหล่งที่มาของการจอง");
+  });
+
+  it("booking source is shown inline after QR การจอง via v-if", () => {
+    const page = read(PRINT_PAGE);
+    // The h2 must contain QR การจอง
+    expect(page).toContain("QR การจอง");
+    // The inline source bracket must be guarded by v-if so old snapshots omit it
+    expect(page).toContain('v-if="bookingSourceLabel"');
+    // The v-if must appear in the same h2 block as QR การจอง
+    const qrIdx = page.indexOf("QR การจอง");
+    const vifIdx = page.indexOf('v-if="bookingSourceLabel"', qrIdx);
+    expect(vifIdx).toBeGreaterThan(qrIdx);
+    expect(vifIdx - qrIdx).toBeLessThan(120);
+  });
+
+  it("bookingSourceLabel returns 'POS {hubName}' for pos, 'Online Booking' for online, null when absent", () => {
+    const page = read(PRINT_PAGE);
+    // POS branch uses hub name from snapshot
+    expect(page).toContain("POS ${hub}");
+    expect(page).toContain('"POS Booking"'); // fallback when hub absent
+    // Online mapping
+    expect(page).toContain('"Online Booking"');
+    // Source values derived from bookingSource field
+    expect(page).toContain('"pos"');
+    expect(page).toContain('"online"');
+    // Absent bookingSource returns null — no brackets rendered
+    expect(page).toContain("return null");
+    // Bracket must NOT be shown for missing source
+    expect(page).not.toContain('"[—]"');
+  });
+
+  it("payment detail section shows วันชำระเงิน label (not วันเวลาที่ชำระ)", () => {
+    const page = read(PRINT_PAGE);
+    expect(page).toContain("วันชำระเงิน");
+    expect(page).toContain("bookingDepositPaidAt");
+    expect(page).not.toContain("วันเวลาที่ชำระ");
+  });
+
+  it("lower payment detail dl uses accounting alignment", () => {
+    const page = read(PRINT_PAGE);
+    expect(page).toContain("payment-detail");
+    expect(page).toContain(".payment-detail dd");
+    const pdIdx = page.indexOf(".payment-detail dd");
+    const alignIdx = page.indexOf("text-align: right", pdIdx);
+    expect(alignIdx).toBeGreaterThan(pdIdx);
+    expect(alignIdx - pdIdx).toBeLessThan(200);
   });
 });
