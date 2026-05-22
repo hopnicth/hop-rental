@@ -28,7 +28,10 @@ describe("rental held-balance summary", () => {
       totalHeldBalanceCollectedAmount: 200,
     });
     expect(summary.currentHeldBalanceAvailableAmount).toBe(200);
-    expect(summary.state).toMatchObject({ hasCanonicalEvents: true, eventCount: 1 });
+    expect(summary.state).toMatchObject({
+      hasCanonicalEvents: true,
+      eventCount: 1,
+    });
   });
 
   it("separates booking deposit and pickup held-balance collections", () => {
@@ -180,5 +183,47 @@ describe("rental held-balance summary", () => {
     expect(summary.state.warnings.map((warning) => warning.code)).toContain(
       "HELD_BALANCE_UNSUPPORTED_EVENT_TYPE",
     );
+  });
+
+  // ── Phase 2E-B1.5: remaining_security_deposit_collection ─────────────────────
+
+  it("accumulates remaining_security_deposit_collection into pickupHeldBalanceCollectedAmount", () => {
+    const summary = buildRentalHeldBalanceSummary({
+      rentalBookingId: "booking-1",
+      events: [event("remaining_security_deposit_collection", 4800)],
+    });
+
+    expect(summary.collections.pickupHeldBalanceCollectedAmount).toBe(4800);
+    expect(summary.collections.totalHeldBalanceCollectedAmount).toBe(4800);
+    expect(summary.currentHeldBalanceAvailableAmount).toBe(4800);
+    expect(summary.state.warnings).toHaveLength(0);
+  });
+
+  it("accumulates remaining_security_deposit_collection alongside booking deposit (future booking path)", () => {
+    const summary = buildRentalHeldBalanceSummary({
+      rentalBookingId: "booking-1",
+      events: [
+        event("booking_deposit_collection", 200),
+        event("remaining_security_deposit_collection", 4800),
+      ],
+    });
+
+    expect(summary.collections.bookingDepositCollectedAmount).toBe(200);
+    expect(summary.collections.pickupHeldBalanceCollectedAmount).toBe(4800);
+    expect(summary.collections.totalHeldBalanceCollectedAmount).toBe(5000);
+    expect(summary.currentHeldBalanceAvailableAmount).toBe(5000);
+    expect(summary.state.warnings).toHaveLength(0);
+  });
+
+  it("accumulates remaining_security_deposit_collection alone (same-day full deposit path)", () => {
+    const summary = buildRentalHeldBalanceSummary({
+      rentalBookingId: "booking-1",
+      events: [event("remaining_security_deposit_collection", 5000)],
+    });
+
+    expect(summary.collections.pickupHeldBalanceCollectedAmount).toBe(5000);
+    expect(summary.collections.bookingDepositCollectedAmount).toBe(0);
+    expect(summary.collections.totalHeldBalanceCollectedAmount).toBe(5000);
+    expect(summary.state.warnings).toHaveLength(0);
   });
 });

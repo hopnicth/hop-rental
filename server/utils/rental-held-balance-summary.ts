@@ -44,6 +44,7 @@ const COLLECTION_EVENT_TYPES = new Set([
   "booking_deposit_collection",
   "pickup_held_balance_collection",
   "same_day_held_balance_collection",
+  "remaining_security_deposit_collection", // Phase 2E-B1.5: pickup-phase remaining security deposit
 ]);
 
 const REDUCTION_EVENT_TYPES = new Set([
@@ -136,6 +137,12 @@ export function buildRentalHeldBalanceSummary(input: {
     } else if (eventType === "same_day_held_balance_collection") {
       collections.sameDayHeldBalanceCollectedAmount = money(
         collections.sameDayHeldBalanceCollectedAmount + amount,
+      );
+    } else if (eventType === "remaining_security_deposit_collection") {
+      // Phase 2E-B1.5: remaining security deposit collected at pickup (cash only).
+      // Accumulated into pickupHeldBalanceCollectedAmount — pickup-phase held balance.
+      collections.pickupHeldBalanceCollectedAmount = money(
+        collections.pickupHeldBalanceCollectedAmount + amount,
       );
     } else if (eventType === "settlement_application") {
       reductions.settlementAppliedAmount = money(
