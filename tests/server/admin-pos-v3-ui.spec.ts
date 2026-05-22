@@ -375,6 +375,37 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(source).toContain("createdDraftResult.value = result");
   });
 
+  it("same-day button uses sameDaySubmitting prop for loading/disabled state", () => {
+    const source = read(CONTAINER_PATH);
+    // prop declared
+    expect(source).toContain("sameDaySubmitting");
+    // button loading/disabled wired to the prop for same-day path
+    expect(source).toContain("props.sameDaySubmitting");
+  });
+
+  it("same-day money policy card is shown when isSameDayRentalIntent and calendarPayload.isValid", () => {
+    const source = read(CONTAINER_PATH);
+    // v-if condition
+    expect(source).toContain(
+      "isSameDayRentalIntent && calendarPayload.isValid",
+    );
+    // header label
+    expect(source).toContain("Walk-in Same-Day Rental");
+    // rental fee deferred wording
+    expect(source).toContain("ชำระวันคืนสินค้า");
+    // deposit due at pickup wording
+    expect(source).toContain("ชำระเมื่อรับสินค้า");
+    // booking deposit not applicable
+    expect(source).toContain("Booking Deposit");
+    expect(source).toContain("ไม่ใช้ / ฿0");
+  });
+
+  it("same-day inline error alert is rendered from sameDayError prop when set", () => {
+    const source = read(CONTAINER_PATH);
+    expect(source).toContain("props.sameDayError");
+    expect(source).toContain("สร้างการจอง Walk-in Same-Day ไม่สำเร็จ");
+  });
+
   // ── Page-level state ──────────────────────────────────────────────────────
 
   it("page imports and mounts the draft container", () => {
@@ -394,6 +425,22 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     expect(page).toContain("loadBookingContext(result.booking.id");
   });
 
+  it("handleSameDayIntent updates URL with bookingId after same-day success for refresh restore", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // useRouter().replace must be called with bookingId after booking created
+    expect(page).toContain("useRouter().replace");
+    expect(page).toContain("bookingId: result.booking.id");
+    // query re-entry path must still read bookingId from URL on mount
+    expect(page).toContain("route.query.bookingId");
+    expect(page).toContain("loadBookingContext(queryBookingId");
+  });
+
+  it("query-mode deposit alert is suppressed for confirmed bookings (same-day re-entry polish)", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // Confirmed bookings use the pickup container, not the deposit-ineligible alert
+    expect(page).toContain("bookingContext?.status !== 'confirmed'");
+  });
+
   it("latestDraftResult and latestSameDayIntent are stored separately on the page", () => {
     const page = read("app/pages/admin/pos-v3/index.vue");
     expect(page).toContain("latestDraftResult");
@@ -401,6 +448,30 @@ describe("admin POS V3 Container 1 — Future Booking Draft Container", () => {
     // They must be separate refs
     expect(page).toContain("latestDraftResult = ref");
     expect(page).toContain("latestSameDayIntent = ref");
+  });
+
+  it("page has sameDayBookingCreated ref to gate draft container visibility after same-day success", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("sameDayBookingCreated");
+    // set to true only after endpoint + context load succeeds
+    expect(page).toContain("sameDayBookingCreated.value = true");
+    // draft container v-if includes this gate
+    expect(page).toContain("!sameDayBookingCreated");
+  });
+
+  it("page has sameDaySubmitting and sameDayError refs set in handleSameDayIntent finally", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("sameDaySubmitting = ref(false)");
+    expect(page).toContain("sameDayError = ref");
+    expect(page).toContain("sameDaySubmitting.value = true");
+    expect(page).toContain("sameDaySubmitting.value = false");
+    expect(page).toContain("sameDayError.value = null");
+  });
+
+  it("page passes sameDaySubmitting and sameDayError props to draft container", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain(":same-day-submitting");
+    expect(page).toContain(":same-day-error");
   });
 
   it("page passes userContext to the container", () => {

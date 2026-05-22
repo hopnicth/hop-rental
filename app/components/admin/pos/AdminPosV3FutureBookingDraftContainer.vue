@@ -101,7 +101,11 @@ interface SameDayRentalIntentPayload {
   bookerPhone: string | null;
 }
 
-const props = defineProps<{ userContext: UserContext | null }>();
+const props = defineProps<{
+  userContext: UserContext | null;
+  sameDaySubmitting?: boolean;
+  sameDayError?: string | null;
+}>();
 const emit = defineEmits<{
   "draft-created": [result: DraftResponse];
   "same-day-rental-intent": [payload: SameDayRentalIntentPayload];
@@ -688,7 +692,34 @@ onMounted(() => {
         />
       </div>
 
-      <!-- Error -->
+      <!-- Same-Day Rental Policy Summary: shown when same-day date is selected -->
+      <div
+        v-if="isSameDayRentalIntent && calendarPayload.isValid"
+        class="space-y-2 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm"
+      >
+        <p class="font-semibold text-primary">
+          Walk-in Same-Day Rental — Payment Policy
+        </p>
+        <div class="grid gap-3 md:grid-cols-3">
+          <div>
+            <p class="text-xs text-muted">ค่าเช่า</p>
+            <p class="font-semibold">{{ fmt(calendarPayload.totalCost) }}</p>
+            <p class="text-xs text-muted">ชำระวันคืนสินค้า / หลังจบงาน</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted">มัดจำประกัน (คืนได้)</p>
+            <p class="font-semibold">{{ fmt(calendarPayload.deposit) }}</p>
+            <p class="text-xs text-muted">ชำระเมื่อรับสินค้า</p>
+          </div>
+          <div>
+            <p class="text-xs text-muted">Booking Deposit</p>
+            <p class="font-semibold">ไม่ใช้ / ฿0</p>
+            <p class="text-xs text-muted">Walk-in same-day policy</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Future booking error -->
       <UAlert
         v-if="submitError"
         color="error"
@@ -697,12 +728,28 @@ onMounted(() => {
         :description="submitError"
       />
 
+      <!-- Same-day inline error from parent -->
+      <UAlert
+        v-if="props.sameDayError"
+        color="error"
+        variant="soft"
+        title="สร้างการจอง Walk-in Same-Day ไม่สำเร็จ"
+        :description="props.sameDayError"
+      />
+
       <!-- Submit -->
       <UButton
         :icon="isSameDayRentalIntent ? 'bx:walk' : 'bx:calendar-plus'"
         color="primary"
-        :loading="isSubmitting"
-        :disabled="!canSubmit"
+        :loading="
+          isSameDayRentalIntent
+            ? (props.sameDaySubmitting ?? false)
+            : isSubmitting
+        "
+        :disabled="
+          !canSubmit ||
+          (isSameDayRentalIntent ? (props.sameDaySubmitting ?? false) : false)
+        "
         @click="submitDraft"
       >
         {{

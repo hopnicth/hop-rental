@@ -130,11 +130,17 @@ function handleDraftCreated(result: unknown) {
 // This stays separate from latestDraftResult so future Booking Deposit containers
 // never mount for same-day flow.
 const latestSameDayIntent = ref<unknown>(null);
+const sameDaySubmitting = ref(false);
+const sameDayBookingCreated = ref(false);
+const sameDayError = ref<string | null>(null);
 async function handleSameDayIntent(payload: SameDayRentalIntentPayload) {
   latestSameDayIntent.value = payload;
   latestDraftResult.value = null;
   latestConfirmedFutureBookingResult.value = null;
   selectedPaymentMethod.value = null;
+  sameDaySubmitting.value = true;
+  sameDayError.value = null;
+  sameDayBookingCreated.value = false;
   try {
     const result = await $fetch<SameDayRentalResponse>(
       "/api/admin/pos-v3/rental-bookings/same-day",
@@ -145,12 +151,23 @@ async function handleSameDayIntent(payload: SameDayRentalIntentPayload) {
     );
     latestSameDayIntent.value = result;
     await loadBookingContext(result.booking.id, { clearUser: false });
+    sameDayBookingCreated.value = true;
+    // Update URL with bookingId so a page refresh restores pickup context
+    // via the existing B6 query re-entry path in onMounted.
+    useRouter().replace({ query: { bookingId: result.booking.id } });
   } catch (error) {
+    const errMsg =
+      (error as { statusMessage?: string })?.statusMessage ??
+      (error instanceof Error ? error.message : null) ??
+      "Same-day rental creation failed";
+    sameDayError.value = errMsg;
     resolverNotice.value = {
       color: "error",
       title: "Same-day rental could not be created",
-      description: error instanceof Error ? error.message : undefined,
+      description: errMsg,
     };
+  } finally {
+    sameDaySubmitting.value = false;
   }
 }
 
@@ -721,26 +738,31 @@ onMounted(async () => {
 
     <!-- Container 1: Future Booking Draft Creation (Booking mode only)
          Hidden once a draft result exists — replaced by locked summary below.
-         Phase 2D-B6: also hidden in bookingIdQueryMode (existing booking targeted via URL). -->
+         Phase 2D-B6: also hidden in bookingIdQueryMode (existing booking targeted via URL).
+         Same-day: hidden after sameDayBookingCreated is true (booking created + context loaded). -->
     <AdminPosV3FutureBookingDraftContainer
       v-if="
         activeMode === 'booking' &&
         latestDraftResult === null &&
-        !bookingIdQueryMode
+        !bookingIdQueryMode &&
+        !sameDayBookingCreated
       "
       :user-context="userContext"
+      :same-day-submitting="sameDaySubmitting"
+      :same-day-error="sameDayError"
       @draft-created="handleDraftCreated"
       @same-day-rental-intent="handleSameDayIntent"
     />
 
     <!-- Phase 2D-B6 Case 3: Query-entry mode — booking no longer eligible for deposit collection.
          Shown when entered via ?bookingId= but booking is already paid/confirmed/cancelled/paid_confirm_failed.
-         Prevents accidental new draft creation and informs staff the booking cannot be re-processed. -->
+         Excludes confirmed bookings: confirmed same-day pickup re-entry uses the pickup container, not this alert. -->
     <UAlert
       v-if="
         activeMode === 'booking' &&
         bookingIdQueryMode &&
-        latestDraftResult === null
+        latestDraftResult === null &&
+        bookingContext?.status !== 'confirmed'
       "
       color="neutral"
       icon="bx:info-circle"
