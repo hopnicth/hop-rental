@@ -988,10 +988,40 @@ describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
 
   it("B1.5: pickup container shows interactive collection card when deposit is due", () => {
     const source = read(PICKUP_CONTAINER_PATH);
-    expect(source).toContain("ชำระเงินมัดจำประกันส่วนที่เหลือ");
-    expect(source).toContain("รับเงินมัดจำประกันก่อนส่งมอบ");
+    // Neutral Thai label (works for both same-day and future bookings)
+    expect(source).toContain("มัดจำประกันที่ต้องชำระตอนรับของ");
     expect(source).toContain("เงินมัดจำประกัน (คืนได้) — ไม่ใช่ค่าเช่า");
-    expect(source).toContain("รับเงินมัดจำประกัน (เงินสด)");
+    // Old misleading wording must be gone from the collection card
+    expect(source).not.toContain("ชำระเงินมัดจำประกันส่วนที่เหลือ");
+    expect(source).not.toContain("รับเงินมัดจำประกัน (เงินสด)");
+  });
+
+  it("B1.5: cashier UX — cash received input and change calculation", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("รับเงินสดจากลูกค้า");
+    expect(source).toContain("cashReceived");
+    expect(source).toContain("เงินทอน");
+    expect(source).toContain("change");
+  });
+
+  it("B1.5: cashier UX — insufficient cash shows warning and blocks confirm", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain(
+      "รับเงินสดยังไม่ครบมัดจำประกันที่ต้องชำระตอนรับของ",
+    );
+    expect(source).toContain("cashInsufficient");
+    expect(source).toContain("canCollectDeposit");
+    // Confirm button must be disabled when canCollectDeposit is false
+    expect(source).toContain(':disabled="!canCollectDeposit"');
+  });
+
+  it("B1.5: cashier UX — confirm button label and endpoint sends amountDue not cashReceived", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("ยืนยันรับมัดจำประกัน");
+    // amount sent is remainingDepositDue (amountDue), not cashReceived
+    expect(source).toContain("amount: remainingDepositDue.value");
+    // cashReceived must NOT be forwarded to the endpoint
+    expect(source).not.toContain("amount: cashReceived");
   });
 
   it("same-day pickup UI shows no Booking Deposit and keeps rental fee deferred", () => {

@@ -29,6 +29,7 @@ const submitting = ref(false);
 const submitError = ref<string | null>(null);
 const collectingDeposit = ref(false);
 const depositCollectError = ref<string | null>(null);
+const cashReceived = ref(0);
 
 const isAlreadyPickedUp = computed(
   () =>
@@ -62,6 +63,22 @@ const isSameDayNoBookingDeposit = computed(() =>
       String(line.metadata?.bookingDepositPolicy ?? "") ===
         "not_applicable_same_day",
   ),
+);
+
+const change = computed(() =>
+  Math.max(0, cashReceived.value - remainingDepositDue.value),
+);
+
+const cashInsufficient = computed(
+  () =>
+    cashReceived.value > 0 && cashReceived.value < remainingDepositDue.value,
+);
+
+const canCollectDeposit = computed(
+  () =>
+    !collectingDeposit.value &&
+    cashReceived.value >= remainingDepositDue.value &&
+    remainingDepositDue.value > 0,
 );
 
 const readinessLoading = computed(
@@ -237,13 +254,7 @@ async function submitPickup() {
       <UCard>
         <template #header>
           <div>
-            <h3 class="font-semibold">
-              {{
-                isSameDayNoBookingDeposit
-                  ? "รับเงินมัดจำประกันก่อนส่งมอบ"
-                  : "ชำระเงินมัดจำประกันส่วนที่เหลือ"
-              }}
-            </h3>
+            <h3 class="font-semibold">มัดจำประกันที่ต้องชำระตอนรับของ</h3>
             <p class="text-sm text-muted">
               เงินมัดจำประกัน (คืนได้) — ไม่ใช่ค่าเช่า
             </p>
@@ -253,6 +264,45 @@ async function submitPickup() {
           <p class="text-sm text-muted">
             ค่าเช่าจะชำระวันคืนสินค้า / หลังจบงาน
           </p>
+          <!-- Amount due -->
+          <div
+            class="flex items-center justify-between rounded bg-muted/20 px-3 py-2"
+          >
+            <span class="text-sm text-muted"
+              >มัดจำประกันที่ต้องชำระตอนรับของ</span
+            >
+            <span class="font-semibold"
+              >฿{{ remainingDepositDue.toLocaleString() }}</span
+            >
+          </div>
+          <!-- Cash received input -->
+          <div>
+            <label class="mb-1 block text-sm font-medium"
+              >รับเงินสดจากลูกค้า</label
+            >
+            <UInput
+              v-model.number="cashReceived"
+              type="number"
+              min="0"
+              :placeholder="`฿${remainingDepositDue.toLocaleString()}`"
+            />
+          </div>
+          <!-- Change display -->
+          <div
+            class="flex items-center justify-between rounded bg-muted/20 px-3 py-2"
+          >
+            <span class="text-sm text-muted">เงินทอน</span>
+            <span class="font-semibold text-success"
+              >฿{{ change.toLocaleString() }}</span
+            >
+          </div>
+          <!-- Insufficient cash warning -->
+          <UAlert
+            v-if="cashInsufficient"
+            color="warning"
+            variant="soft"
+            title="รับเงินสดยังไม่ครบมัดจำประกันที่ต้องชำระตอนรับของ"
+          />
           <UAlert
             v-if="depositCollectError"
             color="error"
@@ -263,9 +313,9 @@ async function submitPickup() {
             <UButton
               color="primary"
               :loading="collectingDeposit"
-              :disabled="collectingDeposit"
-              icon="bx:money"
-              :label="`รับเงินมัดจำประกัน (เงินสด) ฿${remainingDepositDue.toLocaleString()}`"
+              :disabled="!canCollectDeposit"
+              icon="bx:check"
+              label="ยืนยันรับมัดจำประกัน"
               @click="collectRemainingDeposit"
             />
           </div>
