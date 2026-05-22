@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { AdminRentalBookingDetail } from "~/types/admin-order-detail";
-import AdminBookingHandoverItems from "~/components/admin/AdminBookingHandoverItems.vue";
+import AdminBookingChecklists from "~/components/admin/AdminBookingChecklists.vue";
 import DigitalSignaturePad from "~/components/admin/DigitalSignaturePad.vue";
+import type {
+  AdminBookingChecklist,
+  AdminBookingOpsPayload,
+  AssetChecklistTemplateSummary,
+} from "~/types/admin-booking-ops";
 
 interface PickupReadinessPreview {
   readiness?: { classification?: string; canProceedToPickup?: boolean };
@@ -17,11 +22,14 @@ interface PickupReadinessPreview {
 const props = defineProps<{
   booking: AdminRentalBookingDetail;
   readiness: PickupReadinessPreview | null;
+  checklists: AdminBookingChecklist[];
+  templates: AssetChecklistTemplateSummary[];
 }>();
 
 const emit = defineEmits<{
   (e: "pickup-confirmed", booking: AdminRentalBookingDetail): void;
   (e: "deposit-collected"): void;
+  (e: "checklist-updated", payload: AdminBookingOpsPayload): void;
 }>();
 
 const signatureDataUrl = ref<string | null>(null);
@@ -89,12 +97,32 @@ const hasChecklistError = computed(
   () => !!submitError.value?.toLowerCase().includes("checklist"),
 );
 
+// Exact blocking reason displayed near the disabled Confirm Pickup button.
+// Guides staff through the required steps without ambiguity.
+const pickupBlockingReason = computed((): string | null => {
+  if (canSubmit.value || submitting.value) return null;
+  const pickupLists = props.checklists.filter((c) => c.kind === "pickup");
+  if (pickupLists.length === 0)
+    return "ต้องสร้าง Pickup Checklist ก่อนยืนยันรับอุปกรณ์";
+  if (!hasCompletedPickupChecklist.value)
+    return "ต้องกด Complete Checklist ก่อนยืนยันรับอุปกรณ์";
+  if (!signatureDataUrl.value) return "รอลายเซ็นลูกค้า";
+  return null;
+});
+
+// Phase 2E-B2: true when at least one pickup checklist is completed.
+// This is a client-side UX gate only — server fulfillment gate remains authoritative.
+const hasCompletedPickupChecklist = computed(() =>
+  props.checklists.some((c) => c.kind === "pickup" && c.status === "completed"),
+);
+
 const canSubmit = computed(
   () =>
     !submitting.value &&
     !!signatureDataUrl.value &&
     !hasPickupDue.value &&
-    !readinessLoading.value,
+    !readinessLoading.value &&
+    hasCompletedPickupChecklist.value,
 );
 
 async function collectRemainingDeposit() {
@@ -324,47 +352,81 @@ async function submitPickup() {
     </div>
 
     <!-- State 4: Active pickup form
-         Supports both future confirmed bookings (Case 1) and same-day POS bookings (Case 2).
-         Both cases require: status === 'confirmed' AND remainingSecurityDepositDue === 0.
-         Rental fee is deferred to return / settlement — it does NOT gate pickup. -->
+         Deposit is clear. Rental fee is deferred to return / settlement.
+         Supports both future confirmed bookings (Case 1) and same-day POS bookings (Case 2). -->
     <div v-else class="space-y-4">
-      <!-- Informational: deferred rental fee (not a blocker) -->
-      <UAlert
-        v-if="deferredRentalFee > 0"
-        color="neutral"
-        variant="soft"
-        icon="bx:info-circle"
-        :title="`ค่าเช่าโดยประมาณ: ฿${deferredRentalFee.toLocaleString()}`"
-        description="ชำระวันคืนสินค้า / หลังจบงาน — ตามนโยบายการเช่า"
-      />
-      <!-- Proactive checklist hint: shown before submission so staff can prepare -->
-      <UAlert
-        color="info"
-        variant="soft"
-        icon="bx:list-check"
-        title="ตรวจสอบ Pickup Checklist ก่อนส่งมอบ"
-      >
-        <template #description>
-          กรุณาตรวจสอบว่า Pickup Checklist เสร็จสมบูรณ์แล้วก่อนยืนยัน —
+      <!-- ── มัดจำประกันที่ต้องชำระตอนรับของ ──────────────────────────────── -->
+      <!-- Always visible in State 4 so staff can confirm deposit status at a glance. -->
+      <UCard>
+        <template #header>
+          <div class="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h3 class="font-semibold">มัดจำประกันที่ต้องชำระตอนรับของ</h3>
+              <p class="text-sm text-muted">
+                เงินมัดจำประกัน (คืนได้) — ไม่ใช่ค่าเช่า
+              </p>
+            </div>
+            <UBadge color="success" variant="soft" icon="bx:check-circle">
+              ชำระครบแล้ว ✓
+            </UBadge>
+          </div>
+        </template>
+        <div class="space-y-2 text-sm">
+          <div class="flex items-center justify-between">
+            <span class="text-muted">ยอดมัดจำประกัน (คืนได้)</span>
+            <span class="font-semibold">
+              ฿{{ booking.depositAmount.toLocaleString() }}
+            </span>
+          </div>
+          <p class="text-xs text-muted">
+            ค่าเช่าจะชำระวันคืนสินค้า / หลังจบงาน —
+            ไม่ใช่ยอดที่ต้องชำระตอนรับของ
+            <span v-if="deferredRentalFee > 0">
+              (ค่าเช่าโดยประมาณ: ฿{{ deferredRentalFee.toLocaleString() }})
+            </span>
+          </p>
+        </div>
+      </UCard>
+
+      <!-- ── 1. Pickup Checklist ─────────────────────────────────────────── -->
+      <!-- Staff must complete this checklist before Confirm Pickup is enabled. -->
+      <div>
+        <div class="mb-2">
+          <p class="text-sm font-semibold">
+            1. Pickup Checklist — ตรวจสอบสภาพสินค้าก่อนส่งมอบ
+          </p>
+          <p class="text-xs text-muted">
+            ต้องกด Complete Checklist ก่อนกด Confirm Pickup — server
+            จะตรวจสอบซ้ำ
+          </p>
+        </div>
+        <!-- Phase 2E-B2: autoExpand=true so items are immediately visible without extra clicks. -->
+        <AdminBookingChecklists
+          :booking-id="booking.id"
+          :checklists="checklists"
+          :templates="templates"
+          :auto-expand="true"
+          @updated="$emit('checklist-updated', $event)"
+        />
+        <p class="mt-1 text-xs text-muted">
+          เปิดหน้ารายละเอียดการจองสำหรับ Checklist เพิ่มเติม:
           <NuxtLink
             :to="`/admin/rental-bookings/${booking.id}`"
             target="_blank"
-            class="underline"
+            class="text-primary underline"
             >เปิดหน้ารายละเอียดการจอง</NuxtLink
           >
-          เพื่อสร้าง/ยืนยัน Pickup Checklist หากยังไม่เสร็จ
-        </template>
-      </UAlert>
-      <AdminBookingHandoverItems
-        :booking-id="booking.id"
-        :booking-status="booking.status"
-      />
+        </p>
+      </div>
+
+      <!-- ── ลายเซ็นลูกค้า ──────────────────────────────────────────────── -->
       <UCard>
         <template #header>
           <h3 class="font-semibold">ลายเซ็นลูกค้า</h3>
         </template>
         <DigitalSignaturePad v-model="signatureDataUrl" />
       </UCard>
+
       <UAlert
         v-if="submitError"
         color="error"
@@ -381,6 +443,14 @@ async function submitPickup() {
         >
         เพื่อสร้างและยืนยัน Pickup Checklist ก่อนดำเนินการส่งมอบ
       </p>
+      <!-- Exact reason the Confirm Pickup button is still disabled -->
+      <UAlert
+        v-if="pickupBlockingReason"
+        color="warning"
+        variant="soft"
+        icon="bx:lock"
+        :title="pickupBlockingReason"
+      />
       <div class="flex items-center justify-between gap-3">
         <p
           class="text-sm"

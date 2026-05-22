@@ -207,6 +207,13 @@ const canResumeDepositCollection = computed(
     booking.value?.bookingDepositPaymentStatus === "unpaid",
 );
 
+// Phase 2E-B2: CTA to resume pickup workflow in POS V3.
+// Shown only when booking is confirmed (pickup-ready — staff still needs to complete handover).
+// Hidden for draft, picked_up, returned, cancelled, no_show.
+const canResumePosV3Pickup = computed(
+  () => booking.value?.status === "confirmed",
+);
+
 const allowedStatuses = computed<RentalBookingStatus[]>(() =>
   booking.value
     ? (RENTAL_BOOKING_STATUS_TRANSITIONS[booking.value.status] ?? [])
@@ -498,6 +505,30 @@ async function issueMissingNoShowDocuments(): Promise<void> {
                 variant="solid"
                 icon="bx:credit-card"
                 label="ดำเนินการรับเงินมัดจำการจอง"
+                :to="`/admin/pos-v3?bookingId=${bookingId}`"
+              />
+            </template>
+          </UAlert>
+
+          <!-- Phase 2E-B2: Resume POS V3 Pickup CTA -->
+          <!-- Shown when booking is confirmed — staff can continue pickup workflow in POS V3. -->
+          <UAlert
+            v-if="canResumePosV3Pickup"
+            color="primary"
+            icon="bx:store"
+            title="ไปทำต่อใน POS V3"
+            class="mb-2"
+          >
+            <template #description>
+              <p class="mb-2 text-sm text-muted">
+                เปิดหน้ารับของและทำต่อจากสถานะล่าสุดของ booking นี้
+              </p>
+              <UButton
+                size="sm"
+                color="primary"
+                variant="solid"
+                icon="bx:store"
+                label="ไปทำต่อใน POS V3"
                 :to="`/admin/pos-v3?bookingId=${bookingId}`"
               />
             </template>

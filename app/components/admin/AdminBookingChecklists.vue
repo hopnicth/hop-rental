@@ -13,6 +13,8 @@ interface Props {
   bookingId: string;
   checklists: AdminBookingChecklist[];
   templates: AssetChecklistTemplateSummary[];
+  /** When true, all checklists are expanded by default so items are immediately visible. */
+  autoExpand?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -23,6 +25,20 @@ const emit = defineEmits<{
 const toast = useToast();
 const expanded = ref<Record<string, boolean>>({});
 const busy = ref(false);
+
+// Auto-expand all checklists when autoExpand prop is true (e.g. POS V3 pickup context).
+// Runs immediately on mount and whenever the checklists array changes.
+watch(
+  () => props.checklists,
+  (list) => {
+    if (props.autoExpand) {
+      for (const c of list) {
+        expanded.value[c.id] = true;
+      }
+    }
+  },
+  { immediate: true },
+);
 
 const KIND_LABEL: Record<RentalChecklistKind, string> = {
   pickup: "Pickup",
@@ -101,6 +117,22 @@ async function setStatus(
     `/api/admin/rental-bookings/${props.bookingId}/checklists/${c.id}`,
     { method: "PATCH", body: { status } },
   );
+}
+
+/**
+ * POS context (autoExpand=true): one-click "Complete Checklist" that handles
+ * draft → in_progress → completed so staff do not have to press Start first.
+ */
+async function completeChecklist(c: AdminBookingChecklist) {
+  const base = `/api/admin/rental-bookings/${props.bookingId}/checklists/${c.id}`;
+  if (c.status === "draft") {
+    const r = await call(base, {
+      method: "PATCH",
+      body: { status: "in_progress" },
+    });
+    if (!r) return; // API error — stop, toast already shown
+  }
+  await call(base, { method: "PATCH", body: { status: "completed" } });
 }
 
 async function deleteChecklist(c: AdminBookingChecklist) {
@@ -231,6 +263,23 @@ const KIND_OPTIONS: { value: RentalChecklistKind; label: string }[] = [
               @click="setStatus(c, 'completed')"
             >
               Complete
+            </UButton>
+            <!-- POS context (autoExpand): prominent one-click Complete Checklist action.
+                 Works from draft or in_progress — auto-transitions through in_progress if needed. -->
+            <UButton
+              v-if="
+                autoExpand &&
+                c.status !== 'completed' &&
+                c.status !== 'cancelled'
+              "
+              size="sm"
+              variant="solid"
+              color="success"
+              icon="bx:check-double"
+              :loading="busy"
+              @click="completeChecklist(c)"
+            >
+              Complete Checklist
             </UButton>
             <UButton
               v-if="c.status !== 'cancelled' && c.status !== 'completed'"

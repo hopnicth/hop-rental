@@ -812,10 +812,11 @@ describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
     expect(source).not.toContain('"pickup-complete"');
   });
 
-  it("pickup container uses DigitalSignaturePad and AdminBookingHandoverItems", () => {
+  it("pickup container uses DigitalSignaturePad (AdminBookingHandoverItems removed from POS V3 pickup)", () => {
     const source = read(PICKUP_CONTAINER_PATH);
     expect(source).toContain("DigitalSignaturePad");
-    expect(source).toContain("AdminBookingHandoverItems");
+    // Handover Items removed from POS V3 pickup — staff check items physically with customer.
+    expect(source).not.toContain("AdminBookingHandoverItems");
   });
 
   it("pickup container posts to the rental booking pickup endpoint", () => {
@@ -951,11 +952,15 @@ describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
     expect(source).toContain("!hasPickupDue.value");
   });
 
-  it("pickup container active form shows proactive Pickup Checklist hint before submission", () => {
+  it("pickup container active form shows inline AdminBookingChecklists (B2 replaces old hint)", () => {
     const source = read(PICKUP_CONTAINER_PATH);
-    // Proactive (pre-submission) checklist readiness hint in the active form state
-    expect(source).toContain("ตรวจสอบ Pickup Checklist ก่อนส่งมอบ");
-    expect(source).toContain(
+    // B2: inline checklist component replaces the old proactive-only alert
+    expect(source).toContain("AdminBookingChecklists");
+    // Fallback link to booking detail still present
+    expect(source).toContain("เปิดหน้ารายละเอียดการจอง");
+    // Old standalone hint text is gone — inline component takes its place
+    expect(source).not.toContain("ตรวจสอบ Pickup Checklist ก่อนส่งมอบ");
+    expect(source).not.toContain(
       "ตรวจสอบว่า Pickup Checklist เสร็จสมบูรณ์แล้วก่อนยืนยัน",
     );
   });
@@ -1077,5 +1082,347 @@ describe("admin POS V3 Phase 2E-B1 Pickup Foundation", () => {
     // Old "rental fee due at pickup" wording must be absent
     expect(printPage).not.toContain("ค่าเช่าที่ชำระวันรับสินค้า");
     expect(printPage).not.toContain("ชำระสุทธิวันรับสินค้า");
+  });
+
+  // ── Phase 2E-B2: Inline Pickup Checklist ─────────────────────────────────────
+
+  it("B2: pickup container accepts checklists and templates props", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("checklists: AdminBookingChecklist[]");
+    expect(source).toContain("templates: AssetChecklistTemplateSummary[]");
+  });
+
+  it("B2: pickup container mounts AdminBookingChecklists in the active pickup form", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("AdminBookingChecklists");
+    expect(source).toContain(':checklists="checklists"');
+    expect(source).toContain(':templates="templates"');
+    expect(source).toContain("@updated");
+  });
+
+  it("B2: hasCompletedPickupChecklist is true when a pickup checklist status is completed", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("hasCompletedPickupChecklist");
+    expect(source).toContain('c.kind === "pickup" && c.status === "completed"');
+  });
+
+  it("B2: confirm button is disabled when no completed pickup checklist exists", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // canSubmit requires hasCompletedPickupChecklist
+    expect(source).toContain("hasCompletedPickupChecklist.value");
+    expect(source).toContain(':disabled="!canSubmit"');
+  });
+
+  it("B2: pickup container emits checklist-updated when AdminBookingChecklists emits updated", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain('"checklist-updated"');
+    expect(source).toContain("$emit('checklist-updated', $event)");
+  });
+
+  it("B2: POS V3 index fetches ops endpoint when confirmed booking context is loaded", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("loadPickupOps");
+    expect(page).toContain("/ops");
+    expect(page).toContain("pickupOps");
+  });
+
+  it("B2: POS V3 index passes checklists and templates props to pickup container", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain(':checklists="pickupOps?.checklists ?? []"');
+    expect(page).toContain(':templates="pickupOps?.templates ?? []"');
+  });
+
+  it("B2: POS V3 index handles checklist-updated and refreshes pickupOps", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("handleChecklistUpdated");
+    expect(page).toContain("@checklist-updated");
+  });
+
+  it("B2: clearBookingContext clears pickupOps", () => {
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    expect(page).toContain("clearBookingContext");
+    expect(page).toContain("pickupOps.value = null");
+  });
+
+  it("B2: no pickup audit trail fields displayed (pickup_at, branch, staff, signature) — deferred to B3", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    const page = read("app/pages/admin/pos-v3/index.vue");
+    // B2 must not claim to display pickup_at, branch, or staff audit trail
+    expect(source).not.toContain("pickup_at");
+    expect(source).not.toContain("pickupBranchId");
+    expect(source).not.toContain("performedByUserId");
+    expect(source).not.toContain("signature_url");
+    expect(page).not.toContain("pickup_at");
+    expect(page).not.toContain("pickupBranchId");
+  });
+
+  // ── Phase 2E-B2 UX corrections (gatekeeper fixes) ────────────────────────────
+
+  it("B2-fix: deposit summary 'มัดจำประกันที่ต้องชำระตอนรับของ' is visible in State 4 (deposit cleared)", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // Must appear in State 4 (v-else block), not only in State 3 (v-else-if hasPickupDue)
+    expect(source).toContain("มัดจำประกันที่ต้องชำระตอนรับของ");
+    // Cleared/paid status badge
+    expect(source).toContain("ชำระครบแล้ว");
+    // Deposit amount from booking object
+    expect(source).toContain("booking.depositAmount");
+  });
+
+  it("B2-fix: deposit summary shows rental fee as deferred, not collected at pickup", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("ค่าเช่าจะชำระวันคืนสินค้า / หลังจบงาน");
+    expect(source).toContain("ไม่ใช่ยอดที่ต้องชำระตอนรับของ");
+    // Rental fee amount is informational only — still computed
+    expect(source).toContain("deferredRentalFee");
+  });
+
+  it("B2-fix: Pickup Checklist section has its numbered label (Handover Items section removed)", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // Section 1 label remains
+    expect(source).toContain("1. Pickup Checklist");
+    // Section 2 (Handover Items) removed — staff check items physically with customer
+    expect(source).not.toContain("2. รายการสินค้า / อุปกรณ์ที่ส่งมอบ");
+  });
+
+  it("B2-fix: no misleading POS V2 wording in POS V3 pickup container", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).not.toContain("POS V2");
+    expect(source).not.toContain("future POS");
+  });
+
+  it("B2-fix: no misleading POS V2 subtitle in handover items component", () => {
+    const handover = read("app/components/admin/AdminBookingHandoverItems.vue");
+    expect(handover).not.toContain("for future POS V2");
+    expect(handover).not.toContain("future POS V2 pickup/return");
+  });
+
+  it("B2-fix: AdminBookingChecklists receives :auto-expand=true in POS pickup context", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain(':auto-expand="true"');
+  });
+
+  it("B2-fix: AdminBookingChecklists supports autoExpand prop that auto-expands items", () => {
+    const checklist = read("app/components/admin/AdminBookingChecklists.vue");
+    expect(checklist).toContain("autoExpand");
+    // Watch expands items when prop is true
+    expect(checklist).toContain("expanded.value[c.id] = true");
+  });
+
+  // ── Phase 2E-B2 UX corrections Round 2 (gate stalling + money wording) ──────
+
+  it("B2-fix2: AdminBookingChecklists has completeChecklist for POS context (draft→in_progress→completed in one action)", () => {
+    const checklist = read("app/components/admin/AdminBookingChecklists.vue");
+    // Function must exist
+    expect(checklist).toContain("completeChecklist");
+    // Handles draft → in_progress first, then completed
+    expect(checklist).toContain('status: "in_progress"');
+    expect(checklist).toContain('status: "completed"');
+    // Label on the prominent button
+    expect(checklist).toContain("Complete Checklist");
+    // Only shows in POS (autoExpand) context
+    expect(checklist).toContain("autoExpand");
+  });
+
+  it("B2-fix2: AdminBookingChecklists 'Complete Checklist' button is hidden for completed/cancelled checklists", () => {
+    const checklist = read("app/components/admin/AdminBookingChecklists.vue");
+    // Button must be guarded by status check
+    expect(checklist).toContain("c.status !== 'completed'");
+    expect(checklist).toContain("c.status !== 'cancelled'");
+  });
+
+  it("B2-fix2: pickup container exposes pickupBlockingReason computed for near-button hint", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("pickupBlockingReason");
+    // Both blocking messages must be present
+    expect(source).toContain("ต้องสร้าง Pickup Checklist ก่อนยืนยันรับอุปกรณ์");
+    expect(source).toContain("ต้องกด Complete Checklist ก่อนยืนยันรับอุปกรณ์");
+  });
+
+  it("B2-fix2: pickup container shows pickupBlockingReason alert near the disabled Confirm Pickup button", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    // Alert bound to pickupBlockingReason
+    expect(source).toContain('v-if="pickupBlockingReason"');
+    expect(source).toContain(':title="pickupBlockingReason"');
+  });
+
+  it("B2-fix2: BookingContext no longer shows ambiguous 'Pickup due' label", () => {
+    const bookingContext = read(
+      "app/components/admin/pos/AdminPosV3BookingContext.vue",
+    );
+    // Old ambiguous label must be gone
+    expect(bookingContext).not.toContain("Pickup due:");
+    expect(bookingContext).not.toContain("Pickup due: ");
+  });
+
+  it("B2-fix2: BookingContext shows ยอดค้างชำระตอนรับของ for the outstanding pickup amount", () => {
+    const bookingContext = read(
+      "app/components/admin/pos/AdminPosV3BookingContext.vue",
+    );
+    expect(bookingContext).toContain("ยอดค้างชำระตอนรับของ");
+    expect(bookingContext).toContain("totalPickupDueAmount");
+  });
+
+  it("B2-fix2: BookingContext readiness alert also shows ยอดมัดจำประกันรวม to distinguish from outstanding", () => {
+    const bookingContext = read(
+      "app/components/admin/pos/AdminPosV3BookingContext.vue",
+    );
+    expect(bookingContext).toContain("ยอดมัดจำประกันรวม");
+    // Uses booking.depositAmount for the total (not the outstanding amount)
+    expect(bookingContext).toContain("booking?.depositAmount");
+  });
+
+  it("B2-fix2: BookingContext operationHint for confirmed booking no longer says 'plug in later'", () => {
+    const bookingContext = read(
+      "app/components/admin/pos/AdminPosV3BookingContext.vue",
+    );
+    expect(bookingContext).not.toContain("Pickup path will plug in later");
+    // Return path hint for picked_up is still present (regression guard)
+    expect(bookingContext).toContain("Return path will plug in later");
+  });
+
+  // ── Handover Items removal from POS V3 pickup (product decision) ─────────────
+
+  it("Handover Items removal: pickup container does NOT import AdminBookingHandoverItems", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).not.toContain("AdminBookingHandoverItems");
+  });
+
+  it("Handover Items removal: pickup container does NOT render รายการสินค้า / อุปกรณ์ที่ส่งมอบ", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).not.toContain("รายการสินค้า / อุปกรณ์ที่ส่งมอบ");
+  });
+
+  it("Handover Items removal: pickup container does NOT render handover item helper text", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).not.toContain(
+      "รายการที่เตรียมส่งมอบให้ลูกค้า — ตรวจสอบก่อนส่งมอบจริง",
+    );
+  });
+
+  it("Handover Items removal: pickup container does NOT render สร้างรายการตั้งต้นจากสินค้าที่จอง", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).not.toContain("สร้างรายการตั้งต้นจากสินค้าที่จอง");
+  });
+
+  it("Handover Items removal: AdminBookingHandoverItems reusable component still exists (not deleted)", () => {
+    const source = read("app/components/admin/AdminBookingHandoverItems.vue");
+    expect(source.length).toBeGreaterThan(0);
+  });
+
+  it("Handover Items removal: Pickup Checklist section still renders in State 4", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("AdminBookingChecklists");
+    expect(source).toContain("1. Pickup Checklist");
+  });
+
+  it("Handover Items removal: pickup gate unchanged — requires completed checklist + signature + deposit clear", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("hasCompletedPickupChecklist.value");
+    expect(source).toContain("!!signatureDataUrl.value");
+    expect(source).toContain("!hasPickupDue.value");
+    // Handover items must NOT be part of the gate
+    expect(source).not.toContain("handoverItems");
+    expect(source).not.toContain("handover_items");
+  });
+
+  it("Handover Items removal: deposit wording regression — มัดจำประกันที่ต้องชำระตอนรับของ still present in State 4", () => {
+    const source = read(PICKUP_CONTAINER_PATH);
+    expect(source).toContain("มัดจำประกันที่ต้องชำระตอนรับของ");
+    expect(source).toContain("ชำระครบแล้ว");
+    expect(source).toContain("booking.depositAmount");
+  });
+});
+
+// ── Phase 2E-B2: Booking Detail → POS V3 Resume Action ────────────────────────
+//
+// Source-structure assertions for the "ไปทำต่อใน POS V3" CTA added to the
+// rental booking detail page.  These do NOT mount the Vue component — they
+// assert the page source shape that drives runtime rendering.
+
+describe("admin POS V3 Phase 2E-B2 Booking Detail → POS V3 Resume Action", () => {
+  const BOOKING_DETAIL_PATH = "app/pages/admin/rental-bookings/[id].vue";
+
+  it("Booking Detail: canResumePosV3Pickup computed is declared", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    expect(page).toContain("canResumePosV3Pickup");
+  });
+
+  it("Booking Detail: canResumePosV3Pickup gates on confirmed status only", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    // Must check status === 'confirmed' — confirmed is the pickup-ready state
+    expect(page).toContain('booking.value?.status === "confirmed"');
+  });
+
+  it("Booking Detail: CTA alert is guarded by canResumePosV3Pickup", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    expect(page).toContain('v-if="canResumePosV3Pickup"');
+  });
+
+  it("Booking Detail: CTA button has Thai label ไปทำต่อใน POS V3", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    expect(page).toContain("ไปทำต่อใน POS V3");
+  });
+
+  it("Booking Detail: CTA navigates to /admin/pos-v3?bookingId=", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    // Must use the exact path prefix — bookingId is dynamic
+    expect(page).toContain("/admin/pos-v3?bookingId=");
+  });
+
+  it("Booking Detail: CTA link binds the bookingId from page context", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    // The :to binding must interpolate bookingId
+    expect(page).toContain("`/admin/pos-v3?bookingId=${bookingId}`");
+  });
+
+  it("Booking Detail: CTA helper text mentions resuming from latest booking state", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    expect(page).toContain(
+      "เปิดหน้ารับของและทำต่อจากสถานะล่าสุดของ booking นี้",
+    );
+  });
+
+  it("Booking Detail: CTA label does not mention POS V2", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    // Slice the canResumePosV3Pickup alert section only
+    const alertStart = page.indexOf("canResumePosV3Pickup");
+    const alertEnd = page.indexOf("</UAlert>", alertStart);
+    expect(alertStart).toBeGreaterThan(-1);
+    expect(alertEnd).toBeGreaterThan(alertStart);
+    const ctaSection = page.slice(alertStart, alertEnd);
+    expect(ctaSection).not.toContain("POS V2");
+  });
+
+  it("Booking Detail: POS V3 re-entry via bookingId query param is the same path used by both CTAs", () => {
+    const page = read(BOOKING_DETAIL_PATH);
+    // Both the deposit CTA and the pickup CTA use the same /admin/pos-v3?bookingId= path
+    const matches = [...page.matchAll(/\/admin\/pos-v3\?bookingId=/g)];
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("POS V3: bookingId query param re-entry support still reads route.query.bookingId on mount", () => {
+    const posPage = read("app/pages/admin/pos-v3/index.vue");
+    expect(posPage).toContain("route.query.bookingId");
+    expect(posPage).toContain("bookingIdQueryMode.value = true");
+    expect(posPage).toContain("loadBookingContext(queryBookingId");
+  });
+
+  it("POS V3: confirmed booking triggers pickup container (not deposit form) on re-entry", () => {
+    const posPage = read("app/pages/admin/pos-v3/index.vue");
+    // Pickup container is mounted for confirmed status
+    expect(posPage).toContain("bookingContext.status === 'confirmed'");
+    expect(posPage).toContain("AdminPosV3PickupContainer");
+    // Ineligible-deposit alert is suppressed for confirmed bookings
+    expect(posPage).toContain("bookingContext?.status !== 'confirmed'");
+  });
+
+  it("POS V3: existing pickup regression — deposit wording must remain correct", () => {
+    const source = read(
+      "app/components/admin/pos/AdminPosV3PickupContainer.vue",
+    );
+    // Locked deposit label (regression guard)
+    expect(source).toContain("มัดจำประกันที่ต้องชำระตอนรับของ");
+    // No ambiguous pickup-due wording
+    expect(source).not.toContain("มียอดค้างชำระ — ยังไม่สามารถส่งมอบได้");
   });
 });

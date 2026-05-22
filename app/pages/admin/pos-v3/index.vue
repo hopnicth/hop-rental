@@ -20,6 +20,7 @@ import type {
   AdminRentalBookingDetail,
   AdminSaleOrderDetail,
 } from "~/types/admin-order-detail";
+import type { AdminBookingOpsPayload } from "~/types/admin-booking-ops";
 
 definePageMeta({
   layout: "admin",
@@ -109,6 +110,8 @@ const bookingReadiness = ref<PickupReadinessPreview | null>(null);
 const bookingReadinessError = ref<string | null>(null);
 const bookingLoading = ref(false);
 const bookingError = ref<string | null>(null);
+// Phase 2E-B2: ops payload for the active pickup booking (checklists + templates).
+const pickupOps = ref<AdminBookingOpsPayload | null>(null);
 
 const orderQueueContext = ref<AdminSaleOrderQueueRow | null>(null);
 const orderDetail = ref<AdminSaleOrderDetail | null>(null);
@@ -183,6 +186,25 @@ function handlePickupConfirmed(updated: AdminRentalBookingDetail) {
   bookingReadiness.value = null;
 }
 
+// Phase 2E-B2: Load ops payload (checklists + templates) for the active pickup booking.
+// Non-fatal: a failure leaves the checklist section empty but does not block the pickup flow.
+async function loadPickupOps(bookingId: string) {
+  try {
+    const ops = await $fetch<AdminBookingOpsPayload>(
+      `/api/admin/rental-bookings/${encodeURIComponent(bookingId)}/ops`,
+    );
+    pickupOps.value = ops;
+  } catch {
+    pickupOps.value = null;
+  }
+}
+
+// Phase 2E-B2: Re-fetch ops when checklist state changes (item checked, status changed, etc.).
+function handleChecklistUpdated() {
+  if (!bookingContext.value) return;
+  void loadPickupOps(bookingContext.value.id);
+}
+
 // Phase 2E-B1.5: Re-fetch pickup readiness after remaining security deposit is collected.
 async function handleDepositCollected() {
   if (!bookingContext.value) return;
@@ -250,6 +272,7 @@ function clearBookingContext() {
   bookingReadiness.value = null;
   bookingReadinessError.value = null;
   bookingError.value = null;
+  pickupOps.value = null;
 }
 function clearOrderContext() {
   orderQueueContext.value = null;
@@ -355,6 +378,8 @@ async function loadBookingContext(
         bookingReadinessError.value =
           "Pickup readiness preview is unavailable for this booking.";
       }
+      // Phase 2E-B2: load checklist + template ops for inline pickup checklist.
+      void loadPickupOps(detail.id);
     }
     // Phase 2D-B3.2 + B6: Manual re-entry / query re-entry resume.
     // Condition: draft booking with unpaid deposit only — blocks paid_confirm_failed re-collection.
@@ -724,8 +749,11 @@ onMounted(async () => {
       "
       :booking="bookingContext"
       :readiness="bookingReadiness"
+      :checklists="pickupOps?.checklists ?? []"
+      :templates="pickupOps?.templates ?? []"
       @pickup-confirmed="handlePickupConfirmed"
       @deposit-collected="handleDepositCollected"
+      @checklist-updated="handleChecklistUpdated"
     />
 
     <UAlert

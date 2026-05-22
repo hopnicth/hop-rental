@@ -165,9 +165,9 @@ watch(
         class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
       >
         <div>
-          <h3 class="font-semibold">รายการเตรียมส่งมอบและรับคืน</h3>
+          <h3 class="font-semibold">รายการสินค้า / อุปกรณ์ที่ส่งมอบ</h3>
           <p class="text-sm text-muted">
-            Handover & Return Items for future POS V2 pickup/return.
+            รายการที่เตรียมส่งมอบให้ลูกค้า — ตรวจสอบก่อนส่งมอบจริง
           </p>
         </div>
         <div class="flex flex-wrap gap-2">
