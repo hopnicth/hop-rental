@@ -536,24 +536,6 @@ async function issueMissingNoShowDocuments(): Promise<void> {
 
           <div class="flex flex-wrap gap-2">
             <UButton
-              v-if="canPreviewDocument('rental_pickup_form')"
-              size="sm"
-              variant="soft"
-              color="neutral"
-              icon="bx:printer"
-              label="Preview Pickup Form"
-              @click="previewDocument('rental_pickup_form')"
-            />
-            <UButton
-              v-if="canPreviewDocument('rental_return_form')"
-              size="sm"
-              variant="soft"
-              color="neutral"
-              icon="bx:printer"
-              label="Preview Return Form"
-              @click="previewDocument('rental_return_form')"
-            />
-            <UButton
               v-if="isOverdueConfirmed"
               size="sm"
               color="warning"
@@ -643,19 +625,6 @@ async function issueMissingNoShowDocuments(): Promise<void> {
             </div>
 
             <div class="mt-3 flex flex-wrap gap-2">
-              <UButton
-                size="sm"
-                variant="soft"
-                color="neutral"
-                icon="bx:show"
-                :label="
-                  docType === 'rental_pickup_form'
-                    ? 'Preview Pickup Form'
-                    : 'Preview Return Form'
-                "
-                :disabled="!canPreviewDocument(docType)"
-                @click="previewDocument(docType)"
-              />
               <UButton
                 v-if="!operationalDocument(docType)"
                 size="sm"

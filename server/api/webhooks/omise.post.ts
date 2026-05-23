@@ -18,6 +18,7 @@ import {
   POS_QR_ATTEMPT_SELECT,
   applyPosRentalQrGatewayResult,
 } from "~~/server/utils/pos-rental-qr-booking-deposit";
+import { applyPosRentalQrRemainingDepositGatewayResult } from "~~/server/utils/pos-rental-qr-remaining-deposit";
 import {
   applyGatewayResult,
   assertGatewayAmountMatches,
@@ -240,7 +241,7 @@ export default defineEventHandler(async (event) => {
       }
     }
 
-    // ── POS V3 QR Booking Deposit fan-out ────────────────────────────────────
+    // ── POS V3 QR fan-out — dispatches by payment_purpose ───────────────────
     const { data: posRentalAttempt } = await adminClient
       .from("pos_rental_payment_attempts")
       .select(POS_QR_ATTEMPT_SELECT)
@@ -250,12 +251,42 @@ export default defineEventHandler(async (event) => {
 
     if (posRentalAttempt) {
       const posBookingId = String(posRentalAttempt.rental_booking_id);
+      const paymentPurpose = String(posRentalAttempt.payment_purpose ?? "");
+
+      // Unknown purpose: log alert and skip without processing
+      if (
+        paymentPurpose !== "booking_deposit" &&
+        paymentPurpose !== "remaining_security_deposit"
+      ) {
+        await recordPaymentAlert(adminClient, {
+          bookingId: posBookingId,
+          kind: "booking_deposit_webhook_failed",
+          audience: "admin",
+          severity: "error",
+          message: `POS V3 QR webhook: unknown payment_purpose '${paymentPurpose}'. Skipping.`,
+          metadata: { gatewayEventId, gatewayChargeId, paymentPurpose },
+        });
+        await adminClient
+          .from("payment_events")
+          .update({
+            pos_rental_payment_attempt_id: posRentalAttempt.id,
+            status: "failed",
+            processing_error: "UNKNOWN_POS_PAYMENT_PURPOSE",
+          })
+          .eq("id", paymentEvent.id);
+        return { ok: true, unknownPosPaymentPurpose: true };
+      }
+
+      // Booking select shared between both dispatch paths
+      const bookingSelect =
+        paymentPurpose === "booking_deposit"
+          ? "id, user_id, walk_in_phone, status, asset_id, asset_name, booker_name, sku_id, start_date, end_date, rental_days, hub_id, deposit_amount, currency_code, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, pos_staff_user_id"
+          : "id, deposit_amount, deposit_paid_amount, deposit_payment_status, booking_deposit_payment_status, booking_deposit_paid_amount, currency_code, pos_branch_id, pos_staff_user_id";
+
       try {
         const { data: posBooking } = await adminClient
           .from("rental_bookings")
-          .select(
-            "id, user_id, walk_in_phone, status, asset_id, asset_name, booker_name, sku_id, start_date, end_date, rental_days, hub_id, deposit_amount, currency_code, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, pos_staff_user_id",
-          )
+          .select(bookingSelect)
           .eq("id", posBookingId)
           .maybeSingle();
         if (!posBooking) {
@@ -270,12 +301,23 @@ export default defineEventHandler(async (event) => {
           return { ok: true, missingPosRentalBooking: true };
         }
         const liveCharge = await retrieveOmiseCharge(event, gatewayChargeId);
-        await applyPosRentalQrGatewayResult({
-          client: adminClient,
-          posAttempt: posRentalAttempt as Record<string, unknown>,
-          booking: posBooking as Record<string, unknown>,
-          result: liveCharge,
-        });
+        if (paymentPurpose === "booking_deposit") {
+          // booking_deposit → existing booking deposit QR finalizer (issues BDC, confirms booking)
+          await applyPosRentalQrGatewayResult({
+            client: adminClient,
+            posAttempt: posRentalAttempt as Record<string, unknown>,
+            booking: posBooking as Record<string, unknown>,
+            result: liveCharge,
+          });
+        } else {
+          // remaining_security_deposit → new remaining deposit finalizer (no BDC, no confirmation)
+          await applyPosRentalQrRemainingDepositGatewayResult({
+            client: adminClient,
+            posAttempt: posRentalAttempt as Record<string, unknown>,
+            booking: posBooking as Record<string, unknown>,
+            result: liveCharge,
+          });
+        }
         await adminClient
           .from("payment_events")
           .update({
@@ -284,7 +326,7 @@ export default defineEventHandler(async (event) => {
             processed_at: new Date().toISOString(),
           })
           .eq("id", paymentEvent.id);
-        return { ok: true, posRentalQr: true };
+        return { ok: true, posRentalQr: true, paymentPurpose };
       } catch (err) {
         await recordPaymentAlert(adminClient, {
           bookingId: posBookingId,
@@ -294,8 +336,8 @@ export default defineEventHandler(async (event) => {
           message:
             err instanceof Error
               ? err.message
-              : "POS V3 QR Booking Deposit webhook failed.",
-          metadata: { gatewayEventId, gatewayChargeId },
+              : `POS V3 QR webhook failed (purpose: ${paymentPurpose}).`,
+          metadata: { gatewayEventId, gatewayChargeId, paymentPurpose },
         });
         await adminClient
           .from("payment_events")

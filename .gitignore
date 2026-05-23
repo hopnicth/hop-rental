@@ -25,3 +25,11 @@ supabase/.temp/
 .env
 .env.*
 !.env.example
+
+# AI agent workspace temp files
+.augment-*
+*.exit
+
+# Local reference / scratch files (never commit)
+Ref*.html
+"Ref *.html"

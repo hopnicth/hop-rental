@@ -2,15 +2,15 @@
 
 Last updated: 2026-05-10
 
-Status: **PARTIAL IMPLEMENTATION / ARCHITECTURE REFERENCE** as of 2026-05-13.
+Status: **PARTIAL IMPLEMENTATION / ARCHITECTURE REFERENCE** as of 2026-05-20.
 
 Reality sync:
 
-- **DONE / code-present:** document foundation tables/RPC from migration `068`, generic admin document preview/issue/get/events APIs, issued document print page, and operational rental pickup/return snapshot builders used from admin rental booking detail.
-- **PARTIAL:** browser A5 print + immutable snapshot pattern is implemented for operational rental forms only.
+- **DONE / code-present:** document foundation tables/RPC from migration `068`, generic admin document preview/issue/get/events APIs, issued document print page, operational rental pickup/return snapshot builders used from admin rental booking detail, and POS V3 Booking Deposit Confirmation (BDC) issuance/print support.
+- **PARTIAL:** browser A5 print + immutable snapshot pattern is implemented for operational rental forms and the POS V3 BDC path; broader receipt/tax/WHT document workflows remain future work.
 - **PARKED:** POS History related-documents integration, document list/history UI, document settings UI, void/reissue UI, and server-side PDF archive.
 - **DESIGNED ONLY:** official receipt, abbreviated/full tax invoice, WHT automation, credit/debit notes, refund transactions, and daily closing reports.
-- **POS V3 reconciliation required:** the POS V3 master blueprint draft (`file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md`) changes target retail/rental document sequencing, including immediate retail abbreviated receipt/tax invoice and rental return-settlement tax-point questions. Treat this architecture as reusable foundation, not final POS V3 behavior, until those gates are approved.
+- **POS V3 Phase 2D closed:** BDC issuance/printing for Booking Deposit collection is accepted as non-tax confirmation documentation. Treat receipt/tax/WHT/return-settlement documents as separate future work; acceptance guardrails live in `docs/phase-2d-booking-deposit-acceptance-checklist.md`.
 - Exact runtime behavior should be checked against `app/types/admin-documents.ts`, `server/utils/admin-documents.ts`, and `server/utils/admin-rental-operational-documents.ts` before extending this architecture.
 
 ## Goal

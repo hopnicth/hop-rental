@@ -46,7 +46,9 @@ function isMissingPaymentLines(error: unknown): boolean {
     details?: string | null;
     hint?: string | null;
   } | null;
-  const text = [err?.message, err?.details, err?.hint].filter(Boolean).join(" ");
+  const text = [err?.message, err?.details, err?.hint]
+    .filter(Boolean)
+    .join(" ");
   return (
     isMissingRentalPaymentLinesTable(error) ||
     ((err?.code === "PGRST200" || err?.code === "PGRST204") &&
@@ -56,7 +58,9 @@ function isMissingPaymentLines(error: unknown): boolean {
   );
 }
 
-function mapFulfillment(row: Record<string, unknown>): AdminRentalPrintFulfillmentRow {
+function mapFulfillment(
+  row: Record<string, unknown>,
+): AdminRentalPrintFulfillmentRow {
   return {
     eventType: String(row.event_type ?? "pickup") as AdminRentalPrintFormType,
     signatureUrl: asString(row.signature_url),
@@ -74,7 +78,11 @@ export async function loadAdminRentalBookingPrintDetail(
   bookingId: string,
 ): Promise<AdminRentalBookingDetail> {
   const buildQuery = (select: string) =>
-    adminClient.from("rental_bookings").select(select).eq("id", bookingId).maybeSingle();
+    adminClient
+      .from("rental_bookings")
+      .select(select)
+      .eq("id", bookingId)
+      .maybeSingle();
   let result = await buildQuery(DETAIL_SELECT_WITH_PAYMENT_LINES);
   if (
     result.error &&
@@ -85,7 +93,9 @@ export async function loadAdminRentalBookingPrintDetail(
       "deposit_refund_notes",
     ])
   ) {
-    result = await buildQuery(DETAIL_SELECT_WITHOUT_REFUND_FIELDS_WITH_PAYMENT_LINES);
+    result = await buildQuery(
+      DETAIL_SELECT_WITHOUT_REFUND_FIELDS_WITH_PAYMENT_LINES,
+    );
   }
   if (result.error && isMissingPaymentLines(result.error)) {
     result = await buildQuery(ADMIN_RENTAL_BOOKING_DETAIL_SELECT);
@@ -101,8 +111,13 @@ export async function loadAdminRentalBookingPrintDetail(
       result = await buildQuery(DETAIL_SELECT_WITHOUT_REFUND_FIELDS);
     }
   }
-  if (result.error) throw createError({ statusCode: 500, statusMessage: result.error.message });
-  if (!result.data) throw createError({ statusCode: 404, statusMessage: "Rental booking not found" });
+  if (result.error)
+    throw createError({ statusCode: 500, statusMessage: result.error.message });
+  if (!result.data)
+    throw createError({
+      statusCode: 404,
+      statusMessage: "Rental booking not found",
+    });
   const customer = await fetchAdminCustomerProfile(
     adminClient,
     String((result.data as Record<string, unknown>).user_id ?? ""),
@@ -110,11 +125,16 @@ export async function loadAdminRentalBookingPrintDetail(
   return mapAdminRentalBookingDetail(result.data, customer);
 }
 
+/**
+ * Loads the most recent fulfillment row for the given booking and event type.
+ * Returns null when no fulfillment exists yet (e.g. Confirm Pickup not yet done).
+ * Callers must handle the null case gracefully — do NOT throw here.
+ */
 export async function loadAdminRentalFulfillmentForPrint(
   adminClient: SupabaseClient,
   bookingId: string,
   type: AdminRentalPrintFormType,
-): Promise<AdminRentalPrintFulfillmentRow> {
+): Promise<AdminRentalPrintFulfillmentRow | null> {
   const buildQuery = (select: string) =>
     adminClient
       .from("rental_booking_fulfillments")
@@ -138,12 +158,16 @@ export async function loadAdminRentalFulfillmentForPrint(
   ) {
     result = await buildQuery(FULFILLMENT_SELECT_LEGACY);
   }
-  if (result.error) throw createError({ statusCode: 500, statusMessage: result.error.message });
-  if (!result.data) throw createError({ statusCode: 404, statusMessage: `${type} fulfillment record not found` });
+  if (result.error)
+    throw createError({ statusCode: 500, statusMessage: result.error.message });
+  if (!result.data) return null;
   return mapFulfillment(result.data as Record<string, unknown>);
 }
 
-async function loadStaffName(adminClient: SupabaseClient, userId: string | null) {
+async function loadStaffName(
+  adminClient: SupabaseClient,
+  userId: string | null,
+) {
   if (!userId) return null;
   const { data, error } = await adminClient
     .from("users")
@@ -155,7 +179,10 @@ async function loadStaffName(adminClient: SupabaseClient, userId: string | null)
   return asString(row.full_name) ?? asString(row.phone) ?? userId;
 }
 
-async function loadBranchName(adminClient: SupabaseClient, branchId: string | null) {
+async function loadBranchName(
+  adminClient: SupabaseClient,
+  branchId: string | null,
+) {
   if (!branchId) return null;
   const { data, error } = await adminClient
     .from("store_branches")
@@ -167,7 +194,10 @@ async function loadBranchName(adminClient: SupabaseClient, branchId: string | nu
   return asString(row.name_th) ?? asString(row.name_en) ?? asString(row.code);
 }
 
-async function loadWalkInEvidence(adminClient: SupabaseClient, phone: string | null) {
+async function loadWalkInEvidence(
+  adminClient: SupabaseClient,
+  phone: string | null,
+) {
   if (!phone) return null;
   const { data, error } = await adminClient
     .from("walk_in_customers")
@@ -186,17 +216,27 @@ export async function loadAdminRentalPrintFormData(input: {
   generatedAt?: string;
 }): Promise<{
   booking: AdminRentalBookingDetail;
-  fulfillment: AdminRentalPrintFulfillmentRow;
+  fulfillment: AdminRentalPrintFulfillmentRow | null;
   payload: AdminRentalPrintFormPayload;
 }> {
-  const booking = await loadAdminRentalBookingPrintDetail(input.adminClient, input.bookingId);
+  const booking = await loadAdminRentalBookingPrintDetail(
+    input.adminClient,
+    input.bookingId,
+  );
   const [ops, fulfillment] = await Promise.all([
     loadBookingOpsPayload(input.adminClient, input.bookingId, booking.assetId),
-    loadAdminRentalFulfillmentForPrint(input.adminClient, input.bookingId, input.type),
+    loadAdminRentalFulfillmentForPrint(
+      input.adminClient,
+      input.bookingId,
+      input.type,
+    ),
   ]);
+  // When no fulfillment yet (pre-confirm-pickup), fall back to booking's branch.
+  const branchIdForName =
+    fulfillment?.branchId ?? booking.storageBranchId ?? null;
   const [staffName, branchName, walkInEvidence] = await Promise.all([
-    loadStaffName(input.adminClient, fulfillment.performedByUserId),
-    loadBranchName(input.adminClient, fulfillment.branchId),
+    loadStaffName(input.adminClient, fulfillment?.performedByUserId ?? null),
+    loadBranchName(input.adminClient, branchIdForName),
     loadWalkInEvidence(input.adminClient, booking.walkInPhone),
   ]);
   return {

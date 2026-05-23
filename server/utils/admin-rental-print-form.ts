@@ -88,12 +88,15 @@ function summarizeChecklist(checklist: AdminBookingChecklist | null) {
       (item) => item.resultStatus === "failed",
     ).length,
     notes: checklist.notes,
-    items: checklist.items.slice(0, 8).map((item) => ({
-      label: item.label,
-      resultStatus: item.resultStatus,
-      checked: item.checked,
-      remark: item.remark,
-    })),
+    items: [...checklist.items]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map((item) => ({
+        label: item.label,
+        instruction: item.instruction,
+        resultStatus: item.resultStatus,
+        checked: item.checked,
+        remark: item.remark,
+      })),
   };
 }
 

@@ -8,6 +8,7 @@ export type AdminRentalPrintFormType = "pickup" | "return";
 
 export interface AdminRentalPrintChecklistItem {
   label: string;
+  instruction: string | null;
   resultStatus: string;
   checked: boolean | null;
   remark: string | null;

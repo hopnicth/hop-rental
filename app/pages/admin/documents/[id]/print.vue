@@ -367,21 +367,15 @@ onMounted(() => void load());
       v-else-if="snapshot && payload && !isNoShowForfeitureDocument"
       class="sheet"
     >
-      <header class="form-header">
-        <div class="brand-block">
-          <div class="logo-fallback">H</div>
-          <div>
-            <p class="company-name">{{ snapshot.header.displayName }}</p>
-            <p class="muted">Operational rental evidence form</p>
-          </div>
-        </div>
-        <div class="doc-meta">
-          <h1>{{ title }}</h1>
-          <p>Document: {{ snapshot.document.document_number }}</p>
-          <p>Issued: {{ formatDateTime(snapshot.document.issued_at) }}</p>
-          <p>Booking: {{ payload.booking.code }}</p>
-        </div>
-      </header>
+      <OfficialDocumentHeader
+        :header="documentHeader"
+        :title="title"
+        :document-number="snapshot.document.document_number"
+        :issued-at-text="formatDateTime(snapshot.document.issued_at)"
+        :booking-reference="payload.booking.code"
+        :qr-value="payload.booking.qrValue"
+        show-booking-reference
+      />
 
       <section class="two-col compact-section">
         <div>
@@ -444,108 +438,150 @@ onMounted(() => void load());
       </section>
 
       <section class="compact-section">
-        <h2>Checklist Summary</h2>
-        <p v-if="payload.checklist">
-          <b>{{ payload.checklist.name }}</b> · Status:
-          {{ payload.checklist.status }} · Required:
-          {{ payload.checklist.requiredAnswered }}/{{
-            payload.checklist.requiredItems
-          }}
-          · Passed/Failed: {{ payload.checklist.passedItems }}/{{
-            payload.checklist.failedItems
-          }}
-        </p>
-        <p v-else class="muted">No checklist summary available.</p>
+        <h2>Checklist / รายการตรวจสอบ</h2>
+        <div v-if="payload.checklist">
+          <p class="checklist-meta">
+            {{ payload.checklist.name }} ·
+            {{
+              payload.checklist.completedAt
+                ? formatDateTime(payload.checklist.completedAt)
+                : payload.checklist.status
+            }}
+          </p>
+          <table class="mini-table checklist-table">
+            <tbody>
+              <tr v-for="item in payload.checklist.items" :key="item.label">
+                <td class="check-mark" :class="`status-${item.resultStatus}`">
+                  {{
+                    item.resultStatus === "passed"
+                      ? "✓"
+                      : item.resultStatus === "failed"
+                        ? "✗"
+                        : item.resultStatus === "not_applicable"
+                          ? "N/A"
+                          : "—"
+                  }}
+                </td>
+                <td class="check-label">
+                  <span>{{ item.label }}</span>
+                  <span v-if="item.instruction" class="check-instruction">{{
+                    item.instruction
+                  }}</span>
+                  <span v-if="item.remark" class="check-remark-inline">{{
+                    item.remark
+                  }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="muted">No checklist available.</p>
       </section>
 
+      <!-- Pickup: simple deposit summary -->
+      <section v-if="payload.type === 'pickup'" class="compact-section">
+        <h2>Deposit Summary / ยอดมัดจำประกันที่รับรวม</h2>
+        <table class="deposit-table">
+          <tbody>
+            <tr v-if="payload.money.bookingDepositDueNow > 0">
+              <td>Online Booking Deposit / มัดจำจองออนไลน์</td>
+              <td class="right">
+                {{
+                  formatCurrency(
+                    payload.money.bookingDepositDueNow,
+                    payload.money.currencyCode,
+                  )
+                }}
+              </td>
+            </tr>
+            <tr v-if="payload.money.remainingSecurityDepositDueAtPickup > 0">
+              <td>
+                Deposit at Pickup ·
+                {{ payload.branch.name || payload.branch.id || "—" }}
+              </td>
+              <td class="right">
+                {{
+                  formatCurrency(
+                    payload.money.remainingSecurityDepositDueAtPickup,
+                    payload.money.currencyCode,
+                  )
+                }}
+              </td>
+            </tr>
+            <tr class="deposit-total">
+              <td><b>Total / รวมมัดจำประกัน</b></td>
+              <td class="right">
+                <b>{{
+                  formatCurrency(
+                    (payload.money.bookingDepositDueNow || 0) +
+                      (payload.money.remainingSecurityDepositDueAtPickup || 0),
+                    payload.money.currencyCode,
+                  )
+                }}</b>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Return: money summary -->
+      <section v-if="payload.type === 'return'" class="compact-section">
+        <h2>Deposit / Refund Summary</h2>
+        <table class="deposit-table">
+          <tbody>
+            <tr>
+              <td>Deposit Recorded</td>
+              <td class="right">
+                {{
+                  formatCurrency(
+                    payload.money.depositPaid,
+                    payload.money.currencyCode,
+                  )
+                }}
+              </td>
+            </tr>
+            <tr v-if="payload.money.totalDeductions > 0">
+              <td>Deductions</td>
+              <td class="right">
+                {{
+                  formatCurrency(
+                    payload.money.totalDeductions,
+                    payload.money.currencyCode,
+                  )
+                }}
+              </td>
+            </tr>
+            <tr class="deposit-total">
+              <td><b>Refund Amount</b></td>
+              <td class="right">
+                <b>{{
+                  formatCurrency(
+                    payload.money.refundAmount,
+                    payload.money.currencyCode,
+                  )
+                }}</b>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- Customer signature only -->
       <section class="compact-section">
-        <h2>Operational Money / Deposit Summary</h2>
-        <div class="money-grid">
-          <p>
-            Rental Fee<br /><b>{{
-              formatCurrency(
-                payload.money.rentalFeeDue,
-                payload.money.currencyCode,
-              )
-            }}</b>
-          </p>
-          <p>
-            Booking Deposit<br /><b>{{
-              formatCurrency(
-                payload.money.bookingDepositDueNow,
-                payload.money.currencyCode,
-              )
-            }}</b>
-          </p>
-          <p>
-            Security Deposit Required<br /><b>{{
-              formatCurrency(
-                payload.money.securityDepositRequired,
-                payload.money.currencyCode,
-              )
-            }}</b>
-          </p>
-          <p>
-            Remaining Deposit at Pickup<br /><b>{{
-              formatCurrency(
-                payload.money.remainingSecurityDepositDueAtPickup,
-                payload.money.currencyCode,
-              )
-            }}</b>
-          </p>
-          <p>
-            Deposit Recorded<br /><b>{{
-              formatCurrency(
-                payload.money.depositPaid,
-                payload.money.currencyCode,
-              )
-            }}</b>
-          </p>
-          <p>
-            Refund / Extra<br /><b
-              >{{
-                formatCurrency(
-                  payload.money.refundAmount,
-                  payload.money.currencyCode,
-                )
-              }}
-              /
-              {{
-                formatCurrency(
-                  payload.money.additionalChargeAmount,
-                  payload.money.currencyCode,
-                )
-              }}</b
-            >
-          </p>
-        </div>
-      </section>
-
-      <section class="compact-section qr-section">
-        <div>
-          <h2>Booking QR</h2>
-          <p class="muted">
-            Booking reference only. Not receipt/tax invoice verification.
-          </p>
-          <p class="mono">{{ payload.booking.qrValue }}</p>
-        </div>
-        <div class="qr-box">
-          <QrcodeVue :value="payload.booking.qrValue" :size="92" level="H" />
-        </div>
-      </section>
-
-      <section class="signatures">
-        <div class="signature-box">
-          <p class="sig-label">Customer signature</p>
+        <h2>
+          {{
+            payload.type === "pickup"
+              ? "Customer Signature / ลายเซ็นผู้รับสินค้า"
+              : "Return Signature / ลายเซ็นผู้คืนสินค้า"
+          }}
+        </h2>
+        <div class="signature-box-full">
           <img
             v-if="payload.event.signatureUrl"
             :src="payload.event.signatureUrl"
             alt="Customer signature"
           />
-        </div>
-        <div class="signature-box">
-          <p class="sig-label">Staff name / signature</p>
-          <p class="staff-name">{{ payload.event.staffName || "—" }}</p>
+          <p v-else class="muted">—</p>
         </div>
       </section>
 
@@ -884,6 +920,95 @@ th {
   margin-top: 2.5mm;
   padding-top: 1.5mm;
 }
+/* ── OfficialDocumentHeader: scale for A5 ──────────────────────────────── */
+.official-document-header {
+  gap: 10px !important;
+  padding-bottom: 8px !important;
+}
+.official-document-header .company-logo {
+  height: 13mm !important;
+  width: 13mm !important;
+}
+.official-document-header .brand-name {
+  font-size: 13pt !important;
+}
+.official-document-header .document-block h1 {
+  font-size: 13pt !important;
+  margin-bottom: 3px !important;
+}
+.official-document-header .document-block p,
+.official-document-header .muted {
+  font-size: 8pt !important;
+}
+.official-document-header .company-block {
+  gap: 6px !important;
+}
+
+/* ── Checklist ─────────────────────────────────────────────────────────── */
+.checklist-meta {
+  color: #475569;
+  font-size: 8pt;
+  margin-bottom: 1.5mm;
+}
+.checklist-table td {
+  vertical-align: top;
+}
+.check-mark {
+  font-size: 9pt;
+  text-align: center;
+  white-space: nowrap;
+  width: 6mm;
+}
+.status-passed {
+  color: #15803d;
+}
+.status-failed {
+  color: #b91c1c;
+}
+.status-not_applicable {
+  color: #64748b;
+}
+.check-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3mm;
+}
+.check-instruction {
+  color: #64748b;
+  font-size: 7.5pt;
+}
+.check-remark-inline {
+  color: #94a3b8;
+  font-size: 7pt;
+  font-style: italic;
+}
+
+/* ── Deposit Summary ────────────────────────────────────────────────────── */
+.deposit-table td {
+  border: none;
+  padding: 0.8mm 1mm;
+}
+.deposit-total td {
+  border-top: 0.2mm solid #111827;
+  font-weight: 700;
+  padding-top: 1mm;
+}
+
+/* ── Customer signature (single full-width box) ─────────────────────────── */
+.signature-box-full {
+  border: 0.25mm solid #111827;
+  height: 24mm;
+  margin-top: 1.5mm;
+  padding: 1.5mm;
+}
+.signature-box-full img {
+  display: block;
+  height: 18mm;
+  margin: 0 auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+
 @media print {
   html,
   body {

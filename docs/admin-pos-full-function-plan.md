@@ -1,8 +1,8 @@
 # Admin POS Full-Function Plan
 
-Last updated: 2026-05-10
+Last updated: 2026-05-23
 
-Status: **DONE for legacy `/admin/pos` functional rollout / PARTIAL for documents** as of 2026-05-13.
+Status: **DONE for legacy `/admin/pos` functional rollout / PARTIAL for documents** as of 2026-05-13. POS V3 Phase 2E-B2 pickup flow and document printing complete as of 2026-05-23.
 
 Reality sync:
 
@@ -11,6 +11,7 @@ Reality sync:
 - Operational rental pickup/return document issuance now lives in admin rental booking detail and reuses the `official_documents` foundation; POS history document integration is still parked.
 - The current printing standard is A5 browser print first. The older carbon-paper receipt/tax-invoice notes below are historical and superseded by `docs/printing-document-standard.md` unless explicitly re-approved.
 - POS V3 future direction is now tracked in `file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md` as a draft master blueprint. This legacy POS full-function plan remains implementation history/reference for `/admin/pos`, not the controlling POS V3 roadmap.
+- POS V3 Phase 2D Future Booking Deposit is now closed. Acceptance status, smoke cases, and locked guardrails are recorded in `docs/phase-2d-booking-deposit-acceptance-checklist.md`; do not use this legacy POS plan to override the Phase 2D no-QR-cancel or no-duplicate-collection decisions.
 
 ## Scope Delivered in Code
 

@@ -1426,3 +1426,130 @@ describe("admin POS V3 Phase 2E-B2 Booking Detail → POS V3 Resume Action", () 
     expect(source).not.toContain("มียอดค้างชำระ — ยังไม่สามารถส่งมอบได้");
   });
 });
+
+// ── Phase 2E-B2 QR: Pickup deposit tender selector regression lock ─────────────
+
+describe("admin POS V3 Phase 2E-B2 QR pickup deposit tender selector", () => {
+  const PICKUP_CONTAINER_PATH =
+    "app/components/admin/pos/AdminPosV3PickupContainer.vue";
+
+  it("State 3 shows tender selector: staff must choose Cash or QR before collecting", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("depositTenderMethod");
+    expect(src).toContain("เลือกวิธีรับชำระมัดจำประกัน");
+  });
+
+  it("State 3 Cash button is present in tender selector", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain('"cash"');
+    expect(src).toContain("Cash");
+  });
+
+  it("State 3 QR Code button is present in tender selector", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain('"qr"');
+    expect(src).toContain("QR Code");
+  });
+
+  it("Cash path remains unchanged: shows cash input, change, and confirm button", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("depositTenderMethod === 'cash'");
+    expect(src).toContain("รับเงินสดจากลูกค้า");
+    expect(src).toContain("cashReceived");
+    expect(src).toContain("เงินทอน");
+    expect(src).toContain("ยืนยันรับมัดจำประกัน");
+    expect(src).toContain("collectRemainingDeposit");
+  });
+
+  it("QR path mounts AdminPosV3PickupDepositQrCard component", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("depositTenderMethod === 'qr'");
+    expect(src).toContain("AdminPosV3PickupDepositQrCard");
+  });
+
+  it("QR path wires @deposit-collected to emit parent deposit-collected event", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("@deposit-collected");
+    expect(src).toContain("emit('deposit-collected')");
+  });
+
+  it("no BDC document link or document print appears in the pickup QR card", () => {
+    const qrCard = read(
+      "app/components/admin/pos/AdminPosV3PickupDepositQrCard.vue",
+    );
+    expect(qrCard).not.toContain("officialDocumentId");
+    expect(qrCard).not.toContain("documentNo");
+    expect(qrCard).not.toContain("openBookingDepositDocumentPrint");
+  });
+
+  it("deposit wording regression: มัดจำประกันที่ต้องชำระตอนรับของ locked in State 3", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("มัดจำประกันที่ต้องชำระตอนรับของ");
+  });
+
+  it("Confirm Pickup gate remains deposit clear + checklist + signature (unchanged)", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("hasCompletedPickupChecklist.value");
+    expect(src).toContain("!!signatureDataUrl.value");
+    expect(src).toContain("!hasPickupDue.value");
+    // handover items must not be part of the gate
+    expect(src).not.toContain("handoverItems");
+  });
+
+  it("rental fee deferred wording remains unchanged after QR addition", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("ค่าเช่าจะชำระวันคืนสินค้า / หลังจบงาน");
+  });
+
+  it("no POS V2 references added to pickup container", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).not.toContain("POS V2");
+    expect(src).not.toContain("pos-v2");
+  });
+
+  // ── Bug fix regression: manual-review lock prevents duplicate payment ──────────
+
+  it("QR card shows locked manual-review warning (ห้ามรับชำระซ้ำ) in gateway-paid-confirm-failed state", () => {
+    const src = read(
+      "app/components/admin/pos/AdminPosV3PickupDepositQrCard.vue",
+    );
+    expect(src).toContain("ห้ามรับชำระซ้ำ");
+    expect(src).toContain("พบการชำระเงินจาก Omise แล้ว");
+    expect(src).toContain("isGatewayPaidManualReview");
+  });
+
+  it("QR card regenerate button is hidden in manual-review locked state", () => {
+    const src = read(
+      "app/components/admin/pos/AdminPosV3PickupDepositQrCard.vue",
+    );
+    // Must not show regenerate in manual-review state
+    expect(src).toContain("!isGatewayPaidManualReview");
+    expect(src).not.toContain('v-if="createError || canRegenerate"');
+  });
+
+  it("QR card normal expired/failed QR can still retry (canRegenerate still exists)", () => {
+    const src = read(
+      "app/components/admin/pos/AdminPosV3PickupDepositQrCard.vue",
+    );
+    // canRegenerate computed still exists for expired/failed/cancelled
+    expect(src).toContain("canRegenerate");
+    expect(src).toContain("isExpired");
+    expect(src).toContain("isFailed");
+  });
+
+  it("Pickup container cash/QR paths are hidden when isCashManualReviewLocked", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("isCashManualReviewLocked");
+    expect(src).toContain(
+      "!isCashManualReviewLocked && depositTenderMethod === null",
+    );
+    expect(src).toContain("ห้ามรับชำระซ้ำ");
+  });
+
+  it("Cash tender still works normally when no manual-review lock exists", () => {
+    const src = read(PICKUP_CONTAINER_PATH);
+    expect(src).toContain("depositTenderMethod === 'cash'");
+    expect(src).toContain("collectRemainingDeposit");
+    expect(src).toContain("ยืนยันรับมัดจำประกัน");
+  });
+});

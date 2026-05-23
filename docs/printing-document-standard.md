@@ -1,13 +1,17 @@
 # Printing & Official Document Standard
 
-Last updated: 2026-05-10
+Last updated: 2026-05-23
 
-Status: **STANDARD + PARTIAL IMPLEMENTATION** as of 2026-05-13.
+Status: **STANDARD + PARTIAL IMPLEMENTATION** as of 2026-05-23.
 
 Reality sync:
 
-- **Implemented subset:** A5 browser-print pattern and immutable snapshot/reprint audit foundation are used for admin rental operational pickup/return forms.
+- **Implemented subset:** A5 browser-print pattern and immutable snapshot/reprint audit foundation are used for admin rental operational pickup/return forms and POS V3 Booking Deposit Confirmation (BDC) printing.
+- **Phase 2E-B2 (2026-05-23):** Pickup Form (`rental_pickup_form`) and Return Form print templates in `app/pages/admin/documents/[id]/print.vue` have been updated to use `OfficialDocumentHeader` (same header as online deposit/BDC). Checklist now renders all individual items sorted by `sort_order` (✓/✗/N/A + label + instruction + remark). Deposit Summary section shows Online Booking Deposit + Deposit at Pickup + Total. Staff signature box removed; customer signature only (full-width). `app/pages/admin/rental-bookings/[id]/print.vue` (live preview) mirrors the same layout.
+- **Header standard (locked):** All printed documents use the `OfficialDocumentHeader` Vue component (`app/components/documents/OfficialDocumentHeader.vue`). When rendering from an issued snapshot, pass `:header="documentHeader"` (the snapshot's `header` field). When rendering live (non-issued), pass `:header="null"` which falls back to HOPNIC defaults. Do NOT use the old `<header class="form-header">` / `<div class="logo-fallback">H</div>` pattern.
+- **Pickup form fulfillment gate (locked):** `loadAdminRentalFulfillmentForPrint` returns `null` (not 404) when no fulfillment exists yet — the print form is accessible before Confirm Pickup and loads checklists from DB directly. This allows checklist review/preview without blocking on fulfillment.
 - **Not implemented:** official receipt, tax invoice, abbreviated/full tax invoice, WHT, credit note, deposit refund confirmation, and sale-order store pickup slip.
+- **Phase 2D guardrail:** BDC for Booking Deposit collection is confirmation documentation, not a receipt/tax invoice/VAT/WHT document. Do not convert the Booking Deposit collection print flow into a fiscal document without a separate audit/design pass.
 - **Current standard remains:** browser print first; do not revive carbon-paper/dot-matrix assumptions unless explicitly approved later.
 - Tax/accounting wording still needs accountant review before production official-document rollout.
 

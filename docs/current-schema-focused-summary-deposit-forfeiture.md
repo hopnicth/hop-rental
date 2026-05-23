@@ -4,6 +4,8 @@ Date: 2026-05-14
 
 Source snapshot: `docs/schema-snapshots/current-schema-2026-05-14.sql`
 
+Historical note: this is a focused schema summary from 2026-05-14. POS V3 Phase 2D Booking Deposit acceptance/guardrails were closed later and are documented in `docs/phase-2d-booking-deposit-acceptance-checklist.md`; verify current migrations before using this file as implementation truth.
+
 Export command used:
 
 ```bash

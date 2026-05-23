@@ -7,9 +7,14 @@ const REMAINING_SECURITY_DEPOSIT_ALREADY_PAID =
 const REMAINING_SECURITY_DEPOSIT_AMOUNT_MISMATCH =
   "REMAINING_SECURITY_DEPOSIT_AMOUNT_MISMATCH";
 const NO_REMAINING_SECURITY_DEPOSIT_DUE = "NO_REMAINING_SECURITY_DEPOSIT_DUE";
+// Bug 2 fix: blocks cash when a prior QR attempt was gateway-paid but internal
+// finalization failed. Omise already captured money — cash collection must not run.
+const GATEWAY_PAID_CONFIRMATION_FAILED_MANUAL_REVIEW =
+  "GATEWAY_PAID_CONFIRMATION_FAILED_MANUAL_REVIEW";
 
+// asset join provides storage_branch_id as branch fallback for non-POS (online) bookings
 const BOOKING_SELECT =
-  "id, status, deposit_amount, deposit_paid_amount, deposit_payment_status, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, currency_code";
+  "id, status, deposit_amount, deposit_paid_amount, deposit_payment_status, booking_deposit_payment_status, booking_deposit_paid_amount, pos_branch_id, currency_code, asset:assets(storage_branch_id)";
 const PAYMENT_LINE_SELECT = "line_type, status, source, metadata";
 
 type AnyRecord = Record<string, unknown>;
@@ -32,13 +37,27 @@ function asMetadata(value: unknown): AnyRecord {
     : {};
 }
 
+/** Extracts storage_branch_id from the booking's joined asset row. */
+function getStorageBranchId(booking: AnyRecord): string | null {
+  const asset = booking.asset as AnyRecord | null | undefined;
+  return typeof asset?.storage_branch_id === "string"
+    ? asset.storage_branch_id
+    : null;
+}
+
+/**
+ * Checks POS branch access for the staff user.
+ * branchId may be null for online bookings that have no pos_branch_id or
+ * storage branch — in that case, access is not restricted by branch (consistent
+ * with rental-fulfillment.ts assertBranchAccess behavior when branchId is null).
+ */
 async function assertPosBranchAccess(input: {
   adminClient: AnyClient;
   platformRole: string;
   userId: string;
-  branchId: string;
+  branchId: string | null;
 }) {
-  if (input.platformRole === "super_admin") return;
+  if (!input.branchId || input.platformRole === "super_admin") return;
   const { data, error } = await input.adminClient
     .from("admin_user_branch_access")
     .select("branch_id")
@@ -153,18 +172,18 @@ export default defineEventHandler(async (event) => {
   const paymentLines = await loadPaymentLinesForDeposit(adminClient, bookingId);
   const sameDayBooking = isPosV3SameDayBooking(paymentLines);
 
-  const posBranchId = asText(booking.pos_branch_id);
-  if (!posBranchId)
-    throw createError({
-      statusCode: 422,
-      statusMessage: "Booking is not a POS V3 booking",
-    });
+  // Resolve the operating branch for this pickup.
+  // POS V3 bookings have pos_branch_id; online/hub bookings fall back to
+  // the asset's storage_branch_id. If neither is present, branch check is
+  // skipped (consistent with rental-fulfillment.ts resolveEventBranch behavior).
+  const posBranchId = asText(booking.pos_branch_id) || null;
+  const resolvedBranchId = posBranchId ?? getStorageBranchId(booking);
 
   await assertPosBranchAccess({
     adminClient,
     platformRole,
     userId: staffUserId,
-    branchId: posBranchId,
+    branchId: resolvedBranchId,
   });
 
   if (asText(booking.status) !== "confirmed")
@@ -174,8 +193,13 @@ export default defineEventHandler(async (event) => {
         "Only confirmed bookings can collect remaining security deposit",
     });
 
+  // For POS V3 bookings (identified by pos_branch_id), enforce that the booking
+  // deposit phase is complete before collecting the remaining pickup deposit.
+  // Online/hub bookings are already confirmed via their own deposit validation
+  // flow and do not use booking_deposit_payment_status in the same way.
   if (
     !sameDayBooking &&
+    posBranchId &&
     asText(booking.booking_deposit_payment_status) !== "paid"
   )
     throw createError({
@@ -189,6 +213,25 @@ export default defineEventHandler(async (event) => {
       statusCode: 409,
       statusMessage: REMAINING_SECURITY_DEPOSIT_ALREADY_PAID,
     });
+
+  // Bug 2 fix: block cash collection if a prior QR attempt is gateway-paid but
+  // internally failed (paid_confirm_failed with gateway_charge_id set).
+  // Omise already captured the money — accepting cash would double-collect.
+  const { data: gatewayPaidFailed } = await adminClient
+    .from("pos_rental_payment_attempts")
+    .select("id, gateway_charge_id")
+    .eq("rental_booking_id", bookingId)
+    .eq("payment_purpose", "remaining_security_deposit")
+    .eq("status", "paid_confirm_failed")
+    .not("gateway_charge_id", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (gatewayPaidFailed) {
+    throw createError({
+      statusCode: 409,
+      statusMessage: GATEWAY_PAID_CONFIRMATION_FAILED_MANUAL_REVIEW,
+    });
+  }
 
   // Server-computed remaining security deposit due at pickup
   const requiredDeposit = asMoney(booking.deposit_amount);

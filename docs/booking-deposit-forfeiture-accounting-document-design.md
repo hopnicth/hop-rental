@@ -3,6 +3,8 @@
 Last updated: 2026-05-15
 Status: Phase 3.1 foundation implemented; receipts, notices, UI document access, POS V2, admin-agreed cancellation forfeiture, and tax invoice conversion blocking remain future work
 
+Sync note: POS V3 Phase 2D Booking Deposit collection is now closed separately. Its acceptance checklist and guardrails live in `docs/phase-2d-booking-deposit-acceptance-checklist.md`; this forfeiture document starts only after Booking Deposit disposition/forfeiture, not at initial collection.
+
 ## 1. Purpose and Scope
 
 This document consolidates the accepted Phase 1 audit and Phase 2A/2B/2C design decisions for forfeited Booking Deposit accounting, ordinary receipt, operational notices, and terms governance.

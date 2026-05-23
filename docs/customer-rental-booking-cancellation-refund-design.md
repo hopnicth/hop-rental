@@ -15,6 +15,7 @@ Implementation sync — 2026-05-14:
 - Latest polish batches did not change refund workflow semantics, refund status names, DB schema, or refund confirmation proof gating.
 - No-show Lifecycle Foundation is implemented separately from customer cancellation/refund: staff can mark overdue confirmed bookings `no_show`, Booking Deposit is recorded as forfeited/refund-not-applicable, and no refund request is created.
 - Next follow-up is late-cancellation policy review after cutoff; current support-only behavior remains unchanged.
+- POS V3 Phase 2D Booking Deposit collection and staff-side BDC printing are closed separately in `docs/phase-2d-booking-deposit-acceptance-checklist.md`; do not infer customer self-service document behavior from the POS staff BDC flow.
 
 ## 1. Scope and Current Reality
 

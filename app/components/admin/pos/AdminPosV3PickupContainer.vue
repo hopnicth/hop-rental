@@ -2,6 +2,7 @@
 import type { AdminRentalBookingDetail } from "~/types/admin-order-detail";
 import AdminBookingChecklists from "~/components/admin/AdminBookingChecklists.vue";
 import DigitalSignaturePad from "~/components/admin/DigitalSignaturePad.vue";
+import AdminPosV3PickupDepositQrCard from "~/components/admin/pos/AdminPosV3PickupDepositQrCard.vue";
 import type {
   AdminBookingChecklist,
   AdminBookingOpsPayload,
@@ -38,6 +39,11 @@ const submitError = ref<string | null>(null);
 const collectingDeposit = ref(false);
 const depositCollectError = ref<string | null>(null);
 const cashReceived = ref(0);
+// Phase 2E-B2 QR: tender choice for State 3 deposit collection. null = not yet selected.
+const depositTenderMethod = ref<"cash" | "qr" | null>(null);
+// Bug 2 fix: manual-review lock propagated from cash endpoint (GATEWAY_PAID_CONFIRMATION_FAILED_MANUAL_REVIEW).
+// When true, both Cash and QR paths are disabled — Omise already captured the money.
+const isCashManualReviewLocked = ref(false);
 
 const isAlreadyPickedUp = computed(
   () =>
@@ -148,11 +154,14 @@ async function collectRemainingDeposit() {
       data?: { message?: string };
       message?: string;
     };
-    depositCollectError.value =
-      err.statusMessage ??
-      err.data?.message ??
-      err.message ??
-      "รับเงินมัดจำประกันไม่สำเร็จ";
+    const msg = err.statusMessage ?? err.data?.message ?? err.message ?? "";
+    // Bug 2 fix: gateway already captured money — lock all payment paths.
+    if (msg === "GATEWAY_PAID_CONFIRMATION_FAILED_MANUAL_REVIEW") {
+      isCashManualReviewLocked.value = true;
+      depositTenderMethod.value = null;
+      return;
+    }
+    depositCollectError.value = msg || "รับเงินมัดจำประกันไม่สำเร็จ";
   } finally {
     collectingDeposit.value = false;
   }
@@ -303,52 +312,113 @@ async function submitPickup() {
               >฿{{ remainingDepositDue.toLocaleString() }}</span
             >
           </div>
-          <!-- Cash received input -->
-          <div>
-            <label class="mb-1 block text-sm font-medium"
-              >รับเงินสดจากลูกค้า</label
-            >
-            <UInput
-              v-model.number="cashReceived"
-              type="number"
-              min="0"
-              :placeholder="`฿${remainingDepositDue.toLocaleString()}`"
-            />
-          </div>
-          <!-- Change display -->
-          <div
-            class="flex items-center justify-between rounded bg-muted/20 px-3 py-2"
-          >
-            <span class="text-sm text-muted">เงินทอน</span>
-            <span class="font-semibold text-success"
-              >฿{{ change.toLocaleString() }}</span
-            >
-          </div>
-          <!-- Insufficient cash warning -->
+
+          <!-- Bug 2 fix: manual-review locked state from cash or QR path -->
           <UAlert
-            v-if="cashInsufficient"
-            color="warning"
-            variant="soft"
-            title="รับเงินสดยังไม่ครบมัดจำประกันที่ต้องชำระตอนรับของ"
-          />
-          <UAlert
-            v-if="depositCollectError"
+            v-if="isCashManualReviewLocked"
             color="error"
             variant="soft"
-            :title="depositCollectError"
+            icon="bx:lock"
+            title="พบการชำระเงินจาก Omise แล้ว แต่ระบบยังต้องตรวจสอบรายการนี้"
+            description="ห้ามรับชำระซ้ำ — Omise รับเงินไว้แล้ว แต่ระบบภายในยังไม่อัปเดต กรุณาแจ้งผู้ดูแลระบบตรวจสอบและแก้ไขรายการนี้ก่อนดำเนินการต่อ"
           />
-          <div class="flex justify-end">
-            <UButton
-              color="primary"
-              :loading="collectingDeposit"
-              :disabled="!canCollectDeposit"
-              icon="bx:check"
-              label="ยืนยันรับมัดจำประกัน"
-              @click="collectRemainingDeposit"
-            />
+
+          <!-- Phase 2E-B2 QR: Tender method selector — Cash or QR Code -->
+          <div
+            v-if="!isCashManualReviewLocked && depositTenderMethod === null"
+            class="space-y-2"
+          >
+            <p class="text-sm font-medium">เลือกวิธีรับชำระมัดจำประกัน</p>
+            <div class="flex gap-2">
+              <UButton
+                icon="bx:money"
+                label="Cash"
+                color="neutral"
+                variant="soft"
+                @click="depositTenderMethod = 'cash'"
+              />
+              <UButton
+                icon="bx:qr"
+                label="QR Code"
+                color="primary"
+                variant="soft"
+                @click="depositTenderMethod = 'qr'"
+              />
+            </div>
           </div>
+
+          <!-- Cash path (unchanged); hidden when manual-review locked -->
+          <template
+            v-if="!isCashManualReviewLocked && depositTenderMethod === 'cash'"
+          >
+            <div>
+              <label class="mb-1 block text-sm font-medium"
+                >รับเงินสดจากลูกค้า</label
+              >
+              <UInput
+                v-model.number="cashReceived"
+                type="number"
+                min="0"
+                :placeholder="`฿${remainingDepositDue.toLocaleString()}`"
+              />
+            </div>
+            <div
+              class="flex items-center justify-between rounded bg-muted/20 px-3 py-2"
+            >
+              <span class="text-sm text-muted">เงินทอน</span>
+              <span class="font-semibold text-success"
+                >฿{{ change.toLocaleString() }}</span
+              >
+            </div>
+            <UAlert
+              v-if="cashInsufficient"
+              color="warning"
+              variant="soft"
+              title="รับเงินสดยังไม่ครบมัดจำประกันที่ต้องชำระตอนรับของ"
+            />
+            <UAlert
+              v-if="depositCollectError"
+              color="error"
+              variant="soft"
+              :title="depositCollectError"
+            />
+            <div class="flex justify-end gap-2">
+              <UButton
+                color="neutral"
+                variant="ghost"
+                size="sm"
+                label="เปลี่ยนวิธีชำระ"
+                @click="depositTenderMethod = null"
+              />
+              <UButton
+                color="primary"
+                :loading="collectingDeposit"
+                :disabled="!canCollectDeposit"
+                icon="bx:check"
+                label="ยืนยันรับมัดจำประกัน"
+                @click="collectRemainingDeposit"
+              />
+            </div>
+          </template>
         </div>
       </UCard>
+
+      <!-- QR path — hidden when manual-review locked; rendered outside the card -->
+      <AdminPosV3PickupDepositQrCard
+        v-if="!isCashManualReviewLocked && depositTenderMethod === 'qr'"
+        :booking-id="booking.id"
+        :amount="remainingDepositDue"
+        :currency="booking.currencyCode ?? 'THB'"
+        @deposit-collected="emit('deposit-collected')"
+      />
+      <UButton
+        v-if="!isCashManualReviewLocked && depositTenderMethod === 'qr'"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        label="เปลี่ยนวิธีชำระ"
+        @click="depositTenderMethod = null"
+      />
     </div>
 
     <!-- State 4: Active pickup form

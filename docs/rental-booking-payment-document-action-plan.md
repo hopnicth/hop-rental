@@ -1,16 +1,16 @@
 # Rental Booking Payment, Deposit, WHT, and Document Action Plan
 
-Status: **PARTIAL IMPLEMENTATION / PLANNING NOTE** as of 2026-05-13. This document describes phased decisions and some older phase wording is now historical.
+Status: **PARTIAL IMPLEMENTATION / PLANNING NOTE** as of 2026-05-20. This document describes phased decisions and some older phase wording is now historical.
 
 Reality sync:
 
-- **DONE / code-present:** rental payment-line foundation, Booking Deposit line semantics, booking-deposit payment attempt/status APIs, mixed-checkout booking-deposit allocation/finalization, and focused Vitest coverage.
+- **DONE / code-present:** rental payment-line foundation, Booking Deposit line semantics, booking-deposit payment attempt/status APIs, mixed-checkout booking-deposit allocation/finalization, POS V3 Future Booking Deposit collection via Cash/PromptPay QR, BDC issuance/printing, and focused Vitest coverage.
 - **PARTIAL:** operational pickup/return document issuance exists from the admin rental booking detail page, using immutable `official_documents` snapshots; it is not a complete POS V2 history/reprint workspace.
 - **NEXT:** server-authoritative Rental Money Summary and Rental Settlement Preview foundation.
 - **DESIGN LOCKED / NOT IMPLEMENTED:** customer-facing rental detail page, printable customer booking/payment/cancellation/refund confirmations, customer self-service eligible cancellation, manual Booking Deposit refund request, Admin Refund Queue, cancellation/restriction tracking foundation. Canonical design: `docs/customer-rental-booking-cancellation-refund-design.md`.
 - **DESIGNED ONLY / FUTURE:** daily accounting report UI, official receipt/tax invoice/WHT automation.
-- **OUTDATED wording to avoid:** statements that online Booking Deposit payment or `booking_deposit` line modeling are purely future work; these foundations now exist in code/migrations.
-- **POS V3 reconciliation required:** the POS V3 master blueprint draft (`file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md`) proposes rental pickup as deposit/handover operational documentation and return as the possible tax point. Do not deepen POS V3 pickup/return/payment/document UI from this older action plan until the rental money model and WHT gates are approved.
+- **OUTDATED wording to avoid:** statements that Booking Deposit payment, POS V3 Cash/PromptPay QR collection, BDC issuance, or `booking_deposit` line modeling are purely future work; these foundations now exist in code/migrations.
+- **POS V3 Phase 2D closed:** accepted scope, smoke checklist, and locked no-QR-cancel / no-duplicate-collection guardrails live in `docs/phase-2d-booking-deposit-acceptance-checklist.md`. Do not deepen POS V3 pickup/return/settlement/fiscal UI from this older action plan without a new audit/design pass.
 
 ## 1. Executive Decision
 
