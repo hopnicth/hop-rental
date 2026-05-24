@@ -5,7 +5,11 @@
  * These types must NEVER be returned from public API endpoints.
  */
 
-import type { PartnerDirectoryType, PartnerEntityType } from "~/types/partner";
+import type {
+  PartnerDirectoryType,
+  PartnerEntityType,
+  PartnerBusinessHoursPresetKey,
+} from "~/types/partner";
 
 /**
  * Full admin row — includes private fields that are column-level revoked
@@ -31,6 +35,10 @@ export interface AdminPartnerRow {
   lineUrl: string | null;
   mapsUrl: string | null;
   businessHoursText: string | null;
+  /** Machine-readable preset key. Null = custom/unspecified. */
+  businessHoursPresetKey: PartnerBusinessHoursPresetKey | null;
+  /** IANA timezone. MVP: always 'Asia/Bangkok'. */
+  businessHoursTimezone: string;
   isVerified: boolean;
   verifiedAt: string | null;
   isPublic: boolean;
@@ -59,6 +67,7 @@ export type AdminPartnerListItem = Pick<
   | "mainImageUrl"
   | "mainCategoryKey"
   | "serviceAreas"
+  | "businessHoursPresetKey"
   | "isVerified"
   | "isPublic"
   | "isFeatured"

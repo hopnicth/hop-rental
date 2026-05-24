@@ -6,24 +6,28 @@ import {
   asNumber,
   asStringArray,
 } from "~~/server/utils/admin-catalog";
+import {
+  BUSINESS_HOURS_PRESET_KEYS,
+  type PartnerBusinessHoursPresetKey,
+} from "~/types/partner";
 
 // ── SELECT strings ────────────────────────────────────────────────────────────
 
 /** Admin list — lightweight, no private fields, no descriptions. */
 export const ADMIN_PARTNER_LIST_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, main_image_url, main_category_key, service_areas, is_verified, is_public, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, main_image_url, main_category_key, service_areas, business_hours_preset_key, is_verified, is_public, is_featured, sort_order, created_at, updated_at";
 
 /** Admin detail — full row including private admin-only columns. */
 export const ADMIN_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, created_at, updated_at";
 
 /** Public list — no private fields, no descriptions. */
 export const PUBLIC_PARTNER_LIST_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, main_image_url, main_category_key, service_areas, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, main_image_url, main_category_key, service_areas, business_hours_preset_key, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
 
 /** Public detail — no private fields (kyc_documents, verified_notes, internal_notes excluded). */
 export const PUBLIC_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -140,6 +144,29 @@ export function asPartnerMapsUrl(value: unknown): string | null {
 }
 
 /**
+ * Validates a business_hours_preset_key value.
+ * - null | undefined | "" → null (clear / unset)
+ * - valid preset key       → that key
+ * - any other value        → throws 422
+ *
+ * Mirrors the DB CHECK constraint in migration 098.
+ * Does NOT accept Thai display strings — preset keys are machine-readable only.
+ */
+export function asPartnerBusinessHoursPresetKey(
+  value: unknown,
+): PartnerBusinessHoursPresetKey | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (
+    !BUSINESS_HOURS_PRESET_KEYS.includes(value as PartnerBusinessHoursPresetKey)
+  ) {
+    fail422(
+      `businessHoursPresetKey must be one of: ${BUSINESS_HOURS_PRESET_KEYS.join(", ")} — or null to clear`,
+    );
+  }
+  return value as PartnerBusinessHoursPresetKey;
+}
+
+/**
  * Validates that a main_category_key's prefix matches the directory_type.
  * Enforces: store_ | service_ | contractor_ prefix convention from migration 097.
  *
@@ -189,6 +216,9 @@ export function buildPartnerCreatePayload(body: Record<string, unknown>) {
     line_url: asPartnerLineUrl(body.lineUrl),
     maps_url: asPartnerMapsUrl(body.mapsUrl),
     business_hours_text: asOptionalString(body.businessHoursText),
+    business_hours_preset_key: asPartnerBusinessHoursPresetKey(
+      body.businessHoursPresetKey,
+    ),
     is_public: asOptionalBoolean(body.isPublic, false),
     is_featured: asOptionalBoolean(body.isFeatured, false),
     sort_order: Math.max(0, asNumber(body.sortOrder, 0)),
@@ -229,6 +259,10 @@ export function buildPartnerUpdatePayload(body: Record<string, unknown>) {
   if ("mapsUrl" in body) p.maps_url = asPartnerMapsUrl(body.mapsUrl);
   if ("businessHoursText" in body)
     p.business_hours_text = asOptionalString(body.businessHoursText);
+  if ("businessHoursPresetKey" in body)
+    p.business_hours_preset_key = asPartnerBusinessHoursPresetKey(
+      body.businessHoursPresetKey,
+    );
   if ("isPublic" in body) p.is_public = asOptionalBoolean(body.isPublic, false);
   if ("isFeatured" in body)
     p.is_featured = asOptionalBoolean(body.isFeatured, false);
@@ -290,6 +324,9 @@ export function mapAdminPartnerListItem(row: Record<string, unknown>) {
     serviceAreas: Array.isArray(row.service_areas)
       ? (row.service_areas as string[])
       : [],
+    businessHoursPresetKey: str(
+      row.business_hours_preset_key,
+    ) as PartnerBusinessHoursPresetKey | null,
     isVerified: row.is_verified === true,
     isPublic: row.is_public === true,
     isFeatured: row.is_featured === true,
@@ -312,6 +349,9 @@ export function mapAdminPartnerDetail(row: Record<string, unknown>) {
     lineUrl: str(row.line_url),
     mapsUrl: str(row.maps_url),
     businessHoursText: str(row.business_hours_text),
+    businessHoursTimezone: String(
+      row.business_hours_timezone ?? "Asia/Bangkok",
+    ),
     verifiedAt: str(row.verified_at),
     // Private admin-only fields
     kycDocuments:
@@ -344,6 +384,9 @@ export function mapPublicPartnerCard(row: Record<string, unknown>) {
     serviceAreas: Array.isArray(row.service_areas)
       ? (row.service_areas as string[])
       : [],
+    businessHoursPresetKey: str(
+      row.business_hours_preset_key,
+    ) as PartnerBusinessHoursPresetKey | null,
     isVerified: row.is_verified === true,
     verifiedAt: str(row.verified_at),
     isFeatured: row.is_featured === true,
@@ -365,5 +408,8 @@ export function mapPublicPartnerDetail(row: Record<string, unknown>) {
     lineUrl: str(row.line_url),
     mapsUrl: str(row.maps_url),
     businessHoursText: str(row.business_hours_text),
+    businessHoursTimezone: String(
+      row.business_hours_timezone ?? "Asia/Bangkok",
+    ),
   };
 }

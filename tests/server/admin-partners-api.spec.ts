@@ -23,12 +23,17 @@ import {
   asPartnerEntityType,
   asPartnerLineUrl,
   asPartnerMapsUrl,
+  asPartnerBusinessHoursPresetKey,
   validateCategoryKeyForDirectoryType,
   buildPartnerCreatePayload,
   buildPartnerUpdatePayload,
+  ADMIN_PARTNER_LIST_SELECT,
   PUBLIC_PARTNER_LIST_SELECT,
   PUBLIC_PARTNER_DETAIL_SELECT,
   ADMIN_PARTNER_DETAIL_SELECT,
+  mapAdminPartnerDetail,
+  mapPublicPartnerCard,
+  mapPublicPartnerDetail,
 } from "../../server/utils/admin-partners";
 
 const read = (path: string) => readFileSync(path, "utf8");
@@ -601,6 +606,412 @@ describe("buildPartnerCreatePayload — business hours preset mapping", () => {
       businessHoursText: "  จันทร์-ศุกร์ 09:00-18:00  ",
     });
     expect(p.business_hours_text).toBe("จันทร์-ศุกร์ 09:00-18:00");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — businessHoursPresetKey: validator
+// ─────────────────────────────────────────────────────────────────────────────
+describe("asPartnerBusinessHoursPresetKey — validator", () => {
+  it("accepts all valid preset keys", () => {
+    expect(asPartnerBusinessHoursPresetKey("open_24h")).toBe("open_24h");
+    expect(asPartnerBusinessHoursPresetKey("by_appointment")).toBe(
+      "by_appointment",
+    );
+    expect(asPartnerBusinessHoursPresetKey("everyday_0900_1800")).toBe(
+      "everyday_0900_1800",
+    );
+    expect(asPartnerBusinessHoursPresetKey("mon_fri_0900_1800")).toBe(
+      "mon_fri_0900_1800",
+    );
+    expect(asPartnerBusinessHoursPresetKey("mon_sat_0900_1800")).toBe(
+      "mon_sat_0900_1800",
+    );
+    expect(asPartnerBusinessHoursPresetKey("sat_sun_0900_1800")).toBe(
+      "sat_sun_0900_1800",
+    );
+  });
+
+  it("returns null for null input", () => {
+    expect(asPartnerBusinessHoursPresetKey(null)).toBeNull();
+  });
+
+  it("returns null for undefined input", () => {
+    expect(asPartnerBusinessHoursPresetKey(undefined)).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    expect(asPartnerBusinessHoursPresetKey("")).toBeNull();
+  });
+
+  it("rejects invalid preset keys", () => {
+    expect(() => asPartnerBusinessHoursPresetKey("bad_key")).toThrow();
+    expect(() => asPartnerBusinessHoursPresetKey("open24h")).toThrow();
+    expect(() => asPartnerBusinessHoursPresetKey("OPEN_24H")).toThrow();
+    expect(() => asPartnerBusinessHoursPresetKey("custom")).toThrow();
+  });
+
+  it("rejects non-string values", () => {
+    expect(() => asPartnerBusinessHoursPresetKey(42)).toThrow();
+    expect(() => asPartnerBusinessHoursPresetKey(true)).toThrow();
+    expect(() => asPartnerBusinessHoursPresetKey({})).toThrow();
+  });
+
+  it("does not accept Thai preset display text (machine keys only)", () => {
+    expect(() =>
+      asPartnerBusinessHoursPresetKey("ทุกวัน 09:00-18:00"),
+    ).toThrow();
+    expect(() => asPartnerBusinessHoursPresetKey("ตามนัดหมาย")).toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — buildPartnerCreatePayload: businessHoursPresetKey
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerCreatePayload — businessHoursPresetKey", () => {
+  const base = {
+    slug: "preset-create-test",
+    directoryType: "store",
+    nameTh: "ร้านทดสอบ",
+  };
+
+  it("maps businessHoursPresetKey = everyday_0900_1800 to business_hours_preset_key", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursPresetKey: "everyday_0900_1800",
+    });
+    expect(p.business_hours_preset_key).toBe("everyday_0900_1800");
+  });
+
+  it("maps businessHoursPresetKey = open_24h", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursPresetKey: "open_24h",
+    });
+    expect(p.business_hours_preset_key).toBe("open_24h");
+  });
+
+  it("maps businessHoursPresetKey = by_appointment", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursPresetKey: "by_appointment",
+    });
+    expect(p.business_hours_preset_key).toBe("by_appointment");
+  });
+
+  it("maps businessHoursPresetKey = null to business_hours_preset_key = null", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursPresetKey: null,
+    });
+    expect(p.business_hours_preset_key).toBeNull();
+  });
+
+  it("defaults business_hours_preset_key to null when omitted", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.business_hours_preset_key).toBeNull();
+  });
+
+  it("rejects invalid businessHoursPresetKey", () => {
+    expect(() =>
+      buildPartnerCreatePayload({ ...base, businessHoursPresetKey: "bad_key" }),
+    ).toThrow();
+  });
+
+  it("keeps businessHoursText unchanged alongside preset key", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursPresetKey: "open_24h",
+      businessHoursText: "เปิด 24 ชั่วโมง",
+    });
+    expect(p.business_hours_preset_key).toBe("open_24h");
+    expect(p.business_hours_text).toBe("เปิด 24 ชั่วโมง");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — buildPartnerUpdatePayload: businessHoursPresetKey
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerUpdatePayload — businessHoursPresetKey patching", () => {
+  it("patches business_hours_preset_key when businessHoursPresetKey is present", () => {
+    const p = buildPartnerUpdatePayload({
+      businessHoursPresetKey: "mon_fri_0900_1800",
+    });
+    expect(p.business_hours_preset_key).toBe("mon_fri_0900_1800");
+  });
+
+  it("sets business_hours_preset_key = null when businessHoursPresetKey is null", () => {
+    const p = buildPartnerUpdatePayload({ businessHoursPresetKey: null });
+    expect(p.business_hours_preset_key).toBeNull();
+  });
+
+  it("omits business_hours_preset_key when businessHoursPresetKey is absent", () => {
+    const p = buildPartnerUpdatePayload({ nameTh: "ชื่อใหม่" });
+    expect("business_hours_preset_key" in p).toBe(false);
+  });
+
+  it("rejects invalid businessHoursPresetKey in update", () => {
+    expect(() =>
+      buildPartnerUpdatePayload({ businessHoursPresetKey: "invalid_key" }),
+    ).toThrow();
+  });
+
+  it("businessHoursText update is unaffected by businessHoursPresetKey absence", () => {
+    const p = buildPartnerUpdatePayload({
+      businessHoursText: "จันทร์-ศุกร์ 09:00-18:00",
+    });
+    expect(p.business_hours_text).toBe("จันทร์-ศุกร์ 09:00-18:00");
+    expect("business_hours_preset_key" in p).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — SELECT strings: business hours columns coverage
+// ─────────────────────────────────────────────────────────────────────────────
+describe("SELECT strings — business hours preset key and timezone coverage", () => {
+  it("ADMIN_PARTNER_LIST_SELECT includes business_hours_preset_key", () => {
+    expect(ADMIN_PARTNER_LIST_SELECT).toContain("business_hours_preset_key");
+  });
+
+  it("ADMIN_PARTNER_DETAIL_SELECT includes business_hours_preset_key", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("business_hours_preset_key");
+  });
+
+  it("ADMIN_PARTNER_DETAIL_SELECT includes business_hours_timezone", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("business_hours_timezone");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT includes business_hours_preset_key", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).toContain("business_hours_preset_key");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT includes business_hours_preset_key", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).toContain("business_hours_preset_key");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT includes business_hours_timezone", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).toContain("business_hours_timezone");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT still excludes all private fields", () => {
+    for (const f of ["kyc_documents", "verified_notes", "internal_notes"]) {
+      expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain(f);
+    }
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT still excludes all private fields", () => {
+    for (const f of ["kyc_documents", "verified_notes", "internal_notes"]) {
+      expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain(f);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — Mapper: mapAdminPartnerDetail
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapAdminPartnerDetail — businessHoursPresetKey + businessHoursTimezone", () => {
+  const baseRow = {
+    id: "uuid-admin-1",
+    slug: "admin-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านทดสอบ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    main_category_key: null,
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    is_verified: false,
+    verified_at: null,
+    is_public: false,
+    is_featured: false,
+    sort_order: 0,
+    kyc_documents: {},
+    verified_notes: null,
+    internal_notes: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("returns businessHoursPresetKey when set", () => {
+    const row = {
+      ...baseRow,
+      business_hours_preset_key: "open_24h",
+      business_hours_timezone: "Asia/Bangkok",
+    };
+    expect(mapAdminPartnerDetail(row).businessHoursPresetKey).toBe("open_24h");
+  });
+
+  it("returns null businessHoursPresetKey when not set", () => {
+    const row = {
+      ...baseRow,
+      business_hours_preset_key: null,
+      business_hours_timezone: "Asia/Bangkok",
+    };
+    expect(mapAdminPartnerDetail(row).businessHoursPresetKey).toBeNull();
+  });
+
+  it("returns businessHoursTimezone from row", () => {
+    const row = {
+      ...baseRow,
+      business_hours_preset_key: null,
+      business_hours_timezone: "Asia/Bangkok",
+    };
+    expect(mapAdminPartnerDetail(row).businessHoursTimezone).toBe(
+      "Asia/Bangkok",
+    );
+  });
+
+  it("defaults businessHoursTimezone to Asia/Bangkok when absent", () => {
+    expect(mapAdminPartnerDetail(baseRow).businessHoursTimezone).toBe(
+      "Asia/Bangkok",
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — Mapper: mapPublicPartnerCard
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapPublicPartnerCard — businessHoursPresetKey", () => {
+  const baseRow = {
+    id: "uuid-pub-1",
+    slug: "public-card-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านสาธารณะ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    main_image_url: null,
+    main_category_key: null,
+    service_areas: [],
+    is_verified: true,
+    verified_at: "2026-01-01T00:00:00Z",
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("returns businessHoursPresetKey when present", () => {
+    const row = { ...baseRow, business_hours_preset_key: "mon_fri_0900_1800" };
+    expect(mapPublicPartnerCard(row).businessHoursPresetKey).toBe(
+      "mon_fri_0900_1800",
+    );
+  });
+
+  it("returns null when business_hours_preset_key is null", () => {
+    const row = { ...baseRow, business_hours_preset_key: null };
+    expect(mapPublicPartnerCard(row).businessHoursPresetKey).toBeNull();
+  });
+
+  it("returns null when business_hours_preset_key is absent from row", () => {
+    expect(mapPublicPartnerCard(baseRow).businessHoursPresetKey).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — Mapper: mapPublicPartnerDetail
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapPublicPartnerDetail — businessHoursPresetKey + businessHoursTimezone", () => {
+  const baseRow = {
+    id: "uuid-pub-2",
+    slug: "public-detail-test",
+    directory_type: "service",
+    entity_type: "individual",
+    name_th: "บริการทดสอบ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    main_category_key: null,
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: "จันทร์-ศุกร์ 09:00-18:00",
+    is_verified: false,
+    verified_at: null,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("returns businessHoursPresetKey", () => {
+    const row = {
+      ...baseRow,
+      business_hours_preset_key: "mon_fri_0900_1800",
+      business_hours_timezone: "Asia/Bangkok",
+    };
+    expect(mapPublicPartnerDetail(row).businessHoursPresetKey).toBe(
+      "mon_fri_0900_1800",
+    );
+  });
+
+  it("returns businessHoursTimezone", () => {
+    const row = {
+      ...baseRow,
+      business_hours_preset_key: null,
+      business_hours_timezone: "Asia/Bangkok",
+    };
+    expect(mapPublicPartnerDetail(row).businessHoursTimezone).toBe(
+      "Asia/Bangkok",
+    );
+  });
+
+  it("still returns businessHoursText (not affected by preset key)", () => {
+    const row = {
+      ...baseRow,
+      business_hours_preset_key: "mon_fri_0900_1800",
+      business_hours_timezone: "Asia/Bangkok",
+    };
+    expect(mapPublicPartnerDetail(row).businessHoursText).toBe(
+      "จันทร์-ศุกร์ 09:00-18:00",
+    );
+  });
+
+  it("defaults businessHoursTimezone to Asia/Bangkok when absent", () => {
+    expect(mapPublicPartnerDetail(baseRow).businessHoursTimezone).toBe(
+      "Asia/Bangkok",
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B.3 — Regression: businessHoursText unaffected
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerCreatePayload — businessHoursText regression (1C-2B.3)", () => {
+  const base = {
+    slug: "regression-2b3",
+    directoryType: "store",
+    nameTh: "ร้านถดถอย",
+  };
+
+  it("still maps businessHoursText to business_hours_text", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursText: "จันทร์-เสาร์ 09:00-18:00",
+    });
+    expect(p.business_hours_text).toBe("จันทร์-เสาร์ 09:00-18:00");
+  });
+
+  it("businessHoursText null still accepted", () => {
+    const p = buildPartnerCreatePayload({ ...base, businessHoursText: null });
+    expect(p.business_hours_text).toBeNull();
   });
 });
 
