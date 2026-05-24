@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { getAdminApiErrorMessage } from "~/utils/admin-api";
-import type { PartnerDirectoryType, PartnerEntityType } from "~/types/partner";
+import type {
+  PartnerDirectoryType,
+  PartnerEntityType,
+  PartnerBusinessHoursPresetKey,
+} from "~/types/partner";
 import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
 // ── Router / toast ──────────────────────────────────────────────────────────
@@ -114,20 +118,42 @@ const serviceAreaItems = SERVICE_AREA_OPTIONS.map((opt) => ({
 }));
 
 // ── Business hours preset options ────────────────────────────────────────
-/** Sentinel values used in form state only — never sent to the API directly. */
-const BH_UNSET = "ไม่ระบุ" as const;
-const BH_CUSTOM = "กำหนดเอง" as const;
+/**
+ * Sentinel values for non-preset states. ASCII-only — safe from Thai text
+ * encoding issues and stable regardless of locale.
+ * These values are used in form.businessHoursPreset only; never sent to API.
+ */
+const BH_UNSET = "unset" as const;
+const BH_CUSTOM = "custom" as const;
 
+/**
+ * Dropdown options. `value` is machine-readable (preset key or sentinel).
+ * `label` is the Thai display text shown in the UI.
+ * Preset option values match the DB CHECK constraint keys from migration 098.
+ */
 const businessHoursPresetOptions: SelectOption[] = [
   { value: BH_UNSET, label: "ไม่ระบุ (ไม่แสดงข้อมูล)" },
-  { value: "ทุกวัน 09:00-18:00", label: "ทุกวัน 09:00-18:00" },
-  { value: "จันทร์-ศุกร์ 09:00-18:00", label: "จันทร์-ศุกร์ 09:00-18:00" },
-  { value: "จันทร์-เสาร์ 09:00-18:00", label: "จันทร์-เสาร์ 09:00-18:00" },
-  { value: "เสาร์-อาทิตย์ 09:00-18:00", label: "เสาร์-อาทิตย์ 09:00-18:00" },
-  { value: "เปิด 24 ชั่วโมง", label: "เปิด 24 ชั่วโมง" },
-  { value: "ตามนัดหมาย", label: "ตามนัดหมาย" },
+  { value: "everyday_0900_1800", label: "ทุกวัน 09:00-18:00" },
+  { value: "mon_fri_0900_1800", label: "จันทร์-ศุกร์ 09:00-18:00" },
+  { value: "mon_sat_0900_1800", label: "จันทร์-เสาร์ 09:00-18:00" },
+  { value: "sat_sun_0900_1800", label: "เสาร์-อาทิตย์ 09:00-18:00" },
+  { value: "open_24h", label: "เปิด 24 ชั่วโมง" },
+  { value: "by_appointment", label: "ตามนัดหมาย" },
   { value: BH_CUSTOM, label: "กำหนดเอง (ระบุข้อความเอง)" },
 ];
+
+/**
+ * Thai display text for each machine-readable preset key.
+ * Used to populate businessHoursText on submit — display-only, never parsed.
+ */
+const BH_DISPLAY_TEXT: Record<string, string> = {
+  everyday_0900_1800: "ทุกวัน 09:00-18:00",
+  mon_fri_0900_1800: "จันทร์-ศุกร์ 09:00-18:00",
+  mon_sat_0900_1800: "จันทร์-เสาร์ 09:00-18:00",
+  sat_sun_0900_1800: "เสาร์-อาทิตย์ 09:00-18:00",
+  open_24h: "เปิด 24 ชั่วโมง",
+  by_appointment: "ตามนัดหมาย",
+};
 
 // ── Form state ────────────────────────────────────────────────────────────
 const form = reactive({
@@ -156,16 +182,32 @@ const filteredCategoryOptions = computed((): SelectOption[] => {
   return ALL_CATEGORIES.filter((c) => c.value.startsWith(prefix));
 });
 
-// Resolves the business hours string to submit — purely UI-side mapping.
-// "ไม่ระบุ" → "" (API asOptionalString will store null)
-// "กำหนดเอง" → custom text trimmed
-// any preset → the preset text itself
+// Resolves the Thai display text to submit as businessHoursText.
+// "unset"  → "" (API asOptionalString will store null)
+// "custom" → trimmed free-text input
+// any preset key → Thai label from BH_DISPLAY_TEXT
 const effectiveBusinessHoursText = computed(() => {
   if (form.businessHoursPreset === BH_UNSET) return "";
   if (form.businessHoursPreset === BH_CUSTOM)
     return form.businessHoursCustom.trim();
-  return form.businessHoursPreset;
+  return BH_DISPLAY_TEXT[form.businessHoursPreset] ?? "";
 });
+
+/**
+ * Machine-readable preset key to submit alongside businessHoursText.
+ * For preset options the form value IS the key — no secondary map needed.
+ * "unset" and "custom" sentinels both yield null (excluded from Open Now).
+ */
+const effectiveBusinessHoursPresetKey = computed(
+  (): PartnerBusinessHoursPresetKey | null => {
+    if (
+      form.businessHoursPreset === BH_UNSET ||
+      form.businessHoursPreset === BH_CUSTOM
+    )
+      return null;
+    return form.businessHoursPreset as PartnerBusinessHoursPresetKey;
+  },
+);
 
 const canSubmit = computed(
   () =>
@@ -271,6 +313,8 @@ async function handleSubmit() {
       body.taglineTh = form.shortDescription.trim();
     if (effectiveBusinessHoursText.value)
       body.businessHoursText = effectiveBusinessHoursText.value;
+    // Always submit the preset key (null is valid — clears any existing value).
+    body.businessHoursPresetKey = effectiveBusinessHoursPresetKey.value;
 
     const data = await $fetch<{ item: { slug: string } }>(
       "/api/admin/partners",
