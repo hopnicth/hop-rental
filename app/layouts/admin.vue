@@ -75,6 +75,10 @@ const navGroups = computed<AdminNavGroup[]>(() => {
         { label: "Messages", to: "/admin/messages" },
       ],
     },
+    {
+      label: "Partners",
+      items: [{ label: "Partner Directory", to: "/admin/partners" }],
+    },
   ];
 
   if (profile.value?.platformRole === "super_admin") {
