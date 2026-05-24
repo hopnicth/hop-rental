@@ -10,10 +10,13 @@
  *  6.  Verification toggle — verifiedAt auto-stamp, clear, and override-bug guard
  *  7.  Validator unit tests (pure functions, no DB)
  *  8.  lineUrl + mapsUrl app-layer validation (422 before DB, not 500)
+ *  9.  Phase 1C-2B Basic Info form payload contract (service areas, biz hours, is_public)
+ * 10.  Phase 1C-2B micro-adjust: business hours presets, SERVICE_AREA_OPTIONS slug values
  */
 
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { SERVICE_AREA_OPTIONS } from "../../app/data/thaiServiceAreas";
 import {
   asPartnerSlug,
   asPartnerDirectoryType,
@@ -384,6 +387,128 @@ describe("asPartnerMapsUrl", () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B: Basic Info form payload contract tests
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerCreatePayload — Basic Info form (Phase 1C-2B)", () => {
+  const base = {
+    slug: "test-store",
+    directoryType: "store",
+    nameTh: "ร้านทดสอบ",
+  };
+
+  it("defaults is_public to false when isPublic is not supplied", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.is_public).toBe(false);
+  });
+
+  it("defaults is_public to false when isPublic is explicitly undefined", () => {
+    const p = buildPartnerCreatePayload({ ...base, isPublic: undefined });
+    expect(p.is_public).toBe(false);
+  });
+
+  it("respects is_public=true when explicitly set", () => {
+    const p = buildPartnerCreatePayload({ ...base, isPublic: true });
+    expect(p.is_public).toBe(true);
+  });
+
+  it("service_areas strips empty strings and trims whitespace", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      serviceAreas: ["กรุงเทพฯ", "  ", "นนทบุรี", "", "สมุทรปราการ"],
+    });
+    expect(p.service_areas).toEqual(["กรุงเทพฯ", "นนทบุรี", "สมุทรปราการ"]);
+  });
+
+  it("service_areas defaults to empty array when not supplied", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.service_areas).toEqual([]);
+  });
+
+  it("service_areas removes duplicate values", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      serviceAreas: ["กรุงเทพฯ", "กรุงเทพฯ", "นนทบุรี"],
+    });
+    expect(p.service_areas).toEqual(["กรุงเทพฯ", "นนทบุรี"]);
+  });
+
+  it("maps taglineTh → tagline_th", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      taglineTh: "จำหน่ายวัสดุก่อสร้างราคาส่ง",
+    });
+    expect(p.tagline_th).toBe("จำหน่ายวัสดุก่อสร้างราคาส่ง");
+  });
+
+  it("tagline_th is null when not supplied", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.tagline_th).toBeNull();
+  });
+
+  it("maps businessHoursText → business_hours_text", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursText: "จันทร์-เสาร์ 09:00-18:00",
+    });
+    expect(p.business_hours_text).toBe("จันทร์-เสาร์ 09:00-18:00");
+  });
+
+  it("category must match directoryType prefix — incompatible category rejected", () => {
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        directoryType: "store",
+        mainCategoryKey: "service_transport_logistics",
+      }),
+    ).toThrow(/not valid/);
+
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        directoryType: "service",
+        mainCategoryKey: "contractor_general",
+      }),
+    ).toThrow(/not valid/);
+
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        directoryType: "contractor",
+        mainCategoryKey: "store_plumbing",
+      }),
+    ).toThrow(/not valid/);
+  });
+
+  it("compatible category accepted for each directoryType", () => {
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        directoryType: "store",
+        mainCategoryKey: "store_construction_materials",
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        directoryType: "service",
+        slug: "test-service",
+        mainCategoryKey: "service_design_consulting",
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        directoryType: "contractor",
+        slug: "test-contractor",
+        mainCategoryKey: "contractor_general",
+      }),
+    ).not.toThrow();
+  });
+});
+
 describe("buildPartnerCreatePayload — lineUrl + mapsUrl wired to validators", () => {
   const base = {
     slug: "url-test",
@@ -422,5 +547,106 @@ describe("buildPartnerCreatePayload — lineUrl + mapsUrl wired to validators", 
         mapsUrl: "https://maps.app.goo.gl/AbCd1234",
       }),
     ).not.toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2B micro-adjust: business hours presets + SERVICE_AREA_OPTIONS reuse
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerCreatePayload — business hours preset mapping", () => {
+  const base = {
+    slug: "biz-hours-test",
+    directoryType: "store",
+    nameTh: "ร้านทดสอบเวลาทำการ",
+  };
+
+  it("preset string submits as business_hours_text verbatim", () => {
+    const presets = [
+      "ทุกวัน 09:00-18:00",
+      "จันทร์-ศุกร์ 09:00-18:00",
+      "จันทร์-เสาร์ 09:00-18:00",
+      "เสาร์-อาทิตย์ 09:00-18:00",
+      "เปิด 24 ชั่วโมง",
+      "ตามนัดหมาย",
+    ];
+    for (const preset of presets) {
+      const p = buildPartnerCreatePayload({
+        ...base,
+        businessHoursText: preset,
+      });
+      expect(p.business_hours_text).toBe(preset);
+    }
+  });
+
+  it("ไม่ระบุ — empty string maps to null (asOptionalString convention)", () => {
+    // When UI sends empty string for "ไม่ระบุ", API stores null
+    const p = buildPartnerCreatePayload({ ...base, businessHoursText: "" });
+    expect(p.business_hours_text).toBeNull();
+  });
+
+  it("ไม่ระบุ — omitting businessHoursText also maps to null", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.business_hours_text).toBeNull();
+  });
+
+  it("กำหนดเอง — custom text submits as business_hours_text", () => {
+    const custom = "จันทร์-เสาร์ 08:00-20:00 อาทิตย์ปิด";
+    const p = buildPartnerCreatePayload({ ...base, businessHoursText: custom });
+    expect(p.business_hours_text).toBe(custom);
+  });
+
+  it("custom text is trimmed by asOptionalString before storage", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      businessHoursText: "  จันทร์-ศุกร์ 09:00-18:00  ",
+    });
+    expect(p.business_hours_text).toBe("จันทร์-ศุกร์ 09:00-18:00");
+  });
+});
+
+describe("SERVICE_AREA_OPTIONS reuse — slug values are valid string array items", () => {
+  const base = {
+    slug: "service-area-test",
+    directoryType: "store",
+    nameTh: "ร้านทดสอบพื้นที่",
+  };
+
+  it("SERVICE_AREA_OPTIONS has at least one entry per geographic group", () => {
+    const groups = new Set(SERVICE_AREA_OPTIONS.map((o) => o.group));
+    expect(groups.has("special")).toBe(true);
+    expect(groups.has("central")).toBe(true);
+    expect(groups.has("north")).toBe(true);
+    expect(groups.has("south")).toBe(true);
+  });
+
+  it("all SERVICE_AREA_OPTIONS values pass through service_areas as-is", () => {
+    // Pick a representative sample (first from each group)
+    const sample = [
+      "nationwide",
+      "bangkok-metro",
+      "nonthaburi",
+      "chiang-mai",
+      "phuket",
+    ];
+    const p = buildPartnerCreatePayload({ ...base, serviceAreas: sample });
+    expect(p.service_areas).toEqual(sample);
+  });
+
+  it("service_areas with SERVICE_AREA_OPTIONS slugs submits as string[]", () => {
+    const selected = SERVICE_AREA_OPTIONS.slice(0, 3).map((o) => o.value);
+    const p = buildPartnerCreatePayload({ ...base, serviceAreas: selected });
+    expect(Array.isArray(p.service_areas)).toBe(true);
+    expect(p.service_areas).toHaveLength(3);
+    for (const v of p.service_areas) {
+      expect(typeof v).toBe("string");
+    }
+  });
+
+  it("SERVICE_AREA_OPTIONS values are all non-empty kebab-case strings", () => {
+    for (const opt of SERVICE_AREA_OPTIONS) {
+      expect(opt.value.length).toBeGreaterThan(0);
+      // must be lowercase alphanumeric + hyphens only
+      expect(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(opt.value)).toBe(true);
+    }
   });
 });
