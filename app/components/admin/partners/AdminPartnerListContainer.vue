@@ -14,6 +14,12 @@ type BooleanFilter = "all" | "true" | "false";
 const route = useRoute();
 const router = useRouter();
 
+// ── Role ────────────────────────────────────────────────────────────────────
+const { profile } = useUserProfile();
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
+
 // ── Filter state ────────────────────────────────────────────────────────────
 const search = ref("");
 const directoryType = ref<DirectoryTypeFilter>("all");
@@ -204,15 +210,25 @@ onMounted(() => {
           จัดการร้านค้า บริการ และช่าง/ผู้รับเหมา
         </p>
       </div>
-      <UButton
-        icon="bx:refresh"
-        variant="soft"
-        color="primary"
-        :loading="loading"
-        @click="void refreshPartners()"
-      >
-        Refresh
-      </UButton>
+      <div class="flex flex-wrap gap-2">
+        <UButton
+          v-if="isSuperAdmin"
+          to="/admin/partners/new"
+          icon="bx:plus"
+          color="primary"
+        >
+          New Partner
+        </UButton>
+        <UButton
+          icon="bx:refresh"
+          variant="soft"
+          color="primary"
+          :loading="loading"
+          @click="void refreshPartners()"
+        >
+          Refresh
+        </UButton>
+      </div>
     </div>
 
     <!-- ── Filters ─────────────────────────────────────────────────────── -->
@@ -365,7 +381,8 @@ onMounted(() => {
               <th class="py-2 pr-4">Category</th>
               <th class="py-2 pr-4">Service areas</th>
               <th class="py-2 pr-4">Status</th>
-              <th class="py-2">Updated</th>
+              <th class="py-2 pr-4">Updated</th>
+              <th class="py-2"></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-default">
@@ -456,8 +473,21 @@ onMounted(() => {
               </td>
 
               <!-- Updated date -->
-              <td class="py-3 align-top text-xs text-muted">
+              <td class="py-3 pr-4 align-top text-xs text-muted">
                 {{ formatDate(partner.updatedAt) }}
+              </td>
+
+              <!-- Actions -->
+              <td class="py-3 align-top">
+                <UButton
+                  :to="`/admin/partners/${partner.id}`"
+                  size="xs"
+                  variant="soft"
+                  color="neutral"
+                  icon="bx:edit"
+                >
+                  View
+                </UButton>
               </td>
             </tr>
           </tbody>
