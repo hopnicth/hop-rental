@@ -68,6 +68,8 @@ export default defineNuxtConfig({
         "/product-*/**",
         "/asset/*",
         "/asset/**",
+        "/partners",
+        "/partners/**",
         "/services",
         "/services/**",
         "/blog",
