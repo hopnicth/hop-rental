@@ -1,6 +1,7 @@
-import { createError, defineEventHandler } from "h3";
+import { createError, defineEventHandler, setHeader } from "h3";
 import {
   serverSupabaseServiceRole,
+  serverSupabaseSession,
   serverSupabaseUser,
 } from "#supabase/server";
 import { getAuthUserId } from "~~/server/utils/user-wishlist";
@@ -41,6 +42,21 @@ async function selectProfile(
 }
 
 export default defineEventHandler(async (event) => {
+  setHeader(event, "Cache-Control", "private, no-store");
+
+  // Trigger an active session lookup first so @supabase/ssr can refresh an
+  // expired access token using the refresh-token cookie before we read claims.
+  // serverSupabaseUser uses getClaims(), which only parses the current JWT and
+  // does not perform refresh — leading to false 401s after the 1h access-token
+  // TTL even though the session is still valid. Errors here are swallowed so
+  // the existing auth flow (serverSupabaseUser → 401) still owns the response.
+  try {
+    await serverSupabaseSession(event);
+  } catch {
+    // Ignore: serverSupabaseUser below will produce the correct 401 if the
+    // session is truly invalid, or surface a 500 on real client errors.
+  }
+
   const authUser = await serverSupabaseUser(event);
   const userId = getAuthUserId(authUser);
   if (!userId) {

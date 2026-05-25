@@ -33,12 +33,14 @@ const mockState = vi.hoisted(() => ({
 vi.mock("h3", () => ({
   defineEventHandler: (handler: (event: unknown) => unknown) => handler,
   readBody: async () => mockState.body,
+  setHeader: () => undefined,
   createError: (opts: { statusMessage?: string; statusCode?: number }) =>
     Object.assign(new Error(opts.statusMessage), opts),
 }));
 
 vi.mock("#supabase/server", () => ({
   serverSupabaseUser: async () => mockState.authUser,
+  serverSupabaseSession: async () => null,
   serverSupabaseServiceRole: () => mockState.client,
 }));
 
@@ -99,7 +101,10 @@ describe("user profile API", () => {
 
   it("GET returns only the authenticated user's profile", async () => {
     const client = makeClient([
-      { data: { id: "user-1", full_name: "Jane", created_at: "2026-01-01" }, error: null },
+      {
+        data: { id: "user-1", full_name: "Jane", created_at: "2026-01-01" },
+        error: null,
+      },
     ]);
     mockState.client = client;
     const handler = (await import("../../server/api/user/index.get")).default;
@@ -114,10 +119,17 @@ describe("user profile API", () => {
   it("PUT updates only the authenticated user's profile fields", async () => {
     const client = makeClient([
       { data: { id: "user-1" }, error: null },
-      { data: { id: "user-1", full_name: "Jane Doe", phone: "0812345678" }, error: null },
+      {
+        data: { id: "user-1", full_name: "Jane Doe", phone: "0812345678" },
+        error: null,
+      },
     ]);
     mockState.client = client;
-    mockState.body = { fullName: " Jane Doe ", phone: " 0812345678 ", id: "user-2" };
+    mockState.body = {
+      fullName: " Jane Doe ",
+      phone: " 0812345678 ",
+      id: "user-2",
+    };
     const handler = (await import("../../server/api/user/index.put")).default;
 
     await handler({});

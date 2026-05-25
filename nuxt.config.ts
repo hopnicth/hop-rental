@@ -54,6 +54,10 @@ export default defineNuxtConfig({
   ],
 
   supabase: {
+    // Persist auth state via SSR-readable cookies so server routes can refresh
+    // expired access tokens using the refresh-token cookie. Required for the
+    // session refresh flow in server/api/user/index.get.ts to function.
+    useSsrCookies: true,
     redirectOptions: {
       login: "/user/login",
       callback: "/user/confirm",
