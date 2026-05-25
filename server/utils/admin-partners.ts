@@ -15,19 +15,19 @@ import {
 
 /** Admin list — lightweight, no private fields, no descriptions. */
 export const ADMIN_PARTNER_LIST_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, main_image_url, main_category_key, service_areas, business_hours_preset_key, is_verified, is_public, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, main_image_url, main_category_key, secondary_category_keys, service_areas, business_hours_preset_key, is_verified, is_public, is_featured, sort_order, created_at, updated_at";
 
 /** Admin detail — full row including private admin-only columns. */
 export const ADMIN_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, secondary_category_keys, search_keywords, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, created_at, updated_at";
 
 /** Public list — no private fields, no descriptions. */
 export const PUBLIC_PARTNER_LIST_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, main_image_url, main_category_key, service_areas, business_hours_preset_key, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, main_image_url, main_category_key, secondary_category_keys, service_areas, business_hours_preset_key, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
 
-/** Public detail — no private fields (kyc_documents, verified_notes, internal_notes excluded). */
+/** Public detail — no private fields (kyc_documents, verified_notes, internal_notes, search_keywords excluded). */
 export const PUBLIC_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, secondary_category_keys, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -187,6 +187,60 @@ export function validateCategoryKeyForDirectoryType(
   }
 }
 
+// ── Secondary-category and search-keyword helpers ────────────────────────────
+
+const MAX_SEARCH_KEYWORDS = 20;
+const MAX_KEYWORD_LENGTH = 50;
+
+/**
+ * Normalises and validates secondary category keys.
+ * - Delegates trim / empty-strip / dedup to asStringArray.
+ * - All keys must start with `${directoryType}_`.
+ * - No key may equal mainCategoryKey.
+ */
+export function asPartnerSecondaryCategoryKeys(
+  value: unknown,
+  directoryType: "store" | "service" | "contractor",
+  mainCategoryKey: string | null,
+): string[] {
+  const arr = asStringArray(value);
+  const expected = `${directoryType}_`;
+  for (const key of arr) {
+    if (!key.startsWith(expected)) {
+      fail422(
+        `secondaryCategoryKey "${key}" is not valid for directoryType "${directoryType}". ` +
+          `Expected a key beginning with "${expected}"`,
+      );
+    }
+    if (key === mainCategoryKey) {
+      fail422(
+        `secondaryCategoryKeys must not include mainCategoryKey "${key}"`,
+      );
+    }
+  }
+  return arr;
+}
+
+/**
+ * Normalises and validates admin-only search keywords.
+ * - Delegates trim / empty-strip / dedup to asStringArray.
+ * - Max MAX_SEARCH_KEYWORDS entries.
+ * - Each entry max MAX_KEYWORD_LENGTH characters.
+ */
+export function asPartnerSearchKeywords(value: unknown): string[] {
+  const arr = asStringArray(value);
+  if (arr.length > MAX_SEARCH_KEYWORDS) {
+    fail422(`searchKeywords must have at most ${MAX_SEARCH_KEYWORDS} entries`);
+  }
+  for (const kw of arr) {
+    if (kw.length > MAX_KEYWORD_LENGTH) {
+      fail422(
+        `searchKeyword "${kw}" exceeds maximum length of ${MAX_KEYWORD_LENGTH} characters`,
+      );
+    }
+  }
+  return arr;
+}
 // ── Payload builders ──────────────────────────────────────────────────────────
 
 /** Full payload for INSERT. All required fields must be present. */
@@ -209,6 +263,12 @@ export function buildPartnerCreatePayload(body: Record<string, unknown>) {
     description_en: asOptionalString(body.descriptionEn),
     main_image_url: asOptionalString(body.mainImageUrl),
     main_category_key,
+    secondary_category_keys: asPartnerSecondaryCategoryKeys(
+      body.secondaryCategoryKeys,
+      directory_type,
+      main_category_key,
+    ),
+    search_keywords: asPartnerSearchKeywords(body.searchKeywords),
     service_areas: asStringArray(body.serviceAreas),
     contact_phone: asOptionalString(body.contactPhone),
     contact_email: asOptionalString(body.contactEmail),
@@ -248,6 +308,29 @@ export function buildPartnerUpdatePayload(body: Record<string, unknown>) {
     p.main_image_url = asOptionalString(body.mainImageUrl);
   if ("mainCategoryKey" in body)
     p.main_category_key = asOptionalString(body.mainCategoryKey);
+  if ("secondaryCategoryKeys" in body) {
+    // If directoryType is also in this patch, validate prefix immediately.
+    // Otherwise, only normalise (endpoint is responsible for cross-validation).
+    const effectiveDirectoryType =
+      typeof p.directory_type === "string"
+        ? (p.directory_type as "store" | "service" | "contractor")
+        : null;
+    const effectiveMainKey =
+      "main_category_key" in p && typeof p.main_category_key === "string"
+        ? p.main_category_key
+        : null;
+    if (effectiveDirectoryType) {
+      p.secondary_category_keys = asPartnerSecondaryCategoryKeys(
+        body.secondaryCategoryKeys,
+        effectiveDirectoryType,
+        effectiveMainKey,
+      );
+    } else {
+      p.secondary_category_keys = asStringArray(body.secondaryCategoryKeys);
+    }
+  }
+  if ("searchKeywords" in body)
+    p.search_keywords = asPartnerSearchKeywords(body.searchKeywords);
   if ("serviceAreas" in body)
     p.service_areas = asStringArray(body.serviceAreas);
   if ("contactPhone" in body)
@@ -321,6 +404,9 @@ export function mapAdminPartnerListItem(row: Record<string, unknown>) {
     taglineTh: str(row.tagline_th),
     mainImageUrl: str(row.main_image_url),
     mainCategoryKey: str(row.main_category_key),
+    secondaryCategoryKeys: Array.isArray(row.secondary_category_keys)
+      ? (row.secondary_category_keys as string[])
+      : [],
     serviceAreas: Array.isArray(row.service_areas)
       ? (row.service_areas as string[])
       : [],
@@ -353,6 +439,10 @@ export function mapAdminPartnerDetail(row: Record<string, unknown>) {
       row.business_hours_timezone ?? "Asia/Bangkok",
     ),
     verifiedAt: str(row.verified_at),
+    // Admin-only array fields
+    searchKeywords: Array.isArray(row.search_keywords)
+      ? (row.search_keywords as string[])
+      : [],
     // Private admin-only fields
     kycDocuments:
       row.kyc_documents &&
@@ -381,6 +471,9 @@ export function mapPublicPartnerCard(row: Record<string, unknown>) {
     taglineEn: str(row.tagline_en),
     mainImageUrl: str(row.main_image_url),
     mainCategoryKey: str(row.main_category_key),
+    secondaryCategoryKeys: Array.isArray(row.secondary_category_keys)
+      ? (row.secondary_category_keys as string[])
+      : [],
     serviceAreas: Array.isArray(row.service_areas)
       ? (row.service_areas as string[])
       : [],

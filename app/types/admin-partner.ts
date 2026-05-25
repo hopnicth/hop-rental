@@ -28,6 +28,10 @@ export interface AdminPartnerRow {
   descriptionEn: string | null;
   mainImageUrl: string | null;
   mainCategoryKey: string | null;
+  /** Controlled secondary category keys — share the same directoryType prefix as mainCategoryKey. */
+  secondaryCategoryKeys: string[];
+  /** ADMIN-ONLY: Internal search metadata. Never in public payloads. */
+  searchKeywords: string[];
   serviceAreas: string[];
   contactPhone: string | null;
   contactEmail: string | null;
@@ -66,6 +70,7 @@ export type AdminPartnerListItem = Pick<
   | "taglineTh"
   | "mainImageUrl"
   | "mainCategoryKey"
+  | "secondaryCategoryKeys"
   | "serviceAreas"
   | "businessHoursPresetKey"
   | "isVerified"

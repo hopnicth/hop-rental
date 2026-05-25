@@ -24,6 +24,8 @@ import {
   asPartnerLineUrl,
   asPartnerMapsUrl,
   asPartnerBusinessHoursPresetKey,
+  asPartnerSecondaryCategoryKeys,
+  asPartnerSearchKeywords,
   validateCategoryKeyForDirectoryType,
   buildPartnerCreatePayload,
   buildPartnerUpdatePayload,
@@ -31,6 +33,7 @@ import {
   PUBLIC_PARTNER_LIST_SELECT,
   PUBLIC_PARTNER_DETAIL_SELECT,
   ADMIN_PARTNER_DETAIL_SELECT,
+  mapAdminPartnerListItem,
   mapAdminPartnerDetail,
   mapPublicPartnerCard,
   mapPublicPartnerDetail,
@@ -1059,5 +1062,688 @@ describe("SERVICE_AREA_OPTIONS reuse — slug values are valid string array item
       // must be lowercase alphanumeric + hyphens only
       expect(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(opt.value)).toBe(true);
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 — asPartnerSecondaryCategoryKeys validator
+// ─────────────────────────────────────────────────────────────────────────────
+describe("asPartnerSecondaryCategoryKeys — validator", () => {
+  it("returns empty array for undefined / empty input", () => {
+    expect(asPartnerSecondaryCategoryKeys(undefined, "store", null)).toEqual(
+      [],
+    );
+    expect(asPartnerSecondaryCategoryKeys([], "store", null)).toEqual([]);
+  });
+
+  it("accepts valid secondary keys matching the directoryType prefix", () => {
+    expect(
+      asPartnerSecondaryCategoryKeys(
+        ["store_plumbing", "store_electrical"],
+        "store",
+        "store_hardware_tools",
+      ),
+    ).toEqual(["store_plumbing", "store_electrical"]);
+  });
+
+  it("strips empty and whitespace-only values", () => {
+    expect(
+      asPartnerSecondaryCategoryKeys(
+        ["store_plumbing", "", "  "],
+        "store",
+        null,
+      ),
+    ).toEqual(["store_plumbing"]);
+  });
+
+  it("deduplicates values", () => {
+    expect(
+      asPartnerSecondaryCategoryKeys(
+        ["store_plumbing", "store_plumbing"],
+        "store",
+        null,
+      ),
+    ).toEqual(["store_plumbing"]);
+  });
+
+  it("rejects a key with wrong directoryType prefix", () => {
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(["service_logistics"], "store", null),
+    ).toThrow(/not valid/);
+  });
+
+  it("rejects a key equal to mainCategoryKey", () => {
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(
+        ["store_hardware_tools"],
+        "store",
+        "store_hardware_tools",
+      ),
+    ).toThrow(/must not include mainCategoryKey/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 — asPartnerSearchKeywords validator
+// ─────────────────────────────────────────────────────────────────────────────
+describe("asPartnerSearchKeywords — validator", () => {
+  it("returns empty array for undefined / empty input", () => {
+    expect(asPartnerSearchKeywords(undefined)).toEqual([]);
+    expect(asPartnerSearchKeywords([])).toEqual([]);
+  });
+
+  it("accepts valid keywords", () => {
+    expect(
+      asPartnerSearchKeywords(["ร้านวัสดุ", "hardware", "ก่อสร้าง"]),
+    ).toEqual(["ร้านวัสดุ", "hardware", "ก่อสร้าง"]);
+  });
+
+  it("strips empty / whitespace-only values", () => {
+    expect(asPartnerSearchKeywords(["keyword", "", "  "])).toEqual(["keyword"]);
+  });
+
+  it("deduplicates values", () => {
+    expect(asPartnerSearchKeywords(["keyword", "keyword"])).toEqual([
+      "keyword",
+    ]);
+  });
+
+  it("rejects more than 20 keywords", () => {
+    const tooMany = Array.from({ length: 21 }, (_, i) => `kw${i}`);
+    expect(() => asPartnerSearchKeywords(tooMany)).toThrow(/at most 20/);
+  });
+
+  it("rejects a keyword longer than 50 characters", () => {
+    const longKw = "a".repeat(51);
+    expect(() => asPartnerSearchKeywords([longKw])).toThrow(
+      /exceeds maximum length/,
+    );
+  });
+
+  it("accepts exactly 20 keywords", () => {
+    const exactly20 = Array.from({ length: 20 }, (_, i) => `kw${i}`);
+    expect(() => asPartnerSearchKeywords(exactly20)).not.toThrow();
+  });
+
+  it("accepts a keyword of exactly 50 characters", () => {
+    const exactly50 = "a".repeat(50);
+    expect(() => asPartnerSearchKeywords([exactly50])).not.toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 — buildPartnerCreatePayload: secondaryCategoryKeys + searchKeywords
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerCreatePayload — secondaryCategoryKeys + searchKeywords", () => {
+  const base = {
+    slug: "sec-cat-test",
+    directoryType: "store",
+    nameTh: "ร้านทดสอบ",
+    mainCategoryKey: "store_hardware_tools",
+  };
+
+  it("maps secondaryCategoryKeys to secondary_category_keys", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      secondaryCategoryKeys: ["store_plumbing", "store_electrical"],
+    });
+    expect(p.secondary_category_keys).toEqual([
+      "store_plumbing",
+      "store_electrical",
+    ]);
+  });
+
+  it("defaults secondary_category_keys to [] when omitted", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.secondary_category_keys).toEqual([]);
+  });
+
+  it("strips empty secondary values", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      secondaryCategoryKeys: ["store_plumbing", "", "  "],
+    });
+    expect(p.secondary_category_keys).toEqual(["store_plumbing"]);
+  });
+
+  it("dedupes secondary values", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      secondaryCategoryKeys: ["store_plumbing", "store_plumbing"],
+    });
+    expect(p.secondary_category_keys).toEqual(["store_plumbing"]);
+  });
+
+  it("rejects secondary key with wrong directoryType prefix", () => {
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        secondaryCategoryKeys: ["service_logistics"],
+      }),
+    ).toThrow(/not valid/);
+  });
+
+  it("rejects secondary key equal to mainCategoryKey", () => {
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        secondaryCategoryKeys: ["store_hardware_tools"],
+      }),
+    ).toThrow(/must not include mainCategoryKey/);
+  });
+
+  it("maps searchKeywords to search_keywords", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      searchKeywords: ["ร้านวัสดุ", "hardware"],
+    });
+    expect(p.search_keywords).toEqual(["ร้านวัสดุ", "hardware"]);
+  });
+
+  it("defaults search_keywords to [] when omitted", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.search_keywords).toEqual([]);
+  });
+
+  it("strips empty search keywords", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      searchKeywords: ["ร้านวัสดุ", "", "  "],
+    });
+    expect(p.search_keywords).toEqual(["ร้านวัสดุ"]);
+  });
+
+  it("dedupes search keywords", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      searchKeywords: ["ร้านวัสดุ", "ร้านวัสดุ"],
+    });
+    expect(p.search_keywords).toEqual(["ร้านวัสดุ"]);
+  });
+
+  it("rejects too many search keywords", () => {
+    const tooMany = Array.from({ length: 21 }, (_, i) => `kw${i}`);
+    expect(() =>
+      buildPartnerCreatePayload({ ...base, searchKeywords: tooMany }),
+    ).toThrow(/at most 20/);
+  });
+
+  it("rejects keyword longer than 50 characters", () => {
+    expect(() =>
+      buildPartnerCreatePayload({
+        ...base,
+        searchKeywords: ["a".repeat(51)],
+      }),
+    ).toThrow(/exceeds maximum length/);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 — buildPartnerUpdatePayload: secondaryCategoryKeys + searchKeywords
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerUpdatePayload — secondaryCategoryKeys + searchKeywords", () => {
+  it("maps secondaryCategoryKeys when present alongside directoryType", () => {
+    const p = buildPartnerUpdatePayload({
+      directoryType: "store",
+      secondaryCategoryKeys: ["store_plumbing"],
+    });
+    expect(p.secondary_category_keys).toEqual(["store_plumbing"]);
+  });
+
+  it("empty array clears secondary_category_keys", () => {
+    const p = buildPartnerUpdatePayload({
+      directoryType: "store",
+      secondaryCategoryKeys: [],
+    });
+    expect(p.secondary_category_keys).toEqual([]);
+  });
+
+  it("absent secondaryCategoryKeys omits secondary_category_keys from patch", () => {
+    const p = buildPartnerUpdatePayload({ nameTh: "ชื่อใหม่" });
+    expect("secondary_category_keys" in p).toBe(false);
+  });
+
+  it("rejects invalid secondary key when directoryType is in same body", () => {
+    expect(() =>
+      buildPartnerUpdatePayload({
+        directoryType: "store",
+        secondaryCategoryKeys: ["service_logistics"],
+      }),
+    ).toThrow(/not valid/);
+  });
+
+  it("maps secondaryCategoryKeys without prefix validation when directoryType absent", () => {
+    // Basic normalisation only — endpoint handles cross-validation in this case
+    const p = buildPartnerUpdatePayload({
+      secondaryCategoryKeys: ["store_plumbing"],
+    });
+    expect(p.secondary_category_keys).toEqual(["store_plumbing"]);
+  });
+
+  it("maps searchKeywords when present", () => {
+    const p = buildPartnerUpdatePayload({ searchKeywords: ["ร้านวัสดุ"] });
+    expect(p.search_keywords).toEqual(["ร้านวัสดุ"]);
+  });
+
+  it("empty array clears search_keywords", () => {
+    const p = buildPartnerUpdatePayload({ searchKeywords: [] });
+    expect(p.search_keywords).toEqual([]);
+  });
+
+  it("absent searchKeywords omits search_keywords from patch", () => {
+    const p = buildPartnerUpdatePayload({ nameTh: "ชื่อใหม่" });
+    expect("search_keywords" in p).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 — SELECT strings: secondary_category_keys + search_keywords coverage
+// ─────────────────────────────────────────────────────────────────────────────
+describe("SELECT strings — secondary_category_keys + search_keywords coverage", () => {
+  it("ADMIN_PARTNER_LIST_SELECT includes secondary_category_keys", () => {
+    expect(ADMIN_PARTNER_LIST_SELECT).toContain("secondary_category_keys");
+  });
+
+  it("ADMIN_PARTNER_LIST_SELECT does NOT include search_keywords", () => {
+    expect(ADMIN_PARTNER_LIST_SELECT).not.toContain("search_keywords");
+  });
+
+  it("ADMIN_PARTNER_DETAIL_SELECT includes secondary_category_keys", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("secondary_category_keys");
+  });
+
+  it("ADMIN_PARTNER_DETAIL_SELECT includes search_keywords", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("search_keywords");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT includes secondary_category_keys", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).toContain("secondary_category_keys");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT does NOT include search_keywords", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain("search_keywords");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT includes secondary_category_keys", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).toContain("secondary_category_keys");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT does NOT include search_keywords", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain("search_keywords");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 — Mappers: secondaryCategoryKeys + searchKeywords
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapAdminPartnerListItem — secondaryCategoryKeys", () => {
+  const baseRow = {
+    id: "uuid-list-1",
+    slug: "list-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านทดสอบ",
+    name_en: null,
+    tagline_th: null,
+    main_image_url: null,
+    main_category_key: "store_hardware_tools",
+    service_areas: [],
+    business_hours_preset_key: null,
+    is_verified: false,
+    is_public: true,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("maps secondary_category_keys to secondaryCategoryKeys", () => {
+    const row = {
+      ...baseRow,
+      secondary_category_keys: ["store_plumbing", "store_electrical"],
+    };
+    expect(mapAdminPartnerListItem(row).secondaryCategoryKeys).toEqual([
+      "store_plumbing",
+      "store_electrical",
+    ]);
+  });
+
+  it("defaults secondaryCategoryKeys to [] when absent", () => {
+    expect(mapAdminPartnerListItem(baseRow).secondaryCategoryKeys).toEqual([]);
+  });
+});
+
+describe("mapAdminPartnerDetail — secondaryCategoryKeys + searchKeywords", () => {
+  const baseRow = {
+    id: "uuid-admin-detail-1",
+    slug: "admin-detail-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านทดสอบ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    main_category_key: "store_hardware_tools",
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_public: false,
+    is_featured: false,
+    sort_order: 0,
+    kyc_documents: {},
+    verified_notes: null,
+    internal_notes: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("maps secondary_category_keys to secondaryCategoryKeys", () => {
+    const row = {
+      ...baseRow,
+      secondary_category_keys: ["store_plumbing"],
+      search_keywords: [],
+    };
+    expect(mapAdminPartnerDetail(row).secondaryCategoryKeys).toEqual([
+      "store_plumbing",
+    ]);
+  });
+
+  it("maps search_keywords to searchKeywords", () => {
+    const row = {
+      ...baseRow,
+      secondary_category_keys: [],
+      search_keywords: ["ร้านวัสดุ", "hardware"],
+    };
+    expect(mapAdminPartnerDetail(row).searchKeywords).toEqual([
+      "ร้านวัสดุ",
+      "hardware",
+    ]);
+  });
+
+  it("defaults secondaryCategoryKeys to [] when absent", () => {
+    expect(mapAdminPartnerDetail(baseRow).secondaryCategoryKeys).toEqual([]);
+  });
+
+  it("defaults searchKeywords to [] when absent", () => {
+    expect(mapAdminPartnerDetail(baseRow).searchKeywords).toEqual([]);
+  });
+});
+
+describe("mapPublicPartnerCard — secondaryCategoryKeys (no searchKeywords)", () => {
+  const baseRow = {
+    id: "uuid-pub-card-1",
+    slug: "pub-card-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านสาธารณะ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    main_image_url: null,
+    main_category_key: "store_hardware_tools",
+    service_areas: [],
+    business_hours_preset_key: null,
+    is_verified: false,
+    verified_at: null,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("maps secondary_category_keys to secondaryCategoryKeys", () => {
+    const row = {
+      ...baseRow,
+      secondary_category_keys: ["store_plumbing"],
+      search_keywords: ["should-never-appear"],
+    };
+    expect(mapPublicPartnerCard(row).secondaryCategoryKeys).toEqual([
+      "store_plumbing",
+    ]);
+  });
+
+  it("defaults secondaryCategoryKeys to [] when absent", () => {
+    expect(mapPublicPartnerCard(baseRow).secondaryCategoryKeys).toEqual([]);
+  });
+
+  it("does NOT expose search_keywords", () => {
+    const row = {
+      ...baseRow,
+      secondary_category_keys: [],
+      search_keywords: ["secret"],
+    };
+    const mapped = mapPublicPartnerCard(row) as Record<string, unknown>;
+    expect("searchKeywords" in mapped).toBe(false);
+    expect("search_keywords" in mapped).toBe(false);
+  });
+});
+
+describe("mapPublicPartnerDetail — secondaryCategoryKeys (no searchKeywords)", () => {
+  const baseRow = {
+    id: "uuid-pub-detail-1",
+    slug: "pub-detail-test",
+    directory_type: "service",
+    entity_type: "individual",
+    name_th: "บริการทดสอบ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    main_category_key: null,
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("includes secondaryCategoryKeys (inherited from mapPublicPartnerCard)", () => {
+    const row = {
+      ...baseRow,
+      secondary_category_keys: ["service_transport"],
+    };
+    expect(mapPublicPartnerDetail(row).secondaryCategoryKeys).toEqual([
+      "service_transport",
+    ]);
+  });
+
+  it("does NOT expose search_keywords", () => {
+    const row = {
+      ...baseRow,
+      secondary_category_keys: [],
+      search_keywords: ["secret"],
+    };
+    const mapped = mapPublicPartnerDetail(row) as Record<string, unknown>;
+    expect("searchKeywords" in mapped).toBe(false);
+    expect("search_keywords" in mapped).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 fix (v2) — PATCH endpoint unified effective-state validation
+// ─────────────────────────────────────────────────────────────────────────────
+describe("PATCH endpoint — unified effective-state category validation", () => {
+  it("imports asPartnerSecondaryCategoryKeys for unified validation", () => {
+    const src = read("server/api/admin/partners/[id].patch.ts");
+    expect(src).toContain("asPartnerSecondaryCategoryKeys");
+  });
+
+  it("imports validateCategoryKeyForDirectoryType for mainCategoryKey validation", () => {
+    const src = read("server/api/admin/partners/[id].patch.ts");
+    expect(src).toContain("validateCategoryKeyForDirectoryType");
+  });
+
+  it("has a unified hasCategoryPatch guard", () => {
+    const src = read("server/api/admin/partners/[id].patch.ts");
+    expect(src).toContain("hasCategoryPatch");
+    expect(src).toContain('"directory_type" in payload');
+    expect(src).toContain('"main_category_key" in payload');
+    expect(src).toContain('"secondary_category_keys" in payload');
+  });
+
+  it("fetches directory_type and main_category_key together in one DB query", () => {
+    const src = read("server/api/admin/partners/[id].patch.ts");
+    expect(src).toContain("directory_type, main_category_key");
+  });
+
+  it("resolves effectiveDirectoryType from payload or existing DB value", () => {
+    const src = read("server/api/admin/partners/[id].patch.ts");
+    expect(src).toContain("effectiveDirectoryType");
+    expect(src).toContain("effectiveMainCategoryKey");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.2 fix (v2) — effective-state validation scenarios (unit-level)
+//
+// These tests exercise the utility functions (validateCategoryKeyForDirectoryType,
+// asPartnerSecondaryCategoryKeys) with the effective values the endpoint would
+// compute after DB fetch, verifying each PATCH scenario is handled correctly.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("Effective-state category validation — PATCH scenario coverage", () => {
+  // ── PATCH directoryType only ───────────────────────────────────────────────
+
+  it("PATCH directoryType only: rejects if existing mainCategoryKey is incompatible", () => {
+    // Existing: { directoryType: "store", mainCategoryKey: "store_hardware_tools" }
+    // PATCH: { directoryType: "service" }
+    // effectiveDir = "service", effectiveMain = "store_hardware_tools" → incompatible
+    expect(() =>
+      validateCategoryKeyForDirectoryType("service", "store_hardware_tools"),
+    ).toThrow(/not valid/);
+  });
+
+  it("PATCH directoryType only: passes if existing mainCategoryKey is null", () => {
+    // Null main_category_key is always valid regardless of directory type
+    expect(() =>
+      validateCategoryKeyForDirectoryType("service", null),
+    ).not.toThrow();
+  });
+
+  it("PATCH directoryType only: passes if existing mainCategoryKey matches new type", () => {
+    // Existing: { directoryType: "store", mainCategoryKey: "service_logistics" } — already consistent?
+    // Actually: changing to "service", existing main = "service_transport" → compatible
+    expect(() =>
+      validateCategoryKeyForDirectoryType("service", "service_transport"),
+    ).not.toThrow();
+  });
+
+  // ── PATCH directoryType + secondaryCategoryKeys (no mainCategoryKey) ───────
+
+  it("PATCH directoryType + secondaryCategoryKeys: rejects if existing mainCategoryKey is incompatible with new type", () => {
+    // Existing: { directoryType: "store", mainCategoryKey: "store_hardware_tools" }
+    // PATCH: { directoryType: "service", secondaryCategoryKeys: ["service_logistics"] }
+    // Step 1 (main check): effectiveMain = "store_hardware_tools" incompatible with "service"
+    expect(() =>
+      validateCategoryKeyForDirectoryType("service", "store_hardware_tools"),
+    ).toThrow(/not valid/);
+  });
+
+  it("PATCH directoryType + secondaryCategoryKeys: secondary validated against existing mainCategoryKey", () => {
+    // Existing: { directoryType: "store", mainCategoryKey: "service_transport" }
+    // (edge: already changed to compatible, mainKey = "service_transport")
+    // PATCH: { directoryType: "service", secondaryCategoryKeys: ["service_transport"] }
+    // secondary overlaps effective mainKey → reject
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(
+        ["service_transport"],
+        "service",
+        "service_transport", // effective main = existing.main_category_key
+      ),
+    ).toThrow(/must not include mainCategoryKey/);
+  });
+
+  // ── PATCH directoryType + mainCategoryKey + secondaryCategoryKeys ──────────
+
+  it("PATCH all three fields all compatible: passes", () => {
+    // No DB fetch needed — all values in payload
+    expect(() =>
+      validateCategoryKeyForDirectoryType("service", "service_transport"),
+    ).not.toThrow();
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(
+        ["service_logistics", "service_consulting"],
+        "service",
+        "service_transport",
+      ),
+    ).not.toThrow();
+  });
+
+  it("PATCH all three fields: rejects secondary equal to new mainCategoryKey", () => {
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(
+        ["service_transport"],
+        "service",
+        "service_transport",
+      ),
+    ).toThrow(/must not include mainCategoryKey/);
+  });
+
+  // ── PATCH mainCategoryKey only ─────────────────────────────────────────────
+
+  it("PATCH mainCategoryKey only: validates against existing directoryType", () => {
+    // Existing: { directoryType: "store" }
+    // PATCH: { mainCategoryKey: "service_logistics" }
+    // effectiveDir = "store" (from DB) → "service_logistics" is incompatible
+    expect(() =>
+      validateCategoryKeyForDirectoryType("store", "service_logistics"),
+    ).toThrow(/not valid/);
+  });
+
+  it("PATCH mainCategoryKey only: accepts compatible key for existing directoryType", () => {
+    expect(() =>
+      validateCategoryKeyForDirectoryType("store", "store_electrical"),
+    ).not.toThrow();
+  });
+
+  // ── PATCH secondaryCategoryKeys only ──────────────────────────────────────
+
+  it("PATCH secondaryCategoryKeys only: rejects key incompatible with existing directoryType", () => {
+    // effectiveDir = existing "store"
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(["service_logistics"], "store", null),
+    ).toThrow(/not valid/);
+  });
+
+  it("PATCH secondaryCategoryKeys only: rejects key that equals existing mainCategoryKey", () => {
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(
+        ["store_hardware_tools"],
+        "store",
+        "store_hardware_tools",
+      ),
+    ).toThrow(/must not include mainCategoryKey/);
+  });
+
+  it("PATCH secondaryCategoryKeys only: accepts valid keys for existing context", () => {
+    expect(() =>
+      asPartnerSecondaryCategoryKeys(
+        ["store_plumbing", "store_electrical"],
+        "store",
+        "store_hardware_tools",
+      ),
+    ).not.toThrow();
   });
 });

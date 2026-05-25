@@ -41,6 +41,8 @@ export interface PartnerCard {
   taglineEn: string | null;
   mainImageUrl: string | null;
   mainCategoryKey: string | null;
+  /** Controlled secondary category keys — share the same directoryType prefix as mainCategoryKey. */
+  secondaryCategoryKeys: string[];
   serviceAreas: string[];
   /** Machine-readable preset key. Null = custom/unspecified. Exposed for future Open Now badge. */
   businessHoursPresetKey: PartnerBusinessHoursPresetKey | null;
