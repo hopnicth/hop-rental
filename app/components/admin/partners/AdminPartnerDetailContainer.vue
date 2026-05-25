@@ -139,12 +139,18 @@ const form = reactive({
   directoryType: "" as PartnerDirectoryType | "",
   entityType: "" as PartnerEntityType | "",
   mainCategoryKey: "",
+  secondaryCategoryKeys: [] as string[],
+  searchKeywords: [] as string[],
   taglineTh: "",
   serviceAreas: [] as string[],
   businessHoursPreset: BH_UNSET as string,
   businessHoursCustom: "",
   isPublic: false,
 });
+
+// Per-keyword constraints (internal search metadata; never shown publicly)
+const SEARCH_KEYWORD_MAX_LEN = 50;
+const SEARCH_KEYWORD_MAX_ITEMS = 20;
 const saving = ref(false);
 const saveError = ref<string | null>(null);
 const fieldErrors = reactive<Record<string, string | null>>({});
@@ -155,6 +161,11 @@ const filteredCategoryOptions = computed((): SelectOption[] => {
   const prefix = `${form.directoryType}_`;
   return ALL_CATEGORIES.filter((c) => c.value.startsWith(prefix));
 });
+
+// Secondary options = same directoryType pool minus the current mainCategoryKey
+const secondaryCategoryOptions = computed((): SelectOption[] =>
+  filteredCategoryOptions.value.filter((c) => c.value !== form.mainCategoryKey),
+);
 const effectiveBusinessHoursText = computed(() => {
   if (form.businessHoursPreset === BH_UNSET) return "";
   if (form.businessHoursPreset === BH_CUSTOM)
@@ -188,6 +199,8 @@ function initFormFromPartner(row: AdminPartnerRow) {
   form.directoryType = row.directoryType;
   form.entityType = row.entityType;
   form.mainCategoryKey = row.mainCategoryKey ?? "";
+  form.secondaryCategoryKeys = [...(row.secondaryCategoryKeys ?? [])];
+  form.searchKeywords = [...(row.searchKeywords ?? [])];
   form.taglineTh = row.taglineTh ?? "";
   form.serviceAreas = [...row.serviceAreas];
   form.isPublic = row.isPublic;
@@ -231,8 +244,45 @@ watch(
     ) {
       form.mainCategoryKey = "";
     }
+    // Drop any secondary keys that no longer match the new prefix
+    if (form.secondaryCategoryKeys.length > 0) {
+      const prefix = `${newType}_`;
+      form.secondaryCategoryKeys = form.secondaryCategoryKeys.filter((k) =>
+        k.startsWith(prefix),
+      );
+    }
   },
 );
+
+// Remove the newly-selected mainCategoryKey from secondaryCategoryKeys if present
+watch(
+  () => form.mainCategoryKey,
+  (newMain) => {
+    if (newMain && form.secondaryCategoryKeys.includes(newMain)) {
+      form.secondaryCategoryKeys = form.secondaryCategoryKeys.filter(
+        (k) => k !== newMain,
+      );
+    }
+  },
+);
+
+// Sanitiser for free-text search keywords (trim, dedupe, length cap, item cap).
+// AdminChipInput already trims/dedupes, but this enforces the per-item length
+// constraint and acts as a defensive normaliser.
+function setSearchKeywords(next: string[]) {
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const raw of next) {
+    const v = (raw ?? "").trim();
+    if (!v) continue;
+    if (v.length > SEARCH_KEYWORD_MAX_LEN) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    cleaned.push(v);
+    if (cleaned.length >= SEARCH_KEYWORD_MAX_ITEMS) break;
+  }
+  form.searchKeywords = cleaned;
+}
 
 // ── Save — Basic Info fields only ────────────────────────────────────────────
 // isVerified, verifiedNotes, internalNotes, KYC, media, isFeatured, sortOrder
@@ -249,6 +299,8 @@ async function handleSave() {
       directoryType: form.directoryType,
       entityType: form.entityType,
       mainCategoryKey: form.mainCategoryKey || null,
+      secondaryCategoryKeys: [...form.secondaryCategoryKeys],
+      searchKeywords: [...form.searchKeywords],
       taglineTh: form.taglineTh.trim() || null,
       serviceAreas: form.serviceAreas.map((s) => s.trim()).filter(Boolean),
       businessHoursText: effectiveBusinessHoursText.value || null,
@@ -437,6 +489,21 @@ onMounted(() => {
             />
           </UFormField>
 
+          <UFormField label="Secondary categories (หมวดหมู่รอง)">
+            <AdminChipInput
+              :model-value="form.secondaryCategoryKeys"
+              :options="secondaryCategoryOptions"
+              :disabled="saving || !form.directoryType"
+              placeholder="พิมพ์เพื่อค้นหาและเลือกหมวดหมู่รอง"
+              empty-text="ไม่มีหมวดหมู่ที่ตรงกับคำค้น"
+              @update:model-value="(v) => (form.secondaryCategoryKeys = v)"
+            />
+            <template #hint>
+              เลือกได้หลายหมวด —
+              ใช้สำหรับการค้นหาและการแสดงผลในหมวดที่เกี่ยวข้อง (ไม่บังคับ)
+            </template>
+          </UFormField>
+
           <UFormField label="Short Description (tagline ไทย)">
             <UInput
               v-model="form.taglineTh"
@@ -565,6 +632,46 @@ onMounted(() => {
             >
               Back to list
             </UButton>
+            <UButton
+              color="primary"
+              icon="bx:save"
+              :loading="saving"
+              :disabled="!canSave"
+              @click="handleSave"
+            >
+              Save changes
+            </UButton>
+          </div>
+        </template>
+      </UCard>
+
+      <!-- ── Search & Discovery (admin-only internal metadata) ──────── -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="bx:search-alt" class="text-lg text-primary" />
+            <p class="font-semibold">Search & Discovery</p>
+          </div>
+        </template>
+
+        <UFormField label="Search keywords (คำค้นหาภายใน)">
+          <AdminChipInput
+            :model-value="form.searchKeywords"
+            :allow-custom="true"
+            :max-items="SEARCH_KEYWORD_MAX_ITEMS"
+            :disabled="saving"
+            placeholder="พิมพ์คำค้นหาแล้วกด Enter เช่น สว่าน, ไฟฟ้า, PPE"
+            @update:model-value="setSearchKeywords"
+          />
+          <template #hint>
+            Internal search keywords. Used for search only and not shown
+            publicly. (สูงสุด {{ SEARCH_KEYWORD_MAX_ITEMS }} คำ ยาวคำละไม่เกิน
+            {{ SEARCH_KEYWORD_MAX_LEN }} ตัวอักษร)
+          </template>
+        </UFormField>
+
+        <template #footer>
+          <div class="flex justify-end">
             <UButton
               color="primary"
               icon="bx:save"

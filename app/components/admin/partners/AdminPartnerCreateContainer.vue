@@ -163,12 +163,18 @@ const form = reactive({
   directoryType: "" as PartnerDirectoryType | "",
   entityType: "" as PartnerEntityType | "",
   mainCategoryKey: "",
+  secondaryCategoryKeys: [] as string[],
+  searchKeywords: [] as string[],
   shortDescription: "",
   serviceAreas: [] as string[],
   businessHoursPreset: BH_UNSET as string,
   businessHoursCustom: "",
   isPublic: false,
 });
+
+// Per-keyword constraints (internal search metadata; never shown publicly)
+const SEARCH_KEYWORD_MAX_LEN = 50;
+const SEARCH_KEYWORD_MAX_ITEMS = 20;
 
 const slugTouched = ref(false);
 const submitting = ref(false);
@@ -181,6 +187,11 @@ const filteredCategoryOptions = computed((): SelectOption[] => {
   const prefix = `${form.directoryType}_`;
   return ALL_CATEGORIES.filter((c) => c.value.startsWith(prefix));
 });
+
+// Secondary options = same directoryType pool minus the current mainCategoryKey
+const secondaryCategoryOptions = computed((): SelectOption[] =>
+  filteredCategoryOptions.value.filter((c) => c.value !== form.mainCategoryKey),
+);
 
 // Resolves the Thai display text to submit as businessHoursText.
 // "unset"  → "" (API asOptionalString will store null)
@@ -229,8 +240,45 @@ watch(
     ) {
       form.mainCategoryKey = "";
     }
+    // Drop any secondary keys that no longer match the new prefix
+    if (form.secondaryCategoryKeys.length > 0) {
+      const prefix = `${newType}_`;
+      form.secondaryCategoryKeys = form.secondaryCategoryKeys.filter((k) =>
+        k.startsWith(prefix),
+      );
+    }
   },
 );
+
+// Remove the newly-selected mainCategoryKey from secondaryCategoryKeys if present
+watch(
+  () => form.mainCategoryKey,
+  (newMain) => {
+    if (newMain && form.secondaryCategoryKeys.includes(newMain)) {
+      form.secondaryCategoryKeys = form.secondaryCategoryKeys.filter(
+        (k) => k !== newMain,
+      );
+    }
+  },
+);
+
+// Sanitiser for free-text search keywords (trim, dedupe, length cap, item cap).
+// AdminChipInput already trims/dedupes, but this enforces the per-item length
+// constraint and acts as a defensive normaliser.
+function setSearchKeywords(next: string[]) {
+  const seen = new Set<string>();
+  const cleaned: string[] = [];
+  for (const raw of next) {
+    const v = (raw ?? "").trim();
+    if (!v) continue;
+    if (v.length > SEARCH_KEYWORD_MAX_LEN) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    cleaned.push(v);
+    if (cleaned.length >= SEARCH_KEYWORD_MAX_ITEMS) break;
+  }
+  form.searchKeywords = cleaned;
+}
 
 // Auto-generate slug from name if admin has not manually edited it
 watch(
@@ -305,6 +353,8 @@ async function handleSubmit() {
       directoryType: form.directoryType,
       entityType: form.entityType,
       serviceAreas: cleanServiceAreas,
+      secondaryCategoryKeys: [...form.secondaryCategoryKeys],
+      searchKeywords: [...form.searchKeywords],
       isPublic: form.isPublic,
     };
     if (form.nameEn.trim()) body.nameEn = form.nameEn.trim();
@@ -501,6 +551,22 @@ async function handleSubmit() {
           />
         </UFormField>
 
+        <!-- secondaryCategoryKeys — same pool, excludes main, multi-select -->
+        <UFormField label="Secondary categories (หมวดหมู่รอง)">
+          <AdminChipInput
+            :model-value="form.secondaryCategoryKeys"
+            :options="secondaryCategoryOptions"
+            :disabled="submitting || !form.directoryType"
+            placeholder="พิมพ์เพื่อค้นหาและเลือกหมวดหมู่รอง"
+            empty-text="ไม่มีหมวดหมู่ที่ตรงกับคำค้น"
+            @update:model-value="(v) => (form.secondaryCategoryKeys = v)"
+          />
+          <template #hint>
+            เลือกได้หลายหมวด — ใช้สำหรับการค้นหาและการแสดงผลในหมวดที่เกี่ยวข้อง
+            (ไม่บังคับ)
+          </template>
+        </UFormField>
+
         <!-- shortDescription (tagline_th) -->
         <UFormField label="Short Description">
           <UInput
@@ -592,6 +658,32 @@ async function handleSubmit() {
           </UButton>
         </div>
       </template>
+    </UCard>
+
+    <!-- ── Search & Discovery (admin-only internal metadata) ───────────── -->
+    <UCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="bx:search-alt" class="text-lg text-primary" />
+          <p class="font-semibold">Search & Discovery</p>
+        </div>
+      </template>
+
+      <UFormField label="Search keywords (คำค้นหาภายใน)">
+        <AdminChipInput
+          :model-value="form.searchKeywords"
+          :allow-custom="true"
+          :max-items="SEARCH_KEYWORD_MAX_ITEMS"
+          :disabled="submitting"
+          placeholder="พิมพ์คำค้นหาแล้วกด Enter เช่น สว่าน, ไฟฟ้า, PPE"
+          @update:model-value="setSearchKeywords"
+        />
+        <template #hint>
+          Internal search keywords. Used for search only and not shown publicly.
+          (สูงสุด {{ SEARCH_KEYWORD_MAX_ITEMS }} คำ ยาวคำละไม่เกิน
+          {{ SEARCH_KEYWORD_MAX_LEN }} ตัวอักษร)
+        </template>
+      </UFormField>
     </UCard>
   </div>
 </template>
