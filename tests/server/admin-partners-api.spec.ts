@@ -37,6 +37,10 @@ import {
   mapAdminPartnerDetail,
   mapPublicPartnerCard,
   mapPublicPartnerDetail,
+  sanitisePublicCategoryParam,
+  sanitisePublicSearchQuery,
+  buildPublicCategoryOrFilter,
+  buildPublicTextSearchOrFilter,
 } from "../../server/utils/admin-partners";
 
 const read = (path: string) => readFileSync(path, "utf8");
@@ -1745,5 +1749,189 @@ describe("Effective-state category validation — PATCH scenario coverage", () =
         "store_hardware_tools",
       ),
     ).not.toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.4 — Public search/filter helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("sanitisePublicCategoryParam", () => {
+  it("returns valid lowercase category key unchanged", () => {
+    expect(sanitisePublicCategoryParam("store_hardware_tools")).toBe(
+      "store_hardware_tools",
+    );
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(sanitisePublicCategoryParam("  service_logistics  ")).toBe(
+      "service_logistics",
+    );
+  });
+
+  it("returns null for empty string", () => {
+    expect(sanitisePublicCategoryParam("")).toBeNull();
+  });
+
+  it("returns null for whitespace-only string", () => {
+    expect(sanitisePublicCategoryParam("   ")).toBeNull();
+  });
+
+  it("returns null for non-string input", () => {
+    expect(sanitisePublicCategoryParam(42)).toBeNull();
+    expect(sanitisePublicCategoryParam(null)).toBeNull();
+    expect(sanitisePublicCategoryParam(undefined)).toBeNull();
+  });
+
+  it("returns null for keys with uppercase letters", () => {
+    expect(sanitisePublicCategoryParam("Store_Hardware")).toBeNull();
+  });
+
+  it("returns null for keys with PostgREST-dangerous chars (comma, brace, dot)", () => {
+    expect(sanitisePublicCategoryParam("store,other")).toBeNull();
+    expect(sanitisePublicCategoryParam("store{x}")).toBeNull();
+    expect(sanitisePublicCategoryParam("store.other")).toBeNull();
+  });
+
+  it("returns null for keys exceeding 64 chars", () => {
+    expect(sanitisePublicCategoryParam("a".repeat(65))).toBeNull();
+  });
+
+  it("accepts keys exactly 64 chars", () => {
+    const key = "a".repeat(64);
+    expect(sanitisePublicCategoryParam(key)).toBe(key);
+  });
+});
+
+describe("sanitisePublicSearchQuery", () => {
+  it("returns a valid query trimmed", () => {
+    expect(sanitisePublicSearchQuery("  hardware  ")).toBe("hardware");
+  });
+
+  it("strips commas (PostgREST or-filter delimiter)", () => {
+    expect(sanitisePublicSearchQuery("a,b")).toBe("ab");
+  });
+
+  it("strips curly braces (PostgREST array literal chars)", () => {
+    expect(sanitisePublicSearchQuery("{evil}")).toBe("evil");
+  });
+
+  it("strips parentheses and dots", () => {
+    expect(sanitisePublicSearchQuery("(foo).bar")).toBe("foobar");
+  });
+
+  it("preserves Thai characters", () => {
+    expect(sanitisePublicSearchQuery("ร้านวัสดุ")).toBe("ร้านวัสดุ");
+  });
+
+  it("preserves underscores and hyphens (safe in ilike pattern)", () => {
+    expect(sanitisePublicSearchQuery("some_term")).toBe("some_term");
+  });
+
+  it("returns null for empty string", () => {
+    expect(sanitisePublicSearchQuery("")).toBeNull();
+  });
+
+  it("returns null for non-string input", () => {
+    expect(sanitisePublicSearchQuery(null)).toBeNull();
+    expect(sanitisePublicSearchQuery(undefined)).toBeNull();
+  });
+
+  it("returns null for input exceeding 100 chars", () => {
+    expect(sanitisePublicSearchQuery("a".repeat(101))).toBeNull();
+  });
+
+  it("returns null when all chars are stripped (only PostgREST chars)", () => {
+    expect(sanitisePublicSearchQuery(",{}().,")).toBeNull();
+  });
+});
+
+describe("buildPublicCategoryOrFilter", () => {
+  it("produces correct PostgREST or-filter string for a store category", () => {
+    expect(buildPublicCategoryOrFilter("store_hardware_tools")).toBe(
+      "main_category_key.eq.store_hardware_tools,secondary_category_keys.cs.{store_hardware_tools}",
+    );
+  });
+
+  it("produces correct filter for service category", () => {
+    expect(buildPublicCategoryOrFilter("service_logistics")).toBe(
+      "main_category_key.eq.service_logistics,secondary_category_keys.cs.{service_logistics}",
+    );
+  });
+});
+
+describe("buildPublicTextSearchOrFilter", () => {
+  it("produces ilike conditions for name_th, name_en, tagline_th and cs for search_keywords", () => {
+    const filter = buildPublicTextSearchOrFilter("hardware");
+    expect(filter).toBe(
+      "name_th.ilike.%hardware%,name_en.ilike.%hardware%,tagline_th.ilike.%hardware%,search_keywords.cs.{hardware}",
+    );
+  });
+
+  it("escapes SQL LIKE wildcard % in ilike clauses", () => {
+    const filter = buildPublicTextSearchOrFilter("100%");
+    expect(filter).toContain("name_th.ilike.%100\\%%");
+    expect(filter).toContain("name_en.ilike.%100\\%%");
+    expect(filter).toContain("tagline_th.ilike.%100\\%%");
+    // cs filter uses the original sanitised value (no ilike escaping needed)
+    expect(filter).toContain("search_keywords.cs.{100%}");
+  });
+
+  it("escapes SQL LIKE wildcard _ in ilike clauses", () => {
+    const filter = buildPublicTextSearchOrFilter("some_term");
+    expect(filter).toContain("name_th.ilike.%some\\_term%");
+    expect(filter).toContain("name_en.ilike.%some\\_term%");
+    expect(filter).toContain("tagline_th.ilike.%some\\_term%");
+    expect(filter).toContain("search_keywords.cs.{some_term}");
+  });
+
+  it("includes all four conditions joined by commas", () => {
+    const filter = buildPublicTextSearchOrFilter("test");
+    const parts = filter.split(",");
+    expect(parts).toHaveLength(4);
+    expect(parts[0]).toMatch(/^name_th\.ilike\./);
+    expect(parts[1]).toMatch(/^name_en\.ilike\./);
+    expect(parts[2]).toMatch(/^tagline_th\.ilike\./);
+    expect(parts[3]).toMatch(/^search_keywords\.cs\./);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2D.4 — Public list endpoint source-level checks
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GET /api/partners — Phase 1C-2D.4 search/filter source checks", () => {
+  const src = read("server/api/partners/index.get.ts");
+
+  it("uses sanitisePublicCategoryParam for the category param", () => {
+    expect(src).toContain("sanitisePublicCategoryParam");
+  });
+
+  it("uses sanitisePublicSearchQuery for the q param", () => {
+    expect(src).toContain("sanitisePublicSearchQuery");
+  });
+
+  it("uses buildPublicCategoryOrFilter via .or() instead of plain .eq()", () => {
+    expect(src).toContain("buildPublicCategoryOrFilter");
+    expect(src).not.toContain('.eq("main_category_key"');
+  });
+
+  it("uses buildPublicTextSearchOrFilter for q text search", () => {
+    expect(src).toContain("buildPublicTextSearchOrFilter");
+  });
+
+  it("still enforces is_public = true gate", () => {
+    expect(src).toContain('.eq("is_public", true)');
+  });
+
+  it("still uses PUBLIC_PARTNER_LIST_SELECT (no private fields)", () => {
+    expect(src).toContain("PUBLIC_PARTNER_LIST_SELECT");
+  });
+
+  it("uses service-role client (allows server-side search_keywords filtering)", () => {
+    expect(src).toContain("serverSupabaseServiceRole");
+  });
+
+  it("search_keywords is NOT in PUBLIC_PARTNER_LIST_SELECT (not exposed in response)", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain("search_keywords");
   });
 });

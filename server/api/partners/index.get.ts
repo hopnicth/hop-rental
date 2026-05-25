@@ -2,15 +2,21 @@
  * GET /api/partners
  *
  * Public partner directory listing. Only is_public=TRUE profiles are returned.
- * Private fields (kyc_documents, verified_notes, internal_notes) are NEVER
- * included — enforced by the SELECT string, not relying on RLS alone.
+ * Private fields (kyc_documents, verified_notes, internal_notes, search_keywords)
+ * are NEVER included in the response — enforced by the SELECT string and mapper.
+ *
+ * Uses the service-role client (server-side only) so that search_keywords can be
+ * used as a filter target without being granted to the public anon role.
+ * search_keywords is NOT present in PUBLIC_PARTNER_LIST_SELECT and is NOT mapped
+ * into the response — it is filter-only, internal metadata.
  *
  * Query params:
  *   directoryType  — "store" | "service" | "contractor" (omit = all)
- *   category       — main_category_key exact match (omit = all)
+ *   category       — matches main_category_key OR secondary_category_keys (omit = all)
  *   serviceArea    — service_areas array contains filter (omit = all)
  *   isVerified     — "true" to show verified only (omit = all)
  *   isFeatured     — "true" to show featured only (omit = all)
+ *   q              — text search across name_th, name_en, tagline_th, search_keywords
  *   page           — 0-based page index (default 0)
  *   pageSize       — items per page (default 20, max 50)
  */
@@ -19,6 +25,10 @@ import { serverSupabaseServiceRole } from "#supabase/server";
 import {
   PUBLIC_PARTNER_LIST_SELECT,
   mapPublicPartnerCard,
+  sanitisePublicCategoryParam,
+  sanitisePublicSearchQuery,
+  buildPublicCategoryOrFilter,
+  buildPublicTextSearchOrFilter,
 } from "~~/server/utils/admin-partners";
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -40,10 +50,8 @@ export default defineEventHandler(async (event) => {
       ? q.directoryType
       : null;
 
-  const category =
-    typeof q.category === "string" && q.category.trim().length > 0
-      ? q.category.trim()
-      : null;
+  // sanitisePublicCategoryParam accepts only [a-z0-9_] — prevents PostgREST injection.
+  const category = sanitisePublicCategoryParam(q.category);
 
   const serviceArea =
     typeof q.serviceArea === "string" && q.serviceArea.trim().length > 0
@@ -53,8 +61,13 @@ export default defineEventHandler(async (event) => {
   const verifiedOnly = q.isVerified === "true";
   const featuredOnly = q.isFeatured === "true";
 
+  // sanitisePublicSearchQuery strips PostgREST syntax chars and trims whitespace.
+  const searchQuery = sanitisePublicSearchQuery(q.q);
+
   // service_role bypasses RLS — we enforce is_public manually and use the
   // public SELECT string to ensure no private fields are ever returned.
+  // search_keywords is NOT in PUBLIC_PARTNER_LIST_SELECT so it never reaches
+  // the client, but the service-role client can still filter on it server-side.
   let request = client
     .from("partner_profiles")
     .select(PUBLIC_PARTNER_LIST_SELECT)
@@ -63,10 +76,14 @@ export default defineEventHandler(async (event) => {
     .order("created_at", { ascending: false });
 
   if (directoryType) request = request.eq("directory_type", directoryType);
-  if (category) request = request.eq("main_category_key", category);
+  // Category matches main_category_key OR secondary_category_keys contains the value.
+  if (category) request = request.or(buildPublicCategoryOrFilter(category));
   if (serviceArea) request = request.contains("service_areas", [serviceArea]);
   if (verifiedOnly) request = request.eq("is_verified", true);
   if (featuredOnly) request = request.eq("is_featured", true);
+  // Text search across name fields + server-side search_keywords (not exposed in response).
+  if (searchQuery)
+    request = request.or(buildPublicTextSearchOrFilter(searchQuery));
 
   const { data, error } = await request;
 

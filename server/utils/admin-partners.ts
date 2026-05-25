@@ -241,6 +241,67 @@ export function asPartnerSearchKeywords(value: unknown): string[] {
   }
   return arr;
 }
+// ── Public search/filter helpers ──────────────────────────────────────────────
+
+/**
+ * Sanitises a public-facing category filter param.
+ * Accepts only lowercase category key format: [a-z0-9_], max 64 chars.
+ * Returns null for invalid/empty input — prevents PostgREST filter injection.
+ */
+export function sanitisePublicCategoryParam(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v || v.length > 64) return null;
+  if (!/^[a-z0-9_]+$/.test(v)) return null;
+  return v;
+}
+
+/**
+ * Sanitises a public-facing text search query.
+ * Strips characters that could inject PostgREST filter syntax (`,{}().`)
+ * and returns the cleaned trimmed value for use in ilike / array-contains filters.
+ * Returns null for empty or overly long (>100 chars) input.
+ */
+export function sanitisePublicSearchQuery(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v || v.length > 100) return null;
+  // Strip characters that carry special meaning in PostgREST filter syntax.
+  const safe = v.replace(/[,{}().]/g, "").trim();
+  if (!safe) return null;
+  return safe;
+}
+
+/**
+ * Builds the PostgREST `.or()` filter string for category matching.
+ * Matches partners where:
+ *   main_category_key = category  OR  secondary_category_keys ∋ category
+ *
+ * `category` must already be sanitised via sanitisePublicCategoryParam
+ * (alphanumeric + underscores only — no PostgREST injection possible).
+ */
+export function buildPublicCategoryOrFilter(category: string): string {
+  return `main_category_key.eq.${category},secondary_category_keys.cs.{${category}}`;
+}
+
+/**
+ * Builds the PostgREST `.or()` filter string for public text search.
+ * - name_th / name_en / tagline_th  → case-insensitive ilike (%q%)
+ * - search_keywords                 → array contains exact term (server-side; field is not selected/exposed)
+ *
+ * `q` must already be sanitised via sanitisePublicSearchQuery.
+ * SQL LIKE wildcards (`%` and `_`) are escaped inline for the ilike clauses.
+ */
+export function buildPublicTextSearchOrFilter(q: string): string {
+  const likeQ = q.replace(/%/g, "\\%").replace(/_/g, "\\_");
+  return [
+    `name_th.ilike.%${likeQ}%`,
+    `name_en.ilike.%${likeQ}%`,
+    `tagline_th.ilike.%${likeQ}%`,
+    `search_keywords.cs.{${q}}`,
+  ].join(",");
+}
+
 // ── Payload builders ──────────────────────────────────────────────────────────
 
 /** Full payload for INSERT. All required fields must be present. */
