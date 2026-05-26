@@ -3288,3 +3288,117 @@ describe("Phase 1C-2F: mapPublicPartnerDetail — contentBlocks visibility filte
     ).toEqual(["First", "Second", "Third"]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2F.3: PATCH /api/admin/partners/:id/content-blocks — source checks
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("PATCH /api/admin/partners/:id/content-blocks — source checks", () => {
+  const src = read("server/api/admin/partners/[id]/content-blocks.patch.ts");
+
+  it("endpoint file exists at the correct path", () => {
+    expect(src).toBeTruthy();
+    expect(src.length).toBeGreaterThan(0);
+  });
+
+  it("uses requireSuperAdmin", () => {
+    expect(src).toContain("requireSuperAdmin");
+  });
+
+  it("does not use requirePlatformAdmin", () => {
+    expect(src).not.toContain("requirePlatformAdmin");
+  });
+
+  it("imports validatePartnerContentBlocks", () => {
+    expect(src).toContain("validatePartnerContentBlocks");
+  });
+
+  it("imports ADMIN_PARTNER_DETAIL_SELECT", () => {
+    expect(src).toContain("ADMIN_PARTNER_DETAIL_SELECT");
+  });
+
+  it("imports mapAdminPartnerDetail", () => {
+    expect(src).toContain("mapAdminPartnerDetail");
+  });
+
+  it("reads contentBlocks from the request body", () => {
+    expect(src).toContain("contentBlocks");
+  });
+
+  it("updates content_blocks column only (not basic info fields)", () => {
+    expect(src).toContain("content_blocks");
+    // Must NOT update basic info fields
+    expect(src).not.toContain("name_th");
+    expect(src).not.toContain("name_en");
+    expect(src).not.toContain("slug");
+    expect(src).not.toContain("description_th");
+    expect(src).not.toContain("description_en");
+    expect(src).not.toContain("directory_type");
+    expect(src).not.toContain("entity_type");
+    expect(src).not.toContain("is_public");
+    expect(src).not.toContain("is_verified");
+    expect(src).not.toContain("sort_order");
+  });
+
+  it("does not touch media fields", () => {
+    expect(src).not.toContain("main_image_url");
+    expect(src).not.toContain("thumbnail_image_url");
+    expect(src).not.toContain("cover_image_url");
+  });
+
+  it("does not touch private admin-only fields", () => {
+    expect(src).not.toContain("internal_notes");
+    expect(src).not.toContain("verified_notes");
+    expect(src).not.toContain("kyc_documents");
+    expect(src).not.toContain("search_keywords");
+  });
+
+  it("returns 400 when id is missing (has statusCode 400 guard)", () => {
+    expect(src).toContain("statusCode: 400");
+  });
+
+  it("returns 404 when partner not found (has statusCode 404 guard)", () => {
+    expect(src).toContain("statusCode: 404");
+  });
+
+  it("returns 500 on DB/update error (has statusCode 500 guard)", () => {
+    expect(src).toContain("statusCode: 500");
+  });
+
+  it("calls maybeSingle() to verify partner existence before update", () => {
+    expect(src).toContain("maybeSingle");
+  });
+
+  it("calls .update() with content_blocks", () => {
+    expect(src).toContain(".update(");
+    expect(src).toContain("content_blocks");
+  });
+
+  it("calls .select(ADMIN_PARTNER_DETAIL_SELECT) after update", () => {
+    expect(src).toContain("ADMIN_PARTNER_DETAIL_SELECT");
+    expect(src).toContain(".select(ADMIN_PARTNER_DETAIL_SELECT)");
+  });
+
+  it("returns { item: ... } shape using mapAdminPartnerDetail", () => {
+    expect(src).toContain("item:");
+    expect(src).toContain("mapAdminPartnerDetail");
+  });
+
+  it("reads id from route param via getRouterParam", () => {
+    expect(src).toContain("getRouterParam");
+  });
+
+  it("calls readBody to parse request body", () => {
+    expect(src).toContain("readBody");
+  });
+
+  it("does not import any media utilities", () => {
+    expect(src).not.toContain("partner-media");
+    expect(src).not.toContain("processPartnerImageUpload");
+    expect(src).not.toContain("PARTNER_MEDIA_BUCKET");
+  });
+
+  it("does not import buildPartnerUpdatePayload (dedicated endpoint, not basic-info PATCH)", () => {
+    expect(src).not.toContain("buildPartnerUpdatePayload");
+  });
+});
