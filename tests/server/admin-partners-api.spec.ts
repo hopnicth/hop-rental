@@ -2331,3 +2331,388 @@ describe("buildPartnerUpdatePayload — thumbnailImageUrl + coverImageUrl patchi
     expect(p.cover_image_url).toBeNull();
   });
 });
+
+// =============================================================================
+// Phase 1C-2E.3 — Partner Media Upload API
+// =============================================================================
+import {
+  asPartnerUploadKind,
+  validatePartnerMediaMime,
+  validatePartnerMediaSize,
+  buildPartnerMediaPath,
+  extractPartnerStoragePathFromPublicUrl,
+  PARTNER_MEDIA_BUCKET,
+  PARTNER_MEDIA_MAX_BYTES,
+  PARTNER_IMAGE_CONFIG,
+} from "../../server/utils/partner-media";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. Kind validator
+// ─────────────────────────────────────────────────────────────────────────────
+describe("asPartnerUploadKind — kind validator", () => {
+  it("accepts 'thumbnail'", () => {
+    expect(asPartnerUploadKind("thumbnail")).toBe("thumbnail");
+  });
+
+  it("accepts 'cover'", () => {
+    expect(asPartnerUploadKind("cover")).toBe("cover");
+  });
+
+  it("rejects 'main'", () => {
+    expect(() => asPartnerUploadKind("main")).toThrow();
+  });
+
+  it("rejects 'banner'", () => {
+    expect(() => asPartnerUploadKind("banner")).toThrow();
+  });
+
+  it("rejects null", () => {
+    expect(() => asPartnerUploadKind(null)).toThrow();
+  });
+
+  it("rejects undefined", () => {
+    expect(() => asPartnerUploadKind(undefined)).toThrow();
+  });
+
+  it("rejects empty string", () => {
+    expect(() => asPartnerUploadKind("")).toThrow();
+  });
+
+  it("rejects number", () => {
+    expect(() => asPartnerUploadKind(1)).toThrow();
+  });
+
+  it("throw has status 422 for invalid kind", () => {
+    try {
+      asPartnerUploadKind("gallery");
+    } catch (e: unknown) {
+      expect((e as { statusCode?: number }).statusCode).toBe(422);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. MIME validator
+// ─────────────────────────────────────────────────────────────────────────────
+describe("validatePartnerMediaMime — MIME type validator", () => {
+  it("accepts image/jpeg", () => {
+    expect(() => validatePartnerMediaMime("image/jpeg")).not.toThrow();
+  });
+
+  it("accepts image/png", () => {
+    expect(() => validatePartnerMediaMime("image/png")).not.toThrow();
+  });
+
+  it("accepts image/webp", () => {
+    expect(() => validatePartnerMediaMime("image/webp")).not.toThrow();
+  });
+
+  it("rejects image/svg+xml (SVG blocked)", () => {
+    expect(() => validatePartnerMediaMime("image/svg+xml")).toThrow();
+  });
+
+  it("rejects image/gif", () => {
+    expect(() => validatePartnerMediaMime("image/gif")).toThrow();
+  });
+
+  it("rejects text/plain", () => {
+    expect(() => validatePartnerMediaMime("text/plain")).toThrow();
+  });
+
+  it("rejects empty string", () => {
+    expect(() => validatePartnerMediaMime("")).toThrow();
+  });
+
+  it("throws 415 for unsupported type", () => {
+    try {
+      validatePartnerMediaMime("image/svg+xml");
+    } catch (e: unknown) {
+      expect((e as { statusCode?: number }).statusCode).toBe(415);
+    }
+  });
+
+  it("is case-insensitive (IMAGE/JPEG passes)", () => {
+    expect(() => validatePartnerMediaMime("IMAGE/JPEG")).not.toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. Size validator
+// ─────────────────────────────────────────────────────────────────────────────
+describe("validatePartnerMediaSize — file size validator", () => {
+  it("accepts exactly at 15 MB limit", () => {
+    expect(() =>
+      validatePartnerMediaSize(PARTNER_MEDIA_MAX_BYTES),
+    ).not.toThrow();
+  });
+
+  it("accepts 1 byte below limit", () => {
+    expect(() =>
+      validatePartnerMediaSize(PARTNER_MEDIA_MAX_BYTES - 1),
+    ).not.toThrow();
+  });
+
+  it("rejects 1 byte over limit", () => {
+    expect(() =>
+      validatePartnerMediaSize(PARTNER_MEDIA_MAX_BYTES + 1),
+    ).toThrow();
+  });
+
+  it("throws 413 for oversized file", () => {
+    try {
+      validatePartnerMediaSize(PARTNER_MEDIA_MAX_BYTES + 1);
+    } catch (e: unknown) {
+      expect((e as { statusCode?: number }).statusCode).toBe(413);
+    }
+  });
+
+  it("accepts 0 bytes", () => {
+    expect(() => validatePartnerMediaSize(0)).not.toThrow();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Image processing config
+// ─────────────────────────────────────────────────────────────────────────────
+describe("PARTNER_IMAGE_CONFIG — processing config", () => {
+  it("thumbnail width is 800", () => {
+    expect(PARTNER_IMAGE_CONFIG.thumbnail.width).toBe(800);
+  });
+
+  it("thumbnail height is 800", () => {
+    expect(PARTNER_IMAGE_CONFIG.thumbnail.height).toBe(800);
+  });
+
+  it("thumbnail fit is cover", () => {
+    expect(PARTNER_IMAGE_CONFIG.thumbnail.fit).toBe("cover");
+  });
+
+  it("thumbnail quality is 80", () => {
+    expect(PARTNER_IMAGE_CONFIG.thumbnail.quality).toBe(80);
+  });
+
+  it("cover width is 1600", () => {
+    expect(PARTNER_IMAGE_CONFIG.cover.width).toBe(1600);
+  });
+
+  it("cover quality is 82", () => {
+    expect(PARTNER_IMAGE_CONFIG.cover.quality).toBe(82);
+  });
+
+  it("PARTNER_MEDIA_BUCKET is catalog-media", () => {
+    expect(PARTNER_MEDIA_BUCKET).toBe("catalog-media");
+  });
+
+  it("PARTNER_MEDIA_MAX_BYTES is 15 MB", () => {
+    expect(PARTNER_MEDIA_MAX_BYTES).toBe(15 * 1024 * 1024);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Storage path builder
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerMediaPath — storage path format", () => {
+  const partnerId = "abc-123";
+
+  it("starts with partner-profiles/{partnerId}/", () => {
+    const path = buildPartnerMediaPath(partnerId, "thumbnail");
+    expect(path.startsWith(`partner-profiles/${partnerId}/`)).toBe(true);
+  });
+
+  it("contains kind prefix for thumbnail", () => {
+    const path = buildPartnerMediaPath(partnerId, "thumbnail");
+    const filename = path.split("/").pop()!;
+    expect(filename.startsWith("thumbnail-")).toBe(true);
+  });
+
+  it("contains kind prefix for cover", () => {
+    const path = buildPartnerMediaPath(partnerId, "cover");
+    const filename = path.split("/").pop()!;
+    expect(filename.startsWith("cover-")).toBe(true);
+  });
+
+  it("ends with .webp", () => {
+    const path = buildPartnerMediaPath(partnerId, "thumbnail");
+    expect(path.endsWith(".webp")).toBe(true);
+  });
+
+  it("generates unique paths on each call", () => {
+    const a = buildPartnerMediaPath(partnerId, "thumbnail");
+    const b = buildPartnerMediaPath(partnerId, "thumbnail");
+    expect(a).not.toBe(b);
+  });
+
+  it("includes a UUID segment (8-4-4-4-12 hex format)", () => {
+    const path = buildPartnerMediaPath(partnerId, "cover");
+    const filename = path.split("/").pop()!;
+    const uuidPart = filename
+      .replace(/^(thumbnail|cover)-/, "")
+      .replace(/\.webp$/, "");
+    expect(uuidPart).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. extractPartnerStoragePathFromPublicUrl — delete safety
+// ─────────────────────────────────────────────────────────────────────────────
+describe("extractPartnerStoragePathFromPublicUrl — path safety", () => {
+  const BUCKET = "catalog-media";
+  const partnerId = "partner-uuid-abc";
+  const validUrl = `https://abc.supabase.co/storage/v1/object/public/${BUCKET}/partner-profiles/${partnerId}/thumbnail-uuid.webp`;
+
+  it("returns path for valid partner media URL", () => {
+    const path = extractPartnerStoragePathFromPublicUrl(validUrl, partnerId);
+    expect(path).toBe(`partner-profiles/${partnerId}/thumbnail-uuid.webp`);
+  });
+
+  it("returns null for external URL (not supabase storage)", () => {
+    const path = extractPartnerStoragePathFromPublicUrl(
+      "https://external.cdn.com/image.webp",
+      partnerId,
+    );
+    expect(path).toBeNull();
+  });
+
+  it("returns null when path is under different partnerId", () => {
+    const otherUrl = `https://abc.supabase.co/storage/v1/object/public/${BUCKET}/partner-profiles/other-partner/thumbnail-uuid.webp`;
+    const path = extractPartnerStoragePathFromPublicUrl(otherUrl, partnerId);
+    expect(path).toBeNull();
+  });
+
+  it("returns null for home-content path (wrong prefix)", () => {
+    const homeUrl = `https://abc.supabase.co/storage/v1/object/public/${BUCKET}/home-content/banner/image.webp`;
+    const path = extractPartnerStoragePathFromPublicUrl(homeUrl, partnerId);
+    expect(path).toBeNull();
+  });
+
+  it("returns null for non-.webp file (e.g. .jpg)", () => {
+    const jpgUrl = `https://abc.supabase.co/storage/v1/object/public/${BUCKET}/partner-profiles/${partnerId}/thumbnail-uuid.jpg`;
+    const path = extractPartnerStoragePathFromPublicUrl(jpgUrl, partnerId);
+    expect(path).toBeNull();
+  });
+
+  it("returns null for null input", () => {
+    const path = extractPartnerStoragePathFromPublicUrl(null, partnerId);
+    expect(path).toBeNull();
+  });
+
+  it("returns null for empty string", () => {
+    const path = extractPartnerStoragePathFromPublicUrl("", partnerId);
+    expect(path).toBeNull();
+  });
+
+  it("returns null for path traversal attempt", () => {
+    const evilUrl = `https://abc.supabase.co/storage/v1/object/public/${BUCKET}/partner-profiles/../other/file.webp`;
+    const path = extractPartnerStoragePathFromPublicUrl(evilUrl, partnerId);
+    expect(path).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. POST endpoint source checks
+// ─────────────────────────────────────────────────────────────────────────────
+describe("POST /api/admin/partners/:id/media — source checks", () => {
+  const src = read("server/api/admin/partners/[id]/media.post.ts");
+
+  it("uses requireSuperAdmin", () => {
+    expect(src).toContain("requireSuperAdmin");
+  });
+
+  it("does not use requirePlatformAdmin", () => {
+    expect(src).not.toContain("requirePlatformAdmin");
+  });
+
+  it("reads multipart form data", () => {
+    expect(src).toContain("readMultipartFormData");
+  });
+
+  it("uses asPartnerUploadKind to validate kind", () => {
+    expect(src).toContain("asPartnerUploadKind");
+  });
+
+  it("validates MIME type", () => {
+    expect(src).toContain("validatePartnerMediaMime");
+  });
+
+  it("validates file size", () => {
+    expect(src).toContain("validatePartnerMediaSize");
+  });
+
+  it("processes with processPartnerImageUpload", () => {
+    expect(src).toContain("processPartnerImageUpload");
+  });
+
+  it("uploads to catalog-media bucket (PARTNER_MEDIA_BUCKET)", () => {
+    expect(src).toContain("PARTNER_MEDIA_BUCKET");
+  });
+
+  it("updates thumbnail_image_url for thumbnail kind", () => {
+    expect(src).toContain("thumbnail_image_url");
+  });
+
+  it("updates cover_image_url for cover kind", () => {
+    expect(src).toContain("cover_image_url");
+  });
+
+  it("attempts removal of old image before uploading new one", () => {
+    expect(src).toContain("removePartnerMediaByPublicUrl");
+  });
+
+  it("uses ADMIN_PARTNER_DETAIL_SELECT for returned row", () => {
+    expect(src).toContain("ADMIN_PARTNER_DETAIL_SELECT");
+  });
+
+  it("returns item and upload in response", () => {
+    expect(src).toContain("item:");
+    expect(src).toContain("upload:");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. DELETE endpoint source checks
+// ─────────────────────────────────────────────────────────────────────────────
+describe("DELETE /api/admin/partners/:id/media — source checks", () => {
+  const src = read("server/api/admin/partners/[id]/media.delete.ts");
+
+  it("uses requireSuperAdmin", () => {
+    expect(src).toContain("requireSuperAdmin");
+  });
+
+  it("does not use requirePlatformAdmin", () => {
+    expect(src).not.toContain("requirePlatformAdmin");
+  });
+
+  it("reads body for kind", () => {
+    expect(src).toContain("readBody");
+  });
+
+  it("uses asPartnerUploadKind to validate kind", () => {
+    expect(src).toContain("asPartnerUploadKind");
+  });
+
+  it("removes storage object via removePartnerMediaByPublicUrl", () => {
+    expect(src).toContain("removePartnerMediaByPublicUrl");
+  });
+
+  it("nulls thumbnail_image_url for thumbnail kind", () => {
+    expect(src).toContain("thumbnail_image_url");
+  });
+
+  it("nulls cover_image_url for cover kind", () => {
+    expect(src).toContain("cover_image_url");
+  });
+
+  it("does NOT touch main_image_url", () => {
+    expect(src).not.toContain("main_image_url");
+  });
+
+  it("uses ADMIN_PARTNER_DETAIL_SELECT for returned row", () => {
+    expect(src).toContain("ADMIN_PARTNER_DETAIL_SELECT");
+  });
+
+  it("returns ok: true on success", () => {
+    expect(src).toContain("ok: true");
+  });
+});
