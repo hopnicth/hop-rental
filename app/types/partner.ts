@@ -40,6 +40,10 @@ export interface PartnerCard {
   taglineTh: string | null;
   taglineEn: string | null;
   mainImageUrl: string | null;
+  /** Square/portrait thumbnail image (card grid). Fallback: thumbnailImageUrl → coverImageUrl → mainImageUrl → placeholder. */
+  thumbnailImageUrl: string | null;
+  /** Wide banner cover image (detail hero). Fallback: coverImageUrl → mainImageUrl → placeholder. */
+  coverImageUrl: string | null;
   mainCategoryKey: string | null;
   /** Controlled secondary category keys — share the same directoryType prefix as mainCategoryKey. */
   secondaryCategoryKeys: string[];

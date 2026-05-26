@@ -15,19 +15,19 @@ import {
 
 /** Admin list — lightweight, no private fields, no descriptions. */
 export const ADMIN_PARTNER_LIST_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, main_image_url, main_category_key, secondary_category_keys, service_areas, business_hours_preset_key, is_verified, is_public, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, service_areas, business_hours_preset_key, is_verified, is_public, is_featured, sort_order, created_at, updated_at";
 
 /** Admin detail — full row including private admin-only columns. */
 export const ADMIN_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, secondary_category_keys, search_keywords, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, search_keywords, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, created_at, updated_at";
 
 /** Public list — no private fields, no descriptions. */
 export const PUBLIC_PARTNER_LIST_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, main_image_url, main_category_key, secondary_category_keys, service_areas, business_hours_preset_key, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, service_areas, business_hours_preset_key, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
 
 /** Public detail — no private fields (kyc_documents, verified_notes, internal_notes, search_keywords excluded). */
 export const PUBLIC_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, main_category_key, secondary_category_keys, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -323,6 +323,8 @@ export function buildPartnerCreatePayload(body: Record<string, unknown>) {
     description_th: asOptionalString(body.descriptionTh),
     description_en: asOptionalString(body.descriptionEn),
     main_image_url: asOptionalString(body.mainImageUrl),
+    thumbnail_image_url: asOptionalString(body.thumbnailImageUrl),
+    cover_image_url: asOptionalString(body.coverImageUrl),
     main_category_key,
     secondary_category_keys: asPartnerSecondaryCategoryKeys(
       body.secondaryCategoryKeys,
@@ -367,6 +369,10 @@ export function buildPartnerUpdatePayload(body: Record<string, unknown>) {
     p.description_en = asOptionalString(body.descriptionEn);
   if ("mainImageUrl" in body)
     p.main_image_url = asOptionalString(body.mainImageUrl);
+  if ("thumbnailImageUrl" in body)
+    p.thumbnail_image_url = asOptionalString(body.thumbnailImageUrl);
+  if ("coverImageUrl" in body)
+    p.cover_image_url = asOptionalString(body.coverImageUrl);
   if ("mainCategoryKey" in body)
     p.main_category_key = asOptionalString(body.mainCategoryKey);
   if ("secondaryCategoryKeys" in body) {
@@ -464,6 +470,8 @@ export function mapAdminPartnerListItem(row: Record<string, unknown>) {
     nameEn: str(row.name_en),
     taglineTh: str(row.tagline_th),
     mainImageUrl: str(row.main_image_url),
+    thumbnailImageUrl: str(row.thumbnail_image_url),
+    coverImageUrl: str(row.cover_image_url),
     mainCategoryKey: str(row.main_category_key),
     secondaryCategoryKeys: Array.isArray(row.secondary_category_keys)
       ? (row.secondary_category_keys as string[])
@@ -531,6 +539,8 @@ export function mapPublicPartnerCard(row: Record<string, unknown>) {
     taglineTh: str(row.tagline_th),
     taglineEn: str(row.tagline_en),
     mainImageUrl: str(row.main_image_url),
+    thumbnailImageUrl: str(row.thumbnail_image_url),
+    coverImageUrl: str(row.cover_image_url),
     mainCategoryKey: str(row.main_category_key),
     secondaryCategoryKeys: Array.isArray(row.secondary_category_keys)
       ? (row.secondary_category_keys as string[])

@@ -1935,3 +1935,399 @@ describe("GET /api/partners — Phase 1C-2D.4 search/filter source checks", () =
     expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain("search_keywords");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2E.2 — SELECT strings: thumbnail_image_url + cover_image_url
+// ─────────────────────────────────────────────────────────────────────────────
+describe("SELECT strings — thumbnail_image_url + cover_image_url coverage", () => {
+  it("ADMIN_PARTNER_LIST_SELECT includes thumbnail_image_url", () => {
+    expect(ADMIN_PARTNER_LIST_SELECT).toContain("thumbnail_image_url");
+  });
+
+  it("ADMIN_PARTNER_LIST_SELECT includes cover_image_url", () => {
+    expect(ADMIN_PARTNER_LIST_SELECT).toContain("cover_image_url");
+  });
+
+  it("ADMIN_PARTNER_DETAIL_SELECT includes thumbnail_image_url", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("thumbnail_image_url");
+  });
+
+  it("ADMIN_PARTNER_DETAIL_SELECT includes cover_image_url", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("cover_image_url");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT includes thumbnail_image_url", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).toContain("thumbnail_image_url");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT includes cover_image_url", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).toContain("cover_image_url");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT includes thumbnail_image_url", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).toContain("thumbnail_image_url");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT includes cover_image_url", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).toContain("cover_image_url");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT still excludes all private fields", () => {
+    for (const f of [
+      "kyc_documents",
+      "verified_notes",
+      "internal_notes",
+      "search_keywords",
+    ]) {
+      expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain(f);
+    }
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT still excludes all private fields", () => {
+    for (const f of [
+      "kyc_documents",
+      "verified_notes",
+      "internal_notes",
+      "search_keywords",
+    ]) {
+      expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain(f);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2E.2 — mapAdminPartnerListItem: thumbnailImageUrl + coverImageUrl
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapAdminPartnerListItem — thumbnailImageUrl + coverImageUrl", () => {
+  const baseRow = {
+    id: "uuid-media-list-1",
+    slug: "media-list-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านทดสอบมีเดีย",
+    name_en: null,
+    tagline_th: null,
+    main_image_url: null,
+    main_category_key: null,
+    secondary_category_keys: [],
+    service_areas: [],
+    business_hours_preset_key: null,
+    is_verified: false,
+    is_public: false,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("maps thumbnail_image_url to thumbnailImageUrl", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: "https://cdn.example.com/thumb.webp",
+      cover_image_url: null,
+    };
+    expect(mapAdminPartnerListItem(row).thumbnailImageUrl).toBe(
+      "https://cdn.example.com/thumb.webp",
+    );
+  });
+
+  it("maps cover_image_url to coverImageUrl", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: null,
+      cover_image_url: "https://cdn.example.com/cover.webp",
+    };
+    expect(mapAdminPartnerListItem(row).coverImageUrl).toBe(
+      "https://cdn.example.com/cover.webp",
+    );
+  });
+
+  it("returns null thumbnailImageUrl when absent from row", () => {
+    expect(mapAdminPartnerListItem(baseRow).thumbnailImageUrl).toBeNull();
+  });
+
+  it("returns null coverImageUrl when absent from row", () => {
+    expect(mapAdminPartnerListItem(baseRow).coverImageUrl).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2E.2 — mapPublicPartnerCard: thumbnailImageUrl + coverImageUrl
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapPublicPartnerCard — thumbnailImageUrl + coverImageUrl", () => {
+  const baseRow = {
+    id: "uuid-media-pub-1",
+    slug: "media-pub-card-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านการ์ดสาธารณะมีเดีย",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    main_image_url: null,
+    main_category_key: null,
+    secondary_category_keys: [],
+    service_areas: [],
+    business_hours_preset_key: null,
+    is_verified: false,
+    verified_at: null,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("maps thumbnail_image_url to thumbnailImageUrl", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: "https://cdn.example.com/thumb.webp",
+      cover_image_url: null,
+    };
+    expect(mapPublicPartnerCard(row).thumbnailImageUrl).toBe(
+      "https://cdn.example.com/thumb.webp",
+    );
+  });
+
+  it("maps cover_image_url to coverImageUrl", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: null,
+      cover_image_url: "https://cdn.example.com/cover.webp",
+    };
+    expect(mapPublicPartnerCard(row).coverImageUrl).toBe(
+      "https://cdn.example.com/cover.webp",
+    );
+  });
+
+  it("returns null when both absent", () => {
+    expect(mapPublicPartnerCard(baseRow).thumbnailImageUrl).toBeNull();
+    expect(mapPublicPartnerCard(baseRow).coverImageUrl).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2E.2 — mapPublicPartnerDetail: thumbnailImageUrl + coverImageUrl
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapPublicPartnerDetail — thumbnailImageUrl + coverImageUrl (inherited)", () => {
+  const baseRow = {
+    id: "uuid-media-pub-detail-1",
+    slug: "media-pub-detail-test",
+    directory_type: "service",
+    entity_type: "individual",
+    name_th: "บริการทดสอบมีเดีย",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    main_category_key: null,
+    secondary_category_keys: [],
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("includes thumbnailImageUrl from inherited mapPublicPartnerCard", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: "https://cdn.example.com/thumb.webp",
+      cover_image_url: null,
+    };
+    expect(mapPublicPartnerDetail(row).thumbnailImageUrl).toBe(
+      "https://cdn.example.com/thumb.webp",
+    );
+  });
+
+  it("includes coverImageUrl from inherited mapPublicPartnerCard", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: null,
+      cover_image_url: "https://cdn.example.com/cover.webp",
+    };
+    expect(mapPublicPartnerDetail(row).coverImageUrl).toBe(
+      "https://cdn.example.com/cover.webp",
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2E.2 — mapAdminPartnerDetail: thumbnailImageUrl + coverImageUrl
+// ─────────────────────────────────────────────────────────────────────────────
+describe("mapAdminPartnerDetail — thumbnailImageUrl + coverImageUrl (inherited)", () => {
+  const baseRow = {
+    id: "uuid-media-admin-detail-1",
+    slug: "media-admin-detail-test",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านแอดมินมีเดีย",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    main_category_key: null,
+    secondary_category_keys: [],
+    search_keywords: [],
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_public: false,
+    is_featured: false,
+    sort_order: 0,
+    kyc_documents: {},
+    verified_notes: null,
+    internal_notes: null,
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("includes thumbnailImageUrl from inherited mapAdminPartnerListItem", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: "https://cdn.example.com/admin-thumb.webp",
+      cover_image_url: null,
+    };
+    expect(mapAdminPartnerDetail(row).thumbnailImageUrl).toBe(
+      "https://cdn.example.com/admin-thumb.webp",
+    );
+  });
+
+  it("includes coverImageUrl from inherited mapAdminPartnerListItem", () => {
+    const row = {
+      ...baseRow,
+      thumbnail_image_url: null,
+      cover_image_url: "https://cdn.example.com/admin-cover.webp",
+    };
+    expect(mapAdminPartnerDetail(row).coverImageUrl).toBe(
+      "https://cdn.example.com/admin-cover.webp",
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2E.2 — buildPartnerCreatePayload: thumbnailImageUrl + coverImageUrl
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerCreatePayload — thumbnailImageUrl + coverImageUrl", () => {
+  const base = {
+    slug: "media-create-test",
+    directoryType: "store",
+    nameTh: "ร้านทดสอบอัปโหลด",
+  };
+
+  it("maps thumbnailImageUrl → thumbnail_image_url", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      thumbnailImageUrl: "https://cdn.example.com/thumb.webp",
+    });
+    expect(p.thumbnail_image_url).toBe("https://cdn.example.com/thumb.webp");
+  });
+
+  it("maps coverImageUrl → cover_image_url", () => {
+    const p = buildPartnerCreatePayload({
+      ...base,
+      coverImageUrl: "https://cdn.example.com/cover.webp",
+    });
+    expect(p.cover_image_url).toBe("https://cdn.example.com/cover.webp");
+  });
+
+  it("thumbnail_image_url defaults to null when not supplied", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.thumbnail_image_url).toBeNull();
+  });
+
+  it("cover_image_url defaults to null when not supplied", () => {
+    const p = buildPartnerCreatePayload(base);
+    expect(p.cover_image_url).toBeNull();
+  });
+
+  it("thumbnail_image_url is null when explicitly passed null", () => {
+    const p = buildPartnerCreatePayload({ ...base, thumbnailImageUrl: null });
+    expect(p.thumbnail_image_url).toBeNull();
+  });
+
+  it("cover_image_url is null when explicitly passed null", () => {
+    const p = buildPartnerCreatePayload({ ...base, coverImageUrl: null });
+    expect(p.cover_image_url).toBeNull();
+  });
+
+  it("thumbnail_image_url is null for empty string (asOptionalString convention)", () => {
+    const p = buildPartnerCreatePayload({ ...base, thumbnailImageUrl: "" });
+    expect(p.thumbnail_image_url).toBeNull();
+  });
+
+  it("cover_image_url is null for empty string (asOptionalString convention)", () => {
+    const p = buildPartnerCreatePayload({ ...base, coverImageUrl: "" });
+    expect(p.cover_image_url).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2E.2 — buildPartnerUpdatePayload: thumbnailImageUrl + coverImageUrl
+// ─────────────────────────────────────────────────────────────────────────────
+describe("buildPartnerUpdatePayload — thumbnailImageUrl + coverImageUrl patching", () => {
+  it("patches thumbnail_image_url when thumbnailImageUrl present", () => {
+    const p = buildPartnerUpdatePayload({
+      thumbnailImageUrl: "https://cdn.example.com/thumb.webp",
+    });
+    expect(p.thumbnail_image_url).toBe("https://cdn.example.com/thumb.webp");
+  });
+
+  it("patches cover_image_url when coverImageUrl present", () => {
+    const p = buildPartnerUpdatePayload({
+      coverImageUrl: "https://cdn.example.com/cover.webp",
+    });
+    expect(p.cover_image_url).toBe("https://cdn.example.com/cover.webp");
+  });
+
+  it("sets thumbnail_image_url = null when thumbnailImageUrl is null (clear)", () => {
+    const p = buildPartnerUpdatePayload({ thumbnailImageUrl: null });
+    expect(p.thumbnail_image_url).toBeNull();
+  });
+
+  it("sets cover_image_url = null when coverImageUrl is null (clear)", () => {
+    const p = buildPartnerUpdatePayload({ coverImageUrl: null });
+    expect(p.cover_image_url).toBeNull();
+  });
+
+  it("omits thumbnail_image_url when thumbnailImageUrl absent from body", () => {
+    const p = buildPartnerUpdatePayload({ nameTh: "ชื่อใหม่" });
+    expect("thumbnail_image_url" in p).toBe(false);
+  });
+
+  it("omits cover_image_url when coverImageUrl absent from body", () => {
+    const p = buildPartnerUpdatePayload({ nameTh: "ชื่อใหม่" });
+    expect("cover_image_url" in p).toBe(false);
+  });
+
+  it("sets thumbnail_image_url = null for empty string (asOptionalString convention)", () => {
+    const p = buildPartnerUpdatePayload({ thumbnailImageUrl: "" });
+    expect(p.thumbnail_image_url).toBeNull();
+  });
+
+  it("sets cover_image_url = null for empty string (asOptionalString convention)", () => {
+    const p = buildPartnerUpdatePayload({ coverImageUrl: "" });
+    expect(p.cover_image_url).toBeNull();
+  });
+});
