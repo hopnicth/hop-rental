@@ -360,6 +360,7 @@ const heroImageUrl = computed(
     <UButton
       v-if="partner.contactPhone"
       :to="`tel:${partner.contactPhone.replace(/[^\d+]/g, '')}`"
+      external
       color="primary"
       variant="solid"
       icon="bx:phone"
@@ -371,7 +372,8 @@ const heroImageUrl = computed(
     <UButton
       v-if="partner.contactEmail"
       :to="`mailto:${partner.contactEmail}`"
-      color="neutral"
+      external
+      color="info"
       variant="solid"
       icon="bx:envelope"
       size="xl"
