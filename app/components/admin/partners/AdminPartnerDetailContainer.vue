@@ -130,9 +130,8 @@ const loading = ref(false);
 const loadError = ref<string | null>(null);
 const partner = ref<AdminPartnerRow | null>(null);
 
-// ── Form state — Phase 1C-2C Basic Info scope only ───────────────────────────
-// Out-of-scope fields (contact, descriptions, verification, notes) are read
-// from partner.value for display only and never sent in the PATCH payload.
+// ── Form state ───────────────────────────────────────────────────────────────
+// Verification, KYC, and internal notes remain read-only display fields only.
 const form = reactive({
   nameTh: "",
   nameEn: "",
@@ -147,6 +146,11 @@ const form = reactive({
   businessHoursPreset: BH_UNSET as string,
   businessHoursCustom: "",
   isPublic: false,
+  // ── FAB contact fields ────────────────────────────────────────────────────
+  contactPhone: "",
+  contactEmail: "",
+  lineUrl: "",
+  mapsUrl: "",
 });
 
 // Per-keyword constraints (internal search metadata; never shown publicly)
@@ -192,7 +196,7 @@ const canSave = computed(
     Boolean(form.entityType),
 );
 
-// ── Init form — Basic Info fields only ───────────────────────────────────────
+// ── Init form ────────────────────────────────────────────────────────────────
 function initFormFromPartner(row: AdminPartnerRow) {
   form.nameTh = row.nameTh;
   form.nameEn = row.nameEn ?? "";
@@ -216,6 +220,11 @@ function initFormFromPartner(row: AdminPartnerRow) {
     form.businessHoursPreset = BH_UNSET;
     form.businessHoursCustom = "";
   }
+  // FAB contact fields
+  form.contactPhone = row.contactPhone ?? "";
+  form.contactEmail = row.contactEmail ?? "";
+  form.lineUrl = row.lineUrl ?? "";
+  form.mapsUrl = row.mapsUrl ?? "";
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -285,7 +294,7 @@ function setSearchKeywords(next: string[]) {
   form.searchKeywords = cleaned;
 }
 
-// ── Save — Basic Info fields only ────────────────────────────────────────────
+// ── Save ─────────────────────────────────────────────────────────────────────
 // isVerified, verifiedNotes, internalNotes, KYC, media, isFeatured, sortOrder
 // are intentionally excluded — deferred to a later verification/admin phase.
 async function handleSave() {
@@ -307,6 +316,11 @@ async function handleSave() {
       businessHoursText: effectiveBusinessHoursText.value || null,
       businessHoursPresetKey: effectiveBusinessHoursPresetKey.value,
       isPublic: form.isPublic,
+      // FAB contact fields — empty string becomes null (asOptionalString on server)
+      contactPhone: form.contactPhone.trim() || null,
+      contactEmail: form.contactEmail.trim() || null,
+      lineUrl: form.lineUrl.trim() || null,
+      mapsUrl: form.mapsUrl.trim() || null,
     };
     const data = await $fetch<{ item: AdminPartnerRow }>(
       `/api/admin/partners/${partnerId.value}`,
@@ -1229,6 +1243,59 @@ async function saveContentBlocks() {
         </template>
 
         <div class="space-y-4">
+          <!-- ── FAB contact fields ──────────────────────────────────────── -->
+          <UFormField label="Phone / เบอร์โทร">
+            <UInput
+              v-model="form.contactPhone"
+              class="w-full"
+              placeholder="e.g. 02-123-4567 หรือ 081-234-5678"
+              :disabled="saving"
+            />
+            <template #hint>
+              ใช้สำหรับปุ่ม FAB โทรและการ์ด Contact (ไม่บังคับ)
+            </template>
+          </UFormField>
+
+          <UFormField label="Email / อีเมล">
+            <UInput
+              v-model="form.contactEmail"
+              type="email"
+              class="w-full"
+              placeholder="e.g. info@example.com"
+              :disabled="saving"
+            />
+            <template #hint>
+              ใช้สำหรับปุ่ม FAB อีเมลและการ์ด Contact (ไม่บังคับ)
+            </template>
+          </UFormField>
+
+          <UFormField label="LINE URL / ลิงก์ LINE">
+            <UInput
+              v-model="form.lineUrl"
+              class="w-full"
+              placeholder="e.g. https://line.me/ti/p/~yourlineid หรือ https://lin.ee/xxxxx"
+              :disabled="saving"
+            />
+            <template #hint>
+              ใส่ URL เต็มเท่านั้น — รองรับ https://line.me/... และ
+              https://lin.ee/... (ไม่บังคับ)
+            </template>
+          </UFormField>
+
+          <UFormField label="Google Maps URL / ลิงก์ Google Maps">
+            <UInput
+              v-model="form.mapsUrl"
+              class="w-full"
+              placeholder="e.g. https://maps.app.goo.gl/xxxxx หรือ https://www.google.com/maps/..."
+              :disabled="saving"
+            />
+            <template #hint>
+              ใส่ URL เต็มจาก Google Maps เท่านั้น (ไม่บังคับ)
+            </template>
+          </UFormField>
+
+          <UDivider />
+
           <UFormField label="Service Areas (พื้นที่ให้บริการ)">
             <USelectMenu
               v-model="form.serviceAreas"

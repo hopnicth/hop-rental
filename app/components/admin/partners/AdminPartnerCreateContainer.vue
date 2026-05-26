@@ -170,6 +170,11 @@ const form = reactive({
   businessHoursPreset: BH_UNSET as string,
   businessHoursCustom: "",
   isPublic: false,
+  // ── FAB contact fields ────────────────────────────────────────────────
+  contactPhone: "",
+  contactEmail: "",
+  lineUrl: "",
+  mapsUrl: "",
 });
 
 // Per-keyword constraints (internal search metadata; never shown publicly)
@@ -365,6 +370,11 @@ async function handleSubmit() {
       body.businessHoursText = effectiveBusinessHoursText.value;
     // Always submit the preset key (null is valid — clears any existing value).
     body.businessHoursPresetKey = effectiveBusinessHoursPresetKey.value;
+    // FAB contact fields — only send if non-empty (server asOptionalString handles null)
+    if (form.contactPhone.trim()) body.contactPhone = form.contactPhone.trim();
+    if (form.contactEmail.trim()) body.contactEmail = form.contactEmail.trim();
+    if (form.lineUrl.trim()) body.lineUrl = form.lineUrl.trim();
+    if (form.mapsUrl.trim()) body.mapsUrl = form.mapsUrl.trim();
 
     const data = await $fetch<{ item: { slug: string } }>(
       "/api/admin/partners",
@@ -617,6 +627,61 @@ async function handleSubmit() {
             ข้อความเวลาทำการสำหรับแสดงบนหน้า public (ไม่บังคับ)
           </template>
         </UFormField>
+
+        <!-- ── FAB contact fields ──────────────────────────────────────── -->
+        <UDivider label="ข้อมูลการติดต่อ (Contact)" />
+
+        <UFormField label="Phone / เบอร์โทร">
+          <UInput
+            v-model="form.contactPhone"
+            class="w-full"
+            placeholder="e.g. 02-123-4567 หรือ 081-234-5678"
+            :disabled="submitting"
+          />
+          <template #hint>
+            ใช้สำหรับปุ่ม FAB โทรและการ์ด Contact (ไม่บังคับ)
+          </template>
+        </UFormField>
+
+        <UFormField label="Email / อีเมล">
+          <UInput
+            v-model="form.contactEmail"
+            type="email"
+            class="w-full"
+            placeholder="e.g. info@example.com"
+            :disabled="submitting"
+          />
+          <template #hint>
+            ใช้สำหรับปุ่ม FAB อีเมลและการ์ด Contact (ไม่บังคับ)
+          </template>
+        </UFormField>
+
+        <UFormField label="LINE URL / ลิงก์ LINE">
+          <UInput
+            v-model="form.lineUrl"
+            class="w-full"
+            placeholder="e.g. https://line.me/ti/p/~yourlineid หรือ https://lin.ee/xxxxx"
+            :disabled="submitting"
+          />
+          <template #hint>
+            ใส่ URL เต็มเท่านั้น — รองรับ https://line.me/... และ
+            https://lin.ee/... (ไม่บังคับ)
+          </template>
+        </UFormField>
+
+        <UFormField label="Google Maps URL / ลิงก์ Google Maps">
+          <UInput
+            v-model="form.mapsUrl"
+            class="w-full"
+            placeholder="e.g. https://maps.app.goo.gl/xxxxx หรือ https://www.google.com/maps/..."
+            :disabled="submitting"
+          />
+          <template #hint>
+            ใส่ URL เต็มจาก Google Maps เท่านั้น (ไม่บังคับ)
+          </template>
+        </UFormField>
+
+        <UDivider />
 
         <!-- Visibility / is_public -->
         <UFormField label="Visibility">
