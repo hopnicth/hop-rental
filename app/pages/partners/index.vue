@@ -324,11 +324,8 @@ watch(
       </UAlert>
 
       <!-- Loading state -->
-      <div v-else-if="pending" class="space-y-4">
-        <CommonLoadingCat />
-        <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <USkeleton v-for="i in 6" :key="i" class="h-64 rounded-lg" />
-        </div>
+      <div v-else-if="pending" class="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <PartnersPartnerCardSkeleton v-for="i in 6" :key="i" />
       </div>
 
       <!-- Results grid -->

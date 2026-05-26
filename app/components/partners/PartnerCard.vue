@@ -75,85 +75,109 @@ const allCategoryKeys = computed(() => [
   ...props.partner.secondaryCategoryKeys,
 ]);
 
-// Cap service area chips at 3 to keep the card compact
-const visibleServiceAreas = computed(() => props.partner.serviceAreas.slice(0, 3));
+// Cap service area chips at 2 + overflow count for compact display
+const visibleServiceAreas = computed(() =>
+  props.partner.serviceAreas.slice(0, 2),
+);
 const remainingAreaCount = computed(() =>
-  Math.max(0, props.partner.serviceAreas.length - 3),
+  Math.max(0, props.partner.serviceAreas.length - 2),
 );
 </script>
 
 <template>
-  <div
-    class="flex flex-col gap-3 rounded-lg border border-default bg-default p-4 transition hover:shadow-sm"
+  <UCard
+    class="h-full overflow-hidden transition-all hover:-translate-y-0.5 hover:ring-2 hover:ring-primary"
   >
-    <!-- Cover image (optional) -->
-    <div
-      v-if="partner.mainImageUrl"
-      class="aspect-video overflow-hidden rounded-md bg-muted"
-    >
-      <img
+    <!-- Header: type badge row + partner name — min-h-14 mirrors CatalogCardShell -->
+    <template #header>
+      <div class="flex min-h-14 flex-col justify-start gap-1">
+        <div class="flex flex-wrap items-center gap-1">
+          <UBadge :color="directoryTypeColor" variant="soft" size="xs">
+            {{ directoryTypeLabel }}
+          </UBadge>
+          <UBadge
+            v-if="partner.isVerified"
+            color="success"
+            variant="soft"
+            size="xs"
+          >
+            ✓ ยืนยัน
+          </UBadge>
+          <UBadge
+            v-if="partner.isFeatured"
+            color="warning"
+            variant="soft"
+            size="xs"
+          >
+            ★ แนะนำ
+          </UBadge>
+        </div>
+        <h3 class="line-clamp-2 text-sm font-semibold">
+          {{ displayName }}
+        </h3>
+      </div>
+    </template>
+
+    <!-- Image — aspect-square always rendered; placeholder when no image -->
+    <div class="relative overflow-hidden rounded-lg bg-muted">
+      <NuxtImg
+        v-if="partner.mainImageUrl"
         :src="partner.mainImageUrl"
         :alt="displayName"
-        class="h-full w-full object-cover"
         loading="lazy"
+        class="block aspect-square w-full object-cover"
       />
+      <div v-else class="flex aspect-square w-full items-center justify-center">
+        <UIcon name="bx:store-alt" class="size-10 text-muted opacity-30" />
+      </div>
     </div>
 
-    <!-- Type + status badges -->
-    <div class="flex flex-wrap items-center gap-1.5">
-      <UBadge :color="directoryTypeColor" variant="soft" size="xs">
-        {{ directoryTypeLabel }}
-      </UBadge>
-      <UBadge v-if="partner.isVerified" color="success" variant="soft" size="xs">
-        ✓ ยืนยันแล้ว
-      </UBadge>
-      <UBadge v-if="partner.isFeatured" color="warning" variant="soft" size="xs">
-        ★ แนะนำ
-      </UBadge>
-    </div>
+    <!-- Content zone with min-height anchors for grid-row alignment -->
+    <div class="mt-3 flex min-h-32 flex-col gap-2">
+      <!-- Tagline -->
+      <div class="min-h-8">
+        <p v-if="partner.taglineTh" class="line-clamp-2 text-xs text-muted">
+          {{ partner.taglineTh }}
+        </p>
+      </div>
 
-    <!-- Name + tagline -->
-    <div class="space-y-0.5">
-      <h3 class="text-sm font-semibold leading-snug text-highlighted">
-        {{ displayName }}
-      </h3>
-      <p v-if="partner.taglineTh" class="line-clamp-2 text-xs text-muted">
-        {{ partner.taglineTh }}
-      </p>
-    </div>
+      <!-- Category chips (main + secondary, no searchKeywords) -->
+      <div class="min-h-10">
+        <div v-if="allCategoryKeys.length" class="flex flex-wrap gap-1">
+          <UBadge
+            v-for="key in allCategoryKeys"
+            :key="key"
+            color="neutral"
+            variant="outline"
+            size="xs"
+          >
+            {{ categoryLabel(key) }}
+          </UBadge>
+        </div>
+      </div>
 
-    <!-- Category chips (main + secondary, no searchKeywords) -->
-    <div v-if="allCategoryKeys.length" class="flex flex-wrap gap-1">
-      <UBadge
-        v-for="key in allCategoryKeys"
-        :key="key"
-        color="neutral"
-        variant="outline"
-        size="xs"
-      >
-        {{ categoryLabel(key) }}
-      </UBadge>
+      <!-- Service area chips — pinned to bottom of card -->
+      <div class="mt-auto">
+        <div v-if="visibleServiceAreas.length" class="flex flex-wrap gap-1">
+          <UBadge
+            v-for="area in visibleServiceAreas"
+            :key="area"
+            color="neutral"
+            variant="soft"
+            size="xs"
+          >
+            {{ serviceAreaLabel(area) }}
+          </UBadge>
+          <UBadge
+            v-if="remainingAreaCount > 0"
+            color="neutral"
+            variant="soft"
+            size="xs"
+          >
+            +{{ remainingAreaCount }}
+          </UBadge>
+        </div>
+      </div>
     </div>
-
-    <!-- Service area chips (capped at 3) -->
-    <div v-if="visibleServiceAreas.length" class="flex flex-wrap gap-1">
-      <UBadge
-        v-for="area in visibleServiceAreas"
-        :key="area"
-        color="neutral"
-        variant="soft"
-        size="xs"
-      >
-        {{ serviceAreaLabel(area) }}
-      </UBadge>
-      <UBadge
-        v-if="remainingAreaCount > 0"
-        color="neutral"
-        variant="soft"
-        size="xs"
-      >
-        +{{ remainingAreaCount }}
-      </UBadge>
-    </div>
-  </div>
+  </UCard>
 </template>
