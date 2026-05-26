@@ -55,30 +55,37 @@ function asProduct(item: unknown) {
         <div class="space-y-4 sm:space-y-5">
           <HopFeatureBar />
           <HomeCategoryShortcutRail />
+          <!-- Desktop sm+: partner slide with heading row -->
           <div
             class="hidden rounded-1xl border border-default bg-white/70 px-4 py-4 sm:block sm:px-5"
           >
-            <HopPartnerSlide />
-            <div class="mt-2 flex justify-end">
+            <div class="mb-3 flex items-center justify-between gap-3">
+              <p class="text-sm font-semibold text-default">
+                {{ t("nav.partners") }}
+              </p>
               <UButton
                 to="/partners"
-                variant="ghost"
-                color="neutral"
-                size="xs"
+                variant="soft"
+                color="primary"
+                size="sm"
                 trailing-icon="bx:chevron-right"
               >
                 {{ t("home.viewAllPartners") }}
               </UButton>
             </div>
+            <HopPartnerSlide />
           </div>
 
-          <!-- Mobile-only: partner CTA (partner slide panel is hidden on mobile) -->
-          <div class="flex justify-end sm:hidden">
+          <!-- Mobile-only: partner section heading + CTA (slide hidden on mobile) -->
+          <div class="flex items-center justify-between sm:hidden">
+            <p class="text-sm font-semibold text-default">
+              {{ t("nav.partners") }}
+            </p>
             <UButton
               to="/partners"
-              variant="ghost"
-              color="neutral"
-              size="xs"
+              variant="soft"
+              color="primary"
+              size="sm"
               trailing-icon="bx:chevron-right"
             >
               {{ t("home.viewAllPartners") }}
