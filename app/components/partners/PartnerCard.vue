@@ -82,6 +82,15 @@ const visibleServiceAreas = computed(() =>
 const remainingAreaCount = computed(() =>
   Math.max(0, props.partner.serviceAreas.length - 2),
 );
+
+// Priority fallback: thumbnail → cover → main → placeholder
+const cardImageUrl = computed(
+  () =>
+    props.partner.thumbnailImageUrl ||
+    props.partner.coverImageUrl ||
+    props.partner.mainImageUrl ||
+    null,
+);
 </script>
 
 <template>
@@ -121,8 +130,8 @@ const remainingAreaCount = computed(() =>
     <!-- Image — aspect-square always rendered; placeholder when no image -->
     <div class="relative overflow-hidden rounded-lg bg-muted">
       <NuxtImg
-        v-if="partner.mainImageUrl"
-        :src="partner.mainImageUrl"
+        v-if="cardImageUrl"
+        :src="cardImageUrl"
         :alt="displayName"
         loading="lazy"
         class="block aspect-square w-full object-cover"

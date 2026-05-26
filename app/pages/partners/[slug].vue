@@ -110,6 +110,15 @@ const lineHref = computed(() => {
 const lineDisplay = computed(
   () => partner.value?.lineId || lineHref.value || "",
 );
+
+// Priority fallback: cover → thumbnail → main → placeholder
+const heroImageUrl = computed(
+  () =>
+    partner.value?.coverImageUrl ||
+    partner.value?.thumbnailImageUrl ||
+    partner.value?.mainImageUrl ||
+    null,
+);
 </script>
 
 <template>
@@ -165,8 +174,8 @@ const lineDisplay = computed(
         <div class="col-span-12 lg:col-span-5">
           <div class="relative overflow-hidden rounded-xl bg-muted">
             <NuxtImg
-              v-if="partner.mainImageUrl"
-              :src="partner.mainImageUrl"
+              v-if="heroImageUrl"
+              :src="heroImageUrl"
               :alt="displayName"
               class="aspect-video w-full object-cover lg:aspect-square"
               loading="eager"
