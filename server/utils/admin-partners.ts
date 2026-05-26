@@ -9,6 +9,7 @@ import {
 import {
   BUSINESS_HOURS_PRESET_KEYS,
   type PartnerBusinessHoursPresetKey,
+  type PartnerContentBlock,
 } from "~/types/partner";
 
 // ── SELECT strings ────────────────────────────────────────────────────────────
@@ -19,7 +20,7 @@ export const ADMIN_PARTNER_LIST_SELECT =
 
 /** Admin detail — full row including private admin-only columns. */
 export const ADMIN_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, search_keywords, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, search_keywords, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, content_blocks, created_at, updated_at";
 
 /** Public list — no private fields, no descriptions. */
 export const PUBLIC_PARTNER_LIST_SELECT =
@@ -27,7 +28,7 @@ export const PUBLIC_PARTNER_LIST_SELECT =
 
 /** Public detail — no private fields (kyc_documents, verified_notes, internal_notes, search_keywords excluded). */
 export const PUBLIC_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_featured, sort_order, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_featured, sort_order, content_blocks, created_at, updated_at";
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
@@ -450,6 +451,214 @@ export function buildPartnerUpdatePayload(body: Record<string, unknown>) {
   return p;
 }
 
+// ── Content block validation ──────────────────────────────────────────────────
+
+const MAX_CONTENT_BLOCKS = 20;
+const MAX_BLOCK_TITLE_LENGTH = 120;
+const MAX_BLOCK_BODY_LENGTH = 5000;
+const YOUTUBE_VIDEO_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+function rejectHtmlInBlock(value: string, fieldPath: string): void {
+  if (/<|>|&lt;|&gt;/i.test(value) || /script/i.test(value)) {
+    fail422(`${fieldPath} must not contain HTML markup or script content`);
+  }
+}
+
+function rejectDangerousScheme(value: string, fieldPath: string): void {
+  const lower = value.toLowerCase().replace(/\s/g, "");
+  if (lower.startsWith("javascript:") || lower.startsWith("data:")) {
+    fail422(`${fieldPath} must not use javascript: or data: scheme`);
+  }
+}
+
+function extractYoutubeVideoId(url: URL): string | null {
+  const host = url.hostname.toLowerCase().replace(/^www\./, "");
+  if (host === "youtube.com") {
+    const v = url.searchParams.get("v");
+    if (v) return v;
+    const m = url.pathname.match(/^\/shorts\/([^/?]+)/);
+    if (m) return m[1] ?? null;
+  } else if (host === "youtu.be") {
+    const m = url.pathname.match(/^\/([^/?]+)/);
+    if (m) return m[1] ?? null;
+  }
+  return null;
+}
+
+function validateBlockDriveUrl(value: unknown, idx: number): string {
+  if (typeof value !== "string" || !value.trim()) {
+    fail422(`contentBlocks[${idx}]: drive_doc url is required`);
+  }
+  const raw = (value as string).trim();
+  rejectDangerousScheme(raw, `contentBlocks[${idx}].url`);
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    fail422(`contentBlocks[${idx}]: drive_doc url must be a valid URL`);
+  }
+  if (parsed.protocol !== "https:") {
+    fail422(`contentBlocks[${idx}]: drive_doc url must use HTTPS`);
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host !== "drive.google.com" && host !== "docs.google.com") {
+    fail422(
+      `contentBlocks[${idx}]: drive_doc url must be a drive.google.com or docs.google.com URL`,
+    );
+  }
+  return parsed.toString();
+}
+
+function validateBlockYoutubeUrl(
+  value: unknown,
+  idx: number,
+): { url: string; videoId: string } {
+  if (typeof value !== "string" || !value.trim()) {
+    fail422(`contentBlocks[${idx}]: youtube url is required`);
+  }
+  const raw = (value as string).trim();
+  rejectDangerousScheme(raw, `contentBlocks[${idx}].url`);
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    fail422(`contentBlocks[${idx}]: youtube url must be a valid URL`);
+  }
+  if (parsed.protocol !== "https:") {
+    fail422(`contentBlocks[${idx}]: youtube url must use HTTPS`);
+  }
+  const videoId = extractYoutubeVideoId(parsed);
+  if (!videoId || !YOUTUBE_VIDEO_ID_RE.test(videoId)) {
+    fail422(
+      `contentBlocks[${idx}]: youtube url must be a valid YouTube video URL ` +
+        `(youtube.com/watch?v=, youtu.be/, or youtube.com/shorts/)`,
+    );
+  }
+  return { url: parsed.toString(), videoId };
+}
+
+/**
+ * Validates and normalises a full contentBlocks array from admin input.
+ * Enforces MVP types: text, drive_doc, youtube.
+ * Extracts YouTube videoId server-side (client value overwritten).
+ * Forces drive_doc.provider = "google_drive" (client value ignored).
+ * Throws 422 on any violation.
+ */
+export function validatePartnerContentBlocks(
+  value: unknown,
+): PartnerContentBlock[] {
+  if (!Array.isArray(value)) {
+    fail422("contentBlocks must be an array");
+  }
+  if ((value as unknown[]).length > MAX_CONTENT_BLOCKS) {
+    fail422(`contentBlocks must have at most ${MAX_CONTENT_BLOCKS} entries`);
+  }
+
+  const ids = new Set<string>();
+  const result: PartnerContentBlock[] = [];
+
+  for (let i = 0; i < (value as unknown[]).length; i++) {
+    const raw = (value as unknown[])[i];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      fail422(`contentBlocks[${i}]: each block must be an object`);
+    }
+    const b = raw as Record<string, unknown>;
+
+    // id
+    if (typeof b.id !== "string" || !b.id.trim()) {
+      fail422(`contentBlocks[${i}]: id must be a non-empty string`);
+    }
+    const id = b.id.trim();
+    if (ids.has(id)) {
+      fail422(`contentBlocks[${i}]: duplicate id "${id}"`);
+    }
+    ids.add(id);
+
+    // type
+    if (b.type !== "text" && b.type !== "drive_doc" && b.type !== "youtube") {
+      fail422(
+        `contentBlocks[${i}]: type must be "text", "drive_doc", or "youtube"`,
+      );
+    }
+    const type = b.type as "text" | "drive_doc" | "youtube";
+
+    // isVisible
+    let isVisible: boolean;
+    if (b.isVisible === undefined || b.isVisible === null) {
+      isVisible = true;
+    } else if (typeof b.isVisible !== "boolean") {
+      fail422(`contentBlocks[${i}]: isVisible must be a boolean`);
+    } else {
+      isVisible = b.isVisible;
+    }
+
+    // title (optional except for drive_doc)
+    let title: string | undefined;
+    if (b.title !== undefined && b.title !== null && b.title !== "") {
+      if (typeof b.title !== "string") {
+        fail422(`contentBlocks[${i}]: title must be a string`);
+      }
+      const t = b.title.trim();
+      if (t.length > MAX_BLOCK_TITLE_LENGTH) {
+        fail422(
+          `contentBlocks[${i}]: title must be at most ${MAX_BLOCK_TITLE_LENGTH} characters`,
+        );
+      }
+      rejectHtmlInBlock(t, `contentBlocks[${i}].title`);
+      title = t || undefined;
+    }
+
+    // type-specific validation
+    if (type === "text") {
+      if (typeof b.body !== "string" || !b.body.trim()) {
+        fail422(`contentBlocks[${i}]: text block body is required`);
+      }
+      const body = (b.body as string).trim();
+      if (body.length > MAX_BLOCK_BODY_LENGTH) {
+        fail422(
+          `contentBlocks[${i}]: text block body must be at most ${MAX_BLOCK_BODY_LENGTH} characters`,
+        );
+      }
+      rejectHtmlInBlock(body, `contentBlocks[${i}].body`);
+      result.push({ id, type: "text", isVisible, title, body });
+    } else if (type === "drive_doc") {
+      if (!title) {
+        fail422(
+          `contentBlocks[${i}]: drive_doc block requires a non-empty title`,
+        );
+      }
+      const url = validateBlockDriveUrl(b.url, i);
+      result.push({
+        id,
+        type: "drive_doc",
+        isVisible,
+        title,
+        url,
+        provider: "google_drive",
+      });
+    } else {
+      // youtube
+      const { url, videoId } = validateBlockYoutubeUrl(b.url, i);
+      result.push({ id, type: "youtube", isVisible, title, url, videoId });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Safe wrapper used by read-path mappers.
+ * Returns [] on invalid stored data — prevents public detail page crashes.
+ */
+function safeParseContentBlocks(value: unknown): PartnerContentBlock[] {
+  if (!Array.isArray(value)) return [];
+  try {
+    return validatePartnerContentBlocks(value);
+  } catch {
+    return [];
+  }
+}
+
 // ── Mappers ───────────────────────────────────────────────────────────────────
 
 function str(v: unknown): string | null {
@@ -521,6 +730,8 @@ export function mapAdminPartnerDetail(row: Record<string, unknown>) {
         : {},
     verifiedNotes: str(row.verified_notes),
     internalNotes: str(row.internal_notes),
+    // All content blocks — admin sees hidden blocks too
+    contentBlocks: safeParseContentBlocks(row.content_blocks),
   };
 }
 
@@ -574,6 +785,10 @@ export function mapPublicPartnerDetail(row: Record<string, unknown>) {
     businessHoursText: str(row.business_hours_text),
     businessHoursTimezone: String(
       row.business_hours_timezone ?? "Asia/Bangkok",
+    ),
+    // Only visible blocks exposed to public
+    contentBlocks: safeParseContentBlocks(row.content_blocks).filter(
+      (b) => b.isVisible,
     ),
   };
 }

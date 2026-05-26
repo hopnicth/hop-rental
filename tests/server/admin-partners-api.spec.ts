@@ -41,6 +41,7 @@ import {
   sanitisePublicSearchQuery,
   buildPublicCategoryOrFilter,
   buildPublicTextSearchOrFilter,
+  validatePartnerContentBlocks,
 } from "../../server/utils/admin-partners";
 
 const read = (path: string) => readFileSync(path, "utf8");
@@ -2714,5 +2715,576 @@ describe("DELETE /api/admin/partners/:id/media — source checks", () => {
 
   it("returns ok: true on success", () => {
     expect(src).toContain("ok: true");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2F: Partner Content Blocks — SELECT string coverage
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2F: content_blocks in SELECT strings", () => {
+  it("ADMIN_PARTNER_DETAIL_SELECT includes content_blocks", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("content_blocks");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT includes content_blocks", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).toContain("content_blocks");
+  });
+
+  it("ADMIN_PARTNER_LIST_SELECT does NOT include content_blocks (lightweight)", () => {
+    expect(ADMIN_PARTNER_LIST_SELECT).not.toContain("content_blocks");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT does NOT include content_blocks (lightweight)", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain("content_blocks");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT still excludes all private fields", () => {
+    for (const f of [
+      "kyc_documents",
+      "verified_notes",
+      "internal_notes",
+      "search_keywords",
+    ]) {
+      expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain(f);
+    }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2F: validatePartnerContentBlocks — structural validation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2F: validatePartnerContentBlocks — structural rules", () => {
+  it("accepts an empty array", () => {
+    expect(validatePartnerContentBlocks([])).toEqual([]);
+  });
+
+  it("rejects non-array input", () => {
+    expect(() => validatePartnerContentBlocks(null)).toThrow();
+    expect(() => validatePartnerContentBlocks("text")).toThrow();
+    expect(() => validatePartnerContentBlocks({})).toThrow();
+  });
+
+  it("rejects more than 20 blocks", () => {
+    const blocks = Array.from({ length: 21 }, (_, i) => ({
+      id: `block-${i}`,
+      type: "text",
+      isVisible: true,
+      body: "hello",
+    }));
+    expect(() => validatePartnerContentBlocks(blocks)).toThrow(/20/);
+  });
+
+  it("rejects a non-object entry in the array", () => {
+    expect(() => validatePartnerContentBlocks(["not-an-object"])).toThrow(
+      /object/,
+    );
+    expect(() => validatePartnerContentBlocks([42])).toThrow(/object/);
+    expect(() => validatePartnerContentBlocks([[]])).toThrow(/object/);
+  });
+
+  it("rejects a block with missing id", () => {
+    expect(() =>
+      validatePartnerContentBlocks([
+        { type: "text", isVisible: true, body: "hi" },
+      ]),
+    ).toThrow(/id/);
+  });
+
+  it("rejects a block with empty id", () => {
+    expect(() =>
+      validatePartnerContentBlocks([
+        { id: "  ", type: "text", isVisible: true, body: "hi" },
+      ]),
+    ).toThrow(/id/);
+  });
+
+  it("rejects duplicate block ids", () => {
+    const blocks = [
+      { id: "same", type: "text", isVisible: true, body: "first" },
+      { id: "same", type: "text", isVisible: true, body: "second" },
+    ];
+    expect(() => validatePartnerContentBlocks(blocks)).toThrow(/duplicate/i);
+  });
+
+  it("rejects an unknown block type", () => {
+    expect(() =>
+      validatePartnerContentBlocks([
+        { id: "b1", type: "markdown", isVisible: true },
+      ]),
+    ).toThrow(/type/);
+  });
+
+  it("rejects non-boolean isVisible", () => {
+    expect(() =>
+      validatePartnerContentBlocks([
+        { id: "b1", type: "text", isVisible: "yes", body: "hi" },
+      ]),
+    ).toThrow(/isVisible/);
+  });
+
+  it("defaults isVisible to true when omitted", () => {
+    const result = validatePartnerContentBlocks([
+      { id: "b1", type: "text", body: "hello" },
+    ]);
+    expect(result[0].isVisible).toBe(true);
+  });
+
+  it("defaults isVisible to true when null", () => {
+    const result = validatePartnerContentBlocks([
+      { id: "b1", type: "text", isVisible: null, body: "hello" },
+    ]);
+    expect(result[0].isVisible).toBe(true);
+  });
+
+  it("preserves isVisible = false", () => {
+    const result = validatePartnerContentBlocks([
+      { id: "b1", type: "text", isVisible: false, body: "hello" },
+    ]);
+    expect(result[0].isVisible).toBe(false);
+  });
+
+  it("rejects a title that exceeds 120 characters", () => {
+    const longTitle = "a".repeat(121);
+    expect(() =>
+      validatePartnerContentBlocks([
+        {
+          id: "b1",
+          type: "text",
+          isVisible: true,
+          title: longTitle,
+          body: "ok",
+        },
+      ]),
+    ).toThrow(/120/);
+  });
+
+  it("accepts a title exactly 120 characters", () => {
+    const maxTitle = "a".repeat(120);
+    const result = validatePartnerContentBlocks([
+      { id: "b1", type: "text", isVisible: true, title: maxTitle, body: "ok" },
+    ]);
+    expect(result[0].type).toBe("text");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2F: validatePartnerContentBlocks — text block
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2F: validatePartnerContentBlocks — text block", () => {
+  const mk = (overrides: Record<string, unknown> = {}) => ({
+    id: "t1",
+    type: "text",
+    isVisible: true,
+    body: "Some plain text",
+    ...overrides,
+  });
+
+  it("accepts a valid text block", () => {
+    const result = validatePartnerContentBlocks([mk()]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: "t1",
+      type: "text",
+      body: "Some plain text",
+    });
+  });
+
+  it("rejects a text block with missing body", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ body: undefined })]),
+    ).toThrow(/body/);
+  });
+
+  it("rejects a text block with empty body", () => {
+    expect(() => validatePartnerContentBlocks([mk({ body: "   " })])).toThrow(
+      /body/,
+    );
+  });
+
+  it("rejects a text block body that exceeds 5000 characters", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ body: "x".repeat(5001) })]),
+    ).toThrow(/5000/);
+  });
+
+  it("accepts a text block body exactly 5000 characters", () => {
+    const result = validatePartnerContentBlocks([
+      mk({ body: "x".repeat(5000) }),
+    ]);
+    expect(result[0].type).toBe("text");
+  });
+
+  it("rejects HTML angle brackets in body", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ body: "<b>bold</b>" })]),
+    ).toThrow(/HTML/i);
+  });
+
+  it("rejects HTML entities in body", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ body: "&lt;script&gt;" })]),
+    ).toThrow(/HTML/i);
+  });
+
+  it("rejects script keyword in body", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ body: "see script tag" })]),
+    ).toThrow(/HTML/i);
+  });
+
+  it("rejects HTML in title", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ title: "<h1>Section</h1>" })]),
+    ).toThrow(/HTML/i);
+  });
+
+  it("title is optional for text blocks", () => {
+    const result = validatePartnerContentBlocks([mk({ title: undefined })]);
+    expect((result[0] as { title?: string }).title).toBeUndefined();
+  });
+
+  it("trims whitespace from body", () => {
+    const result = validatePartnerContentBlocks([mk({ body: "  hello  " })]);
+    expect((result[0] as { body: string }).body).toBe("hello");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2F: validatePartnerContentBlocks — drive_doc block
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2F: validatePartnerContentBlocks — drive_doc block", () => {
+  const mk = (overrides: Record<string, unknown> = {}) => ({
+    id: "d1",
+    type: "drive_doc",
+    isVisible: true,
+    title: "My Doc",
+    url: "https://drive.google.com/file/d/abc123/view",
+    ...overrides,
+  });
+
+  it("accepts a valid drive.google.com URL", () => {
+    const result = validatePartnerContentBlocks([mk()]);
+    expect(result[0]).toMatchObject({
+      type: "drive_doc",
+      provider: "google_drive",
+    });
+  });
+
+  it("accepts a docs.google.com URL", () => {
+    const result = validatePartnerContentBlocks([
+      mk({ url: "https://docs.google.com/document/d/abc/edit" }),
+    ]);
+    expect(result[0]).toMatchObject({
+      type: "drive_doc",
+      provider: "google_drive",
+    });
+  });
+
+  it("forces provider = google_drive regardless of client value", () => {
+    const result = validatePartnerContentBlocks([mk({ provider: "dropbox" })]);
+    expect((result[0] as { provider: string }).provider).toBe("google_drive");
+  });
+
+  it("rejects a drive_doc block without a title", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ title: undefined })]),
+    ).toThrow(/title/);
+  });
+
+  it("rejects a drive_doc block with empty title", () => {
+    expect(() => validatePartnerContentBlocks([mk({ title: "   " })])).toThrow(
+      /title/,
+    );
+  });
+
+  it("rejects a non-Google-Drive URL", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: "https://dropbox.com/s/abc" })]),
+    ).toThrow(/drive\.google\.com/);
+  });
+
+  it("rejects an HTTP (non-HTTPS) URL", () => {
+    expect(() =>
+      validatePartnerContentBlocks([
+        mk({ url: "http://drive.google.com/file/d/abc/view" }),
+      ]),
+    ).toThrow(/HTTPS/i);
+  });
+
+  it("rejects a javascript: scheme URL", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: "javascript:alert(1)" })]),
+    ).toThrow(/javascript/i);
+  });
+
+  it("rejects a data: scheme URL", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: "data:text/html,<h1>hi</h1>" })]),
+    ).toThrow(/data:/i);
+  });
+
+  it("rejects a missing url", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: undefined })]),
+    ).toThrow(/url/);
+  });
+
+  it("rejects an invalid URL string", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: "not a url" })]),
+    ).toThrow(/url/i);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2F: validatePartnerContentBlocks — youtube block
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2F: validatePartnerContentBlocks — youtube block", () => {
+  const mk = (overrides: Record<string, unknown> = {}) => ({
+    id: "y1",
+    type: "youtube",
+    isVisible: true,
+    url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    ...overrides,
+  });
+
+  it("accepts a youtube.com/watch?v= URL and extracts videoId", () => {
+    const result = validatePartnerContentBlocks([mk()]);
+    expect(result[0]).toMatchObject({
+      type: "youtube",
+      videoId: "dQw4w9WgXcQ",
+    });
+  });
+
+  it("accepts a youtu.be/ short URL and extracts videoId", () => {
+    const result = validatePartnerContentBlocks([
+      mk({ url: "https://youtu.be/dQw4w9WgXcQ" }),
+    ]);
+    expect((result[0] as { videoId: string }).videoId).toBe("dQw4w9WgXcQ");
+  });
+
+  it("accepts a youtube.com/shorts/ URL and extracts videoId", () => {
+    const result = validatePartnerContentBlocks([
+      mk({ url: "https://www.youtube.com/shorts/dQw4w9WgXcQ" }),
+    ]);
+    expect((result[0] as { videoId: string }).videoId).toBe("dQw4w9WgXcQ");
+  });
+
+  it("overwrites client-supplied videoId with server-extracted value", () => {
+    const result = validatePartnerContentBlocks([
+      mk({ videoId: "client-value" }),
+    ]);
+    expect((result[0] as { videoId: string }).videoId).toBe("dQw4w9WgXcQ");
+  });
+
+  it("rejects a non-YouTube URL", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: "https://vimeo.com/123456" })]),
+    ).toThrow(/YouTube/i);
+  });
+
+  it("rejects a missing url", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: undefined })]),
+    ).toThrow(/url/);
+  });
+
+  it("rejects an HTTP (non-HTTPS) YouTube URL", () => {
+    expect(() =>
+      validatePartnerContentBlocks([
+        mk({ url: "http://youtube.com/watch?v=dQw4w9WgXcQ" }),
+      ]),
+    ).toThrow(/HTTPS/i);
+  });
+
+  it("rejects a javascript: scheme", () => {
+    expect(() =>
+      validatePartnerContentBlocks([mk({ url: "javascript:alert(1)" })]),
+    ).toThrow(/javascript/i);
+  });
+
+  it("title is optional for youtube blocks", () => {
+    const result = validatePartnerContentBlocks([mk({ title: undefined })]);
+    expect((result[0] as { title?: string }).title).toBeUndefined();
+  });
+
+  it("accepts a youtube block with a title", () => {
+    const result = validatePartnerContentBlocks([mk({ title: "My Video" })]);
+    expect((result[0] as { title?: string }).title).toBe("My Video");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2F: mappers — contentBlocks field
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2F: mapAdminPartnerDetail — contentBlocks", () => {
+  const baseRow = {
+    id: "partner-1",
+    slug: "test-partner",
+    directory_type: "store",
+    entity_type: "individual",
+    name_th: "ร้านทดสอบ",
+    name_en: "Test Store",
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    thumbnail_image_url: null,
+    cover_image_url: null,
+    main_category_key: "store_food",
+    secondary_category_keys: [],
+    search_keywords: [],
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_public: false,
+    is_featured: false,
+    sort_order: 0,
+    kyc_documents: {},
+    verified_notes: null,
+    internal_notes: null,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  };
+
+  it("includes all content blocks (including hidden) for admin", () => {
+    const visibleBlock = {
+      id: "b1",
+      type: "text",
+      isVisible: true,
+      body: "Visible",
+    };
+    const hiddenBlock = {
+      id: "b2",
+      type: "text",
+      isVisible: false,
+      body: "Hidden",
+    };
+    const result = mapAdminPartnerDetail({
+      ...baseRow,
+      content_blocks: [visibleBlock, hiddenBlock],
+    });
+    expect(result.contentBlocks).toHaveLength(2);
+    expect(result.contentBlocks.some((b) => !b.isVisible)).toBe(true);
+  });
+
+  it("returns empty array when content_blocks is null", () => {
+    const result = mapAdminPartnerDetail({ ...baseRow, content_blocks: null });
+    expect(result.contentBlocks).toEqual([]);
+  });
+
+  it("returns empty array when content_blocks is missing", () => {
+    const result = mapAdminPartnerDetail({ ...baseRow });
+    expect(result.contentBlocks).toEqual([]);
+  });
+
+  it("returns empty array gracefully for corrupted data", () => {
+    const result = mapAdminPartnerDetail({
+      ...baseRow,
+      content_blocks: [{ id: "bad", type: "unknown_type" }],
+    });
+    expect(result.contentBlocks).toEqual([]);
+  });
+});
+
+describe("Phase 1C-2F: mapPublicPartnerDetail — contentBlocks visibility filter", () => {
+  const baseRow = {
+    id: "partner-1",
+    slug: "test-partner",
+    directory_type: "store",
+    entity_type: "individual",
+    name_th: "ร้านทดสอบ",
+    name_en: "Test Store",
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    thumbnail_image_url: null,
+    cover_image_url: null,
+    main_category_key: "store_food",
+    secondary_category_keys: [],
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_featured: false,
+    sort_order: 0,
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  };
+
+  it("only returns isVisible=true blocks for public", () => {
+    const blocks = [
+      { id: "b1", type: "text", isVisible: true, body: "Public" },
+      { id: "b2", type: "text", isVisible: false, body: "Hidden" },
+    ];
+    const result = mapPublicPartnerDetail({
+      ...baseRow,
+      content_blocks: blocks,
+    });
+    expect(result.contentBlocks).toHaveLength(1);
+    expect(result.contentBlocks[0].isVisible).toBe(true);
+  });
+
+  it("returns empty array when all blocks are hidden", () => {
+    const blocks = [
+      { id: "b1", type: "text", isVisible: false, body: "Hidden" },
+    ];
+    const result = mapPublicPartnerDetail({
+      ...baseRow,
+      content_blocks: blocks,
+    });
+    expect(result.contentBlocks).toEqual([]);
+  });
+
+  it("returns empty array when content_blocks is null", () => {
+    const result = mapPublicPartnerDetail({ ...baseRow, content_blocks: null });
+    expect(result.contentBlocks).toEqual([]);
+  });
+
+  it("returns empty array gracefully for corrupted content_blocks", () => {
+    const result = mapPublicPartnerDetail({
+      ...baseRow,
+      content_blocks: [{ id: "bad", type: "unknown_type" }],
+    });
+    expect(result.contentBlocks).toEqual([]);
+  });
+
+  it("preserves block order from the database array", () => {
+    const blocks = [
+      { id: "b1", type: "text", isVisible: true, body: "First" },
+      { id: "b2", type: "text", isVisible: true, body: "Second" },
+      { id: "b3", type: "text", isVisible: true, body: "Third" },
+    ];
+    const result = mapPublicPartnerDetail({
+      ...baseRow,
+      content_blocks: blocks,
+    });
+    expect(
+      result.contentBlocks.map((b) => (b as { body: string }).body),
+    ).toEqual(["First", "Second", "Third"]);
   });
 });

@@ -9,6 +9,7 @@ import type {
   PartnerDirectoryType,
   PartnerEntityType,
   PartnerBusinessHoursPresetKey,
+  PartnerContentBlock,
 } from "~/types/partner";
 
 /**
@@ -60,6 +61,12 @@ export interface AdminPartnerRow {
   internalNotes: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * All content blocks including isVisible=false.
+   * Admin can view and edit hidden blocks.
+   * Not included in AdminPartnerListItem.
+   */
+  contentBlocks: PartnerContentBlock[];
 }
 
 /** Lightweight list item — omits expensive/private detail fields. */
