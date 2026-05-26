@@ -7,16 +7,20 @@ import {
 } from "~/utils/i18n-locale";
 
 const { locale, setLocale } = useI18n();
-const localeCookie = useCookie<LocaleCode | null>(LOCALE_COOKIE_NAME, {
+const LANG_COOKIE_OPTS = {
   maxAge: 60 * 60 * 24 * 365,
-  sameSite: "lax",
+  sameSite: "lax" as const,
   path: "/",
-});
-const legacyLocaleCookie = useCookie<string | null>(LEGACY_I18N_COOKIE_NAME, {
-  maxAge: 60 * 60 * 24 * 365,
-  sameSite: "lax",
-  path: "/",
-});
+  secure: process.env.NODE_ENV === "production",
+};
+const localeCookie = useCookie<LocaleCode | null>(
+  LOCALE_COOKIE_NAME,
+  LANG_COOKIE_OPTS,
+);
+const legacyLocaleCookie = useCookie<string | null>(
+  LEGACY_I18N_COOKIE_NAME,
+  LANG_COOKIE_OPTS,
+);
 
 const flagMap: Record<string, string> = {
   th: "circle-flags:th",

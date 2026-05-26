@@ -16,6 +16,9 @@ const LOCALE_COOKIE_OPTIONS = {
   maxAge: 60 * 60 * 24 * 365,
   sameSite: "lax" as const,
   path: "/",
+  // Match the Secure posture of the Supabase auth cookies: only enforce
+  // Secure on HTTPS deployments so localhost dev still works without TLS.
+  secure: process.env.NODE_ENV === "production",
 };
 
 function getRuntimeLocale(i18n: I18nRuntime): string {
