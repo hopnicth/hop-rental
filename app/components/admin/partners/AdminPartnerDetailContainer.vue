@@ -5,6 +5,7 @@ import type {
   PartnerDirectoryType,
   PartnerEntityType,
   PartnerBusinessHoursPresetKey,
+  PartnerContentBlock,
 } from "~/types/partner";
 import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
@@ -461,6 +462,128 @@ async function handleMediaRemove(kind: "thumbnail" | "cover") {
     else removingCover.value = false;
   }
 }
+
+// ── Partner Content Blocks ────────────────────────────────────────────────────
+const CONTENT_BLOCKS_MAX = 20;
+
+const localContentBlocks = ref<PartnerContentBlock[]>([]);
+const savingBlocks = ref(false);
+const saveBlocksError = ref<string | null>(null);
+
+/**
+ * Dirty flag: true once the admin has made any local edit that has not yet
+ * been persisted via Save Content Blocks.
+ *
+ * When true, the watcher on partner.value?.contentBlocks is suppressed so
+ * that unrelated saves (Basic Info, Media upload/remove) do NOT overwrite
+ * unsaved content block edits.
+ */
+const contentBlocksDirty = ref(false);
+
+/**
+ * Guard used inside the shallow watcher to prevent the subsequent deep
+ * watcher from marking the array dirty immediately after a programmatic
+ * sync.  Not reactive — intentional (must not trigger any watchers itself).
+ */
+let _blocksSyncing = false;
+
+// Sync local copy from server whenever partner.value updates —
+// but only if there are no unsaved local edits.
+watch(
+  () => partner.value?.contentBlocks,
+  (blocks) => {
+    if (contentBlocksDirty.value) return; // guard: preserve unsaved edits
+    _blocksSyncing = true;
+    localContentBlocks.value = blocks ? blocks.map((b) => ({ ...b })) : [];
+    // Reset the sync flag after all queued watchers (including the deep
+    // watcher below) have had a chance to run in the same flush.
+    nextTick(() => {
+      _blocksSyncing = false;
+    });
+  },
+  { immediate: true },
+);
+
+// Mark dirty on any field mutation (v-model, visibility toggle, etc.)
+// Suppressed during programmatic syncs via _blocksSyncing.
+watch(
+  localContentBlocks,
+  () => {
+    if (_blocksSyncing) return;
+    contentBlocksDirty.value = true;
+  },
+  { deep: true },
+);
+
+function addBlock(type: PartnerContentBlock["type"]) {
+  if (localContentBlocks.value.length >= CONTENT_BLOCKS_MAX) return;
+  const id = crypto.randomUUID();
+  if (type === "text") {
+    localContentBlocks.value.push({
+      id,
+      type: "text",
+      isVisible: true,
+      body: "",
+    });
+  } else if (type === "drive_doc") {
+    localContentBlocks.value.push({
+      id,
+      type: "drive_doc",
+      isVisible: true,
+      title: "",
+      url: "",
+      provider: "google_drive",
+    });
+  } else {
+    localContentBlocks.value.push({
+      id,
+      type: "youtube",
+      isVisible: true,
+      url: "",
+      videoId: "",
+    });
+  }
+}
+
+function moveBlock(index: number, dir: -1 | 1) {
+  const arr = localContentBlocks.value;
+  const target = index + dir;
+  if (target < 0 || target >= arr.length) return;
+  const [item] = arr.splice(index, 1);
+  arr.splice(target, 0, item!);
+}
+
+function deleteBlock(index: number) {
+  localContentBlocks.value.splice(index, 1);
+}
+
+async function saveContentBlocks() {
+  saveBlocksError.value = null;
+  savingBlocks.value = true;
+  try {
+    const data = await $fetch<{ item: AdminPartnerRow }>(
+      `/api/admin/partners/${partnerId.value}/content-blocks`,
+      { method: "PATCH", body: { contentBlocks: localContentBlocks.value } },
+    );
+    // Reset dirty BEFORE updating partner.value so the shallow watcher
+    // will pick up the server-normalised blocks (e.g. extracted videoId).
+    contentBlocksDirty.value = false;
+    partner.value = data.item;
+    toast.add({
+      title: "เนื้อหาบันทึกสำเร็จ",
+      description: `${data.item.contentBlocks.length} block(s) saved`,
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    saveBlocksError.value = getAdminApiErrorMessage(
+      err,
+      "Failed to save content blocks",
+    );
+  } finally {
+    savingBlocks.value = false;
+  }
+}
 </script>
 
 <template>
@@ -741,6 +864,226 @@ async function handleMediaRemove(kind: "thumbnail" | "cover") {
             />
           </div>
         </div>
+      </UCard>
+
+      <!-- ── Partner Content card ─────────────────────────────────────── -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="bx:list-ul" class="text-lg text-primary" />
+            <p class="font-semibold">Partner Content · เนื้อหาหน้าพาร์ทเนอร์</p>
+            <UBadge variant="soft" color="neutral" size="xs" class="ml-auto">
+              {{ localContentBlocks.length }} / {{ CONTENT_BLOCKS_MAX }}
+            </UBadge>
+          </div>
+        </template>
+
+        <div class="space-y-4">
+          <UAlert
+            v-if="saveBlocksError"
+            color="error"
+            variant="soft"
+            :title="saveBlocksError"
+            icon="bx:error-circle"
+          />
+
+          <!-- Empty state -->
+          <p v-if="localContentBlocks.length === 0" class="text-sm text-muted">
+            ยังไม่มีเนื้อหา — คลิก "เพิ่มบล็อก" ด้านล่างเพื่อเริ่มต้น
+          </p>
+
+          <!-- Block list -->
+          <div
+            v-for="(block, idx) in localContentBlocks"
+            :key="block.id"
+            class="rounded-lg border p-4 space-y-3"
+            :class="
+              block.isVisible
+                ? 'border-neutral-200 dark:border-neutral-700'
+                : 'border-neutral-200 bg-neutral-50 opacity-60 dark:border-neutral-700 dark:bg-neutral-900'
+            "
+          >
+            <!-- Block header row -->
+            <div class="flex flex-wrap items-center gap-2">
+              <UBadge
+                variant="soft"
+                :color="
+                  block.type === 'text'
+                    ? 'primary'
+                    : block.type === 'drive_doc'
+                      ? 'success'
+                      : 'warning'
+                "
+                size="xs"
+              >
+                {{
+                  block.type === "text"
+                    ? "Text"
+                    : block.type === "drive_doc"
+                      ? "Drive Doc"
+                      : "YouTube"
+                }}
+              </UBadge>
+              <span class="text-xs text-muted font-mono">#{{ idx + 1 }}</span>
+              <div class="ml-auto flex items-center gap-1">
+                <UButton
+                  size="xs"
+                  :icon="block.isVisible ? 'bx:show' : 'bx:hide'"
+                  variant="ghost"
+                  :color="block.isVisible ? 'neutral' : 'warning'"
+                  :title="block.isVisible ? 'ซ่อน' : 'แสดง'"
+                  :disabled="savingBlocks"
+                  @click="block.isVisible = !block.isVisible"
+                />
+                <UButton
+                  size="xs"
+                  icon="bx:up-arrow-alt"
+                  variant="ghost"
+                  color="neutral"
+                  :disabled="idx === 0 || savingBlocks"
+                  title="ขึ้น"
+                  @click="moveBlock(idx, -1)"
+                />
+                <UButton
+                  size="xs"
+                  icon="bx:down-arrow-alt"
+                  variant="ghost"
+                  color="neutral"
+                  :disabled="
+                    idx === localContentBlocks.length - 1 || savingBlocks
+                  "
+                  title="ลง"
+                  @click="moveBlock(idx, 1)"
+                />
+                <UButton
+                  size="xs"
+                  icon="bx:trash"
+                  variant="ghost"
+                  color="error"
+                  :disabled="savingBlocks"
+                  title="ลบ"
+                  @click="deleteBlock(idx)"
+                />
+              </div>
+            </div>
+
+            <!-- Text block fields -->
+            <template v-if="block.type === 'text'">
+              <UFormField label="Title (optional)">
+                <UInput
+                  v-model="(block as any).title"
+                  class="w-full"
+                  placeholder="หัวข้อ (ไม่บังคับ)"
+                  :disabled="savingBlocks"
+                />
+              </UFormField>
+              <UFormField label="Body" required>
+                <UTextarea
+                  v-model="(block as any).body"
+                  class="w-full"
+                  :rows="4"
+                  placeholder="เนื้อหา (ข้อความธรรมดาเท่านั้น ไม่รองรับ HTML)"
+                  :disabled="savingBlocks"
+                />
+              </UFormField>
+            </template>
+
+            <!-- Drive Doc block fields -->
+            <template v-else-if="block.type === 'drive_doc'">
+              <UFormField label="Document Title" required>
+                <UInput
+                  v-model="(block as any).title"
+                  class="w-full"
+                  placeholder="ชื่อเอกสาร"
+                  :disabled="savingBlocks"
+                />
+              </UFormField>
+              <UFormField label="Google Drive / Docs URL" required>
+                <UInput
+                  v-model="(block as any).url"
+                  class="w-full font-mono"
+                  placeholder="https://drive.google.com/..."
+                  :disabled="savingBlocks"
+                />
+              </UFormField>
+            </template>
+
+            <!-- YouTube block fields -->
+            <template v-else-if="block.type === 'youtube'">
+              <UFormField label="Video Title (optional)">
+                <UInput
+                  v-model="(block as any).title"
+                  class="w-full"
+                  placeholder="ชื่อวิดีโอ (ไม่บังคับ)"
+                  :disabled="savingBlocks"
+                />
+              </UFormField>
+              <UFormField label="YouTube URL" required>
+                <UInput
+                  v-model="(block as any).url"
+                  class="w-full font-mono"
+                  placeholder="https://www.youtube.com/watch?v=..."
+                  :disabled="savingBlocks"
+                />
+              </UFormField>
+            </template>
+          </div>
+
+          <!-- Add block buttons -->
+          <div class="flex flex-wrap items-center gap-2">
+            <p class="text-xs text-muted mr-1">เพิ่มบล็อก:</p>
+            <UButton
+              size="sm"
+              icon="bx:text"
+              variant="soft"
+              color="primary"
+              :disabled="
+                savingBlocks || localContentBlocks.length >= CONTENT_BLOCKS_MAX
+              "
+              @click="addBlock('text')"
+            >
+              Text
+            </UButton>
+            <UButton
+              size="sm"
+              icon="bx:file"
+              variant="soft"
+              color="success"
+              :disabled="
+                savingBlocks || localContentBlocks.length >= CONTENT_BLOCKS_MAX
+              "
+              @click="addBlock('drive_doc')"
+            >
+              Drive Doc
+            </UButton>
+            <UButton
+              size="sm"
+              icon="bx:play-circle"
+              variant="soft"
+              color="warning"
+              :disabled="
+                savingBlocks || localContentBlocks.length >= CONTENT_BLOCKS_MAX
+              "
+              @click="addBlock('youtube')"
+            >
+              YouTube
+            </UButton>
+          </div>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end">
+            <UButton
+              color="primary"
+              icon="bx:save"
+              :loading="savingBlocks"
+              :disabled="savingBlocks"
+              @click="void saveContentBlocks()"
+            >
+              Save Content Blocks
+            </UButton>
+          </div>
+        </template>
       </UCard>
 
       <!-- ── Basic info card ─────────────────────────────────────────── -->
