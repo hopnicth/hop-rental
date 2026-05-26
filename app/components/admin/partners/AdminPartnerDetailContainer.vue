@@ -341,6 +341,126 @@ function formatDate(value: string | null) {
 onMounted(() => {
   void fetchPartner();
 });
+
+// ── Partner Media ─────────────────────────────────────────────────────────────
+const uploadingThumbnail = ref(false);
+const uploadingCover = ref(false);
+const removingThumbnail = ref(false);
+const removingCover = ref(false);
+const dragActiveThumbnail = ref(false);
+const dragActiveCover = ref(false);
+
+const thumbnailFileInput = ref<HTMLInputElement | null>(null);
+const coverFileInput = ref<HTMLInputElement | null>(null);
+
+const MEDIA_MAX_BYTES = 15 * 1024 * 1024;
+const MEDIA_ACCEPT = "image/jpeg,image/png,image/webp";
+const MEDIA_ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
+function validateMediaFile(file: File): string | null {
+  if (!MEDIA_ALLOWED_TYPES.includes(file.type)) {
+    return "ไม่รองรับประเภทไฟล์นี้ กรุณาเลือก JPEG, PNG หรือ WebP";
+  }
+  if (file.size > MEDIA_MAX_BYTES) {
+    return "ไฟล์ใหญ่เกิน 15 MB กรุณาเลือกไฟล์ที่มีขนาดไม่เกิน 15 MB";
+  }
+  return null;
+}
+
+async function uploadMediaFile(kind: "thumbnail" | "cover", file: File) {
+  if (kind === "thumbnail") uploadingThumbnail.value = true;
+  else uploadingCover.value = true;
+  try {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("kind", kind);
+    const data = await $fetch<{ item: AdminPartnerRow }>(
+      `/api/admin/partners/${partnerId.value}/media`,
+      { method: "POST", body: formData },
+    );
+    partner.value = data.item;
+    toast.add({
+      title: "อัปโหลดสำเร็จ",
+      description: kind === "thumbnail" ? "Thumbnail updated" : "Cover updated",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "อัปโหลดล้มเหลว",
+      description: getAdminApiErrorMessage(err, "Failed to upload image"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    if (kind === "thumbnail") uploadingThumbnail.value = false;
+    else uploadingCover.value = false;
+  }
+}
+
+function handleFileChange(kind: "thumbnail" | "cover", event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  const validationError = validateMediaFile(file);
+  if (validationError) {
+    toast.add({
+      title: "ไฟล์ไม่ถูกต้อง",
+      description: validationError,
+      color: "error",
+      icon: "bx:error-circle",
+    });
+    return;
+  }
+  void uploadMediaFile(kind, file);
+}
+
+function handleDrop(kind: "thumbnail" | "cover", event: DragEvent) {
+  if (kind === "thumbnail") dragActiveThumbnail.value = false;
+  else dragActiveCover.value = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file) return;
+  const validationError = validateMediaFile(file);
+  if (validationError) {
+    toast.add({
+      title: "ไฟล์ไม่ถูกต้อง",
+      description: validationError,
+      color: "error",
+      icon: "bx:error-circle",
+    });
+    return;
+  }
+  void uploadMediaFile(kind, file);
+}
+
+async function handleMediaRemove(kind: "thumbnail" | "cover") {
+  if (kind === "thumbnail") removingThumbnail.value = true;
+  else removingCover.value = true;
+  try {
+    const data = await $fetch<{ item: AdminPartnerRow }>(
+      `/api/admin/partners/${partnerId.value}/media`,
+      { method: "DELETE", body: { kind } },
+    );
+    partner.value = data.item;
+    toast.add({
+      title: "ลบรูปภาพสำเร็จ",
+      description: kind === "thumbnail" ? "Thumbnail removed" : "Cover removed",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "ลบรูปภาพล้มเหลว",
+      description: getAdminApiErrorMessage(err, "Failed to remove image"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    if (kind === "thumbnail") removingThumbnail.value = false;
+    else removingCover.value = false;
+  }
+}
 </script>
 
 <template>
@@ -404,6 +524,224 @@ onMounted(() => {
           </UButton>
         </div>
       </div>
+
+      <!-- ── Partner Media card ────────────────────────────────────────── -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="bx:image" class="text-lg text-primary" />
+            <p class="font-semibold">Partner Media · รูปภาพพาร์ทเนอร์</p>
+          </div>
+        </template>
+
+        <div class="grid gap-6 sm:grid-cols-2">
+          <!-- ── Thumbnail panel ─────────────────────────────────────── -->
+          <div class="space-y-3">
+            <p class="text-sm font-medium">Thumbnail</p>
+
+            <!-- Dropzone -->
+            <div
+              class="relative cursor-pointer select-none overflow-hidden rounded-lg border-2 border-dashed transition-colors"
+              :class="
+                dragActiveThumbnail
+                  ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                  : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600'
+              "
+              style="aspect-ratio: 1 / 1; min-height: 160px"
+              role="button"
+              tabindex="0"
+              :aria-label="
+                partner.thumbnailImageUrl
+                  ? 'แทนที่รูป Thumbnail'
+                  : 'เลือกรูป Thumbnail'
+              "
+              @click="
+                !uploadingThumbnail &&
+                !removingThumbnail &&
+                thumbnailFileInput?.click()
+              "
+              @keydown.enter="
+                !uploadingThumbnail &&
+                !removingThumbnail &&
+                thumbnailFileInput?.click()
+              "
+              @dragover.prevent
+              @dragenter.prevent="dragActiveThumbnail = true"
+              @dragleave="dragActiveThumbnail = false"
+              @drop.prevent="handleDrop('thumbnail', $event as DragEvent)"
+            >
+              <!-- Preview image -->
+              <img
+                v-if="partner.thumbnailImageUrl"
+                :src="partner.thumbnailImageUrl"
+                alt="Thumbnail"
+                class="pointer-events-none h-full w-full object-cover"
+              />
+              <!-- Empty placeholder -->
+              <div
+                v-else
+                class="pointer-events-none flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-muted"
+              >
+                <UIcon name="bx:cloud-upload" class="text-4xl" />
+                <p class="text-center text-sm font-medium">
+                  วางไฟล์ที่นี่ หรือคลิกเพื่อเลือก
+                </p>
+              </div>
+              <!-- Uploading overlay -->
+              <div
+                v-if="uploadingThumbnail"
+                class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-black/40"
+              >
+                <UIcon
+                  name="bx:loader-alt"
+                  class="animate-spin text-4xl text-white"
+                />
+              </div>
+              <!-- Drag-active overlay when image exists -->
+              <div
+                v-if="dragActiveThumbnail && partner.thumbnailImageUrl"
+                class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-primary/30"
+              >
+                <p class="text-sm font-semibold text-white drop-shadow">
+                  วางเพื่ออัปโหลด
+                </p>
+              </div>
+            </div>
+
+            <!-- Helper text -->
+            <div class="space-y-0.5">
+              <p class="text-xs text-muted">
+                ใช้บนการ์ดรายการ · แนะนำรูปสี่เหลี่ยมจัตุรัส
+              </p>
+              <p class="text-xs text-muted">JPEG, PNG, WebP · ไม่เกิน 15 MB</p>
+            </div>
+
+            <!-- Remove (only when image exists) -->
+            <div v-if="partner.thumbnailImageUrl">
+              <UButton
+                size="sm"
+                color="error"
+                variant="soft"
+                icon="bx:trash"
+                :loading="removingThumbnail"
+                :disabled="uploadingThumbnail || removingThumbnail"
+                @click="handleMediaRemove('thumbnail')"
+              >
+                Remove
+              </UButton>
+            </div>
+
+            <!-- Hidden file input -->
+            <input
+              ref="thumbnailFileInput"
+              type="file"
+              :accept="MEDIA_ACCEPT"
+              class="hidden"
+              @change="handleFileChange('thumbnail', $event)"
+            />
+          </div>
+
+          <!-- ── Cover panel ─────────────────────────────────────────── -->
+          <div class="space-y-3">
+            <p class="text-sm font-medium">Cover photo</p>
+
+            <!-- Dropzone -->
+            <div
+              class="relative cursor-pointer select-none overflow-hidden rounded-lg border-2 border-dashed transition-colors"
+              :class="
+                dragActiveCover
+                  ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                  : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600'
+              "
+              style="aspect-ratio: 16 / 9; min-height: 120px"
+              role="button"
+              tabindex="0"
+              :aria-label="
+                partner.coverImageUrl ? 'แทนที่รูป Cover' : 'เลือกรูป Cover'
+              "
+              @click="
+                !uploadingCover && !removingCover && coverFileInput?.click()
+              "
+              @keydown.enter="
+                !uploadingCover && !removingCover && coverFileInput?.click()
+              "
+              @dragover.prevent
+              @dragenter.prevent="dragActiveCover = true"
+              @dragleave="dragActiveCover = false"
+              @drop.prevent="handleDrop('cover', $event as DragEvent)"
+            >
+              <!-- Preview image -->
+              <img
+                v-if="partner.coverImageUrl"
+                :src="partner.coverImageUrl"
+                alt="Cover"
+                class="pointer-events-none h-full w-full object-cover"
+              />
+              <!-- Empty placeholder -->
+              <div
+                v-else
+                class="pointer-events-none flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-muted"
+              >
+                <UIcon name="bx:cloud-upload" class="text-4xl" />
+                <p class="text-center text-sm font-medium">
+                  วางไฟล์ที่นี่ หรือคลิกเพื่อเลือก
+                </p>
+              </div>
+              <!-- Uploading overlay -->
+              <div
+                v-if="uploadingCover"
+                class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-black/40"
+              >
+                <UIcon
+                  name="bx:loader-alt"
+                  class="animate-spin text-4xl text-white"
+                />
+              </div>
+              <!-- Drag-active overlay when image exists -->
+              <div
+                v-if="dragActiveCover && partner.coverImageUrl"
+                class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-primary/30"
+              >
+                <p class="text-sm font-semibold text-white drop-shadow">
+                  วางเพื่ออัปโหลด
+                </p>
+              </div>
+            </div>
+
+            <!-- Helper text -->
+            <div class="space-y-0.5">
+              <p class="text-xs text-muted">
+                ใช้เป็นรูปปกด้านในหน้า Detail · แนะนำรูปแนวนอน 16:9
+              </p>
+              <p class="text-xs text-muted">JPEG, PNG, WebP · ไม่เกิน 15 MB</p>
+            </div>
+
+            <!-- Remove (only when image exists) -->
+            <div v-if="partner.coverImageUrl">
+              <UButton
+                size="sm"
+                color="error"
+                variant="soft"
+                icon="bx:trash"
+                :loading="removingCover"
+                :disabled="uploadingCover || removingCover"
+                @click="handleMediaRemove('cover')"
+              >
+                Remove
+              </UButton>
+            </div>
+
+            <!-- Hidden file input -->
+            <input
+              ref="coverFileInput"
+              type="file"
+              :accept="MEDIA_ACCEPT"
+              class="hidden"
+              @change="handleFileChange('cover', $event)"
+            />
+          </div>
+        </div>
+      </UCard>
 
       <!-- ── Basic info card ─────────────────────────────────────────── -->
       <UCard>
