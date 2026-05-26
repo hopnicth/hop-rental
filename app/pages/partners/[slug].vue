@@ -232,6 +232,13 @@ const heroImageUrl = computed(
         </div>
       </div>
 
+      <!-- Content blocks (visible only; ordered as saved in admin) -->
+      <PartnersPartnerContentBlocks
+        v-if="partner.contentBlocks.length"
+        :blocks="partner.contentBlocks"
+        class="mt-8"
+      />
+
       <!-- Info cards grid -->
       <div class="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <!-- Categories -->
