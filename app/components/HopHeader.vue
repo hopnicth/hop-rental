@@ -28,8 +28,8 @@ const navItems = computed<NavigationMenuItem[]>(() => [
     to: "/product-rental",
   },
   {
-    label: t("nav.services"),
-    to: "/services",
+    label: t("nav.partners"),
+    to: "/partners",
   },
   {
     label: t("nav.reviews"),

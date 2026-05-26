@@ -33,7 +33,7 @@ const footerSections = computed<FooterSection[]>(() => [
       { key: "home", to: "/" },
       { key: "products", to: "/product-all" },
       { key: "rentals", to: "/product-rental" },
-      { key: "services", to: "/services" },
+      { key: "partners", to: "/partners" },
       // TODO: Wire this to the planned public About Us route once it exists.
       { key: "about" },
       { key: "contact", href: "#footer-contact" },

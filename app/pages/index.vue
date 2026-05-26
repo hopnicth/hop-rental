@@ -59,6 +59,30 @@ function asProduct(item: unknown) {
             class="hidden rounded-1xl border border-default bg-white/70 px-4 py-4 sm:block sm:px-5"
           >
             <HopPartnerSlide />
+            <div class="mt-2 flex justify-end">
+              <UButton
+                to="/partners"
+                variant="ghost"
+                color="neutral"
+                size="xs"
+                trailing-icon="bx:chevron-right"
+              >
+                {{ t("home.viewAllPartners") }}
+              </UButton>
+            </div>
+          </div>
+
+          <!-- Mobile-only: partner CTA (partner slide panel is hidden on mobile) -->
+          <div class="flex justify-end sm:hidden">
+            <UButton
+              to="/partners"
+              variant="ghost"
+              color="neutral"
+              size="xs"
+              trailing-icon="bx:chevron-right"
+            >
+              {{ t("home.viewAllPartners") }}
+            </UButton>
           </div>
         </div>
 

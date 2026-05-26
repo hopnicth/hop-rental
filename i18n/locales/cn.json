@@ -51,6 +51,7 @@
     "product": "产品",
     "rental": "租赁",
     "services": "服务",
+    "partners": "合作伙伴",
     "reviews": "评价",
     "promotions": "促销",
     "about": "关于我们",
@@ -352,7 +353,8 @@
   },
   "home": {
     "title": "首页",
-    "serviceAreasTitle": "服务区域"
+    "serviceAreasTitle": "服务区域",
+    "viewAllPartners": "查看所有合作伙伴"
   },
   "chatWidget": {
     "fabLabel": "联系我们",
@@ -1204,6 +1206,7 @@
       "products": "全部产品",
       "rentals": "设备租赁",
       "services": "我们的服务",
+      "partners": "合作伙伴",
       "about": "关于我们",
       "contact": "联系我们",
       "howToOrder": "订购方式",
