@@ -1284,5 +1284,18 @@
       "cookies": "นโยบายคุกกี้"
     },
     "copyright": "© {year} HOPNIC CO., LTD. All rights reserved."
+  },
+  "partners": {
+    "detail": {
+      "backToList": "กลับไปร้านค้าและพาร์ทเนอร์",
+      "contact": "ข้อมูลติดต่อ",
+      "serviceAreas": "พื้นที่ให้บริการ",
+      "categories": "หมวดหมู่",
+      "businessHours": "เวลาทำการ",
+      "notFound": "ไม่พบพาร์ทเนอร์นี้",
+      "notFoundDescription": "พาร์ทเนอร์นี้อาจถูกปิดการแสดงผล หรือไม่มีอยู่ในระบบ",
+      "openInMaps": "เปิดแผนที่",
+      "contactLine": "ติดต่อผ่าน LINE"
+    }
   }
 }

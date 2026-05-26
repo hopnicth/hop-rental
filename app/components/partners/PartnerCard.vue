@@ -156,8 +156,8 @@ const remainingAreaCount = computed(() =>
         </div>
       </div>
 
-      <!-- Service area chips — pinned to bottom of card -->
-      <div class="mt-auto">
+      <!-- Service area chips -->
+      <div>
         <div v-if="visibleServiceAreas.length" class="flex flex-wrap gap-1">
           <UBadge
             v-for="area in visibleServiceAreas"
@@ -177,6 +177,21 @@ const remainingAreaCount = computed(() =>
             +{{ remainingAreaCount }}
           </UBadge>
         </div>
+      </div>
+
+      <!-- Detail link — pinned to bottom -->
+      <div class="mt-auto pt-3">
+        <UButton
+          :to="`/partners/${partner.slug}`"
+          color="neutral"
+          variant="outline"
+          size="xs"
+          icon="bx:right-arrow-alt"
+          trailing
+          block
+        >
+          ดูรายละเอียด
+        </UButton>
       </div>
     </div>
   </UCard>

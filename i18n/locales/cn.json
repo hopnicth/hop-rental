@@ -1256,5 +1256,18 @@
       "cookies": "Cookie 政策"
     },
     "copyright": "© {year} HOPNIC CO., LTD. All rights reserved."
+  },
+  "partners": {
+    "detail": {
+      "backToList": "返回合作伙伴列表",
+      "contact": "联系方式",
+      "serviceAreas": "服务区域",
+      "categories": "类别",
+      "businessHours": "营业时间",
+      "notFound": "未找到该合作伙伴",
+      "notFoundDescription": "该合作伙伴可能已下架或不存在。",
+      "openInMaps": "在地图中打开",
+      "contactLine": "通过 LINE 联系"
+    }
   }
 }

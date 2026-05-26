@@ -1250,5 +1250,18 @@
       "cookies": "Cookie ポリシー"
     },
     "copyright": "© {year} HOPNIC CO., LTD. All rights reserved."
+  },
+  "partners": {
+    "detail": {
+      "backToList": "パートナー一覧に戻る",
+      "contact": "連絡先情報",
+      "serviceAreas": "サービスエリア",
+      "categories": "カテゴリー",
+      "businessHours": "営業時間",
+      "notFound": "パートナーが見つかりません",
+      "notFoundDescription": "このパートナーは非公開になっているか、存在しない可能性があります。",
+      "openInMaps": "地図で開く",
+      "contactLine": "LINE で連絡する"
+    }
   }
 }

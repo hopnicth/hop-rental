@@ -1308,5 +1308,18 @@
       "cookies": "Cookie Policy"
     },
     "copyright": "© {year} HOPNIC CO., LTD. All rights reserved."
+  },
+  "partners": {
+    "detail": {
+      "backToList": "Back to Partners",
+      "contact": "Contact Information",
+      "serviceAreas": "Service Areas",
+      "categories": "Categories",
+      "businessHours": "Business Hours",
+      "notFound": "Partner Not Found",
+      "notFoundDescription": "This partner may have been unpublished or does not exist.",
+      "openInMaps": "Open in Maps",
+      "contactLine": "Contact via LINE"
+    }
   }
 }
