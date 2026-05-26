@@ -3402,3 +3402,72 @@ describe("PATCH /api/admin/partners/:id/content-blocks — source checks", () =>
     expect(src).not.toContain("buildPartnerUpdatePayload");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Home partner endpoint source checks
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GET /api/partners/home — source checks", () => {
+  const src = read("server/api/partners/home.get.ts");
+
+  it("file exists", () => {
+    expect(src.length).toBeGreaterThan(0);
+  });
+
+  it("imports PUBLIC_PARTNER_LIST_SELECT from admin-partners utils", () => {
+    expect(src).toContain("PUBLIC_PARTNER_LIST_SELECT");
+  });
+
+  it("imports mapPublicPartnerCard from admin-partners utils", () => {
+    expect(src).toContain("mapPublicPartnerCard");
+  });
+
+  it("does NOT reference private fields", () => {
+    expect(src).not.toContain("search_keywords");
+    expect(src).not.toContain("internal_notes");
+    expect(src).not.toContain("kyc_documents");
+    expect(src).not.toContain("verified_notes");
+  });
+
+  it("enforces is_public = true filter", () => {
+    expect(src).toContain('eq("is_public", true)');
+  });
+
+  it("has a DEFAULT_LIMIT constant (default 15)", () => {
+    expect(src).toContain("DEFAULT_LIMIT = 15");
+  });
+
+  it("has a MAX_LIMIT guard (max 30)", () => {
+    expect(src).toContain("MAX_LIMIT = 30");
+  });
+
+  it("clamps limit between 1 and MAX_LIMIT", () => {
+    expect(src).toContain("Math.min");
+    expect(src).toContain("Math.max");
+  });
+
+  it("does NOT use DB ORDER BY RANDOM()", () => {
+    expect(src).not.toContain("RANDOM()");
+    expect(src).not.toContain("random()");
+  });
+
+  it("does NOT use client-side Math.random()", () => {
+    expect(src).not.toContain("Math.random");
+  });
+
+  it("uses date-based seed for deterministic shuffle", () => {
+    expect(src).toContain("toISOString().slice(0, 10)");
+  });
+
+  it("uses deterministic hash shuffle, not Math.random", () => {
+    expect(src).toContain("hashText");
+    expect(src).toContain("deterministicShuffle");
+  });
+
+  it("returns { items } shape", () => {
+    expect(src).toContain("items:");
+  });
+
+  it("uses serverSupabaseServiceRole (service-role client)", () => {
+    expect(src).toContain("serverSupabaseServiceRole");
+  });
+});

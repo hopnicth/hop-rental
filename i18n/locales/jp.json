@@ -368,6 +368,8 @@
     "servicesDescription": "設計支援、生産コンサルティング、工場対応サービスを紹介するカードです。",
     "emptyServices": "ホームに表示するサービスカードはまだありません。",
     "viewAllPartners": "すべてのパートナーを見る",
+    "partnersSection": "パートナーネットワーク",
+    "emptyPartners": "パートナーはまだありません",
     "promotionBadge": "プロモーション",
     "serviceBadge": "サービス",
     "serviceAreasTitle": "対応エリア",

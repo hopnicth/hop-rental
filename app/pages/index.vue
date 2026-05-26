@@ -9,6 +9,7 @@ import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
 import type { Asset } from "~/types/asset";
 import type { HomeLinkCard as HomeLinkCardType } from "~/types/home";
 import type { Product } from "~/types/product";
+import type { PartnerCard } from "~/types/partner";
 
 const { t } = useI18n();
 const { getAssetShowPath, loading: assetsLoading } = useAssets();
@@ -17,9 +18,10 @@ const {
   promotionCards,
   featuredAssets,
   featuredProducts,
-  serviceCards,
   loading: homeContentLoading,
 } = useHomeContent();
+
+const { partners, pending: partnersPending } = useHomePartners();
 
 const linkCardsLoading = computed(() => homeContentLoading.value);
 const featuredAssetsLoading = computed(
@@ -39,6 +41,10 @@ function asAsset(item: unknown) {
 
 function asProduct(item: unknown) {
   return item as Product;
+}
+
+function asPartnerCard(item: unknown) {
+  return item as PartnerCard;
 }
 </script>
 
@@ -175,20 +181,32 @@ function asProduct(item: unknown) {
             </HomeHorizontalRail>
           </HomeSectionShell>
 
-          <HomeSectionShell
-            :title="t('home.servicesTitle')"
-            :description="t('home.servicesDescription')"
-          >
+          <HomeSectionShell :title="t('home.partnersSection')">
+            <template #action>
+              <UButton
+                to="/partners"
+                variant="soft"
+                color="primary"
+                size="sm"
+                trailing-icon="bx:chevron-right"
+              >
+                {{ t("home.viewAllPartners") }}
+              </UButton>
+            </template>
+
             <HomeHorizontalRail
-              :items="serviceCards"
-              :empty-label="t('home.emptyServices')"
-              :loading="linkCardsLoading"
+              :items="partners"
+              :empty-label="t('home.emptyPartners')"
+              :loading="partnersPending"
             >
               <template #skeleton>
-                <HomeLinkCardSkeleton />
+                <PartnersPartnerCardSkeleton />
               </template>
               <template #item="{ item }">
-                <HomeLinkCard :card="asHomeLinkCard(item)" class="lg:mx-0.5" />
+                <PartnersPartnerCard
+                  :partner="asPartnerCard(item)"
+                  class="lg:mx-0.5"
+                />
               </template>
             </HomeHorizontalRail>
           </HomeSectionShell>

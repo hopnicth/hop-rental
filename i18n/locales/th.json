@@ -369,6 +369,8 @@
     "servicesDescription": "บริการต่างๆ ที่เราคัดสรรให้",
     "emptyServices": "ยังไม่มีบริการสำหรับหน้าแรก",
     "viewAllPartners": "ดูพาร์ทเนอร์ทั้งหมด",
+    "partnersSection": "ร้านค้าและบริการของเรา",
+    "emptyPartners": "ยังไม่มีพาร์ทเนอร์ในระบบ",
     "promotionBadge": "โปรโมชั่น",
     "serviceBadge": "บริการ",
     "serviceAreasTitle": "พื้นที่ให้บริการ",

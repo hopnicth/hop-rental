@@ -354,7 +354,9 @@
   "home": {
     "title": "首页",
     "serviceAreasTitle": "服务区域",
-    "viewAllPartners": "查看所有合作伙伴"
+    "viewAllPartners": "查看所有合作伙伴",
+    "partnersSection": "我们的合作伙伴",
+    "emptyPartners": "暂无合作伙伴"
   },
   "chatWidget": {
     "fabLabel": "联系我们",
