@@ -3471,3 +3471,83 @@ describe("GET /api/partners/home — source checks", () => {
     expect(src).toContain("serverSupabaseServiceRole");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Migration 103: user_saved_partners source checks
+// ─────────────────────────────────────────────────────────────────────────────
+describe("migration 103_user_saved_partners.sql — source checks", () => {
+  const src = read("supabase/migrations/103_user_saved_partners.sql");
+
+  it("file exists", () => {
+    expect(src.length).toBeGreaterThan(0);
+  });
+
+  it("creates table user_saved_partners", () => {
+    expect(src).toContain(
+      "CREATE TABLE IF NOT EXISTS public.user_saved_partners",
+    );
+  });
+
+  it("user_id references public.users(id) ON DELETE CASCADE", () => {
+    expect(src).toContain("REFERENCES public.users(id) ON DELETE CASCADE");
+  });
+
+  it("partner_id references public.partner_profiles(id) ON DELETE CASCADE", () => {
+    expect(src).toContain(
+      "REFERENCES public.partner_profiles(id) ON DELETE CASCADE",
+    );
+  });
+
+  it("has composite PRIMARY KEY (user_id, partner_id)", () => {
+    expect(src).toContain("PRIMARY KEY (user_id, partner_id)");
+  });
+
+  it("has table COMMENT", () => {
+    expect(src).toContain("COMMENT ON TABLE public.user_saved_partners IS");
+  });
+
+  it("creates idx_user_saved_partners_partner_id index", () => {
+    expect(src).toContain("idx_user_saved_partners_partner_id");
+  });
+
+  it("enables RLS", () => {
+    expect(src).toContain(
+      "ALTER TABLE public.user_saved_partners ENABLE ROW LEVEL SECURITY",
+    );
+  });
+
+  it("has SELECT policy using auth.uid() = user_id", () => {
+    expect(src).toContain("Users can read own saved partners");
+    expect(src).toContain("FOR SELECT");
+    expect(src).toContain("auth.uid() = user_id");
+  });
+
+  it("has INSERT policy with auth.uid() = user_id check", () => {
+    expect(src).toContain("Users can insert own saved partners");
+    expect(src).toContain("FOR INSERT");
+  });
+
+  it("INSERT policy guards is_public = TRUE", () => {
+    expect(src).toContain("is_public = TRUE");
+  });
+
+  it("INSERT policy queries partner_profiles to verify is_public", () => {
+    expect(src).toContain("FROM public.partner_profiles p");
+    expect(src).toContain("WHERE p.id = partner_id");
+  });
+
+  it("has DELETE policy using auth.uid() = user_id", () => {
+    expect(src).toContain("Users can delete own saved partners");
+    expect(src).toContain("FOR DELETE");
+  });
+
+  it("grants SELECT, INSERT, DELETE to authenticated", () => {
+    expect(src).toContain(
+      "GRANT SELECT, INSERT, DELETE ON public.user_saved_partners TO authenticated",
+    );
+  });
+
+  it("does NOT grant to anon role", () => {
+    expect(src).not.toContain("TO anon");
+  });
+});
