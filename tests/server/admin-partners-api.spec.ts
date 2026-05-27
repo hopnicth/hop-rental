@@ -3734,3 +3734,295 @@ describe("Migration 104 — partner_verification_timestamps", () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2I.3 — Type + Mapper + Staff KYC Leakage Fix
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2I.3 — PartnerKycDocuments types in admin-partner.ts", () => {
+  const src = readFileSync("app/types/admin-partner.ts", "utf8");
+
+  it("exports PartnerKycDocumentMeta interface", () => {
+    expect(src).toContain("export interface PartnerKycDocumentMeta");
+  });
+
+  it("PartnerKycDocumentMeta has id, name, path, mimeType, sizeBytes, uploadedAt, uploadedByUserId", () => {
+    expect(src).toContain("id: string");
+    expect(src).toContain("name: string");
+    expect(src).toContain("path: string");
+    expect(src).toContain("mimeType: string");
+    expect(src).toContain("sizeBytes: number");
+    expect(src).toContain("uploadedAt: string");
+    expect(src).toContain("uploadedByUserId: string");
+  });
+
+  it("exports PartnerKycDocuments interface", () => {
+    expect(src).toContain("export interface PartnerKycDocuments");
+  });
+
+  it("PartnerKycDocuments has documents: PartnerKycDocumentMeta[]", () => {
+    expect(src).toContain("documents: PartnerKycDocumentMeta[]");
+  });
+
+  it("AdminPartnerRow.kycDocuments is typed as PartnerKycDocuments (not Record)", () => {
+    expect(src).toContain("kycDocuments: PartnerKycDocuments");
+    expect(src).not.toMatch(/kycDocuments:\s*Record</);
+  });
+
+  it("AdminPartnerRow has verifiedUntil: string | null", () => {
+    expect(src).toContain("verifiedUntil: string | null");
+  });
+
+  it("AdminPartnerRow has verifiedByUserId: string | null", () => {
+    expect(src).toContain("verifiedByUserId: string | null");
+  });
+
+  it("AdminPartnerRow has verificationCancelledAt: string | null", () => {
+    expect(src).toContain("verificationCancelledAt: string | null");
+  });
+
+  it("AdminPartnerRow has verificationCancelledByUserId: string | null", () => {
+    expect(src).toContain("verificationCancelledByUserId: string | null");
+  });
+});
+
+describe("Phase 1C-2I.3 — ADMIN_PARTNER_DETAIL_SELECT new verification columns", () => {
+  it("includes verified_until", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("verified_until");
+  });
+
+  it("includes verified_by_user_id", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("verified_by_user_id");
+  });
+
+  it("includes verification_cancelled_at", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain("verification_cancelled_at");
+  });
+
+  it("includes verification_cancelled_by_user_id", () => {
+    expect(ADMIN_PARTNER_DETAIL_SELECT).toContain(
+      "verification_cancelled_by_user_id",
+    );
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT does NOT include verified_by_user_id", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain("verified_by_user_id");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT does NOT include verified_by_user_id", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain("verified_by_user_id");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT does NOT include verification_cancelled_at", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain(
+      "verification_cancelled_at",
+    );
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT does NOT include verification_cancelled_at", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain(
+      "verification_cancelled_at",
+    );
+  });
+});
+
+describe("Phase 1C-2I.3 — mapAdminPartnerDetail new verification fields", () => {
+  const baseRow = {
+    id: "p-verif-1",
+    slug: "verif-partner",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านทดสอบ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    thumbnail_image_url: null,
+    cover_image_url: null,
+    main_category_key: null,
+    secondary_category_keys: [],
+    search_keywords: [],
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_public: false,
+    is_featured: false,
+    sort_order: 0,
+    kyc_documents: {},
+    verified_notes: null,
+    internal_notes: null,
+    content_blocks: [],
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("maps verifiedUntil from verified_until", () => {
+    const row = { ...baseRow, verified_until: "2027-06-01T00:00:00Z" };
+    expect(mapAdminPartnerDetail(row).verifiedUntil).toBe(
+      "2027-06-01T00:00:00Z",
+    );
+  });
+
+  it("maps verifiedUntil as null when absent", () => {
+    expect(mapAdminPartnerDetail(baseRow).verifiedUntil).toBeNull();
+  });
+
+  it("maps verifiedByUserId from verified_by_user_id", () => {
+    const row = {
+      ...baseRow,
+      verified_by_user_id: "admin-uuid-999",
+    };
+    expect(mapAdminPartnerDetail(row).verifiedByUserId).toBe("admin-uuid-999");
+  });
+
+  it("maps verifiedByUserId as null when absent", () => {
+    expect(mapAdminPartnerDetail(baseRow).verifiedByUserId).toBeNull();
+  });
+
+  it("maps verificationCancelledAt from verification_cancelled_at", () => {
+    const ts = "2026-05-01T12:00:00Z";
+    const row = { ...baseRow, verification_cancelled_at: ts };
+    expect(mapAdminPartnerDetail(row).verificationCancelledAt).toBe(ts);
+  });
+
+  it("maps verificationCancelledAt as null when absent", () => {
+    expect(mapAdminPartnerDetail(baseRow).verificationCancelledAt).toBeNull();
+  });
+
+  it("maps verificationCancelledByUserId from verification_cancelled_by_user_id", () => {
+    const row = {
+      ...baseRow,
+      verification_cancelled_by_user_id: "admin-cancel-uuid",
+    };
+    expect(mapAdminPartnerDetail(row).verificationCancelledByUserId).toBe(
+      "admin-cancel-uuid",
+    );
+  });
+
+  it("maps verificationCancelledByUserId as null when absent", () => {
+    expect(
+      mapAdminPartnerDetail(baseRow).verificationCancelledByUserId,
+    ).toBeNull();
+  });
+});
+
+describe("Phase 1C-2I.3 — safeParseKycDocuments via mapAdminPartnerDetail", () => {
+  const baseRow = {
+    id: "p-kyc-1",
+    slug: "kyc-partner",
+    directory_type: "store",
+    entity_type: "organization",
+    name_th: "ร้านทดสอบ",
+    name_en: null,
+    tagline_th: null,
+    tagline_en: null,
+    description_th: null,
+    description_en: null,
+    main_image_url: null,
+    thumbnail_image_url: null,
+    cover_image_url: null,
+    main_category_key: null,
+    secondary_category_keys: [],
+    search_keywords: [],
+    service_areas: [],
+    contact_phone: null,
+    contact_email: null,
+    line_id: null,
+    line_url: null,
+    maps_url: null,
+    business_hours_text: null,
+    business_hours_preset_key: null,
+    business_hours_timezone: "Asia/Bangkok",
+    is_verified: false,
+    verified_at: null,
+    is_public: false,
+    is_featured: false,
+    sort_order: 0,
+    verified_notes: null,
+    internal_notes: null,
+    content_blocks: [],
+    created_at: "2026-01-01T00:00:00Z",
+    updated_at: "2026-01-01T00:00:00Z",
+  };
+
+  it("returns { documents: [] } for DB default empty object {}", () => {
+    const row = { ...baseRow, kyc_documents: {} };
+    expect(mapAdminPartnerDetail(row).kycDocuments).toEqual({ documents: [] });
+  });
+
+  it("returns { documents: [] } when kyc_documents is null", () => {
+    const row = { ...baseRow, kyc_documents: null };
+    expect(mapAdminPartnerDetail(row).kycDocuments).toEqual({ documents: [] });
+  });
+
+  it("returns { documents: [] } when kyc_documents is undefined/missing", () => {
+    expect(mapAdminPartnerDetail(baseRow).kycDocuments).toEqual({
+      documents: [],
+    });
+  });
+
+  it("returns { documents: [] } when kyc_documents is an array (invalid)", () => {
+    const row = { ...baseRow, kyc_documents: [] };
+    expect(mapAdminPartnerDetail(row).kycDocuments).toEqual({ documents: [] });
+  });
+
+  it("returns { documents: [] } when kyc_documents is a string (invalid)", () => {
+    const row = { ...baseRow, kyc_documents: "invalid" };
+    expect(mapAdminPartnerDetail(row).kycDocuments).toEqual({ documents: [] });
+  });
+
+  it("returns documents array when kyc_documents has valid documents key", () => {
+    const doc = {
+      id: "doc-1",
+      name: "id-card.pdf",
+      path: "partner-verification/p-1/doc-1-id-card.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 102400,
+      uploadedAt: "2026-05-01T10:00:00Z",
+      uploadedByUserId: "admin-uuid-1",
+    };
+    const row = { ...baseRow, kyc_documents: { documents: [doc] } };
+    expect(mapAdminPartnerDetail(row).kycDocuments).toEqual({
+      documents: [doc],
+    });
+  });
+});
+
+describe("Phase 1C-2I.3 — [id].get.ts staff KYC leakage fix (source check)", () => {
+  const src = readFileSync("server/api/admin/partners/[id].get.ts", "utf8");
+
+  it("destructures platformRole from requirePlatformAdmin", () => {
+    expect(src).toContain("platformRole");
+    expect(src).toMatch(
+      /const\s*\{[^}]*platformRole[^}]*\}\s*=\s*await\s+requirePlatformAdmin/,
+    );
+  });
+
+  it("checks platformRole === super_admin before returning kycDocuments", () => {
+    expect(src).toContain('platformRole === "super_admin"');
+  });
+
+  it("strips kycDocuments for non-super-admin (documents: [])", () => {
+    expect(src).toContain("kycDocuments: { documents: [] }");
+  });
+
+  it("returns mapped item directly for super_admin", () => {
+    expect(src).toContain("mapped");
+    expect(src).toContain("platformRole");
+  });
+
+  it("still uses requirePlatformAdmin (staff can still access partner detail)", () => {
+    expect(src).toContain("requirePlatformAdmin");
+    expect(src).not.toContain("requireSuperAdmin");
+  });
+});

@@ -13,6 +13,29 @@ import type {
 } from "~/types/partner";
 
 /**
+ * Single KYC document metadata entry stored in partner_profiles.kyc_documents.
+ * Files live in the private kyc-documents bucket; this is metadata only.
+ * ADMIN-ONLY — never expose to public or staff.
+ */
+export interface PartnerKycDocumentMeta {
+  id: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+  uploadedByUserId: string;
+}
+
+/**
+ * Typed shape of the kyc_documents JSONB column.
+ * DB default: {}  →  safe fallback: { documents: [] }
+ */
+export interface PartnerKycDocuments {
+  documents: PartnerKycDocumentMeta[];
+}
+
+/**
  * Full admin row — includes private fields that are column-level revoked
  * from anon/authenticated roles in the DB (migration 096).
  */
@@ -50,15 +73,23 @@ export interface AdminPartnerRow {
   businessHoursTimezone: string;
   isVerified: boolean;
   verifiedAt: string | null;
+  /** Expiry timestamp for 1-year verification. Public-safe. */
+  verifiedUntil: string | null;
   isPublic: boolean;
   isFeatured: boolean;
   sortOrder: number;
   /** ADMIN-ONLY: KYC document metadata. Never in public payloads. */
-  kycDocuments: Record<string, unknown>;
+  kycDocuments: PartnerKycDocuments;
   /** ADMIN-ONLY: Verification decision notes. Never in public payloads. */
   verifiedNotes: string | null;
   /** ADMIN-ONLY: Internal operational notes. Never in public payloads. */
   internalNotes: string | null;
+  /** ADMIN-ONLY: super_admin who last verified this partner. */
+  verifiedByUserId: string | null;
+  /** ADMIN-ONLY: Timestamp when verification was last cancelled. */
+  verificationCancelledAt: string | null;
+  /** ADMIN-ONLY: super_admin who last cancelled verification. */
+  verificationCancelledByUserId: string | null;
   createdAt: string;
   updatedAt: string;
   /**

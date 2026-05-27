@@ -11,6 +11,7 @@ import {
   type PartnerBusinessHoursPresetKey,
   type PartnerContentBlock,
 } from "~/types/partner";
+import type { PartnerKycDocuments } from "~/types/admin-partner";
 
 // ── SELECT strings ────────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ export const ADMIN_PARTNER_LIST_SELECT =
 
 /** Admin detail — full row including private admin-only columns. */
 export const ADMIN_PARTNER_DETAIL_SELECT =
-  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, search_keywords, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, content_blocks, created_at, updated_at";
+  "id, slug, directory_type, entity_type, name_th, name_en, tagline_th, tagline_en, description_th, description_en, main_image_url, thumbnail_image_url, cover_image_url, main_category_key, secondary_category_keys, search_keywords, service_areas, contact_phone, contact_email, line_id, line_url, maps_url, business_hours_text, business_hours_preset_key, business_hours_timezone, is_verified, verified_at, verified_until, is_public, is_featured, sort_order, kyc_documents, verified_notes, internal_notes, verified_by_user_id, verification_cancelled_at, verification_cancelled_by_user_id, content_blocks, created_at, updated_at";
 
 /** Public list — no private fields, no descriptions. */
 export const PUBLIC_PARTNER_LIST_SELECT =
@@ -700,6 +701,22 @@ export function mapAdminPartnerListItem(row: Record<string, unknown>) {
   };
 }
 
+/**
+ * Safe parser for the kyc_documents JSONB column.
+ * Expected DB shape: { "documents": [...] }
+ * Returns { documents: [] } for any missing/invalid/malformed value.
+ * Never throws.
+ */
+function safeParseKycDocuments(value: unknown): PartnerKycDocuments {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>;
+    if (Array.isArray(obj.documents)) {
+      return { documents: obj.documents as PartnerKycDocuments["documents"] };
+    }
+  }
+  return { documents: [] };
+}
+
 /** Admin detail — full row including private admin-only fields. */
 export function mapAdminPartnerDetail(row: Record<string, unknown>) {
   return {
@@ -717,19 +734,18 @@ export function mapAdminPartnerDetail(row: Record<string, unknown>) {
       row.business_hours_timezone ?? "Asia/Bangkok",
     ),
     verifiedAt: str(row.verified_at),
+    verifiedUntil: str(row.verified_until),
     // Admin-only array fields
     searchKeywords: Array.isArray(row.search_keywords)
       ? (row.search_keywords as string[])
       : [],
     // Private admin-only fields
-    kycDocuments:
-      row.kyc_documents &&
-      typeof row.kyc_documents === "object" &&
-      !Array.isArray(row.kyc_documents)
-        ? (row.kyc_documents as Record<string, unknown>)
-        : {},
+    kycDocuments: safeParseKycDocuments(row.kyc_documents),
     verifiedNotes: str(row.verified_notes),
     internalNotes: str(row.internal_notes),
+    verifiedByUserId: str(row.verified_by_user_id),
+    verificationCancelledAt: str(row.verification_cancelled_at),
+    verificationCancelledByUserId: str(row.verification_cancelled_by_user_id),
     // All content blocks — admin sees hidden blocks too
     contentBlocks: safeParseContentBlocks(row.content_blocks),
   };

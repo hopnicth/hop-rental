@@ -4,6 +4,9 @@
  * Admin partner detail by UUID. Returns the full row including
  * admin-only private fields (kyc_documents, verified_notes, internal_notes).
  *
+ * KYC privacy: kycDocuments is stripped for non-super-admin (staff) callers.
+ * Only super_admin receives the real kycDocuments payload.
+ *
  * Returns: { item: AdminPartnerRow }
  * Errors:  400 if id missing, 404 if not found, 500 on DB error
  */
@@ -15,7 +18,7 @@ import {
 } from "~~/server/utils/admin-partners";
 
 export default defineEventHandler(async (event) => {
-  const { adminClient } = await requirePlatformAdmin(event);
+  const { adminClient, platformRole } = await requirePlatformAdmin(event);
   const id = getRouterParam(event, "id");
 
   if (!id) {
@@ -39,7 +42,12 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  const mapped = mapAdminPartnerDetail(data as Record<string, unknown>);
+
   return {
-    item: mapAdminPartnerDetail(data as Record<string, unknown>),
+    item:
+      platformRole === "super_admin"
+        ? mapped
+        : { ...mapped, kycDocuments: { documents: [] } },
   };
 });
