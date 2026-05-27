@@ -1264,6 +1264,12 @@
       "notFoundDescription": "このパートナーは非公開になっているか、存在しない可能性があります。",
       "openInMaps": "地図で開く",
       "contactLine": "LINE で連絡する"
+    },
+    "savedPartners": {
+      "save": "保存",
+      "saved": "保存済み",
+      "loginRequired": "このパートナーを保存するにはログインしてください。",
+      "saveFailed": "保存できませんでした。もう一度お試しください。"
     }
   }
 }

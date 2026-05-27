@@ -4,6 +4,8 @@ import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
 const route = useRoute();
 const { t, locale } = useI18n();
+const toast = useToast();
+const user = useSupabaseUser();
 const slug = computed(() => String(route.params.slug ?? ""));
 
 const { data, pending, error } = await useAsyncData(
@@ -119,6 +121,44 @@ const heroImageUrl = computed(
     partner.value?.mainImageUrl ||
     null,
 );
+
+const {
+  savedPartnerIds,
+  isToggling: isSavingPartner,
+  toggleSavedPartner,
+} = useSavedPartners();
+
+const isSavedPartner = computed(() => {
+  const id = partner.value?.id;
+  if (!id) return false;
+  return savedPartnerIds.value.includes(id);
+});
+
+const isTogglingPartner = computed(() => {
+  const id = partner.value?.id;
+  if (!id) return false;
+  return isSavingPartner(id).value;
+});
+
+async function handleSaveToggle() {
+  if (!user.value) {
+    void navigateTo(
+      `/user/login?redirect=${encodeURIComponent(route.fullPath)}`,
+    );
+    return;
+  }
+  const id = partner.value?.id;
+  if (!id) return;
+  try {
+    await toggleSavedPartner(id);
+  } catch {
+    toast.add({
+      title: t("partners.savedPartners.saveFailed"),
+      icon: "bx:error-circle",
+      color: "error",
+    });
+  }
+}
 </script>
 
 <template>
@@ -222,6 +262,24 @@ const heroImageUrl = computed(
             <p v-if="partner.taglineTh" class="mt-2 text-base text-muted">
               {{ partner.taglineTh }}
             </p>
+          </div>
+          <!-- Save button — near title, outside Contact FAB cluster -->
+          <div>
+            <UButton
+              :icon="isSavedPartner ? 'bxs:heart' : 'bx:heart'"
+              :color="isSavedPartner ? 'error' : 'neutral'"
+              variant="soft"
+              size="sm"
+              :loading="isTogglingPartner"
+              :disabled="isTogglingPartner"
+              @click="handleSaveToggle"
+            >
+              {{
+                isSavedPartner
+                  ? t("partners.savedPartners.saved")
+                  : t("partners.savedPartners.save")
+              }}
+            </UButton>
           </div>
           <p
             v-if="partner.descriptionTh"

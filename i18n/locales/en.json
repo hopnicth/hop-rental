@@ -1322,6 +1322,12 @@
       "notFoundDescription": "This partner may have been unpublished or does not exist.",
       "openInMaps": "Open in Maps",
       "contactLine": "Contact via LINE"
+    },
+    "savedPartners": {
+      "save": "Save",
+      "saved": "Saved",
+      "loginRequired": "Please log in to save this partner.",
+      "saveFailed": "Could not save. Please try again."
     }
   }
 }

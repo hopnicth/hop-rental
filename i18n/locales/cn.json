@@ -1270,6 +1270,12 @@
       "notFoundDescription": "该合作伙伴可能已下架或不存在。",
       "openInMaps": "在地图中打开",
       "contactLine": "通过 LINE 联系"
+    },
+    "savedPartners": {
+      "save": "收藏",
+      "saved": "已收藏",
+      "loginRequired": "请先登录以收藏该合作伙伴。",
+      "saveFailed": "收藏失败，请重试。"
     }
   }
 }

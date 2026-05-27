@@ -3,7 +3,40 @@ import type { PartnerCard } from "~/types/partner";
 import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
 const props = defineProps<{ partner: PartnerCard }>();
-const { locale } = useI18n();
+const { locale, t } = useI18n();
+const toast = useToast();
+const {
+  isPartnerSaved,
+  isToggling: isSavingPartner,
+  toggleSavedPartner,
+} = useSavedPartners();
+const saved = isPartnerSaved(props.partner.id);
+const toggling = isSavingPartner(props.partner.id);
+const saveLabel = computed(() =>
+  saved.value
+    ? t("partners.savedPartners.saved")
+    : t("partners.savedPartners.save"),
+);
+
+async function handleSaveToggle() {
+  try {
+    await toggleSavedPartner(props.partner.id);
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === "AUTH_REQUIRED") {
+      toast.add({
+        title: t("partners.savedPartners.loginRequired"),
+        icon: "bx:info-circle",
+        color: "info",
+      });
+    } else {
+      toast.add({
+        title: t("partners.savedPartners.saveFailed"),
+        icon: "bx:error-circle",
+        color: "error",
+      });
+    }
+  }
+}
 
 /**
  * Category label lookup — mirrors the locked admin ALL_CATEGORIES constant.
@@ -129,6 +162,22 @@ const cardImageUrl = computed(
 
     <!-- Image — aspect-square always rendered; placeholder when no image -->
     <div class="relative overflow-hidden rounded-lg bg-muted">
+      <!-- Save/bookmark button overlay — top-right corner, matching Asset Card style -->
+      <div class="absolute right-2 top-2 z-10">
+        <UTooltip :text="saveLabel" :popper="{ placement: 'top' }">
+          <UButton
+            icon="bx:bookmark"
+            :color="saved ? 'secondary' : 'neutral'"
+            :variant="saved ? 'solid' : 'soft'"
+            size="sm"
+            square
+            :loading="toggling"
+            class="shadow-sm backdrop-blur transition-all duration-200 hover:scale-110 hover:shadow-md"
+            :aria-label="saveLabel"
+            @click.stop.prevent="handleSaveToggle"
+          />
+        </UTooltip>
+      </div>
       <NuxtImg
         v-if="cardImageUrl"
         :src="cardImageUrl"
