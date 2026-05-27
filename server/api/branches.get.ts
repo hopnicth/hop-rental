@@ -18,6 +18,7 @@ export default defineEventHandler(async (event) => {
     .from("store_branches")
     .select(ADMIN_STORE_BRANCH_SELECT)
     .eq("is_active", true)
+    .eq("is_public", true)
     .order("sort_order", { ascending: true })
     .order("name_th", { ascending: true });
 
