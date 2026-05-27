@@ -1032,11 +1032,17 @@ export function useBooking() {
 
   /**
    * Update the hub/store selection for a booking.
+   *
+   * Delegates to the server endpoint PATCH /api/rental-bookings/:id/hub which
+   * validates that the branch is active AND public before writing.
+   * The hubName param is kept for call-site compatibility but the server derives
+   * the canonical name from the branch record.
    */
   function updateHub(
     bookingId: string,
     hubId: string,
-    hubName: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _hubName: string,
   ): Promise<boolean> {
     return (async () => {
       try {
@@ -1046,22 +1052,16 @@ export function useBooking() {
           return false;
         }
 
-        const { data, error } = await supabase
-          .from("rental_bookings")
-          .update({ hub_id: hubId, hub_name: hubName })
-          .eq("id", bookingId)
-          .eq("status", "draft")
-          .select("*")
-          .single();
-
-        if (error) {
-          console.warn("[useBooking] updateHub error:", error.message);
-          return false;
-        }
+        const response = await $fetch<{
+          booking: { id: string; hub_id: string; hub_name: string };
+        }>(`/api/rental-bookings/${encodeURIComponent(bookingId)}/hub`, {
+          method: "PATCH",
+          body: { branchId: hubId },
+        });
 
         replaceStoreBooking(
           mapRowToBooking(
-            data as Record<string, unknown>,
+            response.booking as Record<string, unknown>,
             getBookingById(bookingId),
           ),
         );
