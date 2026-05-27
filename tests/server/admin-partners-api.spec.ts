@@ -3551,3 +3551,186 @@ describe("migration 103_user_saved_partners.sql — source checks", () => {
     expect(src).not.toContain("TO anon");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2I.2 — Migration 104: partner verification timestamps
+// ─────────────────────────────────────────────────────────────────────────────
+describe("Migration 104 — partner_verification_timestamps", () => {
+  const src = (() => {
+    try {
+      return readFileSync(
+        "supabase/migrations/104_partner_verification_timestamps.sql",
+        "utf8",
+      );
+    } catch {
+      return "";
+    }
+  })();
+
+  it("migration file 104 exists and is non-empty", () => {
+    expect(src.length).toBeGreaterThan(0);
+  });
+
+  // ── Schema additions ────────────────────────────────────────────────────────
+
+  it("adds verified_until column", () => {
+    expect(src).toContain("verified_until");
+    expect(src).toContain("TIMESTAMPTZ");
+  });
+
+  it("adds verified_by_user_id column with FK to public.users", () => {
+    expect(src).toContain("verified_by_user_id");
+    expect(src).toContain("REFERENCES public.users(id)");
+  });
+
+  it("adds verification_cancelled_at column", () => {
+    expect(src).toContain("verification_cancelled_at");
+  });
+
+  it("adds verification_cancelled_by_user_id column", () => {
+    expect(src).toContain("verification_cancelled_by_user_id");
+  });
+
+  it("uses ADD COLUMN IF NOT EXISTS for all new columns", () => {
+    expect(src).toContain("ADD COLUMN IF NOT EXISTS verified_until");
+    expect(src).toContain("ADD COLUMN IF NOT EXISTS verified_by_user_id");
+    expect(src).toContain("ADD COLUMN IF NOT EXISTS verification_cancelled_at");
+    expect(src).toContain(
+      "ADD COLUMN IF NOT EXISTS verification_cancelled_by_user_id",
+    );
+  });
+
+  // ── Check constraint ────────────────────────────────────────────────────────
+
+  it("includes partner_profiles_verified_until_check constraint name", () => {
+    expect(src).toContain("partner_profiles_verified_until_check");
+  });
+
+  it("check constraint enforces verified_until IS NULL OR is_verified = TRUE", () => {
+    expect(src).toContain(
+      "CHECK (verified_until IS NULL OR is_verified = TRUE)",
+    );
+  });
+
+  it("uses idempotent DO block for constraint addition", () => {
+    expect(src).toContain("DO $$");
+    expect(src).toContain("IF NOT EXISTS");
+    expect(src).toContain("constraint_name");
+    expect(src).toContain("partner_profiles_verified_until_check");
+  });
+
+  // ── Bucket update ───────────────────────────────────────────────────────────
+
+  it("updates kyc-documents bucket file_size_limit to 20 MB (20971520 bytes)", () => {
+    expect(src).toContain("kyc-documents");
+    expect(src).toContain("20971520");
+  });
+
+  it("bucket update includes image/jpeg in allowed_mime_types", () => {
+    expect(src).toContain("image/jpeg");
+  });
+
+  it("bucket update includes image/png in allowed_mime_types", () => {
+    expect(src).toContain("image/png");
+  });
+
+  it("bucket update includes image/webp in allowed_mime_types", () => {
+    expect(src).toContain("image/webp");
+  });
+
+  it("bucket update includes application/pdf in allowed_mime_types", () => {
+    expect(src).toContain("application/pdf");
+  });
+
+  it("does NOT set bucket public = TRUE", () => {
+    // Must not flip the bucket to public
+    expect(src).not.toMatch(/public\s*=\s*TRUE/i);
+    expect(src).not.toMatch(/SET\s+public\s*=/i);
+  });
+
+  // ── Grant / privacy ─────────────────────────────────────────────────────────
+
+  it("grants SELECT (verified_until) to anon and authenticated", () => {
+    expect(src).toContain("GRANT SELECT (verified_until)");
+    expect(src).toContain("TO anon, authenticated");
+  });
+
+  it("does NOT grant kyc_documents to anon or authenticated", () => {
+    // Must not appear in any GRANT statement targeting anon/authenticated
+    const grantLines = src
+      .split("\n")
+      .filter(
+        (l) =>
+          l.includes("GRANT") &&
+          (l.includes("anon") || l.includes("authenticated")),
+      );
+    for (const line of grantLines) {
+      expect(line).not.toContain("kyc_documents");
+    }
+  });
+
+  it("does NOT grant verified_notes to anon or authenticated", () => {
+    const grantLines = src
+      .split("\n")
+      .filter(
+        (l) =>
+          l.includes("GRANT") &&
+          (l.includes("anon") || l.includes("authenticated")),
+      );
+    for (const line of grantLines) {
+      expect(line).not.toContain("verified_notes");
+    }
+  });
+
+  it("does NOT grant internal_notes to anon or authenticated", () => {
+    const grantLines = src
+      .split("\n")
+      .filter(
+        (l) =>
+          l.includes("GRANT") &&
+          (l.includes("anon") || l.includes("authenticated")),
+      );
+    for (const line of grantLines) {
+      expect(line).not.toContain("internal_notes");
+    }
+  });
+
+  it("does NOT grant verified_by_user_id to anon or authenticated", () => {
+    const grantLines = src
+      .split("\n")
+      .filter(
+        (l) =>
+          l.includes("GRANT") &&
+          (l.includes("anon") || l.includes("authenticated")),
+      );
+    for (const line of grantLines) {
+      expect(line).not.toContain("verified_by_user_id");
+    }
+  });
+
+  it("does NOT grant verification_cancelled_at to anon or authenticated", () => {
+    const grantLines = src
+      .split("\n")
+      .filter(
+        (l) =>
+          l.includes("GRANT") &&
+          (l.includes("anon") || l.includes("authenticated")),
+      );
+    for (const line of grantLines) {
+      expect(line).not.toContain("verification_cancelled_at");
+    }
+  });
+
+  it("does NOT grant verification_cancelled_by_user_id to anon or authenticated", () => {
+    const grantLines = src
+      .split("\n")
+      .filter(
+        (l) =>
+          l.includes("GRANT") &&
+          (l.includes("anon") || l.includes("authenticated")),
+      );
+    for (const line of grantLines) {
+      expect(line).not.toContain("verification_cancelled_by_user_id");
+    }
+  });
+});
