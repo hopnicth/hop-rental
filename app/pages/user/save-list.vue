@@ -1,15 +1,18 @@
 <script setup lang="ts">
+import type { PartnerCard } from "~/types/partner";
+
 const { isLoggedIn } = useAuthSession();
 const route = useRoute();
 const { t } = useI18n();
 const { assets } = useAssets();
-const { fetchContentPages } = useContentPages();
-const { assetIds, serviceIds, loading, loadSaveList } = useSaveList();
+const { assetIds, loading, loadSaveList } = useSaveList();
+const { savedPartnerIds } = useSavedPartners();
 
-const { data: servicePages, pending: servicesPending } = await useAsyncData(
-  "user-save-list:services",
-  () => fetchContentPages("service"),
-  { default: () => [] },
+// Fetch full partner cards for saved partners (most-recently-saved first).
+const { data: savedPartnerData, pending: partnersPending } = await useAsyncData(
+  "user-save-list:partners",
+  () => $fetch<{ items: PartnerCard[] }>("/api/user/saved-partners"),
+  { default: () => ({ items: [] as PartnerCard[] }) },
 );
 
 const savedAssets = computed(() => {
@@ -17,14 +20,15 @@ const savedAssets = computed(() => {
   return assets.value.filter((asset) => ids.has(asset.id));
 });
 
-const savedServices = computed(() => {
-  const ids = new Set(serviceIds.value);
-  return servicePages.value.filter((page) => ids.has(page.id));
+// Filter by live savedPartnerIds so unsaving a card removes it immediately.
+const savedPartners = computed(() => {
+  const ids = new Set(savedPartnerIds.value);
+  return (savedPartnerData.value?.items ?? []).filter((p) => ids.has(p.id));
 });
 
-const isLoading = computed(() => loading.value || servicesPending.value);
+const isLoading = computed(() => loading.value || partnersPending.value);
 const isEmpty = computed(
-  () => savedAssets.value.length === 0 && savedServices.value.length === 0,
+  () => savedAssets.value.length === 0 && savedPartners.value.length === 0,
 );
 
 watchEffect(() => {
@@ -68,12 +72,12 @@ useSeoMeta({ title: () => t("saveListPage.title") });
           {{ t("saveListPage.browseAssets") }}
         </UButton>
         <UButton
-          to="/services"
+          to="/partners"
           variant="soft"
           color="primary"
-          icon="bx:briefcase"
+          icon="bx:store-alt"
         >
-          {{ t("saveListPage.browseServices") }}
+          {{ t("saveListPage.browsePartners") }}
         </UButton>
       </div>
     </div>
@@ -110,15 +114,15 @@ useSeoMeta({ title: () => t("saveListPage.title") });
         </div>
       </section>
 
-      <section v-if="savedServices.length" class="space-y-3">
+      <section v-if="savedPartners.length" class="space-y-3">
         <h2 class="text-lg font-semibold text-default">
-          {{ t("saveListPage.servicesTitle") }}
+          {{ t("saveListPage.partnersTitle") }}
         </h2>
         <div class="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <ContentPageCard
-            v-for="page in savedServices"
-            :key="page.id"
-            :page="page"
+          <PartnersPartnerCard
+            v-for="partner in savedPartners"
+            :key="partner.id"
+            :partner="partner"
           />
         </div>
       </section>

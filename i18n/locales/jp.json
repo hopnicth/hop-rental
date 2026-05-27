@@ -514,6 +514,19 @@
     "emptyTitle": "保存した商品はまだありません",
     "emptyDescription": "商品カードのハートアイコンを押すとここに保存されます。"
   },
+  "saveListPage": {
+    "eyebrow": "Save List",
+    "title": "保存リスト",
+    "description": "あとで見返せるよう保存したレンタル品とパートナーです。",
+    "browseAssets": "レンタル品を見る",
+    "browseServices": "サービスを見る",
+    "browsePartners": "パートナーを見る",
+    "emptyTitle": "保存した項目はまだありません",
+    "emptyDescription": "レンタルまたはパートナーカードの保存アイコンをタップするとここに表示されます。",
+    "assetsTitle": "保存済みレンタル品",
+    "servicesTitle": "保存済みサービス",
+    "partnersTitle": "保存済みパートナー"
+  },
   "productDetail": {
     "home": "ホーム",
     "allProducts": "全商品",

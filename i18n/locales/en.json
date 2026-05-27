@@ -525,13 +525,15 @@
   "saveListPage": {
     "eyebrow": "Save List",
     "title": "Save List",
-    "description": "Rental items and services you saved for later browsing.",
+    "description": "Rental items and partners you saved for later.",
     "browseAssets": "Browse rentals",
     "browseServices": "Browse services",
+    "browsePartners": "Browse Partners",
     "emptyTitle": "No saved items yet",
-    "emptyDescription": "Tap the save icon on rental or service cards to keep them here.",
+    "emptyDescription": "Tap the save icon on rental or partner cards to keep them here.",
     "assetsTitle": "Saved rental items",
-    "servicesTitle": "Saved services"
+    "servicesTitle": "Saved services",
+    "partnersTitle": "Saved Partners"
   },
   "productDetail": {
     "home": "Home",
