@@ -1,13 +1,16 @@
 <script setup lang="ts">
 /**
  * OAuth callback page.
- * Supabase redirects here after Google sign-in (or email confirmation link).
  * The @nuxtjs/supabase module automatically exchanges the auth code for a session.
- * We simply wait for the user to be resolved, then redirect.
+ * We wait for the session to resolve, clear any stale profile state, refresh the
+ * profile, then redirect. This prevents the race where profile was fetched before
+ * the session cookies were fully set, causing platform_role to appear as 'customer'
+ * on the first Google OAuth login on production.
  */
 const route = useRoute();
 const user = useSupabaseUser();
 const { t } = useI18n();
+const { clearProfile, refreshProfile, profile } = useUserProfile();
 
 const redirectTarget = computed(() => {
   const redirect = route.query.redirect;
@@ -16,11 +19,35 @@ const redirectTarget = computed(() => {
     : "/";
 });
 
-watchEffect(() => {
-  if (user.value) {
-    navigateTo(redirectTarget.value);
-  }
-});
+const didRedirect = ref(false);
+
+watch(
+  user,
+  async (newUser) => {
+    if (!newUser || didRedirect.value) return;
+    didRedirect.value = true;
+
+    // Only clear + reload when the profile is absent or belongs to a different
+    // user. This is the normal path for a fresh OAuth callback. If a logged-in
+    // user somehow lands here, their existing profile is preserved.
+    if (!profile.value || profile.value.id !== newUser.id) {
+      clearProfile();
+
+      // Await the profile refresh so the correct platform_role is in state
+      // before navigation. The session cookies are established at this point,
+      // so the /api/user request will succeed.
+      try {
+        await refreshProfile();
+      } catch {
+        // Profile fetch failed — redirect anyway; the destination page will
+        // retry via its own ensureProfileLoaded() call (e.g. admin layout).
+      }
+    }
+
+    await navigateTo(redirectTarget.value, { replace: true });
+  },
+  { immediate: true },
+);
 </script>
 
 <template>

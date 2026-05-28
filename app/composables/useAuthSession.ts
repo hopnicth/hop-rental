@@ -46,7 +46,7 @@ function loadLastActivity(): number {
 export function useAuthSession() {
   const supabase = useSupabaseClient();
   const user = useSupabaseUser();
-  const { profile } = useUserProfile();
+  const { profile, clearProfile } = useUserProfile();
   const { t } = useI18n();
   const toast = useToast();
 
@@ -155,6 +155,9 @@ export function useAuthSession() {
       });
     }
 
+    // Clear profile state synchronously before navigation so the login page
+    // never sees a stale role from the previous session.
+    clearProfile();
     navigateTo("/user/login");
   }
 

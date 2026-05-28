@@ -24,6 +24,7 @@
 - Decision 5 is locked: POS V3 is the canonical POS direction going forward; POS V2 is legacy/reference only and must not receive broad new core POS expansion.
 - Decision 6A is locked: POS V3 rental money truth requires a dedicated rental held-balance event model; generic `payment_allocations` is not the canonical held-balance lifecycle source.
 - Decision 6B is locked: Booking Deposit must never exceed the required refundable security deposit amount: `booking_deposit_due_now = min(policy_calculated_booking_deposit, required_security_deposit_amount)`.
+- Phase 2D is closed for POS V3 Future Booking Deposit: draft creation, Cash/PromptPay QR Booking Deposit collection, payment-backed confirmation, BDC issuance/printing, active QR recovery, QR replacement safety, late-payment recovery, Booking Detail resume CTA, POS `bookingId` re-entry, and `paid_confirm_failed` double-collection guard are accepted. The closure checklist is `docs/phase-2d-booking-deposit-acceptance-checklist.md`.
 
 ## 0.1 Reconciliation gates before deeper POS V3 implementation
 

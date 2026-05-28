@@ -1,0 +1,74 @@
+# ============================================================
+# .claudeignore — HOPNIC / hop-rental
+# Claude Code จะไม่อ่านไฟล์เหล่านี้เมื่อ index codebase
+# ============================================================
+
+# ── Build & cache outputs ────────────────────────────────────
+.nuxt/
+.output/
+.data/
+.cache/
+dist/
+
+# ── Dependencies ─────────────────────────────────────────────
+node_modules/
+
+# ── Lock files (ใหญ่, ไม่มีประโยชน์ต่อ AI) ──────────────────
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# ── Environment & secrets ────────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Logs & temp build artifacts ──────────────────────────────
+*.log
+*.exit
+*.exit.txt
+build.log
+build.exit
+.nuxt-build-check.log
+
+# ── Augment agent temp files ─────────────────────────────────
+.augment-*
+
+# ── macOS system files ───────────────────────────────────────
+.DS_Store
+
+# ── Supabase local CLI temp state ────────────────────────────
+supabase/.temp/
+
+# ── Auto-generated types (อ่านได้ แต่ห้าม edit) ─────────────
+# ไม่ ignore เพราะ Claude ต้องการ type context สำหรับ TypeScript
+# app/types/database.types.ts
+
+# ── Static public assets ─────────────────────────────────────
+public/
+
+# ── Large seed / upload data (ไม่ใช่โค้ด) ───────────────────
+ข้อมูล up ขึ้น database/
+supabase/migrations/095_seed_sale_products_set1.sql
+
+# ── HTML reference files ─────────────────────────────────────
+*.html
+
+# ── Large planning & historical documents ────────────────────
+# (ไม่ใช่ source of truth สำหรับ coding — อ่านแล้วแค่เพิ่ม noise)
+HOPNIC_POS_V2แฟืก_Master_Implementation_Plan.md
+API_INDEX.md
+augment_final_design_lock_customer_docs_cancel_refund.md
+"file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md"
+
+# ── Admin operation manuals (สำหรับ user ไม่ใช่ developer) ──
+admin-manual/
+
+# ── Mock data ────────────────────────────────────────────────
+app/mock/
+
+
+docs/schema-snapshots/
+supabase/snippets/
+20260528 Summary.md
+supabase/migrations/

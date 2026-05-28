@@ -28,8 +28,7 @@ function mapRow(row: Record<string, unknown>): UserProfile {
     lastName: (row.last_name as string) ?? null,
     phone: (row.phone as string) ?? null,
     avatarUrl: (row.avatar_url as string) ?? null,
-    platformRole:
-      (row.platform_role as UserProfile["platformRole"]) ?? "customer",
+    platformRole: (row.platform_role as UserProfile["platformRole"]) ?? null,
     membershipLevel:
       (row.membership_level as UserProfile["membershipLevel"]) ?? "bronze",
     kycStatus: (row.kyc_status as UserProfile["kycStatus"]) ?? "pending",
@@ -159,6 +158,19 @@ export function useUserProfile() {
     }
   }
 
+  // ── Imperative helpers ──
+
+  /** Reset profile state — call before an OAuth redirect to discard stale data. */
+  function clearProfile(): void {
+    profile.value = null;
+    error.value = null;
+  }
+
+  /** Force re-fetch the profile from the API for the current auth user. */
+  async function refreshProfile(): Promise<void> {
+    await fetchProfile(true);
+  }
+
   // ── Auto-fetch on auth state change (client-only) ──
   if (import.meta.client && !isUserProfileInitialized) {
     isUserProfileInitialized = true;
@@ -167,10 +179,18 @@ export function useUserProfile() {
       () => user.value?.id ?? null,
       (userId, previousUserId) => {
         if (userId) {
+          // User ID is known — fetch or re-fetch (force to pick up role changes).
           void fetchProfile(true);
-        } else if (previousUserId) {
+        } else if (previousUserId !== undefined && previousUserId !== null) {
+          // Explicit sign-out: userId changed from a known value to null.
           profile.value = null;
           error.value = null;
+        } else if (previousUserId === undefined) {
+          // Initial immediate fire with null userId.
+          // useSupabaseUser() may not have resolved from the cookie yet.
+          // Call fetchProfile() (non-forced) so resolveUserId() can fall back
+          // to supabase.auth.getUser() and load the profile if a session exists.
+          void fetchProfile();
         }
       },
       { immediate: true },
@@ -190,5 +210,9 @@ export function useUserProfile() {
     ensureProfileLoaded,
     /** Update profile fields (fullName, phone, avatarUrl) */
     updateProfile,
+    /** Reset profile to null — use before OAuth redirect to avoid stale state */
+    clearProfile,
+    /** Force re-fetch profile for the current session (wraps fetchProfile(true)) */
+    refreshProfile,
   };
 }

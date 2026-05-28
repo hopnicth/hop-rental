@@ -587,17 +587,28 @@ const showFilterGroupsSkeleton = computed(
       </p>
     </div>
 
-    <!-- Category (single-select, immediate query) -->
+    <!-- Category (scrollable list, ~8 rows visible) -->
     <div v-if="categoryOptions.length > 1">
       <p class="mb-1 text-xs font-medium text-muted">
         {{ t("search.category") }}
       </p>
-      <USelect
-        v-model="category"
-        :items="categoryOptions"
-        value-key="value"
-        class="w-full"
-      />
+      <div class="border-default max-h-72 overflow-y-auto rounded border">
+        <button
+          v-for="opt in categoryOptions"
+          :key="opt.value"
+          type="button"
+          :aria-pressed="category === opt.value"
+          class="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          :class="
+            category === opt.value
+              ? 'bg-primary/10 font-medium text-primary'
+              : 'text-default'
+          "
+          @click="category = opt.value"
+        >
+          {{ opt.label }}
+        </button>
+      </div>
     </div>
 
     <!-- Brand multi-select -->

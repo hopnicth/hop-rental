@@ -451,6 +451,7 @@
   "featureBar": {
     "cart": "购物车",
     "orderHistory": "订单历史",
+    "rentalList": "我的租赁",
     "contactSales": "联系销售",
     "cartId": "购物车ID",
     "cartIdMessage": "向销售提供此ID: {cartId}"
@@ -1278,6 +1279,10 @@
       "saved": "已收藏",
       "loginRequired": "请先登录以收藏该合作伙伴。",
       "saveFailed": "收藏失败，请重试。"
+    },
+    "card": {
+      "verified": "已认证",
+      "unverified": "未认证"
     }
   }
 }

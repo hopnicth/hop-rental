@@ -1,30 +1,55 @@
 <script setup lang="ts">
 import FeatureBtn from "./FeatureBtn.vue";
+
 const { t } = useI18n();
 const { cartItemCount, cartId } = useCart();
-const { activeBookings } = useBooking();
+const { activeBookings, blockingBookings } = useBooking();
 const toast = useToast();
 const router = useRouter();
+const config = useRuntimeConfig();
+
+const chatSupportPhone = computed(() =>
+  String(config.public.chatSupportPhone || ""),
+);
+
 const availablePaths = computed(
   () => new Set(router.getRoutes().map((route) => route.path)),
 );
+
 const quotationBadgeCount = computed(
   () => cartItemCount.value + activeBookings.value.length,
 );
+
+const rentalListBadgeCount = computed(() => blockingBookings.value.length);
+
 const hasOrdersRoute = computed(() => availablePaths.value.has("/user/orders"));
 
+const hasRentalsRoute = computed(() =>
+  availablePaths.value.has("/user/rentals"),
+);
+
 /**
- * Show Cart ID to customer so they can share it with the sales team.
+ * Call support/sales phone from runtime config.
  */
 function handleContactSales() {
-  toast.add({
-    title: t("featureBar.cartId"),
-    description: t("featureBar.cartIdMessage", { cartId: cartId.value }),
-    icon: "streamline-cyber:phone-5",
-    color: "info",
+  const phoneHref = chatSupportPhone.value.replace(/[^\d+]/g, "");
+
+  if (!phoneHref) {
+    toast.add({
+      title: t("featureBar.contactSales"),
+      description: "ยังไม่ได้ตั้งค่าเบอร์โทรฝ่ายบริการ",
+      icon: "streamline-cyber:phone-5",
+      color: "warning",
+    });
+    return;
+  }
+
+  console.log("[QuotationBar] Contact support call:", {
+    cartId: cartId.value,
+    phone: chatSupportPhone.value,
   });
 
-  console.log("[QuotationBar] Cart ID:", cartId.value);
+  window.location.href = `tel:${phoneHref}`;
 }
 </script>
 
@@ -46,7 +71,16 @@ function handleContactSales() {
       to="/user/orders"
     />
 
-    <!-- 3. Contact Sales — shows cart ID in toast -->
+    <!-- 3. Rental List — shows badge with confirmed + picked-up bookings -->
+    <FeatureBtn
+      v-if="hasRentalsRoute"
+      icon="streamline-cyber:heart-calendar"
+      :label="t('featureBar.rentalList')"
+      :badge="rentalListBadgeCount"
+      to="/user/rentals"
+    />
+
+    <!-- 4. Contact Sales — calls support phone -->
     <FeatureBtn
       icon="streamline-cyber:phone-5"
       :label="t('featureBar.contactSales')"

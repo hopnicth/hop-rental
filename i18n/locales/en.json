@@ -467,6 +467,7 @@
   "featureBar": {
     "cart": "Cart",
     "orderHistory": "Order History",
+    "rentalList": "My Rentals",
     "contactSales": "Contact Sales",
     "cartId": "Cart ID",
     "cartIdMessage": "Share this ID with sales: {cartId}"
@@ -1330,6 +1331,10 @@
       "saved": "Saved",
       "loginRequired": "Please log in to save this partner.",
       "saveFailed": "Could not save. Please try again."
+    },
+    "card": {
+      "verified": "Verified",
+      "unverified": "Unverified"
     }
   }
 }

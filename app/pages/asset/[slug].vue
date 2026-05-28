@@ -336,7 +336,7 @@ const { data: reviews } = await useAsyncData(
         </div>
       </div>
 
-      <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-1">
         <UCard>
           <template #header>
             <h2 class="text-lg font-semibold">
@@ -344,7 +344,7 @@ const { data: reviews } = await useAsyncData(
             </h2>
           </template>
 
-          <div class="grid grid-cols-3 gap-3 text-sm">
+          <div class="grid grid-cols-2 gap-3 text-sm">
             <div>
               <span class="text-gray-500">{{ t("asset.minDays") }}</span>
               <p class="font-semibold">{{ access.rentalRules.minDays }}</p>
@@ -359,14 +359,14 @@ const { data: reviews } = await useAsyncData(
                 }}
               </p>
             </div>
-            <div>
+            <!-- <div>
               <span class="text-gray-500">{{ t("asset.bufferDays") }}</span>
               <p class="font-semibold">{{ access.rentalRules.bufferDays }}</p>
-            </div>
+            </div> -->
           </div>
         </UCard>
 
-        <UCard>
+        <!-- <UCard>
           <template #header>
             <h2 class="text-lg font-semibold">
               {{ t("asset.compatibleProducts") }}
@@ -385,7 +385,7 @@ const { data: reviews } = await useAsyncData(
               {{ product.name[lang] }}
             </UButton>
           </div>
-        </UCard>
+        </UCard> -->
       </div>
 
       <div v-if="showBookingForm && access" ref="bookingFormRef" class="mt-6">

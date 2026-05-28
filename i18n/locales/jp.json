@@ -470,6 +470,7 @@
   "featureBar": {
     "cart": "カート",
     "orderHistory": "注文履歴",
+    "rentalList": "レンタル中の商品",
     "contactSales": "営業に連絡",
     "cartId": "カートID",
     "cartIdMessage": "このIDを営業に伝えてください: {cartId}"
@@ -1283,6 +1284,10 @@
       "saved": "保存済み",
       "loginRequired": "このパートナーを保存するにはログインしてください。",
       "saveFailed": "保存できませんでした。もう一度お試しください。"
+    },
+    "card": {
+      "verified": "認証済み",
+      "unverified": "未認証"
     }
   }
 }

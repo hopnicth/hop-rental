@@ -14,7 +14,12 @@ interface AdminNavGroup {
 }
 
 const route = useRoute();
-const { profile } = useUserProfile();
+const {
+  profile,
+  loading: profileLoading,
+  error: profileError,
+  ensureProfileLoaded,
+} = useUserProfile();
 const { unresolvedTotal, refreshUnresolvedCount, subscribe, unsubscribe } =
   useAdminPaymentAlerts();
 const {
@@ -25,6 +30,10 @@ const {
 } = useAdminRefundWork();
 
 onMounted(() => {
+  // Belt-and-suspenders: ensure the profile is loaded even if the watcher
+  // fired before useSupabaseUser() had resolved the session from the cookie.
+  void ensureProfileLoaded();
+
   subscribe();
   subscribeRefundWork();
   void refreshUnresolvedCount();
@@ -33,6 +42,19 @@ onMounted(() => {
 onBeforeUnmount(() => {
   unsubscribe();
   unsubscribeRefundWork();
+});
+
+// ── Role badge ──
+// Never fall through to "Customer" inside the admin layout.
+// While the profile is loading (or before it starts), show a neutral label.
+// If the fetch fails after authentication, show "Role unavailable".
+const roleBadgeLabel = computed(() => {
+  if (profileLoading.value) return "Loading role...";
+  if (profile.value?.platformRole)
+    return formatPlatformRole(profile.value.platformRole);
+  if (profileError.value) return "Role unavailable";
+  // Profile is null, not loading, no error — auth is still hydrating.
+  return "Loading role...";
 });
 
 const alertsBadge = computed(() => {
@@ -141,7 +163,7 @@ const navGroups = computed<AdminNavGroup[]>(() => {
                 class="shadow-sm"
               />
               <UBadge color="warning" variant="soft" size="lg">
-                {{ formatPlatformRole(profile?.platformRole) }}
+                {{ roleBadgeLabel }}
               </UBadge>
             </div>
           </div>

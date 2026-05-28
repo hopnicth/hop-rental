@@ -108,6 +108,12 @@ const allCategoryKeys = computed(() => [
   ...props.partner.secondaryCategoryKeys,
 ]);
 
+// Cap category chips at 3 + overflow count
+const visibleCategoryKeys = computed(() => allCategoryKeys.value.slice(0, 3));
+const remainingCategoryCount = computed(() =>
+  Math.max(0, allCategoryKeys.value.length - 3),
+);
+
 // Cap service area chips at 2 + overflow count for compact display
 const visibleServiceAreas = computed(() =>
   props.partner.serviceAreas.slice(0, 2),
@@ -143,7 +149,10 @@ const cardImageUrl = computed(
             variant="soft"
             size="xs"
           >
-            ✓ ยืนยัน
+            ✓ {{ t("partners.card.verified") }}
+          </UBadge>
+          <UBadge v-else color="error" variant="soft" size="xs">
+            {{ t("partners.card.unverified") }}
           </UBadge>
           <UBadge
             v-if="partner.isFeatured"
@@ -199,17 +208,25 @@ const cardImageUrl = computed(
         </p>
       </div>
 
-      <!-- Category chips (main + secondary, no searchKeywords) -->
+      <!-- Category chips (main + secondary, no searchKeywords) — capped at 3 -->
       <div class="min-h-10">
-        <div v-if="allCategoryKeys.length" class="flex flex-wrap gap-1">
+        <div v-if="visibleCategoryKeys.length" class="flex flex-wrap gap-1">
           <UBadge
-            v-for="key in allCategoryKeys"
+            v-for="key in visibleCategoryKeys"
             :key="key"
             color="neutral"
             variant="outline"
             size="xs"
           >
             {{ categoryLabel(key) }}
+          </UBadge>
+          <UBadge
+            v-if="remainingCategoryCount > 0"
+            color="neutral"
+            variant="outline"
+            size="xs"
+          >
+            +{{ remainingCategoryCount }}
           </UBadge>
         </div>
       </div>

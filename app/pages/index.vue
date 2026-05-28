@@ -65,20 +65,6 @@ function asPartnerCard(item: unknown) {
           <div
             class="hidden rounded-1xl border border-default bg-white/70 px-4 py-4 sm:block sm:px-5"
           >
-            <div class="mb-3 flex items-center justify-between gap-3">
-              <p class="text-sm font-semibold text-default">
-                {{ t("nav.partners") }}
-              </p>
-              <UButton
-                to="/partners"
-                variant="soft"
-                color="primary"
-                size="sm"
-                trailing-icon="bx:chevron-right"
-              >
-                {{ t("home.viewAllPartners") }}
-              </UButton>
-            </div>
             <HopPartnerSlide />
           </div>
 
@@ -124,6 +110,7 @@ function asPartnerCard(item: unknown) {
           <HomeSectionShell
             :title="t('home.rentalTitle')"
             :description="t('home.rentalDescription')"
+            class="mt-7"
           >
             <template #action>
               <UButton
@@ -155,6 +142,7 @@ function asPartnerCard(item: unknown) {
           <HomeSectionShell
             :title="t('home.productsTitle')"
             :description="t('home.productsDescription')"
+            class="mt-7"
           >
             <template #action>
               <UButton
@@ -181,7 +169,7 @@ function asPartnerCard(item: unknown) {
             </HomeHorizontalRail>
           </HomeSectionShell>
 
-          <HomeSectionShell :title="t('home.partnersSection')">
+          <HomeSectionShell :title="t('home.partnersSection')" class="mt-7">
             <template #action>
               <UButton
                 to="/partners"
