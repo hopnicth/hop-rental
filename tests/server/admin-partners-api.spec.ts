@@ -18,6 +18,18 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { SERVICE_AREA_OPTIONS } from "../../app/data/thaiServiceAreas";
 import {
+  PARTNER_KYC_BUCKET,
+  PARTNER_KYC_MAX_BYTES,
+  PARTNER_KYC_ALLOWED_MIME,
+  PARTNER_KYC_PREFIX,
+  validatePartnerKycMime,
+  validatePartnerKycSize,
+  sanitizePartnerKycFilename,
+  buildPartnerKycPath,
+  parsePartnerKycDocuments,
+  appendPartnerKycDocument,
+} from "../../server/utils/partner-verification";
+import {
   asPartnerSlug,
   asPartnerDirectoryType,
   asPartnerEntityType,
@@ -3995,6 +4007,378 @@ describe("Phase 1C-2I.3 — safeParseKycDocuments via mapAdminPartnerDetail", ()
     expect(mapAdminPartnerDetail(row).kycDocuments).toEqual({
       documents: [doc],
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2I.4 — partner-verification.ts utility unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2I.4 — partner-verification constants", () => {
+  it("PARTNER_KYC_BUCKET is kyc-documents", () => {
+    expect(PARTNER_KYC_BUCKET).toBe("kyc-documents");
+  });
+
+  it("PARTNER_KYC_MAX_BYTES is 20 MB", () => {
+    expect(PARTNER_KYC_MAX_BYTES).toBe(20 * 1024 * 1024);
+  });
+
+  it("PARTNER_KYC_ALLOWED_MIME includes jpeg, png, webp, pdf", () => {
+    expect(PARTNER_KYC_ALLOWED_MIME.has("image/jpeg")).toBe(true);
+    expect(PARTNER_KYC_ALLOWED_MIME.has("image/png")).toBe(true);
+    expect(PARTNER_KYC_ALLOWED_MIME.has("image/webp")).toBe(true);
+    expect(PARTNER_KYC_ALLOWED_MIME.has("application/pdf")).toBe(true);
+  });
+
+  it("PARTNER_KYC_ALLOWED_MIME does NOT include video/mp4", () => {
+    expect(PARTNER_KYC_ALLOWED_MIME.has("video/mp4")).toBe(false);
+  });
+
+  it("PARTNER_KYC_PREFIX is partner-verification", () => {
+    expect(PARTNER_KYC_PREFIX).toBe("partner-verification");
+  });
+});
+
+describe("Phase 1C-2I.4 — validatePartnerKycMime", () => {
+  it("accepts image/jpeg", () => {
+    expect(() => validatePartnerKycMime("image/jpeg")).not.toThrow();
+  });
+
+  it("accepts image/png", () => {
+    expect(() => validatePartnerKycMime("image/png")).not.toThrow();
+  });
+
+  it("accepts image/webp", () => {
+    expect(() => validatePartnerKycMime("image/webp")).not.toThrow();
+  });
+
+  it("accepts application/pdf", () => {
+    expect(() => validatePartnerKycMime("application/pdf")).not.toThrow();
+  });
+
+  it("rejects image/gif with 415", () => {
+    expect(() => validatePartnerKycMime("image/gif")).toThrow();
+    try {
+      validatePartnerKycMime("image/gif");
+    } catch (e: unknown) {
+      expect((e as { statusCode?: number }).statusCode).toBe(415);
+    }
+  });
+
+  it("rejects empty string", () => {
+    expect(() => validatePartnerKycMime("")).toThrow();
+  });
+
+  it("rejects undefined", () => {
+    expect(() => validatePartnerKycMime(undefined)).toThrow();
+  });
+});
+
+describe("Phase 1C-2I.4 — validatePartnerKycSize", () => {
+  it("accepts file exactly at 20 MB", () => {
+    expect(() => validatePartnerKycSize(20 * 1024 * 1024)).not.toThrow();
+  });
+
+  it("rejects file over 20 MB with 413", () => {
+    expect(() => validatePartnerKycSize(20 * 1024 * 1024 + 1)).toThrow();
+    try {
+      validatePartnerKycSize(20 * 1024 * 1024 + 1);
+    } catch (e: unknown) {
+      expect((e as { statusCode?: number }).statusCode).toBe(413);
+    }
+  });
+});
+
+describe("Phase 1C-2I.4 — sanitizePartnerKycFilename", () => {
+  it("returns filename unchanged when safe", () => {
+    expect(sanitizePartnerKycFilename("passport.pdf")).toBe("passport.pdf");
+  });
+
+  it("strips forward slashes", () => {
+    expect(sanitizePartnerKycFilename("foo/bar.pdf")).toBe("foobar.pdf");
+  });
+
+  it("strips backslashes", () => {
+    expect(sanitizePartnerKycFilename("foo\\bar.pdf")).toBe("foobar.pdf");
+  });
+
+  it("removes .. path traversal", () => {
+    expect(sanitizePartnerKycFilename("../../etc/passwd")).toBe("etcpasswd");
+  });
+
+  it("removes null bytes", () => {
+    expect(sanitizePartnerKycFilename("file\0name.pdf")).toBe("filename.pdf");
+  });
+
+  it("falls back to 'document' for empty string", () => {
+    expect(sanitizePartnerKycFilename("")).toBe("document");
+  });
+
+  it("falls back to 'document' for non-string input", () => {
+    expect(sanitizePartnerKycFilename(null)).toBe("document");
+    expect(sanitizePartnerKycFilename(123)).toBe("document");
+  });
+});
+
+describe("Phase 1C-2I.4 — buildPartnerKycPath", () => {
+  it("produces path starting with partner-verification/{partnerId}/", () => {
+    const path = buildPartnerKycPath("p-1", "doc-1", "id.pdf");
+    expect(path).toMatch(/^partner-verification\/p-1\//);
+  });
+
+  it("includes documentId and sanitized filename", () => {
+    const path = buildPartnerKycPath("p-1", "doc-abc", "id-card.pdf");
+    expect(path).toContain("doc-abc");
+    expect(path).toContain("id-card.pdf");
+  });
+
+  it("sanitizes filename in path", () => {
+    const path = buildPartnerKycPath("p-1", "doc-1", "../../evil.pdf");
+    expect(path).not.toContain("..");
+  });
+});
+
+describe("Phase 1C-2I.4 — parsePartnerKycDocuments", () => {
+  it("returns { documents: [] } for null", () => {
+    expect(parsePartnerKycDocuments(null)).toEqual({ documents: [] });
+  });
+
+  it("returns { documents: [] } for empty object {}", () => {
+    expect(parsePartnerKycDocuments({})).toEqual({ documents: [] });
+  });
+
+  it("returns { documents: [] } for array input", () => {
+    expect(parsePartnerKycDocuments([])).toEqual({ documents: [] });
+  });
+
+  it("returns { documents: [] } for string input", () => {
+    expect(parsePartnerKycDocuments("invalid")).toEqual({ documents: [] });
+  });
+
+  it("returns documents array when valid", () => {
+    const doc = {
+      id: "d1",
+      name: "f.pdf",
+      path: "partner-verification/p1/d1-f.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 1024,
+      uploadedAt: "2026-01-01T00:00:00Z",
+      uploadedByUserId: "u1",
+    };
+    expect(parsePartnerKycDocuments({ documents: [doc] })).toEqual({
+      documents: [doc],
+    });
+  });
+});
+
+describe("Phase 1C-2I.4 — appendPartnerKycDocument", () => {
+  const meta = {
+    id: "doc-new",
+    name: "new.pdf",
+    path: "partner-verification/p1/doc-new-new.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 2048,
+    uploadedAt: "2026-01-01T00:00:00Z",
+    uploadedByUserId: "admin-1",
+  };
+
+  it("appends to empty documents array", () => {
+    const result = appendPartnerKycDocument({}, meta);
+    expect(result.documents).toHaveLength(1);
+    expect(result.documents[0]).toEqual(meta);
+  });
+
+  it("appends to existing documents array", () => {
+    const existing = {
+      documents: [
+        {
+          id: "doc-old",
+          name: "old.pdf",
+          path: "partner-verification/p1/doc-old-old.pdf",
+          mimeType: "application/pdf",
+          sizeBytes: 512,
+          uploadedAt: "2025-01-01T00:00:00Z",
+          uploadedByUserId: "admin-1",
+        },
+      ],
+    };
+    const result = appendPartnerKycDocument(existing, meta);
+    expect(result.documents).toHaveLength(2);
+    expect(result.documents[1]).toEqual(meta);
+  });
+
+  it("does not mutate existing input", () => {
+    const existing = { documents: [] };
+    appendPartnerKycDocument(existing, meta);
+    expect(existing.documents).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1C-2I.4 — Endpoint source checks
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Phase 1C-2I.4 — verification-documents.post.ts source checks", () => {
+  const src = readFileSync(
+    "server/api/admin/partners/[id]/verification-documents.post.ts",
+    "utf8",
+  );
+
+  it("uses requireSuperAdmin (not requirePlatformAdmin)", () => {
+    expect(src).toContain("requireSuperAdmin");
+    expect(src).not.toContain("requirePlatformAdmin");
+  });
+
+  it("uploads to kyc-documents bucket via PARTNER_KYC_BUCKET", () => {
+    expect(src).toContain("PARTNER_KYC_BUCKET");
+  });
+
+  it("does NOT call getPublicUrl", () => {
+    expect(src).not.toContain("getPublicUrl");
+  });
+
+  it("does NOT call getPublicUrl (no public URL returned)", () => {
+    expect(src).not.toMatch(/getPublicUrl/);
+  });
+
+  it("calls appendPartnerKycDocument to build updated JSONB", () => {
+    expect(src).toContain("appendPartnerKycDocument");
+  });
+
+  it("includes uploadedByUserId in document metadata", () => {
+    expect(src).toContain("uploadedByUserId");
+  });
+
+  it("returns { item: ... } shape", () => {
+    expect(src).toContain("item:");
+    expect(src).toContain("mapAdminPartnerDetail");
+  });
+
+  it("does NOT set is_verified / verified_at / verified_until in the update payload", () => {
+    // Checks that the update object key assignments are absent (comment mentions are OK)
+    expect(src).not.toMatch(/is_verified\s*:/);
+    expect(src).not.toMatch(/verified_at\s*:/);
+    expect(src).not.toMatch(/verified_until\s*:/);
+  });
+
+  it("validates MIME via validatePartnerKycMime", () => {
+    expect(src).toContain("validatePartnerKycMime");
+  });
+
+  it("validates size via validatePartnerKycSize", () => {
+    expect(src).toContain("validatePartnerKycSize");
+  });
+
+  it("builds path via buildPartnerKycPath", () => {
+    expect(src).toContain("buildPartnerKycPath");
+  });
+});
+
+describe("Phase 1C-2I.4 — verify.post.ts source checks", () => {
+  const src = readFileSync(
+    "server/api/admin/partners/[id]/verify.post.ts",
+    "utf8",
+  );
+
+  it("uses requireSuperAdmin", () => {
+    expect(src).toContain("requireSuperAdmin");
+    expect(src).not.toContain("requirePlatformAdmin");
+  });
+
+  it("sets is_verified to true", () => {
+    expect(src).toContain("is_verified: true");
+  });
+
+  it("sets verified_at to now", () => {
+    expect(src).toContain("verified_at");
+  });
+
+  it("sets verified_until to 1 year from now", () => {
+    expect(src).toContain("verified_until");
+    expect(src).toContain("setFullYear");
+  });
+
+  it("sets verified_by_user_id to current admin userId", () => {
+    expect(src).toContain("verified_by_user_id: userId");
+  });
+
+  it("clears verification_cancelled_at and verification_cancelled_by_user_id", () => {
+    expect(src).toContain("verification_cancelled_at: null");
+    expect(src).toContain("verification_cancelled_by_user_id: null");
+  });
+
+  it("rejects already-active verified partner with 409", () => {
+    expect(src).toContain("409");
+    expect(src).toContain("already actively verified");
+  });
+
+  it("returns { item: ... } shape", () => {
+    expect(src).toContain("item:");
+    expect(src).toContain("mapAdminPartnerDetail");
+  });
+});
+
+describe("Phase 1C-2I.4 — verify-cancel.post.ts source checks", () => {
+  const src = readFileSync(
+    "server/api/admin/partners/[id]/verify-cancel.post.ts",
+    "utf8",
+  );
+
+  it("uses requireSuperAdmin", () => {
+    expect(src).toContain("requireSuperAdmin");
+    expect(src).not.toContain("requirePlatformAdmin");
+  });
+
+  it("sets is_verified to false", () => {
+    expect(src).toContain("is_verified: false");
+  });
+
+  it("clears verified_at", () => {
+    expect(src).toContain("verified_at: null");
+  });
+
+  it("clears verified_until", () => {
+    expect(src).toContain("verified_until: null");
+  });
+
+  it("sets verification_cancelled_at to now", () => {
+    expect(src).toContain("verification_cancelled_at: now");
+  });
+
+  it("sets verification_cancelled_by_user_id to current admin userId", () => {
+    expect(src).toContain("verification_cancelled_by_user_id: userId");
+  });
+
+  it("does NOT clear verified_by_user_id (kept for audit)", () => {
+    expect(src).not.toContain("verified_by_user_id: null");
+  });
+
+  it("rejects non-verified partner with 409", () => {
+    expect(src).toContain("409");
+    expect(src).toContain("not currently verified");
+  });
+
+  it("returns { item: ... } shape", () => {
+    expect(src).toContain("item:");
+    expect(src).toContain("mapAdminPartnerDetail");
+  });
+});
+
+describe("Phase 1C-2I.4 — public API privacy unchanged", () => {
+  it("PUBLIC_PARTNER_LIST_SELECT does not contain kyc_documents", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain("kyc_documents");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT does not contain kyc_documents", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain("kyc_documents");
+  });
+
+  it("PUBLIC_PARTNER_LIST_SELECT does not contain verified_notes", () => {
+    expect(PUBLIC_PARTNER_LIST_SELECT).not.toContain("verified_notes");
+  });
+
+  it("PUBLIC_PARTNER_DETAIL_SELECT does not contain internal_notes", () => {
+    expect(PUBLIC_PARTNER_DETAIL_SELECT).not.toContain("internal_notes");
   });
 });
 
