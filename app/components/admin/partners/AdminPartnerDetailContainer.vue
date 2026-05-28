@@ -598,6 +598,178 @@ async function saveContentBlocks() {
     savingBlocks.value = false;
   }
 }
+
+// ── KYC Verification (Super Admin only) ──────────────────────────────────────
+const { profile } = useUserProfile();
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
+
+const verificationStatus = computed((): "active" | "expired" | "unverified" => {
+  if (!partner.value?.isVerified) return "unverified";
+  if (partner.value.verifiedUntil) {
+    const until = new Date(partner.value.verifiedUntil).getTime();
+    if (!isNaN(until) && until <= Date.now()) return "expired";
+  }
+  return "active";
+});
+
+const stagedKycFiles = ref<File[]>([]);
+const kycDropActive = ref(false);
+const kycFileInput = ref<HTMLInputElement | null>(null);
+const uploadingKyc = ref(false);
+const verifying = ref(false);
+const cancellingVerification = ref(false);
+
+const KYC_MAX_BYTES = 20 * 1024 * 1024;
+const KYC_ACCEPT = ".pdf,image/jpeg,image/png,image/webp";
+const KYC_ALLOWED_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+];
+
+function validateKycFile(file: File): string | null {
+  if (!KYC_ALLOWED_TYPES.includes(file.type))
+    return "ไม่รองรับประเภทไฟล์นี้ กรุณาเลือก JPEG, PNG, WebP หรือ PDF";
+  if (file.size > KYC_MAX_BYTES) return "ไฟล์ใหญ่เกิน 20 MB";
+  return null;
+}
+
+function stageKycFiles(files: FileList | File[]) {
+  for (const file of Array.from(files)) {
+    const err = validateKycFile(file);
+    if (err) {
+      toast.add({
+        title: "ไฟล์ไม่ถูกต้อง",
+        description: err,
+        color: "error",
+        icon: "bx:error-circle",
+      });
+      continue;
+    }
+    stagedKycFiles.value.push(file);
+  }
+}
+
+function handleKycFileChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = input.files;
+  input.value = "";
+  if (!files?.length) return;
+  stageKycFiles(files);
+}
+
+function handleKycDrop(event: DragEvent) {
+  kycDropActive.value = false;
+  const files = event.dataTransfer?.files;
+  if (!files?.length) return;
+  stageKycFiles(files);
+}
+
+function removeKycStagedFile(index: number) {
+  stagedKycFiles.value.splice(index, 1);
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function uploadKycDocuments() {
+  if (!stagedKycFiles.value.length || uploadingKyc.value) return;
+  uploadingKyc.value = true;
+  const files = [...stagedKycFiles.value];
+  let successCount = 0;
+  for (const file of files) {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const data = await $fetch<{ item: AdminPartnerRow }>(
+        `/api/admin/partners/${partnerId.value}/verification-documents`,
+        { method: "POST", body: formData },
+      );
+      partner.value = data.item;
+      successCount++;
+    } catch (err) {
+      toast.add({
+        title: "อัปโหลดล้มเหลว",
+        description: getAdminApiErrorMessage(err, "Failed to upload document"),
+        color: "error",
+        icon: "bx:error-circle",
+      });
+    }
+  }
+  if (successCount > 0) {
+    stagedKycFiles.value = [];
+    toast.add({
+      title: "อัปโหลดสำเร็จ",
+      description: `${successCount} document(s) uploaded`,
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  }
+  uploadingKyc.value = false;
+}
+
+async function handleVerify() {
+  if (verifying.value) return;
+  verifying.value = true;
+  try {
+    const data = await $fetch<{ item: AdminPartnerRow }>(
+      `/api/admin/partners/${partnerId.value}/verify`,
+      { method: "POST" },
+    );
+    partner.value = data.item;
+    toast.add({
+      title: "ยืนยันตัวตนสำเร็จ",
+      description: "Verified for 1 year",
+      color: "success",
+      icon: "bx:check-shield",
+    });
+  } catch (err) {
+    toast.add({
+      title: "ยืนยันตัวตนล้มเหลว",
+      description: getAdminApiErrorMessage(err, "Failed to verify partner"),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    verifying.value = false;
+  }
+}
+
+async function handleVerifyCancel() {
+  if (cancellingVerification.value) return;
+  cancellingVerification.value = true;
+  try {
+    const data = await $fetch<{ item: AdminPartnerRow }>(
+      `/api/admin/partners/${partnerId.value}/verify-cancel`,
+      { method: "POST" },
+    );
+    partner.value = data.item;
+    toast.add({
+      title: "ยกเลิกการยืนยันสำเร็จ",
+      description: "Verification cancelled",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: "ยกเลิกล้มเหลว",
+      description: getAdminApiErrorMessage(
+        err,
+        "Failed to cancel verification",
+      ),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    cancellingVerification.value = false;
+  }
+}
 </script>
 
 <template>
@@ -1391,6 +1563,245 @@ async function saveContentBlocks() {
             </UButton>
           </div>
         </template>
+      </UCard>
+
+      <!-- ── KYC Verification card (Super Admin only) ──────────────────── -->
+      <UCard v-if="isSuperAdmin">
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="bx:shield-check" class="text-lg text-primary" />
+            <p class="font-semibold">KYC Verification · การตรวจสอบตัวตน</p>
+            <UBadge
+              :color="
+                verificationStatus === 'active'
+                  ? 'success'
+                  : verificationStatus === 'expired'
+                    ? 'warning'
+                    : 'neutral'
+              "
+              variant="soft"
+              class="ml-auto"
+            >
+              {{
+                verificationStatus === "active"
+                  ? "Active"
+                  : verificationStatus === "expired"
+                    ? "Expired"
+                    : "Unverified"
+              }}
+            </UBadge>
+          </div>
+        </template>
+
+        <div class="space-y-6">
+          <!-- ── Status section ─────────────────────────────────────────── -->
+          <div class="space-y-2">
+            <p class="text-sm font-medium">Verification Status</p>
+            <div class="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <p class="text-xs text-muted">Status</p>
+                <p
+                  :class="
+                    verificationStatus === 'active'
+                      ? 'font-semibold text-success-600 dark:text-success-400'
+                      : verificationStatus === 'expired'
+                        ? 'font-semibold text-warning-600 dark:text-warning-400'
+                        : 'text-muted'
+                  "
+                >
+                  {{
+                    verificationStatus === "active"
+                      ? "✓ Verified (Active)"
+                      : verificationStatus === "expired"
+                        ? "⚠ Expired"
+                        : "Not verified"
+                  }}
+                </p>
+              </div>
+              <div v-if="partner?.verifiedUntil">
+                <p class="text-xs text-muted">Verified Until</p>
+                <p>{{ formatDate(partner.verifiedUntil) }}</p>
+              </div>
+              <div v-if="partner?.verifiedByUserId">
+                <p class="text-xs text-muted">Verified By (User ID)</p>
+                <p class="break-all font-mono text-xs">
+                  {{ partner.verifiedByUserId }}
+                </p>
+              </div>
+              <div v-if="partner?.verificationCancelledAt">
+                <p class="text-xs text-muted">Cancelled At</p>
+                <p>{{ formatDate(partner.verificationCancelledAt) }}</p>
+              </div>
+            </div>
+          </div>
+
+          <UDivider />
+
+          <!-- ── Upload section ─────────────────────────────────────────── -->
+          <div class="space-y-3">
+            <p class="text-sm font-medium">Upload KYC Documents</p>
+            <p class="text-xs text-muted">
+              เอกสารจะถูกจัดเก็บอย่างปลอดภัย (Private) — ไม่มี URL สาธารณะ ·
+              การอัปโหลดไม่เปลี่ยนสถานะการยืนยัน
+            </p>
+
+            <!-- Dropzone -->
+            <div
+              class="cursor-pointer select-none rounded-lg border-2 border-dashed p-6 text-center transition-colors"
+              :class="
+                kycDropActive
+                  ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                  : 'border-neutral-300 bg-neutral-50 hover:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:border-neutral-600'
+              "
+              role="button"
+              tabindex="0"
+              aria-label="เลือกหรือวางไฟล์ KYC"
+              @click="!uploadingKyc && kycFileInput?.click()"
+              @keydown.enter="!uploadingKyc && kycFileInput?.click()"
+              @dragover.prevent
+              @dragenter.prevent="kycDropActive = true"
+              @dragleave="kycDropActive = false"
+              @drop.prevent="handleKycDrop($event as DragEvent)"
+            >
+              <UIcon
+                name="bx:cloud-upload"
+                class="mx-auto text-4xl text-muted"
+              />
+              <p class="mt-2 text-sm font-medium text-muted">
+                วางไฟล์ที่นี่ หรือคลิกเพื่อเลือก
+              </p>
+              <p class="mt-1 text-xs text-muted">
+                PDF, JPEG, PNG, WebP · ไม่เกิน 20 MB ต่อไฟล์
+              </p>
+            </div>
+
+            <!-- Hidden file input -->
+            <input
+              ref="kycFileInput"
+              type="file"
+              :accept="KYC_ACCEPT"
+              multiple
+              class="hidden"
+              @change="handleKycFileChange"
+            />
+
+            <!-- Staged files -->
+            <div v-if="stagedKycFiles.length" class="space-y-2">
+              <p class="text-xs font-medium text-muted">
+                ไฟล์ที่รออัปโหลด ({{ stagedKycFiles.length }})
+              </p>
+              <div
+                v-for="(file, idx) in stagedKycFiles"
+                :key="idx"
+                class="flex items-center justify-between rounded-md border px-3 py-2 text-sm"
+              >
+                <div class="flex min-w-0 items-center gap-2">
+                  <UIcon name="bx:file" class="shrink-0 text-muted" />
+                  <span class="truncate">{{ file.name }}</span>
+                  <span class="shrink-0 text-xs text-muted">
+                    ({{ formatFileSize(file.size) }})
+                  </span>
+                </div>
+                <UButton
+                  size="xs"
+                  icon="bx:x"
+                  variant="ghost"
+                  color="error"
+                  :disabled="uploadingKyc"
+                  @click="removeKycStagedFile(idx)"
+                />
+              </div>
+            </div>
+
+            <!-- Upload button -->
+            <div class="flex justify-end">
+              <UButton
+                color="primary"
+                icon="bx:upload"
+                :loading="uploadingKyc"
+                :disabled="!stagedKycFiles.length || uploadingKyc"
+                @click="void uploadKycDocuments()"
+              >
+                Upload Documents ({{ stagedKycFiles.length }})
+              </UButton>
+            </div>
+          </div>
+
+          <UDivider />
+
+          <!-- ── Uploaded documents list ──────────────────────────────── -->
+          <div class="space-y-3">
+            <p class="text-sm font-medium">
+              Uploaded Documents
+              <span class="ml-1 text-xs font-normal text-muted">
+                ({{ partner?.kycDocuments?.documents?.length ?? 0 }})
+              </span>
+            </p>
+            <p
+              v-if="!partner?.kycDocuments?.documents?.length"
+              class="text-sm text-muted"
+            >
+              ยังไม่มีเอกสาร KYC
+            </p>
+            <div
+              v-for="doc in partner?.kycDocuments?.documents"
+              :key="doc.id"
+              class="space-y-1 rounded-lg border p-3 text-sm"
+            >
+              <div class="flex items-start gap-2">
+                <UIcon
+                  name="bx:file-blank"
+                  class="mt-0.5 shrink-0 text-primary"
+                />
+                <div class="min-w-0 flex-1 space-y-0.5">
+                  <p class="truncate font-medium">{{ doc.name }}</p>
+                  <p class="text-xs text-muted">
+                    {{ doc.mimeType }} · {{ formatFileSize(doc.sizeBytes) }}
+                  </p>
+                  <p class="text-xs text-muted">
+                    Uploaded: {{ formatDate(doc.uploadedAt) }}
+                  </p>
+                  <p class="break-all font-mono text-xs text-muted">
+                    By: {{ doc.uploadedByUserId }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <UDivider />
+
+          <!-- ── Actions ─────────────────────────────────────────────── -->
+          <div class="space-y-3">
+            <p class="text-sm font-medium">Verification Actions</p>
+            <div class="flex flex-wrap gap-3">
+              <!-- Verify 1 Year: only when unverified or expired -->
+              <UButton
+                v-if="verificationStatus !== 'active'"
+                color="success"
+                icon="bx:shield-check"
+                :loading="verifying"
+                :disabled="verifying || cancellingVerification"
+                @click="void handleVerify()"
+              >
+                Verify 1 Year
+              </UButton>
+
+              <!-- Cancel Verification: only when active -->
+              <UButton
+                v-if="verificationStatus === 'active'"
+                color="error"
+                variant="soft"
+                icon="bx:shield-x"
+                :loading="cancellingVerification"
+                :disabled="verifying || cancellingVerification"
+                @click="void handleVerifyCancel()"
+              >
+                Cancel Verification
+              </UButton>
+            </div>
+          </div>
+        </div>
       </UCard>
 
       <!-- ── Search & Discovery (admin-only internal metadata) ──────── -->
