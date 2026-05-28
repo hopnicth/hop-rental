@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Daily Check",
+      "detail": "List today's scheduled tasks (no execution — safe to run on folder open)",
+      "type": "shell",
+      "command": "node scripts/daily-check.mjs",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "focus": false,
+        "clear": true
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "group": "none",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Today Tasks",
+      "detail": "Run today's scheduled tasks — asks y/N confirmation before each task",
+      "type": "shell",
+      "command": "node scripts/daily-check.mjs --run",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true,
+        "clear": true
+      },
+      "group": "none",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Today Tasks (No Confirmation)",
+      "detail": "Run today's scheduled tasks without per-task y/N prompts",
+      "type": "shell",
+      "command": "node scripts/daily-check.mjs --run --yes",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true,
+        "clear": true
+      },
+      "group": "none",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "tasks": [
+    {
+      "id": "daily-standup",
+      "name": "Daily Standup Summary",
+      "schedule": "daily",
+      "type": "claude",
+      "prompt": "Read PROGRESS.md and DECISIONS.md. Summarize in Thai: (1) current project status in 2-3 sentences, (2) top 3 tasks to work on today based on the Next section, (3) any blockers. Be concise — this is a morning standup. Do not modify any files."
+    },
+    {
+      "id": "weekly-monday-reset",
+      "name": "Weekly Monday Reset",
+      "schedule": "weekly",
+      "weekday": 1,
+      "type": "claude",
+      "prompt": "Read PROGRESS.md. Suggest what items in the Done section could be moved to an archive or cleaned up to keep the file concise. Only suggest — do not move, archive, or modify any files. List suggestions as bullet points."
+    },
+    {
+      "id": "friday-snapshot",
+      "name": "Friday Type Check + Schema Snapshot",
+      "schedule": "weekly",
+      "weekday": 5,
+      "type": "commands",
+      "commands": ["typecheck"]
+    }
+  ]
+}

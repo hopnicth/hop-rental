@@ -33,3 +33,6 @@ supabase/.temp/
 # Local reference / scratch files (never commit)
 Ref*.html
 "Ref *.html"
+
+docs/task-runs/*.md
+!docs/task-runs/.gitkeep
