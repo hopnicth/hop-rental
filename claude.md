@@ -201,6 +201,26 @@ Tests live in `tests/server/` — they cover API routes, business rules, UI cont
 
 ---
 
+## Server-Utils Index — Maintenance Rule
+
+`docs/index/server-utils-index.md` is a living risk/responsibility index for every file under `server/utils/`. Keep it in sync with the code.
+
+**Rule:** When you change the behavior, auth, risk, responsibility, money/ledger effects, KYC/hash behavior, inventory/availability behavior, or branch/access behavior of any file under `server/utils/`, update the matching row in `docs/index/server-utils-index.md` in the same commit.
+
+- If a server utility is added, removed, renamed, or materially changed, the index must be updated in the same change.
+- Do NOT update the index for typo-only / comment-only changes unless the current index row becomes inaccurate.
+- If unsure whether a change affects risk or responsibility, report the uncertainty instead of guessing.
+
+**Index rules** (see `docs/index/README.md` for the authoritative definitions):
+
+- Current state only — no dates, changelog notes, "previously was…", before/after notes, or historical explanations.
+- Use the locked 6-column format: `File | Responsibility | Domain | Risk | Edit rules | Tests`.
+- Use only the closed Domain/Risk vocabulary from `docs/index/README.md`.
+- Rate risk by blast radius, not code complexity.
+- Use `TODO-risk` instead of guessing.
+- For `med` / `high` / `critical` rows, include a concrete edit rule and related real tests.
+- Do NOT include source-inspection tests that do not exercise the util.
+
 ## What NOT to Do
 
 - Do NOT run broad find-and-replace refactors across many files without approval

@@ -3,6 +3,8 @@
 > Rules for every file in `server/utils/`. Read before creating or editing any utility.
 > Utils คือ business logic หลักของ API layer — route file ควรบางที่สุด, logic อยู่ที่นี่
 
+> **Index sync (required):** When you change the behavior, auth, risk, responsibility, money/ledger effects, KYC/hash behavior, inventory/availability behavior, or branch/access behavior of any file here, update its matching row in `docs/index/server-utils-index.md` in the same commit. Index updates are also required when a util is added, removed, renamed, or materially changed; skip only typo-only/comment-only changes that leave the current row accurate. See root `claude.md` → "Server-Utils Index — Maintenance Rule" and `docs/index/README.md` for the locked 6-column format and the closed Domain/Risk vocab. If unsure whether a change affects risk or responsibility, report the uncertainty instead of guessing.
+
 ---
 
 ## 1. โครงสร้างและหน้าที่ของ utils
