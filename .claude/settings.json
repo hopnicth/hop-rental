@@ -9,7 +9,7 @@
       "Bash(npm run typecheck)",
       "Bash(npm run lint)",
       "Bash(supabase projects list:*)",
-      "Bash(supabase gen:*)"
+      "Bash(supabase gen types:*)"
     ]
   }
 }
