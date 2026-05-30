@@ -1,1 +1,15 @@
-{"worktree":{"bgIsolation":"none"}}
+{
+  "worktree": {
+    "bgIsolation": "none"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npx vitest:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run lint)",
+      "Bash(supabase projects list:*)",
+      "Bash(supabase gen:*)"
+    ]
+  }
+}
