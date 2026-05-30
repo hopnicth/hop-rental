@@ -88,6 +88,75 @@ Identity storage rule: NEVER store plaintext national ID / passport / juristic I
 
 ---
 
+## 4a. Identity Normalization and Hashing Contract
+
+### Mandatory entry point
+
+ALL KYC intake, search, lookup, and pickup-gate code MUST call `hashKycIdentity`.
+Calling `hashIdentity` directly on raw user input is **FORBIDDEN** — it bypasses
+normalization and will produce a hash that does not match stored records.
+
+### HMAC input format
+
+The identity_hash HMAC input format is exactly:
+v1:${identity_type}:${normalized_value}
+
+This is a permanent storage contract. Changing the version prefix,
+separator, ordering, identity type, or normalization rules will
+orphan existing identity_hash values unless a deliberate migration
+plan is created.
+
+Examples:
+- `v1:national_id:1234567890123`
+- `v1:juristic_id:0105536016671`
+- `v1:passport:AB1234567`
+
+The `v1` prefix fixes the format version so that future changes are
+unambiguous. The `identityType` segment is **required** — `national_id`
+and `juristic_id` share the same 13-digit format; without it the same
+digits would hash to the same value across types, allowing identity
+confusion.
+
+### Normalization steps
+
+`normalizeKycIdentity(identityType, rawValue)` applies:
+
+1. **Unicode NFKC** (always first) — folds full-width IME digits/letters, maps
+   NBSP → space, and other compatibility equivalences.
+2. **Type-specific transforms:**
+   - `national_id` / `juristic_id`: strip all whitespace and dash-family characters
+     (`/[\s­-‐-―−]/g`), then assert `/^\d{13}$/`.
+   - `passport`: convert to uppercase (locale-independent `.toUpperCase()`), strip
+     whitespace and dashes, then assert `/^[A-Z0-9]+$/`.
+3. **Format assertion** — throws on mismatch. Error messages must NOT contain the
+   raw or normalized identity value (no PII in logs).
+
+Note: these are **format checks only**, not identity validation. Thai national ID /
+juristic ID checksum validation is out of scope here and belongs in the verify flow.
+
+### `identity_last4` derivation
+
+`identity_last4` (column name in `kyc_profiles` per migration 105) **MUST** be
+derived from the **normalized** value, not the raw input:
+
+```ts
+const normalized = normalizeKycIdentity(identityType, rawValue);
+const last4 = maskLast4(normalized);   // → "***1234"
+const hash  = hashIdentity(`v1:${identityType}:${normalized}`);
+```
+
+Calling `maskLast4(rawValue)` is incorrect — different input formats of the same
+identity (e.g., with or without dashes) would produce different `last4` values and
+break masked display consistency.
+
+### Raw identity storage rule
+
+The raw identity value (national ID number, passport number, juristic ID) **must
+never be stored** — not in the database, not in logs, not in error messages.
+Store `identity_hash` + `identity_last4` only.
+
+---
+
 ## 5. Reason codes (structured, not free-text)
 
 Use a reason code + optional note. Avoid wording like "stolen ID" / "blacklist" in the code; use operational language.
