@@ -67,6 +67,58 @@ Reviewed: Opus 4.8 PASS — no blockers
 
 ---
 
+## Claude Code → Claude Code / 2026-05-31 (TASK 3)
+
+Task: Wire KYC gate into pickup readiness + confirm pickup.
+
+Files touched:
+- `server/utils/rental-pickup-readiness.ts` — new `selectBestKycProfile` helper; `buildRentalPickupReadiness` gets `kycProfile` + `kycOverrides` inputs; KYC block replaced with `resolvePickupKyc`; `loadRentalPickupReadiness` adds `kyc_profiles` + `kyc_pickup_overrides` queries to Promise.all; `users` SELECT reduced to `id, full_name, phone`; `walk_in_customers` SELECT reduced to `phone, full_name`
+- `server/utils/rental-fulfillment.ts` — `resolvePickupKyc` import; `selectBestKycProfile` helper; `assertPickupCustomerEvidence` body replaced with `kyc_profiles` + `kyc_pickup_overrides` resolution (fresh `new Date()` — TOCTOU-safe)
+- `docs/index/server-utils-index.md` — new `rental-pickup-readiness.ts` row; updated `rental-fulfillment.ts` row; updated `kyc.ts` row
+- `tests/server/rental-pickup-readiness.spec.ts` — full rewrite: swapped `users.kyc_status` mock for `kyc_profiles` + `kyc_pickup_overrides`; 25+ new test cases
+- `tests/server/utils/rental-fulfillment.spec.ts` — added `kycProfiles`/`kycOverrides` to scenario and `listResult`; replaced old KYC/walk-in error tests; 12+ new test cases
+- `tests/server/pos-v2-pickup-completion.spec.ts` — added `kycProfiles`/`kycOverrides` to mockState + tableResult + beforeEach; updated "rejects when readiness is blocked" test
+
+Status: **in-progress — NOT committed** (pending Opus 4.8 review)
+
+Test results:
+- 1923 total tests, 1903 pass, 20 fail (all 20 are pre-existing POS V2/V3 failures — same as before TASK 3)
+- New tests: 66 (1923 − 1857 baseline)
+- `npx tsc --noEmit` → clean
+
+Judgment calls made (see DECISIONS.md for full rationale):
+- Walk-in → `null` profile → `no_profile` blocked (TASK 4 deferred)
+- `idEvidencePresent = false` (shape-compat, hollow — TASK 4 decides)
+- Blocker code: `customer_kyc_not_verified` → `kyc_pickup_gate_blocked` + `context.kycReason`
+- Override path emits warning `kyc_pickup_via_override` (not a blocker)
+- `mockClient` in fulfillment test defaults to blocked-by-default; non-KYC tests opt in with `kycProfiles: [baseKycProfile]` explicitly
+
+Open items (non-blocking — carry to TASK 4/5):
+
+1. **Walk-in guard idiom cleanup** — behavior is correct in TASK 3, but the two gate files detect walk-in differently:
+   - `rental-pickup-readiness.ts`: keyed on `userId === ""` (empty string from `text()` helper)
+   - `rental-fulfillment.ts`: keyed on `if (userId)` (falsy check)
+   Both are safe today, but TASK 4/5 should unify behind one explicit predicate (e.g. `const isWalkIn = !userId`) to prevent future drift as the walk-in path grows.
+
+2. **TASK 5 i18n / frontend rendering** — TASK 3 emits machine codes only:
+   - Blocker code: `kyc_pickup_gate_blocked`
+   - `kycReason` context values: `expired`, `pending`, `rejected`, `revoked`, `no_profile`
+   - Warning code: `kyc_pickup_via_override` (override-warning display belongs here, not TASK 6)
+   TASK 5 must: (a) render staff-facing UI from these codes — never display raw `statusMessage` strings to users; (b) add th/en/cn/jp i18n keys for each code; (c) audit current readiness UI to confirm it does not leak raw English blocker messages — fix in TASK 5 if it does.
+
+3. **TASK 6 override expiry (backend only)** — `kyc_pickup_overrides` currently has no expiry column. Deferred because no override rows exist until TASK 6 builds the super_admin creation UI. TASK 6 must:
+   - Add `valid_until timestamptz NULL` (or equivalent) to `kyc_pickup_overrides` via a new migration
+   - Update `hasValidPickupOverride` / `resolvePickupKyc` gate to honor expiry (live check, same pattern as KYC `valid_until`)
+   - Super_admin override creation must set an expiry at write time
+   - Requires Opus review before implementation (schema + gate change)
+   Do NOT implement any expiry logic before TASK 6. Do NOT assign override-display or i18n to TASK 6.
+
+Next:
+1. Get Opus 4.8 review of the diff before committing
+2. Commit as single `feat(kyc): wire KYC pickup gate into readiness + confirm (TASK 3)` commit
+3. Push to staging
+4. Proceed to TASK 4 (POS V3 KYC mode UI)
+
 ### IMMEDIATE NEXT ACTION
 
 1. **TASK 3** — wire `resolvePickupKyc` into `loadRentalPickupReadiness` + `confirmPickup` endpoint

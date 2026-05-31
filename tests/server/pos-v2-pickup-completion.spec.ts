@@ -20,6 +20,8 @@ const mockState = vi.hoisted(() => ({
   bookingUpdates: [] as Array<Record<string, unknown>>,
   paymentLineMutations: 0,
   touchedTables: [] as string[],
+  kycProfiles: [] as Array<Record<string, unknown>>,
+  kycOverrides: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("h3", () => ({
@@ -141,6 +143,12 @@ function paymentLines(extra: Array<Record<string, unknown>> = []) {
   ];
 }
 
+function futureDate(offsetYears = 1): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + offsetYears);
+  return d.toISOString();
+}
+
 function tableResult(table: string, filters: Record<string, unknown>) {
   if (table === "rental_bookings")
     return { data: mockState.booking, error: null };
@@ -154,6 +162,12 @@ function tableResult(table: string, filters: Record<string, unknown>) {
   }
   if (table === "walk_in_customers")
     return { data: mockState.walkIn, error: null };
+  if (table === "kyc_profiles") {
+    return { data: mockState.kycProfiles, error: null };
+  }
+  if (table === "kyc_pickup_overrides") {
+    return { data: mockState.kycOverrides, error: null };
+  }
   if (table === "admin_user_branch_access") {
     return {
       data: mockState.branchAccess ? { user_id: "staff-1" } : null,
@@ -267,10 +281,12 @@ describe("admin POS V2 pickup completion backend", () => {
       id: customerId,
       full_name: "Verified Customer",
       phone: "0812345678",
-      kyc_status: "verified",
-      id_card_url: "id.jpg",
     };
     mockState.walkIn = null;
+    mockState.kycProfiles = [
+      { status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
+    ];
+    mockState.kycOverrides = [];
     mockState.checklist = { id: "chk-1", status: "completed" };
     mockState.checklistItems = [
       { id: "ci-1", is_required: true, checked: true, result_status: "passed" },
@@ -342,8 +358,10 @@ describe("admin POS V2 pickup completion backend", () => {
     });
   });
 
-  it("rejects when readiness is blocked", async () => {
-    mockState.customer = { ...mockState.customer, kyc_status: "pending" };
+  it("rejects when readiness is blocked (KYC pending blocks via kyc_profiles)", async () => {
+    mockState.kycProfiles = [
+      { status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" },
+    ];
 
     await expect(endpoint({})).rejects.toMatchObject({ statusCode: 422 });
     expect(mockState.bookingUpdates).toHaveLength(0);

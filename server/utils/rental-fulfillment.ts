@@ -4,6 +4,7 @@ import {
   fetchAdminCustomerProfile,
   mapAdminRentalBookingDetail,
 } from "~~/server/utils/admin-orders";
+import { resolvePickupKyc } from "~~/server/utils/kyc";
 import type { AdminRentalBookingDetail } from "~~/app/types/admin-order-detail";
 import type {
   RentalBookingStatus,
@@ -14,6 +15,40 @@ export type AdminClient = {
   from: (table: string) => any;
   storage: { from: (bucket: string) => any };
 };
+
+// ── KYC helpers (local to this module) ────────────────────────────────────────
+
+type KycProfileRow = {
+  status: string;
+  valid_until: string | null;
+  created_at: string;
+};
+
+/**
+ * Returns the most relevant KYC profile from an array:
+ * prefer verified with latest valid_until; fall back to most recent by created_at.
+ */
+function selectBestKycProfile(
+  profiles: KycProfileRow[] | null | undefined,
+): KycProfileRow | null {
+  if (!profiles || profiles.length === 0) return null;
+  const verified = profiles
+    .filter((p) => p.status === "verified")
+    .sort((a, b) => {
+      const aTime = a.valid_until ? new Date(a.valid_until).getTime() : 0;
+      const bTime = b.valid_until ? new Date(b.valid_until).getTime() : 0;
+      return bTime - aTime;
+    });
+  if (verified.length > 0) return verified[0]!;
+  return (
+    profiles
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )[0] ?? null
+  );
+}
 
 export type RentalFulfillmentEventType = "pickup" | "return";
 
@@ -197,45 +232,46 @@ async function assertPickupCustomerEvidence(
   row: Record<string, unknown>,
 ) {
   const userId = rowString(row, "user_id");
-  const walkInPhone = rowString(row, "walk_in_phone");
+  // bookingId is in the row because CURRENT_BOOKING_SELECT includes "id".
+  const bookingId = rowString(row, "id") ?? "";
+
+  // Resolve kyc_profiles for registered customers.
+  // Walk-in (userId = null) resolves to null → no_profile → blocked.
+  // Walk-in→kyc_profiles link is deferred to TASK 4 (phone is not the identity).
+  let kycProfile: KycProfileRow | null = null;
   if (userId) {
-    const { data, error } = await adminClient
-      .from("users")
-      .select("id, kyc_status")
-      .eq("id", userId)
-      .maybeSingle();
-    if (error)
-      throw createError({ statusCode: 500, statusMessage: error.message });
-    if ((data as { kyc_status?: string } | null)?.kyc_status !== "verified") {
-      throw createError({
-        statusCode: 422,
-        statusMessage: "Pickup requires verified customer KYC",
-      });
-    }
-    return;
+    const { data: profiles, error: kycError } = await adminClient
+      .from("kyc_profiles")
+      .select("status, valid_until, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+    if (kycError)
+      throw createError({ statusCode: 500, statusMessage: kycError.message });
+    kycProfile = selectBestKycProfile(profiles as KycProfileRow[] | null);
   }
-  if (walkInPhone) {
-    const { data, error } = await adminClient
-      .from("walk_in_customers")
-      .select("phone, id_card_url")
-      .eq("phone", walkInPhone)
-      .maybeSingle();
-    if (error)
-      throw createError({ statusCode: 500, statusMessage: error.message });
-    if (
-      !cleanText((data as { id_card_url?: string | null } | null)?.id_card_url)
-    ) {
-      throw createError({
-        statusCode: 422,
-        statusMessage: "Pickup requires walk-in ID evidence",
-      });
-    }
-    return;
+
+  // Resolve booking-specific overrides (always, regardless of customer type).
+  const { data: overrides, error: overridesError } = await adminClient
+    .from("kyc_pickup_overrides")
+    .select("booking_id")
+    .eq("booking_id", bookingId);
+  if (overridesError)
+    throw createError({ statusCode: 500, statusMessage: overridesError.message });
+
+  // Live expiry — new Date() is intentional: TOCTOU-safe re-check at confirm time.
+  const resolution = resolvePickupKyc(
+    kycProfile,
+    (overrides ?? []) as Array<{ booking_id: string }>,
+    bookingId,
+    new Date(),
+  );
+
+  if (!resolution.canPickup) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: `Pickup KYC gate: ${resolution.reason}`,
+    });
   }
-  throw createError({
-    statusCode: 422,
-    statusMessage: "Pickup requires customer identity evidence",
-  });
 }
 
 async function loadCompletedChecklist(

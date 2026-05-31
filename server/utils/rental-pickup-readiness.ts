@@ -4,8 +4,47 @@ import {
   type RentalMoneySummary,
   type RentalMoneyWarning,
 } from "~~/server/utils/rental-money-summary";
+import { resolvePickupKyc } from "~~/server/utils/kyc";
 
 type Row = Record<string, unknown>;
+
+// ── KYC helpers ───────────────────────────────────────────────────────────────
+
+type KycProfileRow = {
+  status: string;
+  valid_until: string | null;
+  created_at: string;
+};
+
+const KYC_PROFILE_SELECT = "status, valid_until, created_at";
+const KYC_OVERRIDE_SELECT = "booking_id";
+
+/**
+ * Returns the most relevant KYC profile from an array:
+ * prefer verified with latest valid_until; fall back to most recent by created_at.
+ * Returns null for empty/null input.
+ */
+function selectBestKycProfile(
+  profiles: KycProfileRow[] | null | undefined,
+): KycProfileRow | null {
+  if (!profiles || profiles.length === 0) return null;
+  const verified = profiles
+    .filter((p) => p.status === "verified")
+    .sort((a, b) => {
+      const aTime = a.valid_until ? new Date(a.valid_until).getTime() : 0;
+      const bTime = b.valid_until ? new Date(b.valid_until).getTime() : 0;
+      return bTime - aTime;
+    });
+  if (verified.length > 0) return verified[0]!;
+  return (
+    profiles
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )[0] ?? null
+  );
+}
 
 export type PickupReadinessClassification = "ready" | "warning" | "blocked";
 export type PickupReadinessReasonSeverity = "blocker" | "warning" | "info";
@@ -147,6 +186,10 @@ export function buildRentalPickupReadiness(input: {
   paymentLines?: unknown[] | null;
   customerProfile?: Row | null;
   walkInCustomer?: Row | null;
+  /** KYC profile resolved from kyc_profiles; null when no profile exists. */
+  kycProfile?: KycProfileRow | null;
+  /** Override records from kyc_pickup_overrides for this booking. */
+  kycOverrides?: Array<{ booking_id: string }>;
 }): RentalPickupReadiness {
   const booking = input.booking;
   const profile = row(input.customerProfile);
@@ -162,12 +205,13 @@ export function buildRentalPickupReadiness(input: {
   const walkInPhone = userId
     ? nullableText(booking.walk_in_phone)
     : nullableText(booking.walk_in_phone) ?? nullableText(booking.booker_phone);
-  const kycStatus = userId ? nullableText(profile.kyc_status) : null;
-  const idEvidencePresent = userId
-    ? Boolean(nullableText(profile.id_card_url))
-    : Boolean(
-        nullableText(walkIn.id_card_storage_path) ?? nullableText(walkIn.id_card_url),
-      );
+  const kycProfile = input.kycProfile ?? null;
+  const kycOverrides = input.kycOverrides ?? [];
+  // kycStatus sourced from kyc_profiles, not users.kyc_status (Option X: single source).
+  const kycStatus = kycProfile ? nullableText(kycProfile.status) : null;
+  // idEvidencePresent is kept for shape-compat but is semantically hollow under
+  // kyc_profiles — TASK 4 will decide correct semantics once KYC mode UI lands.
+  const idEvidencePresent = false;
   const branch = resolvedBranch(booking);
 
   const statusReason = statusBlocker(status);
@@ -201,33 +245,31 @@ export function buildRentalPickupReadiness(input: {
     );
   }
 
-  if (userId) {
-    if (kycStatus !== "verified") {
-      blockers.push(
+  // KYC gate: authoritative source is kyc_profiles only (design §3, Option X).
+  // Walk-in customers (userId === null) resolve to null profile → no_profile →
+  // blocked. The walk-in→kyc_profiles link is deferred to TASK 4.
+  const bookingId = text(booking.id);
+  const kycResolution = resolvePickupKyc(kycProfile, kycOverrides, bookingId, new Date());
+  if (kycResolution.canPickup) {
+    if (kycResolution.via === "override") {
+      warnings.push(
         reason(
-          "customer_kyc_not_verified",
-          "blocker",
-          "Pickup currently requires verified customer KYC for account bookings.",
-          { kycStatus },
-        ),
-      );
-    }
-  } else if (walkInPhone) {
-    if (!idEvidencePresent) {
-      blockers.push(
-        reason(
-          "walk_in_id_evidence_missing",
-          "blocker",
-          "Pickup currently requires walk-in ID evidence before handover.",
+          "kyc_pickup_via_override",
+          "warning",
+          "Pickup proceeding via super_admin KYC override for this booking.",
+          { kycReason: kycResolution.reason },
         ),
       );
     }
   } else {
     blockers.push(
       reason(
-        "customer_identity_missing",
+        "kyc_pickup_gate_blocked",
         "blocker",
-        "Pickup readiness requires an account customer or walk-in phone identity.",
+        userId
+          ? `Pickup requires verified and non-expired KYC (current: ${kycResolution.reason}).`
+          : "Walk-in customer KYC requires identity capture before pickup (TASK 4).",
+        { kycReason: kycResolution.reason, via: kycResolution.via },
       ),
     );
   }
@@ -340,27 +382,41 @@ export async function loadRentalPickupReadiness(input: {
   const bookingRow = booking as Row;
   const userId = text(bookingRow.user_id);
   const walkInPhone = text(bookingRow.walk_in_phone) || text(bookingRow.booker_phone);
-  const [linesResult, userResult, walkInResult] = await Promise.all([
-    input.adminClient
-      .from("rental_booking_payment_lines")
-      .select(PAYMENT_LINE_SELECT)
-      .eq("booking_id", input.bookingId)
-      .order("created_at", { ascending: true }),
-    userId
-      ? input.adminClient
-          .from("users")
-          .select("id, full_name, phone, kyc_status, id_card_url")
-          .eq("id", userId)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-    !userId && walkInPhone
-      ? input.adminClient
-          .from("walk_in_customers")
-          .select("phone, full_name, id_card_url, id_card_storage_path")
-          .eq("phone", walkInPhone)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-  ]);
+  const [linesResult, userResult, walkInResult, kycProfilesResult, kycOverridesResult] =
+    await Promise.all([
+      input.adminClient
+        .from("rental_booking_payment_lines")
+        .select(PAYMENT_LINE_SELECT)
+        .eq("booking_id", input.bookingId)
+        .order("created_at", { ascending: true }),
+      userId
+        ? input.adminClient
+            .from("users")
+            .select("id, full_name, phone")
+            .eq("id", userId)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      !userId && walkInPhone
+        ? input.adminClient
+            .from("walk_in_customers")
+            .select("phone, full_name")
+            .eq("phone", walkInPhone)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      // kyc_profiles: registered customers only; walk-in resolves to null (TASK 4).
+      userId
+        ? input.adminClient
+            .from("kyc_profiles")
+            .select(KYC_PROFILE_SELECT)
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+        : Promise.resolve({ data: [] as KycProfileRow[], error: null }),
+      // kyc_pickup_overrides: always fetch for this booking (both customer types).
+      input.adminClient
+        .from("kyc_pickup_overrides")
+        .select(KYC_OVERRIDE_SELECT)
+        .eq("booking_id", input.bookingId),
+    ]);
 
   if (linesResult.error) {
     throw createError({ statusCode: 500, statusMessage: linesResult.error.message });
@@ -371,12 +427,22 @@ export async function loadRentalPickupReadiness(input: {
   if (walkInResult.error) {
     throw createError({ statusCode: 500, statusMessage: walkInResult.error.message });
   }
+  if (kycProfilesResult.error) {
+    throw createError({ statusCode: 500, statusMessage: kycProfilesResult.error.message });
+  }
+  if (kycOverridesResult.error) {
+    throw createError({ statusCode: 500, statusMessage: kycOverridesResult.error.message });
+  }
 
   return buildRentalPickupReadiness({
     booking: bookingRow,
     paymentLines: linesResult.data ?? [],
     customerProfile: userResult.data,
     walkInCustomer: walkInResult.data,
+    kycProfile: selectBestKycProfile(
+      (kycProfilesResult.data ?? []) as KycProfileRow[],
+    ),
+    kycOverrides: (kycOverridesResult.data ?? []) as Array<{ booking_id: string }>,
   });
 }
 

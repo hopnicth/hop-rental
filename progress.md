@@ -55,6 +55,14 @@ Last updated: 2026-05-31 (session 2 update)
 - `app/types/database.types.ts` — regenerated (kyc_profiles, kyc_documents, kyc_pickup_overrides live)
 - Reviewed: Opus 4.8 PASS — pushed to staging
 
+### KYC Foundation — TASK 3: Wire KYC gate into pickup readiness + confirm pickup
+- `server/utils/rental-pickup-readiness.ts` — replaced `users.kyc_status` / `walk_in_customers.id_card_url` gate with `kyc_profiles` + `kyc_pickup_overrides` lookup via `resolvePickupKyc`; `selectBestKycProfile` helper (prefer verified + latest valid_until; fallback to most-recent by created_at)
+- `server/utils/rental-fulfillment.ts` — replaced `assertPickupCustomerEvidence` body with `kyc_profiles`-based gate using fresh `new Date()` at confirm time (TOCTOU-safe)
+- `docs/index/server-utils-index.md` — added `rental-pickup-readiness.ts` row; updated `rental-fulfillment.ts` row (domain now includes `kyc`); updated `kyc.ts` row with orphan/migration-plan and plaintext-storage rules
+- Tests: added 66 new tests across 3 spec files (rental-pickup-readiness, rental-fulfillment, pos-v2-pickup-completion); all pass; pre-existing 20 failures unchanged
+- Judgment calls: (a) `idEvidencePresent` kept as `false` (shape-compat, semantically hollow — TASK 4 decides); (b) walk-in → `null` profile → `no_profile` blocked (TASK 4 deferred); (c) KYC blocker codes changed from `customer_kyc_not_verified`/`walk_in_id_evidence_missing` to `kyc_pickup_gate_blocked`; (d) override emits warning `kyc_pickup_via_override`; (e) `kycProfile` default in `mockClient` is verified so existing fulfillment tests pass the gate without individual scenario updates
+- Status: NOT committed/pushed — pending Opus 4.8 review before push
+
 ## In Progress 🔄
 - `HomeCategoryShortcutRail.vue` — uncommitted changes (home category shortcuts, pre-existing)
 - `app/pages/index.vue` — uncommitted changes (homepage, pre-existing)
@@ -64,7 +72,7 @@ Last updated: 2026-05-31 (session 2 update)
   - `pos-v2-pickup-completion.spec.ts`, `admin-pos-v3-*` specs
 
 ## Next 📋
-- **IMMEDIATE**: TASK 3 — wire `resolvePickupKyc` into `loadRentalPickupReadiness` + `confirmPickup` endpoint (Opus 4.8 review before push)
+- **IMMEDIATE**: TASK 3 commit — get Opus 4.8 review of diff, then commit + push to staging
 - TASK 4: POS v3 KYC mode UI (lookup, submit, verify)
 - TASK 5: Pickup container KYC gate + state preservation
 - TASK 6: Super admin override + revoke flow

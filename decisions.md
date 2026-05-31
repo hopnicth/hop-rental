@@ -85,6 +85,26 @@ Decision: Discard `scripts/translate-i18n.mjs` (Gemini machine-translation scrip
 Reason: Directly conflicts with the strict project i18n policy (no machine-generated translations for th/cn/jp; only `[NEEDS_TRANSLATION]` placeholders, human review required).
 Impact: Script deleted locally. The `[NEEDS_TRANSLATION]` workflow remains the only approved path.
 
+## 2026-05-31 (TASK 3)
+Decision: Override expiry is intentionally deferred to TASK 6.
+Reason: `kyc_pickup_overrides` in migration 105 has no expiry column — only `booking_id` and `created_at`. `hasValidPickupOverride` matches by `booking_id` only. No override rows exist before TASK 6 (the super_admin override UI/creation flow has not been built), so there is no production exposure from the lack of expiry in TASK 3. Adding an expiry check now would require schema work that nothing can yet populate.
+Impact: Until TASK 6, override validity means "a matching `booking_id` row exists." TASK 6 must design the expiry column, override creation UI, and gate update together — with Opus review. Do not claim overrides expire before TASK 6 ships.
+
+## 2026-05-31 (TASK 3)
+Decision: Walk-in customers resolve to `null` profile → `no_profile` → pickup blocked. Walk-in KYC link deferred to TASK 4.
+Reason: `walk_in_phone` is a contact field on `kyc_profiles`, not a unique identity key. Matching by phone could bind the wrong verified identity to a walk-in booking, which is a security risk. TASK 4 (POS KYC mode) will create the canonical link.
+Impact: Walk-in pickup is blocked at KYC gate until TASK 4 lands. Overrides (super_admin) are the only exception path today.
+
+## 2026-05-31 (TASK 3)
+Decision: `idEvidencePresent` field kept as `false` (shape-compat) rather than removed.
+Reason: Frontend consumers reference this field. The field had different semantics for registered vs walk-in customers; under `kyc_profiles` the concept is unified. Setting to `false` avoids a breaking shape change without inventing new semantics.
+Impact: TASK 4 will decide the correct forward semantics (e.g., `kycProfile !== null`, or removed entirely).
+
+## 2026-05-31 (TASK 3)
+Decision: KYC blocker code in readiness changed from `customer_kyc_not_verified` / `walk_in_id_evidence_missing` / `customer_identity_missing` to unified `kyc_pickup_gate_blocked` with `context.kycReason` containing the exact reason.
+Reason: The three-branch logic is now a single `resolvePickupKyc` call. A unified code is cleaner; the `kycReason` context carries the detail the UI needs to differentiate cases.
+Impact: Frontend that parses the blocker code string must be updated in TASK 5.
+
 ## 2026-05-31
 Decision: Scratch docs (`20260528 Summary.md`, `augment_final_design_lock_...refund.md`) archived to `docs/archive/` via `git mv`; `.claudeignore` entries repointed to new paths.
 Reason: Both matched the new `.gitignore` `[0-9]{8} *.md` / `augment_*.md` scratch-doc rules. Moving preserves git history as renames; repointing `.claudeignore` keeps them out of Claude coding context.

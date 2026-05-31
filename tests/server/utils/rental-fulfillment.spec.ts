@@ -6,6 +6,18 @@ import {
 } from "~~/server/utils/rental-fulfillment";
 import type { AdminClient } from "~~/server/utils/rental-fulfillment";
 
+function futureDate(offsetYears = 1): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + offsetYears);
+  return d.toISOString();
+}
+
+function pastDate(offsetYears = 1): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - offsetYears);
+  return d.toISOString();
+}
+
 function mockClient(scenario: {
   booking?: Record<string, unknown>;
   checklist?: { id: string; status: string } | null;
@@ -15,6 +27,10 @@ function mockClient(scenario: {
   proofs?: Array<Record<string, unknown>> | null;
   fulfillments?: Array<Record<string, unknown>> | null;
   branchAccess?: { user_id: string } | null;
+  /** kyc_profiles rows for the booking's user (replaces users.kyc_status). */
+  kycProfiles?: Array<Record<string, unknown>> | null;
+  /** kyc_pickup_overrides rows for this booking. */
+  kycOverrides?: Array<Record<string, unknown>> | null;
 }): AdminClient {
   let updatedBooking: Record<string, unknown> | null = null;
   const storage = {
@@ -64,6 +80,13 @@ function mockClient(scenario: {
         }
         if (table === "users") {
           return { data: scenario.users ?? [], error: null };
+        }
+        if (table === "kyc_profiles") {
+          // Blocked by default — tests that need to pass KYC must provide kycProfiles explicitly.
+          return { data: scenario.kycProfiles ?? [], error: null };
+        }
+        if (table === "kyc_pickup_overrides") {
+          return { data: scenario.kycOverrides ?? [], error: null };
         }
         return singleResult();
       };
@@ -132,6 +155,11 @@ const baseChecklistItem = {
   result_status: "passed",
 };
 const baseUser = { id: "user-1", kyc_status: "verified" };
+const baseKycProfile = {
+  status: "verified",
+  valid_until: futureDate(),
+  created_at: "2026-01-01T00:00:00.000Z",
+};
 
 describe("assertRentalFulfillmentPrerequisites", () => {
   it("prevalidates pickup without requiring paid deposit when requested", async () => {
@@ -141,6 +169,7 @@ describe("assertRentalFulfillmentPrerequisites", () => {
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       userId: "staff-1",
       platformRole: "staff",
@@ -167,6 +196,7 @@ describe("assertRentalFulfillmentPrerequisites", () => {
           checklist: baseChecklist,
           checklistItems: [baseChecklistItem],
           users: [baseUser],
+          kycProfiles: [baseKycProfile],
         }),
         userId: "staff-1",
         platformRole: "staff",
@@ -240,6 +270,7 @@ describe("completeRentalBookingFulfillment", () => {
         booking: baseBooking("confirmed"),
         checklist: null,
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       payload: validPayload("pickup"),
       eventType: "pickup",
@@ -255,6 +286,7 @@ describe("completeRentalBookingFulfillment", () => {
         booking: baseBooking("confirmed"),
         checklist: null, // Supabase .eq("status", "completed") would return null for in_progress checklist
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       payload: validPayload("pickup"),
       eventType: "pickup",
@@ -278,6 +310,7 @@ describe("completeRentalBookingFulfillment", () => {
           },
         ],
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       payload: validPayload("pickup"),
       eventType: "pickup",
@@ -294,6 +327,7 @@ describe("completeRentalBookingFulfillment", () => {
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       payload: validPayload("pickup", { signatureDataUrl: null }),
       eventType: "pickup",
@@ -363,6 +397,7 @@ describe("completeRentalBookingFulfillment", () => {
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       userId: "staff-1",
       platformRole: "staff",
@@ -387,6 +422,7 @@ describe("completeRentalBookingFulfillment", () => {
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       userId: "staff-1",
       platformRole: "staff",
@@ -409,6 +445,7 @@ describe("completeRentalBookingFulfillment", () => {
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       userId: "staff-1",
       platformRole: "staff",
@@ -457,40 +494,168 @@ describe("completeRentalBookingFulfillment", () => {
     "paid deposit",
   );
 
+  // ── KYC gate tests (TASK 3) ─────────────────────────────────────────────────
+
   makeErrorTest(
-    "pickup blocked if KYC is not verified (account user)",
+    "pickup blocked when KYC profile is pending",
     () => ({
       client: mockClient({
         booking: baseBooking("confirmed"),
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
-        users: [{ id: "user-1", kyc_status: "pending" }],
+        kycProfiles: [{ status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
       }),
       payload: validPayload("pickup"),
       eventType: "pickup",
     }),
     422,
-    "verified customer KYC",
+    "Pickup KYC gate",
   );
 
   makeErrorTest(
-    "pickup blocked if walk-in ID evidence is missing",
+    "pickup blocked when KYC profile is rejected",
     () => ({
       client: mockClient({
-        booking: baseBooking("confirmed", {
-          user_id: null,
-          walk_in_phone: "0812345678",
-        }),
+        booking: baseBooking("confirmed"),
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
-        walkIn: [{ phone: "0812345678", id_card_url: null }],
+        kycProfiles: [{ status: "rejected", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
       }),
       payload: validPayload("pickup"),
       eventType: "pickup",
     }),
     422,
-    "walk-in ID evidence",
+    "Pickup KYC gate",
   );
+
+  makeErrorTest(
+    "pickup blocked when KYC profile is revoked",
+    () => ({
+      client: mockClient({
+        booking: baseBooking("confirmed"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        kycProfiles: [{ status: "revoked", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
+      }),
+      payload: validPayload("pickup"),
+      eventType: "pickup",
+    }),
+    422,
+    "Pickup KYC gate",
+  );
+
+  makeErrorTest(
+    "pickup blocked when KYC profile is verified but expired at confirm time",
+    () => ({
+      client: mockClient({
+        booking: baseBooking("confirmed"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        kycProfiles: [
+          { status: "verified", valid_until: pastDate(), created_at: "2025-01-01T00:00:00.000Z" },
+        ],
+      }),
+      payload: validPayload("pickup"),
+      eventType: "pickup",
+    }),
+    422,
+    "Pickup KYC gate",
+  );
+
+  makeErrorTest(
+    "pickup blocked when no KYC profile exists (no_profile)",
+    () => ({
+      client: mockClient({
+        booking: baseBooking("confirmed"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        kycProfiles: [],
+      }),
+      payload: validPayload("pickup"),
+      eventType: "pickup",
+    }),
+    422,
+    "Pickup KYC gate",
+  );
+
+  makeErrorTest(
+    "walk-in pickup blocked (no_profile — walk-in→kyc_profiles link deferred to TASK 4)",
+    () => ({
+      client: mockClient({
+        booking: baseBooking("confirmed", { user_id: null, walk_in_phone: "0812345678" }),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        kycProfiles: [], // walk-in never queries profiles; resolves to null → no_profile
+        kycOverrides: [],
+      }),
+      payload: validPayload("pickup"),
+      eventType: "pickup",
+    }),
+    422,
+    "Pickup KYC gate",
+  );
+
+  makeErrorTest(
+    "pickup blocked when override is for a different booking",
+    () => ({
+      client: mockClient({
+        booking: baseBooking("confirmed"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        kycProfiles: [{ status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
+        kycOverrides: [{ booking_id: "different-booking" }],
+      }),
+      payload: validPayload("pickup"),
+      eventType: "pickup",
+    }),
+    422,
+    "Pickup KYC gate",
+  );
+
+  it("pickup proceeds when KYC is not ready but a valid booking-specific override exists", async () => {
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: baseBooking("confirmed"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        kycProfiles: [{ status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
+        kycOverrides: [{ booking_id: "booking-1" }],
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+  });
+
+  it("confirmed-time re-check blocks expired KYC even when readiness was previously passing", async () => {
+    // Simulates the TOCTOU scenario: KYC was valid at readiness time but expired
+    // by confirm time. confirm must re-check fresh (live new Date()).
+    try {
+      await completeRentalBookingFulfillment({
+        adminClient: mockClient({
+          booking: baseBooking("confirmed"),
+          checklist: baseChecklist,
+          checklistItems: [baseChecklistItem],
+          kycProfiles: [
+            { status: "verified", valid_until: pastDate(), created_at: "2025-01-01T00:00:00.000Z" },
+          ],
+          kycOverrides: [],
+        }),
+        userId: "staff-1",
+        platformRole: "staff",
+        bookingId: "booking-1",
+        eventType: "pickup",
+        payload: validPayload("pickup"),
+      });
+      expect.fail("Should have thrown — expired KYC must block confirm pickup");
+    } catch (err: any) {
+      expect(err.statusCode).toBe(422);
+      expect(err.statusMessage).toContain("Pickup KYC gate");
+    }
+  });
 
   makeErrorTest(
     "duplicate pickup is rejected",
@@ -516,6 +681,7 @@ describe("completeRentalBookingFulfillment", () => {
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
         users: [baseUser],
+        kycProfiles: [baseKycProfile],
       }),
       userId: "staff-1",
       platformRole: "staff",

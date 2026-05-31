@@ -243,6 +243,12 @@ Rules:
 - `confirmPickup` may pass the KYC gate via override ONLY if a valid override exists for THAT booking.
 - Override is booking-specific, never customer-wide.
 
+**Current state (TASK 3):**
+- `kyc_pickup_overrides` has no expiry column. `hasValidPickupOverride` means "a row with a matching `booking_id` exists" — nothing more.
+- Override expiry is deferred to TASK 6, which will design the expiry column, override creation UI, and gate update together.
+- Until TASK 6, an override for the correct `booking_id` is permanently valid unless the record is manually deleted by super_admin.
+- Do not add expiry logic to `hasValidPickupOverride` before TASK 6; any such change requires a migration and Opus review.
+
 ---
 
 ## 10. POS V3 modes
