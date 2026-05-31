@@ -36,3 +36,9 @@ Ref*.html
 
 docs/task-runs/*.md
 !docs/task-runs/.gitkeep
+
+# Scratch / dated / AI-agent prompt docs (never commit new ones)
+# NOTE: existing tracked copies are NOT untracked by this rule —
+# remove them with `git rm --cached <file>` if you want them gone.
+[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9] *.md
+augment_*.md
