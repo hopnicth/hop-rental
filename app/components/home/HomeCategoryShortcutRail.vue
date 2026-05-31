@@ -21,7 +21,7 @@ function categorySearchPath(group: HomeCategoryCardGroup): string {
 </script>
 
 <template>
-  <section class="lg:hidden">
+  <section class="">
     <div class="mb-3 flex items-center justify-between gap-3">
       <div>
         <p class="text-sm font-semibold text-default">

@@ -5,7 +5,6 @@ import HomeLinkCard from "~/components/home/HomeLinkCard.vue";
 import HomeSectionShell from "~/components/home/HomeSectionShell.vue";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
-import CategoriesCard from "~/components/categories_card/CategoriesCard.vue";
 import type { Asset } from "~/types/asset";
 import type { HomeLinkCard as HomeLinkCardType } from "~/types/home";
 import type { Product } from "~/types/product";
@@ -51,11 +50,7 @@ function asPartnerCard(item: unknown) {
 <template>
   <UContainer class="py-4 sm:py-6">
     <div class="grid grid-cols-12 items-start gap-4 lg:gap-6">
-      <div class="hidden lg:block lg:col-span-3">
-        <CategoriesCard />
-      </div>
-
-      <div class="col-span-12 space-y-7 lg:col-span-9 sm:space-y-8">
+      <div class="col-span-12 space-y-7 lg:col-span-12 sm:space-y-8">
         <HopBanner />
 
         <div class="space-y-4 sm:space-y-5">
@@ -110,7 +105,7 @@ function asPartnerCard(item: unknown) {
           <HomeSectionShell
             :title="t('home.rentalTitle')"
             :description="t('home.rentalDescription')"
-            class="mt-7"
+            class="mt-10"
           >
             <template #action>
               <UButton
@@ -142,7 +137,7 @@ function asPartnerCard(item: unknown) {
           <HomeSectionShell
             :title="t('home.productsTitle')"
             :description="t('home.productsDescription')"
-            class="mt-7"
+            class="mt-10"
           >
             <template #action>
               <UButton
@@ -169,7 +164,7 @@ function asPartnerCard(item: unknown) {
             </HomeHorizontalRail>
           </HomeSectionShell>
 
-          <HomeSectionShell :title="t('home.partnersSection')" class="mt-7">
+          <HomeSectionShell :title="t('home.partnersSection')" class="mt-10">
             <template #action>
               <UButton
                 to="/partners"

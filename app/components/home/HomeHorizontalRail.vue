@@ -53,7 +53,7 @@ const skeletonItems = computed(() =>
       :items="carouselItems"
       :ui="{
         root: 'relative w-full overflow-visible px-1 lg:px-1',
-        item: 'basis-1/2 py-2 pe-4 sm:basis-1/3',
+        item: 'basis-1/2 py-2 pe-0 sm:basis-1/3',
         dots: 'mt-3',
         prev: 'hidden lg:inline-flex left-0 z-10 border border-default bg-white/95 shadow-md',
         next: 'hidden lg:inline-flex right-0 z-10 border border-default bg-white/95 shadow-md',
