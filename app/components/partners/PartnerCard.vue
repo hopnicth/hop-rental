@@ -208,15 +208,21 @@ const cardImageUrl = computed(
         </p>
       </div>
 
-      <!-- Category chips (main + secondary, no searchKeywords) — capped at 3 -->
+      <!-- Category chips (main + secondary, no searchKeywords) — capped at 3.
+           Single-line horizontal scroll so long Thai labels never wrap and
+           grow the card height on small screens (mirrors HomeCategoryShortcutRail). -->
       <div class="min-h-10">
-        <div v-if="visibleCategoryKeys.length" class="flex flex-wrap gap-1">
+        <div
+          v-if="visibleCategoryKeys.length"
+          class="flex flex-nowrap gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           <UBadge
             v-for="key in visibleCategoryKeys"
             :key="key"
             color="neutral"
             variant="outline"
             size="xs"
+            class="shrink-0"
           >
             {{ categoryLabel(key) }}
           </UBadge>
@@ -225,21 +231,26 @@ const cardImageUrl = computed(
             color="neutral"
             variant="outline"
             size="xs"
+            class="shrink-0"
           >
             +{{ remainingCategoryCount }}
           </UBadge>
         </div>
       </div>
 
-      <!-- Service area chips -->
+      <!-- Service area chips — same single-line scroll treatment as categories -->
       <div>
-        <div v-if="visibleServiceAreas.length" class="flex flex-wrap gap-1">
+        <div
+          v-if="visibleServiceAreas.length"
+          class="flex flex-nowrap gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           <UBadge
             v-for="area in visibleServiceAreas"
             :key="area"
             color="neutral"
             variant="soft"
             size="xs"
+            class="shrink-0"
           >
             {{ serviceAreaLabel(area) }}
           </UBadge>
@@ -248,6 +259,7 @@ const cardImageUrl = computed(
             color="neutral"
             variant="soft"
             size="xs"
+            class="shrink-0"
           >
             +{{ remainingAreaCount }}
           </UBadge>
