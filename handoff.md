@@ -138,3 +138,36 @@ Pre-existing dirty/untracked — LEAVE UNTOUCHED unless told (not mine):
 Next:
 - Decide fate of the dirty/untracked files above (UI pair = one logical commit after removing commented-out block; translate script + edit.md = review).
 - If continuing index work: extend index to any remaining `server/utils/` files not yet rowed.
+
+---
+
+## Claude Code → Claude Code (new terminal) / 2026-05-31 (session 2)
+
+Task: Working-tree reconciliation + docs-cleanup.
+Branch `staging` — in sync with `origin/staging` at `76c2085`. Working tree clean.
+
+Commits this session (all pushed):
+- `ae7d327` chore(git): ignore scratch docs and Claude noise (`.gitignore` + `.claudeignore` scratch rules)
+- `847d60b` docs: record server-utils index and housekeeping session (session docs from prior session)
+- `bf47376` chore(claude): add edit workflow command (`.claude/commands/edit.md`)
+- `7aa6665` fix(partners): prevent card chips from increasing card height (`PartnerCard.vue` chip overflow)
+- `0c38a86` feat(home): replace desktop categories sidebar with full-width layout (removed `CategoriesCard` sidebar permanently; `HomeCategoryShortcutRail` now all-breakpoint; `HomeHorizontalRail` spacing; `index.vue` full `col-span-12`)
+- `76c2085` docs(cleanup): archive scratch planning docs (`20260528 Summary.md` + `augment_final_design_lock...refund.md` → `docs/archive/`; `.claudeignore` repointed; `progress.md` updated)
+
+Discarded (not committed):
+- `scripts/translate-i18n.mjs` — rm'd; conflicts with no-machine-translation i18n policy.
+
+Docs audit completed (read-only, no further cleanup):
+- `docs/phase-2d-booking-deposit-acceptance-checklist.md` → KEEP (9 inbound guardrail refs; active locked decisions)
+- `docs/phase-2e-pos-rental-operational-flow-audit.md` → KEEP (spec for unimplemented POS V3 pickup/return/settlement work)
+- `docs/customer-cancellation-refund-handoff.md` → DEFERRED (lean ARCHIVE but open no-show policy questions not confirmed captured elsewhere)
+
+Unused component flagged (not deleted):
+- `app/components/categories_card/CategoriesCard.vue` — now fully unused after homepage layout change. Safe to delete in a separate cleanup commit.
+
+Next for new terminal:
+1. Confirm whether no-show open questions (late-cancellation policy, undo-no-show, admin dashboard surfacing) are captured in decisions.md or Thai policy file → then archive `docs/customer-cancellation-refund-handoff.md` (1 `git mv` + 1-line `docs/claude.md` table row update).
+2. Delete `app/components/categories_card/CategoriesCard.vue` (standalone cleanup commit).
+3. Continue KYC TASK 3–7 backlog (unchanged from prior sessions) or extend server-utils index.
+
+Status: DONE (this session complete; working tree clean; all pushes confirmed).

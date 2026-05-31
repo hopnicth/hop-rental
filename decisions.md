@@ -74,3 +74,28 @@ Impact: Shared permissions committed (`02f80ea`); `supabase gen:*` narrowed to `
 Decision: Fix the broad-permission mistake with a forward commit, not a force-push/amend.
 Reason: `02f80ea` was already pushed to shared `staging`; rewriting pushed history is riskier than one extra commit.
 Impact: Two-commit trail (`02f80ea` -> `1d9c322`); effective state correct, no history rewrite.
+
+## 2026-05-31
+Decision: Remove desktop `CategoriesCard` sidebar from homepage permanently; promote `HomeCategoryShortcutRail` to all breakpoints (remove `lg:hidden`).
+Reason: Sidebar added layout complexity and narrowed main content to `col-span-9`; full-width `col-span-12` is cleaner for the current content density.
+Impact: `CategoriesCard` component is now unused in the app (safe to delete in a separate cleanup); homepage main column is full-width on all breakpoints. Committed `0c38a86`.
+
+## 2026-05-31
+Decision: Discard `scripts/translate-i18n.mjs` (Gemini machine-translation script) — do not commit it.
+Reason: Directly conflicts with the strict project i18n policy (no machine-generated translations for th/cn/jp; only `[NEEDS_TRANSLATION]` placeholders, human review required).
+Impact: Script deleted locally. The `[NEEDS_TRANSLATION]` workflow remains the only approved path.
+
+## 2026-05-31
+Decision: Scratch docs (`20260528 Summary.md`, `augment_final_design_lock_...refund.md`) archived to `docs/archive/` via `git mv`; `.claudeignore` entries repointed to new paths.
+Reason: Both matched the new `.gitignore` `[0-9]{8} *.md` / `augment_*.md` scratch-doc rules. Moving preserves git history as renames; repointing `.claudeignore` keeps them out of Claude coding context.
+Impact: `docs/archive/` directory created. Committed `76c2085`.
+
+## 2026-05-31
+Decision: `docs/phase-2d-booking-deposit-acceptance-checklist.md` and `docs/phase-2e-pos-rental-operational-flow-audit.md` — KEEP in place, not archived.
+Reason: Phase-2d is the active guardrail source cited by 9 downstream docs ("do not override without reviewing this doc"). Phase-2e is the design specification for unimplemented POS V3 pickup/return/settlement work.
+Impact: Neither file is archived. Both remain at their current paths.
+
+## 2026-05-31
+Decision: `docs/customer-cancellation-refund-handoff.md` — defer archive decision.
+Reason: Strongest ARCHIVE candidate (superseded handoff note), but contains open no-show policy questions (late-cancellation, undo-no-show, dashboard surfacing) not yet confirmed as captured elsewhere.
+Impact: File left in place pending human confirmation that those questions are recorded in decisions.md or the Thai policy file.

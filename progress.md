@@ -1,5 +1,5 @@
 # PROGRESS
-Last updated: 2026-05-31
+Last updated: 2026-05-31 (session 2 update)
 
 ## Done ✅
 
@@ -82,16 +82,22 @@ Last updated: 2026-05-31
 - Stopped tracking `supabase/.temp/*` (8 cache files, local kept) — `b337c3a`
 - Shared Claude Code command permissions in `.claude/settings.json`, `supabase` narrowed to `gen types:*` — `02f80ea` + `1d9c322`
 - (Full server-utils index phase: 46e89d0 -> d2890bf -> d352b12 -> d18520e -> f5fa16f now complete)
-- Archived scratch planning docs into `docs/archive/`: `20260528 Summary.md` + `augment_final_design_lock_customer_docs_cancel_refund.md` (matched new `.gitignore` scratch rules); `.claudeignore` entries repointed to the `docs/archive/` paths so they stay out of Claude context.
+- Archived scratch planning docs into `docs/archive/` — `76c2085`
+- `.claude/commands/edit.md` committed — `bf47376`
+- `.gitignore` / `.claudeignore` scratch-doc rules — `ae7d327`
+- `PartnerCard.vue` chip overflow (horizontal scroll, no wrap) — `7aa6665`
+- Homepage full-width layout (removed desktop CategoriesCard sidebar permanently) — `0c38a86`
+- `scripts/translate-i18n.mjs` discarded (machine-translation policy conflict)
+
+### Blocked / Deferred 🚫
+- `docs/customer-cancellation-refund-handoff.md` archive — deferred pending human confirmation that no-show open policy questions (late-cancellation, undo-no-show, admin dashboard) are captured elsewhere.
 
 ### Next 📋
-- Decide fate of pre-existing dirty/untracked files:
-  - `app/components/home/HomeCategoryShortcutRail.vue` + `app/pages/index.vue` (homepage layout change — remove commented-out block, commit as one logical change)
-  - `scripts/translate-i18n.mjs` (Gemini i18n translator — conflicts with "no machine translation" rule; human decision)
-  - `.claude/commands/edit.md` (new untracked — review)
-- (optional) Extend server-utils index to any remaining `server/utils/` files not yet rowed
+- Confirm whether no-show policy questions in `docs/customer-cancellation-refund-handoff.md` are recorded elsewhere → then archive it (1 `git mv` + 1-line `docs/claude.md` update).
+- `app/components/categories_card/CategoriesCard.vue` is now fully unused — safe to delete in a separate cleanup commit.
+- (optional) Extend server-utils index to any remaining `server/utils/` files not yet rowed.
+- Earlier KYC TASK 3–7 items above remain the standing backlog (unchanged).
 
 ### Notes
-- `staging` in sync with origin at `1d9c322`.
-- `nuxt.config.ts` is no longer dirty as of this update.
-- Earlier KYC TASK 3–7 items above remain the standing backlog (unchanged).
+- `staging` in sync with origin at `76c2085`. Working tree clean.
+- `phase-2d-booking-deposit-acceptance-checklist.md` and `phase-2e-pos-rental-operational-flow-audit.md` are KEEP — both load-bearing (see decisions.md 2026-05-31).
