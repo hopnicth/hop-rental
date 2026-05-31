@@ -1,5 +1,5 @@
 # PROGRESS
-Last updated: 2026-05-30
+Last updated: 2026-05-31
 
 ## Done ✅
 
@@ -71,3 +71,26 @@ Last updated: 2026-05-30
 - TASK 7: Tests
 - Validate auth fix on production domain (first Google OAuth login)
 - Consider adding `ensureProfileLoaded()` to default layout for non-admin pages
+
+---
+
+## Session 2026-05-31 — Server-utils index + working-tree housekeeping
+
+### Done ✅
+- Server-utils index: rental-ops / inventory / branch-access / admin ops rows — `d18520e`
+- Server-utils index maintenance rule added to root `claude.md` + `server/utils/claude.md` — `f5fa16f`
+- Stopped tracking `supabase/.temp/*` (8 cache files, local kept) — `b337c3a`
+- Shared Claude Code command permissions in `.claude/settings.json`, `supabase` narrowed to `gen types:*` — `02f80ea` + `1d9c322`
+- (Full server-utils index phase: 46e89d0 -> d2890bf -> d352b12 -> d18520e -> f5fa16f now complete)
+
+### Next 📋
+- Decide fate of pre-existing dirty/untracked files:
+  - `app/components/home/HomeCategoryShortcutRail.vue` + `app/pages/index.vue` (homepage layout change — remove commented-out block, commit as one logical change)
+  - `scripts/translate-i18n.mjs` (Gemini i18n translator — conflicts with "no machine translation" rule; human decision)
+  - `.claude/commands/edit.md` (new untracked — review)
+- (optional) Extend server-utils index to any remaining `server/utils/` files not yet rowed
+
+### Notes
+- `staging` in sync with origin at `1d9c322`.
+- `nuxt.config.ts` is no longer dirty as of this update.
+- Earlier KYC TASK 3–7 items above remain the standing backlog (unchanged).

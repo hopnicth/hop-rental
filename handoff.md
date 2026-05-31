@@ -107,3 +107,34 @@ Reviewed: Opus 4.8 PASS — no blockers
  M supabase/.temp/cli-latest                          ← tracked, cleanup later
 ?? scripts/translate-i18n.mjs                         ← pre-existing
 ```
+
+---
+
+## Claude Code → Claude Code (new terminal) / 2026-05-31
+
+Task: Server-utils index phase wrap-up + working-tree housekeeping.
+Branch `staging` — in sync with `origin/staging` at `1d9c322`.
+
+Commits this session (all pushed):
+- `d18520e` docs(index): rental-ops / inventory / branch-access / admin ops rows (Task 3 commit 2b)
+- `f5fa16f` docs(claude): server-utils index maintenance rule (root `claude.md` + `server/utils/claude.md`)
+- `b337c3a` chore(git): stop tracking `supabase/.temp/*` (8 cache files untracked via `git rm --cached`; local files kept; already ignored)
+- `02f80ea` chore(claude): add shared safe command permissions to `.claude/settings.json`
+- `1d9c322` chore(claude): narrow `supabase gen:*` -> `supabase gen types:*`
+
+Note: `02f80ea` accidentally shipped broad `supabase gen:*`; corrected forward in `1d9c322` (chosen over force-push since `02f80ea` was already pushed). Effective state correct, no history rewrite.
+
+Convention confirmed: `.claude/settings.json` = tracked/shared; `.claude/settings.local.json` = git-ignored per-dev.
+
+Status: DONE (server-utils index phase complete; housekeeping done).
+
+Pre-existing dirty/untracked — LEAVE UNTOUCHED unless told (not mine):
+- `app/components/home/HomeCategoryShortcutRail.vue` (M — rail no longer `lg:hidden`)
+- `app/pages/index.vue` (M — desktop CategoriesCard commented out, main col -> col-span-12)
+- `scripts/translate-i18n.mjs` (?? — Gemini i18n translator; conflicts with "no machine translation" i18n rule -> human decision)
+- `.claude/commands/edit.md` (?? — new, appeared this session; review separately)
+- NOTE: `nuxt.config.ts` (devtools toggle) is NO LONGER dirty as of this handoff.
+
+Next:
+- Decide fate of the dirty/untracked files above (UI pair = one logical commit after removing commented-out block; translate script + edit.md = review).
+- If continuing index work: extend index to any remaining `server/utils/` files not yet rowed.

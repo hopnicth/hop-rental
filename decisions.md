@@ -59,3 +59,18 @@ Impact: `hashIdentity` stays unchanged as a low-level primitive (HMAC-SHA256 ove
 Decision: Model strategy for KYC build — Opus 4.8 drafts AND reviews security-core work (migrations, `server/utils/kyc.ts` hash/normalize, pickup gate, RLS); Sonnet 4.6 drafts UI, glue code, and tests. Opus reviews are surgical: diff + design-doc only, not whole-repo context.
 Reason: Security-core code (hashing, normalization, RLS, pickup gate) carries high risk if wrong; Opus review catches issues that Sonnet might miss. UI and glue code is lower-risk and benefits from Sonnet's speed.
 Impact: Every security-core PR step gets an Opus review pass before the next TASK begins. Review prompts should be scoped to the diff, not the full codebase.
+
+## 2026-05-31
+Decision: Untrack the whole `supabase/.temp/` cache dir via `git rm --cached` (keep local files), not just the one noisy `cli-latest`.
+Reason: 8 CLI cache/version markers were tracked; already ignored by `supabase/.gitignore` + root `.gitignore`, so they only generated `git status` noise.
+Impact: Supabase temp state is now local-only; commit `b337c3a`.
+
+## 2026-05-31
+Decision: `.claude/settings.json` is the tracked/shared Claude Code config; `.claude/settings.local.json` is the git-ignored per-dev file.
+Reason: Share a safe command allow-list with the team; keep machine/local prefs out of git.
+Impact: Shared permissions committed (`02f80ea`); `supabase gen:*` narrowed to `supabase gen types:*` (`1d9c322`).
+
+## 2026-05-31
+Decision: Fix the broad-permission mistake with a forward commit, not a force-push/amend.
+Reason: `02f80ea` was already pushed to shared `staging`; rewriting pushed history is riskier than one extra commit.
+Impact: Two-commit trail (`02f80ea` -> `1d9c322`); effective state correct, no history rewrite.
