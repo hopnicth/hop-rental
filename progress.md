@@ -82,6 +82,7 @@ Last updated: 2026-05-31
 - Stopped tracking `supabase/.temp/*` (8 cache files, local kept) — `b337c3a`
 - Shared Claude Code command permissions in `.claude/settings.json`, `supabase` narrowed to `gen types:*` — `02f80ea` + `1d9c322`
 - (Full server-utils index phase: 46e89d0 -> d2890bf -> d352b12 -> d18520e -> f5fa16f now complete)
+- Archived scratch planning docs into `docs/archive/`: `20260528 Summary.md` + `augment_final_design_lock_customer_docs_cancel_refund.md` (matched new `.gitignore` scratch rules); `.claudeignore` entries repointed to the `docs/archive/` paths so they stay out of Claude context.
 
 ### Next 📋
 - Decide fate of pre-existing dirty/untracked files:

@@ -58,7 +58,7 @@ supabase/migrations/095_seed_sale_products_set1.sql
 # (ไม่ใช่ source of truth สำหรับ coding — อ่านแล้วแค่เพิ่ม noise)
 HOPNIC_POS_V2_Master_Implementation_Plan.md
 API_INDEX.md
-augment_final_design_lock_customer_docs_cancel_refund.md
+docs/archive/augment_final_design_lock_customer_docs_cancel_refund.md
 "file ที่ คุย ปิงปองมา 18may2026 เรื่อง pos v3 และ policy.md"
 hopnic-legal-documents-agreement-blueprint.md
 ADMIN_MVP_ACTION_PLAN.md
@@ -75,5 +75,5 @@ app/mock/
 
 docs/schema-snapshots/
 supabase/snippets/
-20260528 Summary.md
+docs/archive/20260528 Summary.md
 supabase/migrations/
