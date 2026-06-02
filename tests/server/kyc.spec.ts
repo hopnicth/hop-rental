@@ -9,14 +9,16 @@
  *  - computeKycReadiness: all status branches + live expiry logic
  *  - canVerifyCompanyCert: 6-month boundary (inclusive/exclusive)
  *  - computeValidUntil: +1 year for individual and company
- *  - hasValidPickupOverride: match vs no match
- *  - resolvePickupKyc: kyc_verified, override, blocked paths
+ *  - findPickupOverride: shared predicate — match, decoy skip, multiple, empty
+ *  - hasValidPickupOverride: match vs no match (delegates to findPickupOverride)
+ *  - resolvePickupKyc: kyc_verified, override, blocked paths + matchedOverrideId
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   canVerifyCompanyCert,
   computeKycReadiness,
   computeValidUntil,
+  findPickupOverride,
   hashIdentity,
   hashKycIdentity,
   hasValidPickupOverride,
@@ -363,26 +365,69 @@ describe("computeValidUntil", () => {
   });
 });
 
-// ── 6. hasValidPickupOverride ─────────────────────────────────────────────────
+// ── 6. findPickupOverride (shared predicate) ──────────────────────────────────
+
+describe("findPickupOverride", () => {
+  const bookingId = "booking-abc-123";
+
+  it("returns null when overrides list is empty", () => {
+    expect(findPickupOverride([], bookingId)).toBeNull();
+  });
+
+  it("returns the matching override row (with its id) when one matches", () => {
+    const overrides = [
+      { id: "ov-decoy", booking_id: "other-booking" },
+      { id: "ov-match", booking_id: bookingId },
+    ];
+    const match = findPickupOverride(overrides, bookingId);
+    expect(match).not.toBeNull();
+    expect(match?.id).toBe("ov-match");
+  });
+
+  it("skips a decoy override whose booking_id differs (returns null)", () => {
+    const overrides = [{ id: "ov-decoy", booking_id: "other-booking" }];
+    expect(findPickupOverride(overrides, bookingId)).toBeNull();
+  });
+
+  it("returns the first matching row deterministically (array order) when several match", () => {
+    // Documented behavior: find() returns the first element in array order whose
+    // booking_id matches. Override rows are booking-specific, so multiple rows for
+    // the same booking are an edge case; behavior is the first in the provided order.
+    const overrides = [
+      { id: "ov-first", booking_id: bookingId },
+      { id: "ov-second", booking_id: bookingId },
+    ];
+    expect(findPickupOverride(overrides, bookingId)?.id).toBe("ov-first");
+  });
+});
+
+// ── 6b. hasValidPickupOverride (boolean wrapper) ──────────────────────────────
 
 describe("hasValidPickupOverride", () => {
   const bookingId = "booking-abc-123";
 
   it("returns true when an override matches the booking ID", () => {
     const overrides = [
-      { booking_id: "other-booking" },
-      { booking_id: bookingId },
+      { id: "ov-1", booking_id: "other-booking" },
+      { id: "ov-2", booking_id: bookingId },
     ];
     expect(hasValidPickupOverride(overrides, bookingId)).toBe(true);
   });
 
   it("returns false when overrides list is for a different booking", () => {
-    const overrides = [{ booking_id: "other-booking" }];
+    const overrides = [{ id: "ov-1", booking_id: "other-booking" }];
     expect(hasValidPickupOverride(overrides, bookingId)).toBe(false);
   });
 
   it("returns false when overrides list is empty", () => {
     expect(hasValidPickupOverride([], bookingId)).toBe(false);
+  });
+
+  it("agrees with findPickupOverride (delegates to the same predicate)", () => {
+    const overrides = [{ id: "ov-2", booking_id: bookingId }];
+    expect(hasValidPickupOverride(overrides, bookingId)).toBe(
+      findPickupOverride(overrides, bookingId) !== null,
+    );
   });
 });
 
@@ -414,20 +459,20 @@ describe("resolvePickupKyc", () => {
   });
 
   it("does not need an override when KYC passes", () => {
-    const overrides = [{ booking_id: bookingId }];
+    const overrides = [{ id: "ov-1", booking_id: bookingId }];
     const result = resolvePickupKyc(verifiedProfile, overrides, bookingId, now);
     expect(result.via).toBe("kyc_verified"); // KYC path takes precedence
   });
 
   it("allows pickup via override when KYC is not ready but a matching override exists", () => {
-    const overrides = [{ booking_id: bookingId }];
+    const overrides = [{ id: "ov-1", booking_id: bookingId }];
     const result = resolvePickupKyc(pendingProfile, overrides, bookingId, now);
     expect(result.canPickup).toBe(true);
     expect(result.via).toBe("override");
   });
 
   it("blocks when KYC is not ready and override is for a different booking", () => {
-    const overrides = [{ booking_id: "different-booking" }];
+    const overrides = [{ id: "ov-1", booking_id: "different-booking" }];
     const result = resolvePickupKyc(pendingProfile, overrides, bookingId, now);
     expect(result.canPickup).toBe(false);
     expect(result.via).toBe("blocked");
@@ -446,5 +491,38 @@ describe("resolvePickupKyc", () => {
     expect(result.canPickup).toBe(false);
     expect(result.via).toBe("blocked");
     expect(result.reason).toBe("no_profile");
+  });
+
+  // ── matchedOverrideId surfacing (TASK 4.1b — snapshot audit evidence) ─────────
+
+  it("matchedOverrideId is null on the kyc_verified path", () => {
+    const result = resolvePickupKyc(verifiedProfile, [], bookingId, now);
+    expect(result.matchedOverrideId).toBeNull();
+  });
+
+  it("matchedOverrideId is null on the blocked path", () => {
+    const result = resolvePickupKyc(pendingProfile, [], bookingId, now);
+    expect(result.via).toBe("blocked");
+    expect(result.matchedOverrideId).toBeNull();
+  });
+
+  it("matchedOverrideId returns the matched override id on the override path", () => {
+    const overrides = [{ id: "ov-authz", booking_id: bookingId }];
+    const result = resolvePickupKyc(pendingProfile, overrides, bookingId, now);
+    expect(result.via).toBe("override");
+    expect(result.matchedOverrideId).toBe("ov-authz");
+  });
+
+  it("matchedOverrideId uses the matched row id, NOT the arbitrary first array entry", () => {
+    // Decoy override at index 0 (different booking); the authorizing override is at index 1.
+    // matchedOverrideId must be the matched row's id, proving no reliance on overrides[0].
+    const overrides = [
+      { id: "ov-decoy", booking_id: "different-booking" },
+      { id: "ov-authz", booking_id: bookingId },
+    ];
+    const result = resolvePickupKyc(pendingProfile, overrides, bookingId, now);
+    expect(result.via).toBe("override");
+    expect(result.matchedOverrideId).toBe("ov-authz");
+    expect(result.matchedOverrideId).not.toBe("ov-decoy");
   });
 });

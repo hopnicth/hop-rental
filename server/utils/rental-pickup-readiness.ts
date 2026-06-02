@@ -11,13 +11,14 @@ type Row = Record<string, unknown>;
 // ── KYC helpers ───────────────────────────────────────────────────────────────
 
 type KycProfileRow = {
+  id: string;
   status: string;
   valid_until: string | null;
   created_at: string;
 };
 
-const KYC_PROFILE_SELECT = "status, valid_until, created_at";
-const KYC_OVERRIDE_SELECT = "booking_id";
+const KYC_PROFILE_SELECT = "id, status, valid_until, created_at";
+const KYC_OVERRIDE_SELECT = "id, booking_id";
 
 /**
  * Returns the most relevant KYC profile from an array:
@@ -102,7 +103,7 @@ export interface RentalPickupReadiness {
 }
 
 export const PICKUP_READINESS_BOOKING_SELECT =
-  "id, user_id, walk_in_phone, status, asset_id, asset_code, asset_name, product_name, hub_id, hub_name, start_date, end_date, rental_days, currency_code, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_status, deposit_refund_status, deposit_refund_amount, checkout_total_amount, checkout_paid_amount, booking_deposit_payment_status, booking_deposit_paid_amount, booker_name, booker_phone, created_at, pos_branch_id, pos_branch_code, pos_branch_name, pos_staff_user_id, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
+  "id, user_id, walk_in_phone, status, kyc_profile_id, asset_id, asset_code, asset_name, product_name, hub_id, hub_name, start_date, end_date, rental_days, currency_code, rental_total, deposit_amount, deposit_paid_amount, deposit_payment_status, deposit_refund_status, deposit_refund_amount, checkout_total_amount, checkout_paid_amount, booking_deposit_payment_status, booking_deposit_paid_amount, booker_name, booker_phone, created_at, pos_branch_id, pos_branch_code, pos_branch_name, pos_staff_user_id, asset:assets(storage_branch_id, store_branches(id, code, name_th, name_en))";
 
 const PAYMENT_LINE_SELECT =
   "line_type, tax_category, description_th, description_en, gross_amount, wht_applicable, wht_rate, wht_amount, net_payable_amount, is_refundable, wht_certificate_required, applies_to_security_deposit, reduces_remaining_security_deposit, status, source, metadata";
@@ -189,7 +190,7 @@ export function buildRentalPickupReadiness(input: {
   /** KYC profile resolved from kyc_profiles; null when no profile exists. */
   kycProfile?: KycProfileRow | null;
   /** Override records from kyc_pickup_overrides for this booking. */
-  kycOverrides?: Array<{ booking_id: string }>;
+  kycOverrides?: Array<{ id: string; booking_id: string }>;
 }): RentalPickupReadiness {
   const booking = input.booking;
   const profile = row(input.customerProfile);
@@ -382,6 +383,7 @@ export async function loadRentalPickupReadiness(input: {
   const bookingRow = booking as Row;
   const userId = text(bookingRow.user_id);
   const walkInPhone = text(bookingRow.walk_in_phone) || text(bookingRow.booker_phone);
+  const kycProfileId = nullableText(bookingRow.kyc_profile_id);
   const [linesResult, userResult, walkInResult, kycProfilesResult, kycOverridesResult] =
     await Promise.all([
       input.adminClient
@@ -403,14 +405,21 @@ export async function loadRentalPickupReadiness(input: {
             .eq("phone", walkInPhone)
             .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-      // kyc_profiles: registered customers only; walk-in resolves to null (TASK 4).
+      // kyc_profiles: registered users resolve by user_id; walk-in by booking.kyc_profile_id.
+      // Walk-in with null kyc_profile_id → no_profile → blocked (TASK 4 sets the FK).
       userId
         ? input.adminClient
             .from("kyc_profiles")
             .select(KYC_PROFILE_SELECT)
             .eq("user_id", userId)
             .order("created_at", { ascending: false })
-        : Promise.resolve({ data: [] as KycProfileRow[], error: null }),
+        : kycProfileId
+          ? input.adminClient
+              .from("kyc_profiles")
+              .select(KYC_PROFILE_SELECT)
+              .eq("id", kycProfileId)
+              .limit(1)
+          : Promise.resolve({ data: [] as KycProfileRow[], error: null }),
       // kyc_pickup_overrides: always fetch for this booking (both customer types).
       input.adminClient
         .from("kyc_pickup_overrides")
@@ -442,7 +451,7 @@ export async function loadRentalPickupReadiness(input: {
     kycProfile: selectBestKycProfile(
       (kycProfilesResult.data ?? []) as KycProfileRow[],
     ),
-    kycOverrides: (kycOverridesResult.data ?? []) as Array<{ booking_id: string }>,
+    kycOverrides: (kycOverridesResult.data ?? []) as Array<{ id: string; booking_id: string }>,
   });
 }
 

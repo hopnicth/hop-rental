@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   assertRentalFulfillmentPrerequisites,
   completeRentalBookingFulfillment,
@@ -31,6 +33,8 @@ function mockClient(scenario: {
   kycProfiles?: Array<Record<string, unknown>> | null;
   /** kyc_pickup_overrides rows for this booking. */
   kycOverrides?: Array<Record<string, unknown>> | null;
+  /** Optional callback to capture INSERT payloads for assertion. */
+  onInsert?: (table: string, payload: Record<string, unknown>) => void;
 }): AdminClient {
   let updatedBooking: Record<string, unknown> | null = null;
   const storage = {
@@ -105,7 +109,10 @@ function mockClient(scenario: {
           return singleResult();
         },
         single: async () => singleResult(),
-        insert: async () => ({ data: { id: "new-id" }, error: null }),
+        insert: async (payload: Record<string, unknown>) => {
+          scenario.onInsert?.(table, payload);
+          return { data: { id: "new-id" }, error: null };
+        },
         update: (payload: Record<string, unknown>) => {
           updatePayload = payload;
           return chain;
@@ -125,6 +132,7 @@ function baseBooking(status: string, extra: Record<string, unknown> = {}) {
     user_id: "user-1",
     walk_in_phone: null,
     status,
+    kyc_profile_id: "kyc-1",
     deposit_paid_amount: 1000,
     deposit_payment_status: "paid",
     deposit_refund_status: "not_refunded",
@@ -156,6 +164,7 @@ const baseChecklistItem = {
 };
 const baseUser = { id: "user-1", kyc_status: "verified" };
 const baseKycProfile = {
+  id: "kyc-1",
   status: "verified",
   valid_until: futureDate(),
   created_at: "2026-01-01T00:00:00.000Z",
@@ -579,13 +588,13 @@ describe("completeRentalBookingFulfillment", () => {
   );
 
   makeErrorTest(
-    "walk-in pickup blocked (no_profile — walk-in→kyc_profiles link deferred to TASK 4)",
+    "walk-in with kyc_profile_id = null is blocked (no_profile — TASK 4 sets the FK)",
     () => ({
       client: mockClient({
-        booking: baseBooking("confirmed", { user_id: null, walk_in_phone: "0812345678" }),
+        booking: baseBooking("confirmed", { user_id: null, walk_in_phone: "0812345678", kyc_profile_id: null }),
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
-        kycProfiles: [], // walk-in never queries profiles; resolves to null → no_profile
+        kycProfiles: [], // kyc_profile_id = null → code skips DB query entirely
         kycOverrides: [],
       }),
       payload: validPayload("pickup"),
@@ -618,8 +627,8 @@ describe("completeRentalBookingFulfillment", () => {
         booking: baseBooking("confirmed"),
         checklist: baseChecklist,
         checklistItems: [baseChecklistItem],
-        kycProfiles: [{ status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
-        kycOverrides: [{ booking_id: "booking-1" }],
+        kycProfiles: [{ id: "kyc-1", status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
+        kycOverrides: [{ id: "override-1", booking_id: "booking-1" }],
       }),
       userId: "staff-1",
       platformRole: "staff",
@@ -691,6 +700,171 @@ describe("completeRentalBookingFulfillment", () => {
     });
 
     expect(result.status).toBe("picked_up");
+  });
+
+  // ── Walk-in KYC gate (TASK 4.1b) ─────────────────────────────────────────────
+
+  it("walk-in with kyc_profile_id set and verified linked profile succeeds", async () => {
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: baseBooking("confirmed", { user_id: null, walk_in_phone: "0812345678", kyc_profile_id: "kyc-1" }),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        kycProfiles: [baseKycProfile],
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+  });
+
+  it("registered booking resolves KYC via user_id — kyc_profile_id on booking is ignored", async () => {
+    // user_id is set → code takes user_id path regardless of kyc_profile_id column value
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: baseBooking("confirmed", { user_id: "user-1", kyc_profile_id: "some-other-profile" }),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+        kycProfiles: [baseKycProfile],
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+  });
+
+  // ── KYC snapshot write tests (TASK 4.1b) ─────────────────────────────────────
+
+  it("pickup with verified KYC writes snapshot with kyc_authorized_via=verified and profile id", async () => {
+    let capturedInsert: Record<string, unknown> | null = null;
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: baseBooking("confirmed"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+        kycProfiles: [baseKycProfile],
+        onInsert: (table, payload) => {
+          if (table === "rental_booking_fulfillments") capturedInsert = payload;
+        },
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+    expect(capturedInsert?.kyc_authorized_via).toBe("verified");
+    expect(capturedInsert?.kyc_profile_id).toBe("kyc-1");
+    expect(capturedInsert?.kyc_override_id).toBeNull();
+    expect(capturedInsert?.kyc_status_snapshot).toBe("verified");
+  });
+
+  it("pickup with override KYC writes snapshot using the matched override id — not arbitrary first entry", async () => {
+    // Decoy override in position [0]; matched override in position [1].
+    // Snapshot must use the matched id, proving no arbitrary-index reliance.
+    let capturedInsert: Record<string, unknown> | null = null;
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: baseBooking("confirmed"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        users: [baseUser],
+        kycProfiles: [{ id: "kyc-1", status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" }],
+        kycOverrides: [
+          { id: "override-decoy", booking_id: "different-booking" },
+          { id: "override-1", booking_id: "booking-1" },
+        ],
+        onInsert: (table, payload) => {
+          if (table === "rental_booking_fulfillments") capturedInsert = payload;
+        },
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "pickup",
+      payload: validPayload("pickup"),
+    });
+    expect(result.status).toBe("picked_up");
+    expect(capturedInsert?.kyc_authorized_via).toBe("override");
+    expect(capturedInsert?.kyc_override_id).toBe("override-1");
+    expect(capturedInsert?.kyc_override_id).not.toBe("override-decoy");
+    // Profile evidence captured even though insufficient (audit trail)
+    expect(capturedInsert?.kyc_profile_id).toBe("kyc-1");
+    expect(capturedInsert?.kyc_status_snapshot).toBe("pending");
+  });
+
+  it("return event does not write KYC snapshot columns", async () => {
+    let capturedInsert: Record<string, unknown> | null = null;
+    const result = await completeRentalBookingFulfillment({
+      adminClient: mockClient({
+        booking: baseBooking("picked_up"),
+        checklist: baseChecklist,
+        checklistItems: [baseChecklistItem],
+        proofs: [{ id: "p1", amount: 500 }],
+        users: [baseUser],
+        onInsert: (table, payload) => {
+          if (table === "rental_booking_fulfillments") capturedInsert = payload;
+        },
+      }),
+      userId: "staff-1",
+      platformRole: "staff",
+      bookingId: "booking-1",
+      eventType: "return",
+      payload: validPayload("return", { refundAmount: 500, refundStatus: "refunded" }),
+    });
+    expect(result.status).toBe("returned");
+    expect(capturedInsert?.kyc_authorized_via).toBeUndefined();
+    expect(capturedInsert?.kyc_profile_id).toBeUndefined();
+    expect(capturedInsert?.kyc_override_id).toBeUndefined();
+    expect(capturedInsert?.kyc_status_snapshot).toBeUndefined();
+    expect(capturedInsert?.kyc_valid_until_snapshot).toBeUndefined();
+  });
+
+  // ── App-level snapshot consistency guards (source inspection) ─────────────────
+
+  it("app guard: verified snapshot requires kycProfile to be non-null", () => {
+    const src = readFileSync(resolve(process.cwd(), "server/utils/rental-fulfillment.ts"), "utf8");
+    expect(src).toContain("KYC snapshot inconsistency: verified gate with no profile");
+  });
+
+  it("app guard: override snapshot requires matchedOverrideId (override SELECT must include id)", () => {
+    const src = readFileSync(resolve(process.cwd(), "server/utils/rental-fulfillment.ts"), "utf8");
+    expect(src).toContain("KYC snapshot inconsistency: override gate with no override id");
+  });
+
+  it("KYC gate does not query kyc_profiles by phone — user_id and kyc_profile_id only", () => {
+    const src = readFileSync(resolve(process.cwd(), "server/utils/rental-fulfillment.ts"), "utf8");
+    // Registered: user_id path
+    expect(src).toContain('.eq("user_id", userId)');
+    // Walk-in: kyc_profile_id FK path
+    expect(src).toContain('.eq("id", kycProfileId)');
+    // Phone-based KYC matching is prohibited
+    expect(src).not.toContain('.eq("walk_in_phone"');
+  });
+
+  it("KYC gate resolves registered via user_id (if branch) and walk-in via kyc_profile_id (else-if branch)", () => {
+    const src = readFileSync(resolve(process.cwd(), "server/utils/rental-fulfillment.ts"), "utf8");
+    expect(src).toContain("if (userId)");
+    expect(src).toContain("else if (kycProfileId)");
+  });
+
+  it("override SELECT includes id for snapshot capture", () => {
+    const src = readFileSync(resolve(process.cwd(), "server/utils/rental-fulfillment.ts"), "utf8");
+    expect(src).toContain('"id, booking_id"');
+  });
+
+  it("profile SELECT includes id for snapshot capture", () => {
+    const src = readFileSync(resolve(process.cwd(), "server/utils/rental-fulfillment.ts"), "utf8");
+    expect(src).toContain('"id, status, valid_until, created_at"');
   });
 
   // ─── Return ─────────────────────────────────────────────

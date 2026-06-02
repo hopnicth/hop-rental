@@ -19,10 +19,20 @@ export type AdminClient = {
 // ── KYC helpers (local to this module) ────────────────────────────────────────
 
 type KycProfileRow = {
+  id: string;
   status: string;
   valid_until: string | null;
   created_at: string;
 };
+
+/** Audit snapshot written to rental_booking_fulfillments at pickup time. */
+interface KycPickupSnapshot {
+  kycProfileId: string | null;
+  kycStatusSnapshot: string | null;
+  kycValidUntilSnapshot: string | null;
+  kycAuthorizedVia: "verified" | "override";
+  kycOverrideId: string | null;
+}
 
 /**
  * Returns the most relevant KYC profile from an array:
@@ -85,6 +95,8 @@ export interface RentalFulfillmentPrerequisites {
   depositPaidAmount: number;
   refundAmount: number;
   refundStatus: RentalDepositRefundStatus;
+  /** KYC audit snapshot captured at pickup gate time. Null for return events. */
+  kycSnapshot: KycPickupSnapshot | null;
 }
 
 const SIGNATURE_BUCKET = "catalog-media";
@@ -98,7 +110,7 @@ const REFUND_STATUSES = new Set<RentalDepositRefundStatus>([
 const REFUND_PROOF_STATUSES = new Set<RentalDepositRefundStatus>(["refunded"]);
 
 const CURRENT_BOOKING_SELECT =
-  "id, user_id, walk_in_phone, status, deposit_amount, deposit_paid_amount, deposit_payment_status, booking_deposit_paid_amount, booking_deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, pos_branch_id, asset:assets(storage_branch_id)";
+  "id, user_id, walk_in_phone, status, kyc_profile_id, deposit_amount, deposit_paid_amount, deposit_payment_status, booking_deposit_paid_amount, booking_deposit_payment_status, deposit_refund_status, deposit_refund_amount, deposit_refund_notes, pos_branch_id, asset:assets(storage_branch_id)";
 
 function cleanText(value: unknown): string | null {
   return typeof value === "string" ? value.trim() || null : null;
@@ -230,30 +242,46 @@ async function assertNoDuplicateEvent(
 async function assertPickupCustomerEvidence(
   adminClient: AdminClient,
   row: Record<string, unknown>,
-) {
+): Promise<KycPickupSnapshot> {
   const userId = rowString(row, "user_id");
   // bookingId is in the row because CURRENT_BOOKING_SELECT includes "id".
   const bookingId = rowString(row, "id") ?? "";
 
-  // Resolve kyc_profiles for registered customers.
-  // Walk-in (userId = null) resolves to null → no_profile → blocked.
-  // Walk-in→kyc_profiles link is deferred to TASK 4 (phone is not the identity).
+  // Resolve kyc_profiles.
+  // Registered customers: query by user_id (authoritative — never use kyc_profile_id).
+  // Walk-in customers: query by rental_bookings.kyc_profile_id (FK set explicitly by staff).
+  // Walk-in with kyc_profile_id = null → no_profile → blocked.
+  // SECURITY NOTE (TASK 4 write path): the path that writes rental_bookings.kyc_profile_id
+  // must prove the selected profile belongs to this customer's verified identity via
+  // identity_hash match. The gate trusts this FK; the write path is security-critical.
   let kycProfile: KycProfileRow | null = null;
+  const kycProfileId = rowString(row, "kyc_profile_id");
+
   if (userId) {
     const { data: profiles, error: kycError } = await adminClient
       .from("kyc_profiles")
-      .select("status, valid_until, created_at")
+      .select("id, status, valid_until, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
     if (kycError)
       throw createError({ statusCode: 500, statusMessage: kycError.message });
     kycProfile = selectBestKycProfile(profiles as KycProfileRow[] | null);
+  } else if (kycProfileId) {
+    const { data: profiles, error: kycError } = await adminClient
+      .from("kyc_profiles")
+      .select("id, status, valid_until, created_at")
+      .eq("id", kycProfileId)
+      .limit(1)
+      .order("created_at", { ascending: false });
+    if (kycError)
+      throw createError({ statusCode: 500, statusMessage: kycError.message });
+    kycProfile = (profiles as KycProfileRow[] | null)?.[0] ?? null;
   }
 
   // Resolve booking-specific overrides (always, regardless of customer type).
   const { data: overrides, error: overridesError } = await adminClient
     .from("kyc_pickup_overrides")
-    .select("booking_id")
+    .select("id, booking_id")
     .eq("booking_id", bookingId);
   if (overridesError)
     throw createError({ statusCode: 500, statusMessage: overridesError.message });
@@ -261,7 +289,7 @@ async function assertPickupCustomerEvidence(
   // Live expiry — new Date() is intentional: TOCTOU-safe re-check at confirm time.
   const resolution = resolvePickupKyc(
     kycProfile,
-    (overrides ?? []) as Array<{ booking_id: string }>,
+    (overrides ?? []) as Array<{ id: string; booking_id: string }>,
     bookingId,
     new Date(),
   );
@@ -272,6 +300,44 @@ async function assertPickupCustomerEvidence(
       statusMessage: `Pickup KYC gate: ${resolution.reason}`,
     });
   }
+
+  // Gate passed — assemble audit snapshot.
+  // App is responsible for snapshot consistency (DB CHECKs removed per migration 106 decision).
+  if (resolution.via === "kyc_verified") {
+    if (!kycProfile) {
+      // Impossible state: resolvePickupKyc only returns kyc_verified when profile is non-null.
+      throw createError({ statusCode: 500, statusMessage: "KYC snapshot inconsistency: verified gate with no profile" });
+    }
+    return {
+      kycProfileId: kycProfile.id,
+      kycStatusSnapshot: kycProfile.status,
+      kycValidUntilSnapshot: kycProfile.valid_until,
+      kycAuthorizedVia: "verified",
+      kycOverrideId: null,
+    };
+  }
+
+  if (resolution.via === "override") {
+    if (!resolution.matchedOverrideId) {
+      // Defense-in-depth: KycOverrideEntry.id is now a required field, so the type
+      // system already guarantees matchedOverrideId is non-null on the override path.
+      // This runtime guard fails safe if a future change relaxes the type or a SELECT
+      // drops "id" — pickup is blocked rather than writing an override snapshot with
+      // no override id reference.
+      throw createError({ statusCode: 500, statusMessage: "KYC snapshot inconsistency: override gate with no override id" });
+    }
+    // Capture profile evidence even when insufficient (audit trail for what was overridden).
+    return {
+      kycProfileId: kycProfile?.id ?? null,
+      kycStatusSnapshot: kycProfile?.status ?? null,
+      kycValidUntilSnapshot: kycProfile?.valid_until ?? null,
+      kycAuthorizedVia: "override",
+      kycOverrideId: resolution.matchedOverrideId,
+    };
+  }
+
+  // blocked was already thrown above; this branch is unreachable.
+  throw createError({ statusCode: 500, statusMessage: "KYC resolution reached invalid state" });
 }
 
 async function loadCompletedChecklist(
@@ -401,6 +467,7 @@ export async function assertRentalFulfillmentPrerequisites({
   const branchId = resolveEventBranch(current, payload);
   await assertBranchAccess(adminClient, userId, platformRole, branchId);
   await assertNoDuplicateEvent(adminClient, bookingId, eventType);
+  let kycSnapshot: KycPickupSnapshot | null = null;
   if (eventType === "pickup") {
     if (requirePaidPickupDeposit) {
       const bookingDepositPaid = money(current.booking_deposit_paid_amount);
@@ -437,7 +504,7 @@ export async function assertRentalFulfillmentPrerequisites({
         }
       }
     }
-    await assertPickupCustomerEvidence(adminClient, current);
+    kycSnapshot = await assertPickupCustomerEvidence(adminClient, current);
   }
 
   const checklistId = await loadCompletedChecklist(
@@ -476,6 +543,7 @@ export async function assertRentalFulfillmentPrerequisites({
     depositPaidAmount,
     refundAmount,
     refundStatus,
+    kycSnapshot,
   };
 }
 
@@ -540,6 +608,7 @@ export async function completeRentalBookingFulfillment({
     depositPaidAmount,
     refundAmount,
     refundStatus,
+    kycSnapshot,
   } = prerequisites;
 
   const { signatureUrl, signaturePath } = await uploadSignature(
@@ -565,6 +634,16 @@ export async function completeRentalBookingFulfillment({
       signature_storage_path: signaturePath,
       notes: cleanText(payload.notes),
       performed_by_user_id: userId,
+      // KYC audit snapshot — written only for pickup events; null for return events.
+      ...(eventType === "pickup" && kycSnapshot
+        ? {
+            kyc_profile_id: kycSnapshot.kycProfileId,
+            kyc_status_snapshot: kycSnapshot.kycStatusSnapshot,
+            kyc_valid_until_snapshot: kycSnapshot.kycValidUntilSnapshot,
+            kyc_authorized_via: kycSnapshot.kycAuthorizedVia,
+            kyc_override_id: kycSnapshot.kycOverrideId,
+          }
+        : {}),
     });
   if (insertError) {
     throw createError({

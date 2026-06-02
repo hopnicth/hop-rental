@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const mockState = vi.hoisted(() => ({
   routerParams: {} as Record<string, string>,
@@ -54,6 +56,7 @@ function query(table: string) {
     select: () => chain,
     eq: () => chain,
     order: () => chain,
+    limit: () => chain,
     maybeSingle: async () => tableResult(table),
     then: (resolve: (value: unknown) => unknown) =>
       Promise.resolve(tableResult(table)).then(resolve),
@@ -99,6 +102,7 @@ function booking(extra: Record<string, unknown> = {}) {
     user_id: "user-1",
     walk_in_phone: null,
     status: "confirmed",
+    kyc_profile_id: null,
     asset_id: "asset-1",
     asset_code: "CAM-1",
     asset_name: "Camera",
@@ -169,6 +173,7 @@ function paymentLines() {
 
 function verifiedKycProfile(overrides: Partial<Record<string, unknown>> = {}) {
   return {
+    id: "kyc-1",
     status: "verified",
     valid_until: futureDate(),
     created_at: "2026-01-01T00:00:00.000Z",
@@ -177,7 +182,7 @@ function verifiedKycProfile(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 function pendingKycProfile() {
-  return { status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" };
+  return { id: "kyc-1", status: "pending", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" };
 }
 
 // ── buildRentalPickupReadiness unit tests ─────────────────────────────────────
@@ -192,7 +197,7 @@ describe("rental pickup readiness utility", () => {
         full_name: "Verified Customer",
         phone: "0812345678",
       },
-      kycProfile: { status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
+      kycProfile: { id: "kyc-1", status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
       kycOverrides: [],
     });
 
@@ -210,7 +215,7 @@ describe("rental pickup readiness utility", () => {
     const readiness = buildRentalPickupReadiness({
       booking: booking(),
       paymentLines: paymentLines(),
-      kycProfile: { status: "verified", valid_until: pastDate(), created_at: "2026-01-01T00:00:00.000Z" },
+      kycProfile: { id: "kyc-1", status: "verified", valid_until: pastDate(), created_at: "2026-01-01T00:00:00.000Z" },
       kycOverrides: [],
     });
 
@@ -241,7 +246,7 @@ describe("rental pickup readiness utility", () => {
     const readiness = buildRentalPickupReadiness({
       booking: booking(),
       paymentLines: paymentLines(),
-      kycProfile: { status: "rejected", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" },
+      kycProfile: { id: "kyc-1", status: "rejected", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" },
       kycOverrides: [],
     });
 
@@ -258,7 +263,7 @@ describe("rental pickup readiness utility", () => {
     const readiness = buildRentalPickupReadiness({
       booking: booking(),
       paymentLines: paymentLines(),
-      kycProfile: { status: "revoked", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" },
+      kycProfile: { id: "kyc-1", status: "revoked", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" },
       kycOverrides: [],
     });
 
@@ -289,7 +294,7 @@ describe("rental pickup readiness utility", () => {
       booking: booking(),
       paymentLines: paymentLines(),
       kycProfile: pendingKycProfile(),
-      kycOverrides: [{ booking_id: "booking-1" }],
+      kycOverrides: [{ id: "override-1", booking_id: "booking-1" }],
     });
 
     // No blocker because override allows pickup
@@ -308,7 +313,7 @@ describe("rental pickup readiness utility", () => {
       booking: booking(),
       paymentLines: paymentLines(),
       kycProfile: pendingKycProfile(),
-      kycOverrides: [{ booking_id: "different-booking" }],
+      kycOverrides: [{ id: "override-x", booking_id: "different-booking" }],
     });
 
     expect(readiness.readiness.blockers.map((b) => b.code)).toContain(
@@ -320,8 +325,8 @@ describe("rental pickup readiness utility", () => {
     const readiness = buildRentalPickupReadiness({
       booking: booking(),
       paymentLines: paymentLines(),
-      kycProfile: { status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
-      kycOverrides: [{ booking_id: "booking-1" }],
+      kycProfile: { id: "kyc-1", status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
+      kycOverrides: [{ id: "override-1", booking_id: "booking-1" }],
     });
 
     expect(readiness.readiness.classification).toBe("ready");
@@ -339,18 +344,18 @@ describe("rental pickup readiness utility", () => {
       booking: booking(),
       paymentLines: paymentLines(),
       // Caller pre-selected the best profile (verified), simulating selectBestKycProfile
-      kycProfile: { status: "verified", valid_until: futureDate(), created_at: "2025-06-01T00:00:00.000Z" },
+      kycProfile: { id: "kyc-1", status: "verified", valid_until: futureDate(), created_at: "2025-06-01T00:00:00.000Z" },
       kycOverrides: [],
     });
     expect(readiness.readiness.classification).toBe("ready");
   });
 
-  it("walk-in booking resolves to no_profile blocked (walk-in→kyc_profiles link deferred to TASK 4)", () => {
+  it("walk-in with kyc_profile_id = null is blocked (no_profile — TASK 4 sets the FK)", () => {
     const readiness = buildRentalPickupReadiness({
-      booking: booking({ user_id: null, walk_in_phone: "0812345678" }),
+      booking: booking({ user_id: null, walk_in_phone: "0812345678", kyc_profile_id: null }),
       paymentLines: paymentLines(),
       walkInCustomer: { phone: "0812345678", full_name: "Walk-in Customer" },
-      kycProfile: null, // Walk-in always receives null per TASK 3 contract
+      kycProfile: null,
       kycOverrides: [],
     });
 
@@ -362,12 +367,77 @@ describe("rental pickup readiness utility", () => {
     expect(blocker?.context?.kycReason).toBe("no_profile");
   });
 
+  it("walk-in with kyc_profile_id set and verified linked profile is ready", () => {
+    const readiness = buildRentalPickupReadiness({
+      booking: booking({ user_id: null, walk_in_phone: "0812345678", kyc_profile_id: "kyc-1" }),
+      paymentLines: paymentLines(),
+      walkInCustomer: { phone: "0812345678", full_name: "Walk-in Customer" },
+      kycProfile: verifiedKycProfile(),
+      kycOverrides: [],
+    });
+
+    expect(readiness.readiness.classification).toBe("ready");
+    expect(readiness.readiness.blockers).toHaveLength(0);
+    expect(readiness.customer.kycStatus).toBe("verified");
+  });
+
+  it("walk-in with kyc_profile_id set but expired profile is blocked (expired)", () => {
+    const readiness = buildRentalPickupReadiness({
+      booking: booking({ user_id: null, walk_in_phone: "0812345678", kyc_profile_id: "kyc-1" }),
+      paymentLines: paymentLines(),
+      kycProfile: verifiedKycProfile({ valid_until: pastDate() }),
+      kycOverrides: [],
+    });
+
+    expect(readiness.readiness.classification).toBe("blocked");
+    const blocker = readiness.readiness.blockers.find(b => b.code === "kyc_pickup_gate_blocked");
+    expect(blocker?.context?.kycReason).toBe("expired");
+  });
+
+  it("walk-in with kyc_profile_id set but pending profile is blocked (pending)", () => {
+    const readiness = buildRentalPickupReadiness({
+      booking: booking({ user_id: null, walk_in_phone: "0812345678", kyc_profile_id: "kyc-1" }),
+      paymentLines: paymentLines(),
+      kycProfile: pendingKycProfile(),
+      kycOverrides: [],
+    });
+
+    expect(readiness.readiness.classification).toBe("blocked");
+    const blocker = readiness.readiness.blockers.find(b => b.code === "kyc_pickup_gate_blocked");
+    expect(blocker?.context?.kycReason).toBe("pending");
+  });
+
+  it("walk-in with kyc_profile_id set but rejected profile is blocked (rejected)", () => {
+    const readiness = buildRentalPickupReadiness({
+      booking: booking({ user_id: null, walk_in_phone: "0812345678", kyc_profile_id: "kyc-1" }),
+      paymentLines: paymentLines(),
+      kycProfile: { id: "kyc-1", status: "rejected", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" },
+      kycOverrides: [],
+    });
+
+    expect(readiness.readiness.classification).toBe("blocked");
+    const blocker = readiness.readiness.blockers.find(b => b.code === "kyc_pickup_gate_blocked");
+    expect(blocker?.context?.kycReason).toBe("rejected");
+  });
+
+  it("walk-in with kyc_profile_id set but revoked profile is blocked (revoked)", () => {
+    const readiness = buildRentalPickupReadiness({
+      booking: booking({ user_id: null, walk_in_phone: "0812345678", kyc_profile_id: "kyc-1" }),
+      paymentLines: paymentLines(),
+      kycProfile: { id: "kyc-1", status: "revoked", valid_until: null, created_at: "2026-01-01T00:00:00.000Z" },
+      kycOverrides: [],
+    });
+
+    const blocker = readiness.readiness.blockers.find(b => b.code === "kyc_pickup_gate_blocked");
+    expect(blocker?.context?.kycReason).toBe("revoked");
+  });
+
   it("walk-in with a valid booking-specific override proceeds to pickup", () => {
     const readiness = buildRentalPickupReadiness({
       booking: booking({ user_id: null, walk_in_phone: "0812345678" }),
       paymentLines: paymentLines(),
       kycProfile: null,
-      kycOverrides: [{ booking_id: "booking-1" }],
+      kycOverrides: [{ id: "override-1", booking_id: "booking-1" }],
     });
 
     expect(readiness.readiness.blockers.map((b) => b.code)).not.toContain(
@@ -383,7 +453,7 @@ describe("rental pickup readiness utility", () => {
       const readiness = buildRentalPickupReadiness({
         booking: booking({ status }),
         paymentLines: paymentLines(),
-        kycProfile: { status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
+        kycProfile: { id: "kyc-1", status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
         kycOverrides: [],
       });
 
@@ -398,7 +468,7 @@ describe("rental pickup readiness utility", () => {
     const readiness = buildRentalPickupReadiness({
       booking: booking(),
       paymentLines: [],
-      kycProfile: { status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
+      kycProfile: { id: "kyc-1", status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
       kycOverrides: [],
     });
 
@@ -415,7 +485,7 @@ describe("rental pickup readiness utility", () => {
     const readiness = buildRentalPickupReadiness({
       booking: booking(),
       paymentLines: paymentLines(),
-      kycProfile: { status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
+      kycProfile: { id: "kyc-1", status: "verified", valid_until: futureDate(), created_at: "2026-01-01T00:00:00.000Z" },
       kycOverrides: [],
     });
     expect(readiness.customer.idEvidencePresent).toBe(false);
@@ -505,5 +575,60 @@ describe("admin POS V2 pickup readiness endpoint", () => {
     expect(
       result.readiness.readiness.warnings.map((w: { code: string }) => w.code),
     ).toContain("kyc_pickup_via_override");
+  });
+
+  it("walk-in with kyc_profile_id set and verified profile → ready", async () => {
+    mockState.booking = {
+      ...booking(),
+      user_id: null,
+      walk_in_phone: "0812345678",
+      kyc_profile_id: "kyc-1",
+    };
+    mockState.customer = null;
+    mockState.kycProfiles = [verifiedKycProfile()];
+
+    const result = await endpoint({});
+
+    expect(result.readiness.readiness.classification).toBe("ready");
+    expect(result.readiness.customer.kycStatus).toBe("verified");
+  });
+
+  it("walk-in with kyc_profile_id = null is blocked even when kycProfiles mock has data (no phone matching)", async () => {
+    // walk_in_phone is set and kycProfiles has a verified profile in the mock,
+    // but kyc_profile_id = null means the code skips the kyc_profiles query entirely.
+    // This proves no phone-based KYC lookup occurs.
+    mockState.booking = {
+      ...booking(),
+      user_id: null,
+      walk_in_phone: "0812345678",
+      kyc_profile_id: null,
+    };
+    mockState.customer = null;
+    mockState.kycProfiles = [verifiedKycProfile()]; // present but must not be used
+
+    const result = await endpoint({});
+
+    expect(result.readiness.readiness.classification).toBe("blocked");
+    const blocker = result.readiness.readiness.blockers.find(
+      (b: { code: string; context?: Record<string, unknown> }) => b.code === "kyc_pickup_gate_blocked",
+    );
+    expect(blocker?.context?.kycReason).toBe("no_profile");
+  });
+
+  it("readiness and confirm use equivalent KYC resolution — both rely on resolvePickupKyc (source test)", () => {
+    const readinessSrc = readFileSync(
+      resolve(process.cwd(), "server/utils/rental-pickup-readiness.ts"),
+      "utf8",
+    );
+    const fulfillmentSrc = readFileSync(
+      resolve(process.cwd(), "server/utils/rental-fulfillment.ts"),
+      "utf8",
+    );
+    // Both gate paths call the same resolvePickupKyc helper
+    expect(readinessSrc).toContain("resolvePickupKyc");
+    expect(fulfillmentSrc).toContain("resolvePickupKyc");
+    // Both include kyc_profile_id in their booking SELECT
+    expect(readinessSrc).toContain("kyc_profile_id");
+    expect(fulfillmentSrc).toContain("kyc_profile_id");
   });
 });

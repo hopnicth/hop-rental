@@ -47,6 +47,8 @@ export interface KycPickupResolution {
   canPickup: boolean;
   via: "kyc_verified" | "override" | "blocked";
   reason: string;
+  /** ID of the override row that authorized pickup when via === "override". Null otherwise. */
+  matchedOverrideId: string | null;
 }
 
 /** Minimal profile shape required by compute helpers. */
@@ -58,6 +60,13 @@ export interface KycProfileInput {
 
 /** Minimal override entry required by the pickup gate. */
 export interface KycOverrideEntry {
+  /**
+   * DB row id. REQUIRED (security-core): every override SELECT MUST include "id"
+   * so the pickup audit snapshot can record the exact override row that authorized
+   * pickup. Making this required forces a compile-time error if any caller builds
+   * an override array without selecting "id" — preventing a silent runtime gap.
+   */
+  id: string;
   booking_id: string;
 }
 
@@ -236,14 +245,33 @@ export function computeValidUntil(
 // ── 5. Override Check ─────────────────────────────────────────────────────────
 
 /**
+ * Returns the override row scoped to the given bookingId, or null.
+ *
+ * SINGLE SOURCE OF TRUTH for pickup-override authorization. Both the boolean
+ * `hasValidPickupOverride` and the gate `resolvePickupKyc` resolve override
+ * authorization through THIS function, so the readiness (display) gate and the
+ * confirm (authoritative) gate can never diverge on which override authorizes a
+ * pickup. The match predicate is `booking_id === bookingId` only — override is
+ * booking-specific; a record for a different booking does not count.
+ */
+export function findPickupOverride(
+  overrides: KycOverrideEntry[],
+  bookingId: string,
+): KycOverrideEntry | null {
+  return overrides.find((o) => o.booking_id === bookingId) ?? null;
+}
+
+/**
  * Returns true if any override record is scoped to the given bookingId.
+ * Thin boolean wrapper over `findPickupOverride` — kept for callers that only
+ * need a yes/no answer. Delegates to the shared predicate to avoid drift.
  * Override is booking-specific — a record for a different booking does not count.
  */
 export function hasValidPickupOverride(
   overrides: KycOverrideEntry[],
   bookingId: string,
 ): boolean {
-  return overrides.some((o) => o.booking_id === bookingId);
+  return findPickupOverride(overrides, bookingId) !== null;
 }
 
 // ── 6. Pickup KYC Resolution ──────────────────────────────────────────────────
@@ -265,12 +293,19 @@ export function resolvePickupKyc(
   const readiness = computeKycReadiness(profile, now);
 
   if (readiness.ready) {
-    return { canPickup: true, via: "kyc_verified", reason: "verified" };
+    return { canPickup: true, via: "kyc_verified", reason: "verified", matchedOverrideId: null };
   }
 
-  if (hasValidPickupOverride(overrides, bookingId)) {
-    return { canPickup: true, via: "override", reason: "override_present" };
+  // Shared predicate — identical match logic to hasValidPickupOverride / readiness.
+  const matchedOverride = findPickupOverride(overrides, bookingId);
+  if (matchedOverride) {
+    return {
+      canPickup: true,
+      via: "override",
+      reason: "override_present",
+      matchedOverrideId: matchedOverride.id,
+    };
   }
 
-  return { canPickup: false, via: "blocked", reason: readiness.reason };
+  return { canPickup: false, via: "blocked", reason: readiness.reason, matchedOverrideId: null };
 }
