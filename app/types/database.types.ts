@@ -1,4 +1,3 @@
-Initialising login role...
 export type Json =
   | string
   | number
@@ -12,31 +11,6 @@ export type Database = {
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.1"
-  }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
   }
   public: {
     Tables: {
@@ -5766,6 +5740,11 @@ export type Database = {
           event_type: string
           id: string
           idempotency_key: string | null
+          kyc_authorized_via: string | null
+          kyc_override_id: string | null
+          kyc_profile_id: string | null
+          kyc_status_snapshot: Database["public"]["Enums"]["kyc_status"] | null
+          kyc_valid_until_snapshot: string | null
           notes: string | null
           performed_by_user_id: string | null
           signature_storage_path: string | null
@@ -5781,6 +5760,11 @@ export type Database = {
           event_type: string
           id?: string
           idempotency_key?: string | null
+          kyc_authorized_via?: string | null
+          kyc_override_id?: string | null
+          kyc_profile_id?: string | null
+          kyc_status_snapshot?: Database["public"]["Enums"]["kyc_status"] | null
+          kyc_valid_until_snapshot?: string | null
           notes?: string | null
           performed_by_user_id?: string | null
           signature_storage_path?: string | null
@@ -5796,6 +5780,11 @@ export type Database = {
           event_type?: string
           id?: string
           idempotency_key?: string | null
+          kyc_authorized_via?: string | null
+          kyc_override_id?: string | null
+          kyc_profile_id?: string | null
+          kyc_status_snapshot?: Database["public"]["Enums"]["kyc_status"] | null
+          kyc_valid_until_snapshot?: string | null
           notes?: string | null
           performed_by_user_id?: string | null
           signature_storage_path?: string | null
@@ -5822,6 +5811,20 @@ export type Database = {
             columns: ["branch_id"]
             isOneToOne: false
             referencedRelation: "store_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_booking_fulfillments_kyc_override_id_fkey"
+            columns: ["kyc_override_id"]
+            isOneToOne: false
+            referencedRelation: "kyc_pickup_overrides"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_booking_fulfillments_kyc_profile_id_fkey"
+            columns: ["kyc_profile_id"]
+            isOneToOne: false
+            referencedRelation: "kyc_profiles"
             referencedColumns: ["id"]
           },
           {
@@ -6228,6 +6231,7 @@ export type Database = {
           hub_id: string | null
           hub_name: string | null
           id: string
+          kyc_profile_id: string | null
           matched_product_id: string | null
           matched_product_name: string | null
           monthly_rate: number
@@ -6307,6 +6311,7 @@ export type Database = {
           hub_id?: string | null
           hub_name?: string | null
           id?: string
+          kyc_profile_id?: string | null
           matched_product_id?: string | null
           matched_product_name?: string | null
           monthly_rate?: number
@@ -6386,6 +6391,7 @@ export type Database = {
           hub_id?: string | null
           hub_name?: string | null
           id?: string
+          kyc_profile_id?: string | null
           matched_product_id?: string | null
           matched_product_name?: string | null
           monthly_rate?: number
@@ -6450,6 +6456,13 @@ export type Database = {
             columns: ["cancelled_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_bookings_kyc_profile_id_fkey"
+            columns: ["kyc_profile_id"]
+            isOneToOne: false
+            referencedRelation: "kyc_profiles"
             referencedColumns: ["id"]
           },
           {
@@ -7606,9 +7619,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       asset_document_kind: [
@@ -7779,5 +7789,3 @@ export const Constants = {
     },
   },
 } as const
-A new version of Supabase CLI is available: v2.102.0 (currently installed v2.75.0)
-We recommend updating regularly for new features and bug fixes: https://supabase.com/docs/guides/cli/getting-started#updating-the-supabase-cli
