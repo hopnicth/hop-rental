@@ -137,7 +137,7 @@ Attach must enforce:
 
 3. No phone matching. Resolve identity only by identity hash. `walk_in_phone` is contact metadata only.
 
-4. Walk-in only. Attach applies only when `booking.user_id IS NULL`. Refuse or no-op on registered bookings, because registered bookings resolve KYC by `user_id` and ignore `kyc_profile_id`.
+4. Walk-in only — both booking and profile. Attach applies only when `booking.user_id IS NULL` AND the attached profile is walk-in-scoped (`kyc_profiles.user_id IS NULL`). Refuse registered bookings (they resolve KYC by `user_id` and ignore `kyc_profile_id`), and refuse registered-user profiles (mirrors 4.2A-2 create-pending, which never reuses a registered profile for walk-in context — otherwise a walk-in could attach a registered user's verified profile by knowing the identity value). The profile registered-scope check runs AFTER the identity-hash proof so registered-ness is never revealed without proving identity ownership.
 
 5. Attach must not verify. Attach must not set `status = verified` and must not mutate any `kyc_profiles.status` or verification/rejection/revocation fields. It only writes the FK on `rental_bookings`.
 
@@ -149,7 +149,7 @@ Attach must enforce:
 
 7. Server-side authorization. Attach requires `requirePlatformAdmin` and branch-access parity with the existing pickup/readiness path. The acting staff/admin must be authorized to operate the target booking.
 
-8. Re-attach is allowed before pickup, including identity correction. Where practical, record traceability: who attached, when, and old profile → new profile.
+8. Re-attach is allowed before pickup, including identity correction. MVP traceability (DECIDED — Option A): there is no separate attach audit log in this phase. The attach response surfaces `oldProfileId` → `newProfileId`, and the pickup fulfillment snapshot (`rental_booking_fulfillments` KYC columns) remains the durable audit record of the final authorizing profile. Intermediate pre-pickup re-attaches are allowed but are not separately audited until a later task. Adding a durable attach audit log (Option B) requires schema/workflow changes and explicit approval.
 
 9. Frozen after pickup. Once a pickup fulfillment snapshot exists for the booking, `kyc_profile_id` must not change unless a separate audited correction flow is designed.
 
