@@ -124,3 +124,42 @@ Impact: File left in place pending human confirmation that those questions are r
 Decision: Override authorization for the pickup gate is resolved through ONE shared predicate, `findPickupOverride(overrides, bookingId)` in `server/utils/kyc.ts`. `hasValidPickupOverride` (boolean) and `resolvePickupKyc` (gate) both delegate to it; `resolvePickupKyc` now surfaces `matchedOverrideId` (the exact authorizing override row id, never `overrides[0]`). `KycOverrideEntry.id` is REQUIRED so every override SELECT must include `id` at compile time. The pickup audit snapshot (`rental_booking_fulfillments` 5 KYC columns) is assembled from the same fresh query/`new Date()` that authorized the gate and is write-only audit evidence — never a gate input. Walk-in bookings resolve KYC via `rental_bookings.kyc_profile_id` (FK), registered via `user_id` first; no phone matching.
 Reason: A single predicate makes readiness (display) and confirm (authoritative) gates structurally incapable of diverging on override authorization. Required `id` turns a possible runtime gap into a compile-time error. The matched-id snapshot records exactly which override row authorized a given pickup, for audit.
 Impact: **TASK 6 carry-forward — `findPickupOverride` must be updated for override expiry selection when override expiry is implemented.** When TASK 6 adds `valid_until` (or equivalent) to `kyc_pickup_overrides`, the expiry/live-now check must be added INSIDE `findPickupOverride` (the single source of truth) so both `hasValidPickupOverride` and `resolvePickupKyc` inherit it without drift. Do NOT add an expiry filter at a call site or in a second predicate. Requires Opus review (security-core gate change). Snapshot invariant to preserve: `kyc_authorized_via='verified'` → `kyc_profile_id NOT NULL`; `='override'` → matched `kyc_override_id NOT NULL`; return events → all 5 KYC snapshot columns NULL.
+
+## TASK 4.2A-3 — KYC attach: locked invariants & decisions
+
+The attach path writes `rental_bookings.kyc_profile_id`, which the pickup gate trusts for walk-in bookings. The pickup gate does not re-prove identity ownership; therefore the attach endpoint is the security boundary for this link.
+
+Attach must enforce:
+
+1. Identity ownership. Attach must re-derive the hash via `hashKycIdentity(identityType, identityValue)` from the captured identity and assert it equals the target profile's `identity_hash`. Never accept a bare client-supplied `profile_id` without identity proof.
+
+2. Verify-before-attach is not required. Attaching a pending profile is allowed. The confirm-time pickup gate re-evaluates fresh KYC state and blocks pending profiles. Attach proves identity linkage; verify proves legitimacy; the gate requires verified status.
+
+3. No phone matching. Resolve identity only by identity hash. `walk_in_phone` is contact metadata only.
+
+4. Walk-in only. Attach applies only when `booking.user_id IS NULL`. Refuse or no-op on registered bookings, because registered bookings resolve KYC by `user_id` and ignore `kyc_profile_id`.
+
+5. Attach must not verify. Attach must not set `status = verified` and must not mutate any `kyc_profiles.status` or verification/rejection/revocation fields. It only writes the FK on `rental_bookings`.
+
+6. Single writer. `rental_bookings.kyc_profile_id` is settable only via the dedicated attach endpoint:
+
+   `POST /api/admin/rental-bookings/[id]/kyc-attach`
+
+   It must not be writable through generic booking update routes.
+
+7. Server-side authorization. Attach requires `requirePlatformAdmin` and branch-access parity with the existing pickup/readiness path. The acting staff/admin must be authorized to operate the target booking.
+
+8. Re-attach is allowed before pickup, including identity correction. Where practical, record traceability: who attached, when, and old profile → new profile.
+
+9. Frozen after pickup. Once a pickup fulfillment snapshot exists for the booking, `kyc_profile_id` must not change unless a separate audited correction flow is designed.
+
+10. Dedupe. Use app-level lookup-before-insert scoped to `user_id IS NULL`. Never reuse a registered profile for walk-in create. No DB unique constraint on `identity_hash` in this phase.
+
+11. PII boundary. All KYC profile API responses must go through `toSafeKycProfile` in `server/utils/kyc-profile-view.ts`.
+
+12. Branch scoping — DECIDED: global KYC identity. KYC profiles are global identity records and are usable across branches. Attach checks operation-level branch access on the booking, not the profile branch. The attached profile's `branch_id` / `verified_branch_id` is not matched against the booking pickup branch. `verified_branch_id` is audit evidence only. If HOPNIC branches later become independent franchises or data-isolated entities, revisit this as branch-scoped behavior.
+
+Open business decisions before verify/document tasks:
+
+- Verify authority: staff-on-site vs super_admin-only.
+- Document-required-for-verify: can verify set `verified` without a `kyc_documents` row?
