@@ -317,20 +317,20 @@ describe("POST /api/admin/kyc/profiles/lookup — sensitive data", () => {
     expect(JSON.stringify(result)).not.toContain("SENSITIVE_HASH_MUST_NOT_LEAK");
   });
 
-  it("the lookup SELECT does not request identity_hash or storage paths", async () => {
+  it("uses the shared PII whitelist boundary (KYC_PROFILE_SAFE_SELECT + toSafeKycProfile)", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const src = readFileSync(
       resolve(process.cwd(), "server/api/admin/kyc/profiles/lookup.post.ts"),
       "utf8",
     );
-    const selectMatch = src.match(/KYC_LOOKUP_SELECT\s*=\s*\n?\s*"([^"]+)"/);
-    expect(selectMatch).not.toBeNull();
-    const select = selectMatch![1];
-    expect(select).not.toContain("identity_hash");
-    expect(select).not.toContain("storage_path");
-    expect(select).not.toContain("rejection_note");
-    expect(select).not.toContain("revoked_note");
+    // The route must source the select + mapper from the shared util — not a local copy.
+    expect(src).toContain('from "~~/server/utils/kyc-profile-view"');
+    expect(src).toContain("KYC_PROFILE_SAFE_SELECT");
+    expect(src).toContain("toSafeKycProfile");
+    // The route must NOT re-declare its own safe select string.
+    expect(src).not.toMatch(/const\s+KYC_LOOKUP_SELECT\s*=/);
+    // (The SELECT-content exclusions are verified directly in kyc-profile-view.spec.ts.)
   });
 
   it("does not log the raw identity value", async () => {

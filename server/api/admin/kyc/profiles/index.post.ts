@@ -6,8 +6,13 @@ import {
   normalizeKycIdentity,
   selectBestKycProfile,
   type KycIdentityType,
-  type KycProfileRow,
 } from "~~/server/utils/kyc";
+import {
+  KYC_PROFILE_SAFE_SELECT,
+  toSafeKycProfile,
+  type KycProfileSafeRow,
+  type SafeKycProfile,
+} from "~~/server/utils/kyc-profile-view";
 
 /**
  * POST /api/admin/kyc/profiles
@@ -41,11 +46,8 @@ import {
  *  - walk_in_phone is stored as contact metadata only — never used to match identity.
  *  - This creates a pending profile; a pending profile does NOT pass the pickup gate
  *    (resolvePickupKyc), and confirmPickup re-checks live KYC later.
- *
- * NOTE (duplication to consolidate): SafeKycProfile / the safe SELECT / the mapper
- * are intentionally re-declared here rather than shared with lookup.post.ts, to keep
- * this task scoped to "create pending". A follow-up task should extract a single
- * shared kyc-profile view util (same pattern as selectBestKycProfile / findPickupOverride).
+ *  - The response shape, safe SELECT, and mapper come from the shared PII whitelist
+ *    util `server/utils/kyc-profile-view.ts` (single source of truth for lookup/create).
  */
 
 const CUSTOMER_TYPES = new Set(["individual", "company"]);
@@ -65,58 +67,10 @@ const COHERENT_IDENTITY_TYPES: Record<string, ReadonlySet<KycIdentityType>> = {
   company: new Set(["juristic_id"]),
 };
 
-// Columns safe to read back. Excludes identity_hash, storage paths, document data,
-// and rejection/revoke notes. Includes user_id only to compute the dedupe filter
-// and the `hasUserId` presence flag — the raw user_id is never returned.
-const KYC_PROFILE_SAFE_SELECT =
-  "id, user_id, customer_type, identity_type, identity_last4, status, valid_until, branch_id, created_at, verified_at, verified_branch_id";
-
-interface KycProfileSafeRow extends KycProfileRow {
-  user_id: string | null;
-  customer_type: string;
-  identity_type: string;
-  identity_last4: string;
-  branch_id: string | null;
-  verified_at: string | null;
-  verified_branch_id: string | null;
-}
-
-export interface SafeKycProfile {
-  id: string;
-  customerType: string;
-  identityType: string;
-  identityLast4: string;
-  status: string;
-  validUntil: string | null;
-  branchId: string | null;
-  createdAt: string;
-  verifiedAt: string | null;
-  verifiedBranchId: string | null;
-  /** Presence only — true when the profile is owned by a registered user. */
-  hasUserId: boolean;
-}
-
 export interface KycProfileCreateResponse {
   profile: SafeKycProfile;
   created: boolean;
   reused: boolean;
-}
-
-/** Pure mapper — strips identity_hash and all sensitive fields by construction. */
-function toSafeKycProfile(row: KycProfileSafeRow): SafeKycProfile {
-  return {
-    id: row.id,
-    customerType: row.customer_type,
-    identityType: row.identity_type,
-    identityLast4: row.identity_last4,
-    status: row.status,
-    validUntil: row.valid_until,
-    branchId: row.branch_id,
-    createdAt: row.created_at,
-    verifiedAt: row.verified_at,
-    verifiedBranchId: row.verified_branch_id,
-    hasUserId: typeof row.user_id === "string" && row.user_id.length > 0,
-  };
 }
 
 function optionalText(value: unknown): string | null {

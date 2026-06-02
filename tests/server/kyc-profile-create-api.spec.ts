@@ -561,17 +561,18 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
     }
   });
 
-  it("the safe SELECT does not request identity_hash or storage paths", async () => {
+  it("uses the shared PII whitelist boundary (KYC_PROFILE_SAFE_SELECT + toSafeKycProfile)", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     const src = readFileSync(resolve(process.cwd(), "server/api/admin/kyc/profiles/index.post.ts"), "utf8");
-    const m = src.match(/KYC_PROFILE_SAFE_SELECT\s*=\s*\n?\s*"([^"]+)"/);
-    expect(m).not.toBeNull();
-    const select = m![1];
-    expect(select).not.toContain("identity_hash");
-    expect(select).not.toContain("storage_path");
-    expect(select).not.toContain("rejection_note");
-    expect(select).not.toContain("revoked_note");
+    // The route must source the select + mapper from the shared util — not a local copy.
+    expect(src).toContain('from "~~/server/utils/kyc-profile-view"');
+    expect(src).toContain("KYC_PROFILE_SAFE_SELECT");
+    expect(src).toContain("toSafeKycProfile");
+    // The route must NOT re-declare its own safe select string or mapper.
+    expect(src).not.toMatch(/const\s+KYC_PROFILE_SAFE_SELECT\s*=/);
+    expect(src).not.toMatch(/function\s+toSafeKycProfile/);
+    // (The SELECT-content exclusions are verified directly in kyc-profile-view.spec.ts.)
   });
 });
 

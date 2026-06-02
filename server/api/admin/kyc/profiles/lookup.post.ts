@@ -4,8 +4,13 @@ import {
   hashKycIdentity,
   selectBestKycProfile,
   type KycIdentityType,
-  type KycProfileRow,
 } from "~~/server/utils/kyc";
+import {
+  KYC_PROFILE_SAFE_SELECT,
+  toSafeKycProfile,
+  type KycProfileSafeRow,
+  type SafeKycProfile,
+} from "~~/server/utils/kyc-profile-view";
 
 /**
  * POST /api/admin/kyc/profiles/lookup
@@ -39,55 +44,8 @@ const IDENTITY_TYPES: ReadonlySet<KycIdentityType> = new Set([
   "juristic_id",
 ]);
 
-// Columns safe to read for an admin lookup decision. Deliberately excludes
-// identity_hash, storage paths, document data, and rejection/revoke notes.
-const KYC_LOOKUP_SELECT =
-  "id, user_id, customer_type, identity_type, identity_last4, status, valid_until, branch_id, created_at, verified_at, verified_branch_id";
-
-interface KycLookupRow extends KycProfileRow {
-  user_id: string | null;
-  customer_type: string;
-  identity_type: string;
-  identity_last4: string;
-  branch_id: string | null;
-  verified_at: string | null;
-  verified_branch_id: string | null;
-}
-
-export interface SafeKycProfile {
-  id: string;
-  customerType: string;
-  identityType: string;
-  identityLast4: string;
-  status: string;
-  validUntil: string | null;
-  branchId: string | null;
-  createdAt: string;
-  verifiedAt: string | null;
-  verifiedBranchId: string | null;
-  /** Presence only — true when the profile is owned by a registered user. */
-  hasUserId: boolean;
-}
-
 export interface KycProfileLookupResponse {
   profile: SafeKycProfile | null;
-}
-
-/** Pure mapper — strips identity_hash and all sensitive fields by construction. */
-function toSafeKycProfile(row: KycLookupRow): SafeKycProfile {
-  return {
-    id: row.id,
-    customerType: row.customer_type,
-    identityType: row.identity_type,
-    identityLast4: row.identity_last4,
-    status: row.status,
-    validUntil: row.valid_until,
-    branchId: row.branch_id,
-    createdAt: row.created_at,
-    verifiedAt: row.verified_at,
-    verifiedBranchId: row.verified_branch_id,
-    hasUserId: typeof row.user_id === "string" && row.user_id.length > 0,
-  };
 }
 
 export default defineEventHandler(
@@ -140,14 +98,14 @@ export default defineEventHandler(
 
     const { data, error } = await adminClient
       .from("kyc_profiles")
-      .select(KYC_LOOKUP_SELECT)
+      .select(KYC_PROFILE_SAFE_SELECT)
       .eq("identity_hash", identityHash)
       .order("created_at", { ascending: false });
     if (error) {
       throw createError({ statusCode: 500, statusMessage: error.message });
     }
 
-    const best = selectBestKycProfile((data ?? []) as KycLookupRow[]);
+    const best = selectBestKycProfile((data ?? []) as KycProfileSafeRow[]);
     return { profile: best ? toSafeKycProfile(best) : null };
   },
 );
