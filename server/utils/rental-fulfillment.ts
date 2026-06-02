@@ -4,7 +4,11 @@ import {
   fetchAdminCustomerProfile,
   mapAdminRentalBookingDetail,
 } from "~~/server/utils/admin-orders";
-import { resolvePickupKyc } from "~~/server/utils/kyc";
+import {
+  resolvePickupKyc,
+  selectBestKycProfile,
+  type KycProfileRow,
+} from "~~/server/utils/kyc";
 import type { AdminRentalBookingDetail } from "~~/app/types/admin-order-detail";
 import type {
   RentalBookingStatus,
@@ -18,13 +22,6 @@ export type AdminClient = {
 
 // ── KYC helpers (local to this module) ────────────────────────────────────────
 
-type KycProfileRow = {
-  id: string;
-  status: string;
-  valid_until: string | null;
-  created_at: string;
-};
-
 /** Audit snapshot written to rental_booking_fulfillments at pickup time. */
 interface KycPickupSnapshot {
   kycProfileId: string | null;
@@ -32,32 +29,6 @@ interface KycPickupSnapshot {
   kycValidUntilSnapshot: string | null;
   kycAuthorizedVia: "verified" | "override";
   kycOverrideId: string | null;
-}
-
-/**
- * Returns the most relevant KYC profile from an array:
- * prefer verified with latest valid_until; fall back to most recent by created_at.
- */
-function selectBestKycProfile(
-  profiles: KycProfileRow[] | null | undefined,
-): KycProfileRow | null {
-  if (!profiles || profiles.length === 0) return null;
-  const verified = profiles
-    .filter((p) => p.status === "verified")
-    .sort((a, b) => {
-      const aTime = a.valid_until ? new Date(a.valid_until).getTime() : 0;
-      const bTime = b.valid_until ? new Date(b.valid_until).getTime() : 0;
-      return bTime - aTime;
-    });
-  if (verified.length > 0) return verified[0]!;
-  return (
-    profiles
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )[0] ?? null
-  );
 }
 
 export type RentalFulfillmentEventType = "pickup" | "return";

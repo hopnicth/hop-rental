@@ -4,48 +4,18 @@ import {
   type RentalMoneySummary,
   type RentalMoneyWarning,
 } from "~~/server/utils/rental-money-summary";
-import { resolvePickupKyc } from "~~/server/utils/kyc";
+import {
+  resolvePickupKyc,
+  selectBestKycProfile,
+  type KycProfileRow,
+} from "~~/server/utils/kyc";
 
 type Row = Record<string, unknown>;
 
 // ── KYC helpers ───────────────────────────────────────────────────────────────
 
-type KycProfileRow = {
-  id: string;
-  status: string;
-  valid_until: string | null;
-  created_at: string;
-};
-
 const KYC_PROFILE_SELECT = "id, status, valid_until, created_at";
 const KYC_OVERRIDE_SELECT = "id, booking_id";
-
-/**
- * Returns the most relevant KYC profile from an array:
- * prefer verified with latest valid_until; fall back to most recent by created_at.
- * Returns null for empty/null input.
- */
-function selectBestKycProfile(
-  profiles: KycProfileRow[] | null | undefined,
-): KycProfileRow | null {
-  if (!profiles || profiles.length === 0) return null;
-  const verified = profiles
-    .filter((p) => p.status === "verified")
-    .sort((a, b) => {
-      const aTime = a.valid_until ? new Date(a.valid_until).getTime() : 0;
-      const bTime = b.valid_until ? new Date(b.valid_until).getTime() : 0;
-      return bTime - aTime;
-    });
-  if (verified.length > 0) return verified[0]!;
-  return (
-    profiles
-      .slice()
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      )[0] ?? null
-  );
-}
 
 export type PickupReadinessClassification = "ready" | "warning" | "blocked";
 export type PickupReadinessReasonSeverity = "blocker" | "warning" | "info";

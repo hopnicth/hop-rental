@@ -58,6 +58,18 @@ export interface KycProfileInput {
   valid_until: string | null;
 }
 
+/**
+ * DB-row-shaped profile used by `selectBestKycProfile`. Looser than
+ * `KycProfileInput` (status is a plain string) and carries the columns needed
+ * to rank candidates: `id`, `valid_until`, and `created_at`.
+ */
+export interface KycProfileRow {
+  id: string;
+  status: string;
+  valid_until: string | null;
+  created_at: string;
+}
+
 /** Minimal override entry required by the pickup gate. */
 export interface KycOverrideEntry {
   /**
@@ -240,6 +252,43 @@ export function computeValidUntil(
   const result = new Date(verifiedAt);
   result.setFullYear(result.getFullYear() + 1);
   return result;
+}
+
+// ── 4b. Best-Profile Selection ────────────────────────────────────────────────
+
+/**
+ * Returns the most relevant KYC profile from an array, or null for empty/null.
+ *
+ * SINGLE SOURCE OF TRUTH for "which of several profiles represents this customer"
+ * — used by every gate/lookup caller so they cannot diverge on selection.
+ * Selection order:
+ *   1. Prefer `verified` profiles; among them, the latest `valid_until` wins
+ *      (null `valid_until` ranks as epoch 0, i.e. lowest).
+ *   2. Otherwise fall back to the most recent profile by `created_at`.
+ *
+ * Pure — no DB access. This does NOT decide pickup eligibility; live expiry is
+ * still evaluated downstream by `computeKycReadiness` / `resolvePickupKyc`.
+ */
+export function selectBestKycProfile(
+  profiles: KycProfileRow[] | null | undefined,
+): KycProfileRow | null {
+  if (!profiles || profiles.length === 0) return null;
+  const verified = profiles
+    .filter((p) => p.status === "verified")
+    .sort((a, b) => {
+      const aTime = a.valid_until ? new Date(a.valid_until).getTime() : 0;
+      const bTime = b.valid_until ? new Date(b.valid_until).getTime() : 0;
+      return bTime - aTime;
+    });
+  if (verified.length > 0) return verified[0]!;
+  return (
+    profiles
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      )[0] ?? null
+  );
 }
 
 // ── 5. Override Check ─────────────────────────────────────────────────────────

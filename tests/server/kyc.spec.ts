@@ -12,6 +12,7 @@
  *  - findPickupOverride: shared predicate — match, decoy skip, multiple, empty
  *  - hasValidPickupOverride: match vs no match (delegates to findPickupOverride)
  *  - resolvePickupKyc: kyc_verified, override, blocked paths + matchedOverrideId
+ *  - selectBestKycProfile: verified-first, latest valid_until, created_at fallback
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -25,6 +26,7 @@ import {
   maskLast4,
   normalizeKycIdentity,
   resolvePickupKyc,
+  selectBestKycProfile,
 } from "../../server/utils/kyc";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -524,5 +526,113 @@ describe("resolvePickupKyc", () => {
     expect(result.via).toBe("override");
     expect(result.matchedOverrideId).toBe("ov-authz");
     expect(result.matchedOverrideId).not.toBe("ov-decoy");
+  });
+});
+
+// ── 8. selectBestKycProfile (shared best-profile selection) ───────────────────
+
+describe("selectBestKycProfile", () => {
+  function profile(over: Partial<{ id: string; status: string; valid_until: string | null; created_at: string }> = {}) {
+    return {
+      id: "p-1",
+      status: "pending",
+      valid_until: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      ...over,
+    };
+  }
+
+  it("returns null for an empty list", () => {
+    expect(selectBestKycProfile([])).toBeNull();
+  });
+
+  it("returns null for null/undefined input", () => {
+    expect(selectBestKycProfile(null)).toBeNull();
+    expect(selectBestKycProfile(undefined)).toBeNull();
+  });
+
+  it("returns the only profile when the list has one element", () => {
+    const only = profile({ id: "solo" });
+    expect(selectBestKycProfile([only])).toBe(only);
+  });
+
+  it("with no verified profiles, returns the newest by created_at", () => {
+    const older = profile({ id: "older", status: "pending", created_at: "2026-01-01T00:00:00.000Z" });
+    const newer = profile({ id: "newer", status: "rejected", created_at: "2026-03-01T00:00:00.000Z" });
+    expect(selectBestKycProfile([older, newer])?.id).toBe("newer");
+    // Order-independent
+    expect(selectBestKycProfile([newer, older])?.id).toBe("newer");
+  });
+
+  it("prefers a verified profile over a non-verified one even if the non-verified is newer", () => {
+    const verifiedOld = profile({
+      id: "verified-old",
+      status: "verified",
+      valid_until: "2027-01-01T00:00:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    const pendingNew = profile({ id: "pending-new", status: "pending", created_at: "2026-06-01T00:00:00.000Z" });
+    expect(selectBestKycProfile([pendingNew, verifiedOld])?.id).toBe("verified-old");
+  });
+
+  it("among verified profiles, the latest valid_until wins (regardless of created_at)", () => {
+    const verifiedSooner = profile({
+      id: "sooner",
+      status: "verified",
+      valid_until: "2026-12-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    const verifiedLater = profile({
+      id: "later",
+      status: "verified",
+      valid_until: "2027-12-01T00:00:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    expect(selectBestKycProfile([verifiedSooner, verifiedLater])?.id).toBe("later");
+    expect(selectBestKycProfile([verifiedLater, verifiedSooner])?.id).toBe("later");
+  });
+
+  it("treats a verified profile with null valid_until as lowest-ranked among verified", () => {
+    const verifiedNull = profile({ id: "null-valid", status: "verified", valid_until: null, created_at: "2026-06-01T00:00:00.000Z" });
+    const verifiedDated = profile({ id: "dated", status: "verified", valid_until: "2027-01-01T00:00:00.000Z", created_at: "2026-01-01T00:00:00.000Z" });
+    // dated (valid_until set) ranks above null valid_until
+    expect(selectBestKycProfile([verifiedNull, verifiedDated])?.id).toBe("dated");
+  });
+
+  it("returns a verified profile even when its valid_until is null and it is the only verified one", () => {
+    const verifiedNull = profile({ id: "vnull", status: "verified", valid_until: null });
+    const pending = profile({ id: "pend", status: "pending", created_at: "2026-09-01T00:00:00.000Z" });
+    // Selection is verified-first; live-expiry is decided later by resolvePickupKyc, not here.
+    expect(selectBestKycProfile([pending, verifiedNull])?.id).toBe("vnull");
+  });
+
+  it("matches the behavior of the previously-duplicated inline helper (reference impl)", () => {
+    // Reference = the exact byte-identical body that lived in rental-fulfillment.ts
+    // and rental-pickup-readiness.ts before TASK 4.2A-0.
+    function reference(profiles: any[] | null | undefined) {
+      if (!profiles || profiles.length === 0) return null;
+      const verified = profiles
+        .filter((p) => p.status === "verified")
+        .sort((a, b) => {
+          const aTime = a.valid_until ? new Date(a.valid_until).getTime() : 0;
+          const bTime = b.valid_until ? new Date(b.valid_until).getTime() : 0;
+          return bTime - aTime;
+        });
+      if (verified.length > 0) return verified[0]!;
+      return (
+        profiles
+          .slice()
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] ?? null
+      );
+    }
+    const samples = [
+      profile({ id: "a", status: "verified", valid_until: "2027-01-01T00:00:00.000Z", created_at: "2026-01-01T00:00:00.000Z" }),
+      profile({ id: "b", status: "verified", valid_until: "2026-06-01T00:00:00.000Z", created_at: "2026-05-01T00:00:00.000Z" }),
+      profile({ id: "c", status: "pending", valid_until: null, created_at: "2026-09-01T00:00:00.000Z" }),
+      profile({ id: "d", status: "rejected", valid_until: null, created_at: "2026-10-01T00:00:00.000Z" }),
+    ];
+    expect(selectBestKycProfile(samples)?.id).toBe(reference(samples)?.id);
+    expect(selectBestKycProfile([samples[2]!, samples[3]!])?.id).toBe(reference([samples[2], samples[3]])?.id);
+    expect(selectBestKycProfile([])).toBe(reference([]));
   });
 });
