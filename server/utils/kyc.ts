@@ -268,10 +268,14 @@ export function computeValidUntil(
  *
  * Pure — no DB access. This does NOT decide pickup eligibility; live expiry is
  * still evaluated downstream by `computeKycReadiness` / `resolvePickupKyc`.
+ *
+ * Generic over `T extends KycProfileRow` so callers that pass rows with extra
+ * columns (e.g. a lookup endpoint selecting `identity_last4`, `verified_at`)
+ * get the same wide row back, not a narrowed `KycProfileRow`.
  */
-export function selectBestKycProfile(
-  profiles: KycProfileRow[] | null | undefined,
-): KycProfileRow | null {
+export function selectBestKycProfile<T extends KycProfileRow>(
+  profiles: T[] | null | undefined,
+): T | null {
   if (!profiles || profiles.length === 0) return null;
   const verified = profiles
     .filter((p) => p.status === "verified")
