@@ -163,3 +163,38 @@ Open business decisions before verify/document tasks:
 
 - Verify authority: staff-on-site vs super_admin-only.
 - Document-required-for-verify: can verify set `verified` without a `kyc_documents` row?
+
+## 2026-06-03 (TASK 4 — KYC verify compliance: RESOLVES the two open questions above)
+Attribution: Confirmed by the HOPNIC business/product owner (repo owner, account `hopnic.th@gmail.com`) on **2026-06-03** during TASK 4 review — the owner confirmed that HOPNIC requires retained ID/company-document evidence for KYC verification. This entry records that confirmed compliance requirement.
+Decision: HOPNIC KYC verification is **evidence-first (Option A)**. Retained ID/company-document evidence is required before a `kyc_profiles` row may become `verified`. Staff attestation without retained document evidence (Option B) is **not** an allowed normal verification path.
+Reason: HOPNIC compliance requires retained document evidence for KYC. `verified` must carry a single, clean meaning — the profile has retained evidence and was properly verified — so the gate, audit snapshot, and any downstream trust can rely on it without ambiguity. A "verified pending evidence" state would split that meaning and let unevidenced profiles pass the pickup gate.
+Impact (locked for the verify/document tasks — no application code, migration, or types changed by this entry):
+
+1. **Document retention is required.** A `verified` KYC profile must have retained ID/company-document evidence (`kyc_documents` rows). This is the normal, non-negotiable path.
+
+2. **Normal KYC verify is evidence-first.** The verify path runs with `requireDocumentEvidence = true`. Verify must refuse to set `verified` when no retained `kyc_documents` evidence exists for the profile.
+
+3. **Staff-on-site may verify only after retained document evidence exists.** Normal staff-on-site verification is permitted, but only once retained document evidence is present. Staff cannot attest a profile to `verified` without it.
+
+4. **Super_admin document-later exception is per-pickup only, via `kyc_pickup_overrides`.** When a document cannot be captured at the moment, the only sanctioned bypass is the existing per-pickup override path (`kyc_pickup_overrides`), authorized by super_admin, requiring a `reason` and full audit (optionally a document-deferral reason code / metadata). It authorizes a single pickup; it does NOT verify the profile and does NOT mutate `kyc_profiles.status`. The pickup fulfillment snapshot must honestly record `kyc_authorized_via = 'override'` (never `'verified'`), so audit reflects that evidence was not retained. If the customer returns again before evidence is retained, a fresh override is required — this is correct, because the evidence gap still exists. If a document-later exception needs to record the inspected-document-type physically checked during the exception, that metadata belongs on the `kyc_pickup_overrides` record (override metadata), **never** on `kyc_profiles`.
+
+5. **No reusable profile-level "verified pending evidence" state for MVP.** Document-later exceptions must not create or imply a profile state that is "verified but missing evidence." There is no such status. The profile remains `pending`; only the per-pickup override (point 4) lets that specific pickup proceed.
+
+6. **No `document_type_inspected` column on `kyc_profiles`.** The inspected document type is carried by the stored evidence row itself — `kyc_documents.document_type` is the authoritative record of what document was inspected. Do **not** add a profile-level `kyc_profiles.document_type_inspected` field, and do **not** require it as a separate verify input, because a separate profile field could disagree with the stored `kyc_documents.document_type`. (Supersedes the earlier plan to add `kyc_profiles.document_type_inspected`.)
+
+7. **Document upload API is a prerequisite to the verify API.** Because verify requires retained `kyc_documents` evidence, the document upload API must exist and be usable before the verify API can be implemented or shipped. Verify cannot land first.
+
+8. **Verify API must require valid `kyc_documents` evidence.** A `verified` write requires at least one valid retained `kyc_documents` row for the profile. The inspected document type is read from `kyc_documents.document_type` (authoritative); verify takes **no** separate profile-level document-type input.
+
+9. **`verified` status is single-writer through the verify endpoint.** No other route (generic profile/booking update, attach, create-pending, override) may set `status = verified`. The verify endpoint is the sole writer of that transition, mirroring the attach single-writer discipline (TASK 4.2A-3 point 6).
+
+10. **Verify transition is `pending → verified` only.** The verify endpoint moves a profile from `pending` to `verified` and nothing else. It does not handle rejection, revocation, or re-verification flows; those, if needed, are separate audited transitions designed later.
+
+Storage-policy companion (REQUIRED scope for the document upload task — see point 7): Because HOPNIC will **retain** sensitive KYC document files, the document upload task must explicitly define, before shipping:
+
+- **Retention period** — how long retained KYC documents are kept (and the trigger for the retention clock).
+- **Access/read control** — who (which roles) may access/read stored documents; private bucket (`kyc-documents`) + server-mediated, signed-URL access only; no public/anon read.
+- **Deletion/purge policy** — how documents are purged at end of retention or on a valid erasure request, including the storage object and the `kyc_documents` row.
+- **Audit/access expectations** — access to KYC documents should be logged/auditable (who read what, when); define the audit surface even if minimal for MVP.
+- **AV / malware-scanning gap** — record the current **no antivirus/malware-scanning** gap as an explicit decision: either accept the gap for MVP (documented risk) or specify the scanning step. Do not leave it implicit.
+- **PDPA considerations** — retention, access, deletion, and audit above must be consistent with PDPA obligations for sensitive personal data.
