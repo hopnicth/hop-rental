@@ -2545,9 +2545,11 @@ export type Database = {
           created_at: string
           document_type: Database["public"]["Enums"]["kyc_document_type"]
           expires_at: string | null
+          file_size_bytes: number | null
           id: string
           issued_at: string | null
           kyc_profile_id: string
+          mime_type: string | null
           storage_path: string
           uploaded_at: string
           uploaded_by_user_id: string | null
@@ -2556,9 +2558,11 @@ export type Database = {
           created_at?: string
           document_type: Database["public"]["Enums"]["kyc_document_type"]
           expires_at?: string | null
+          file_size_bytes?: number | null
           id?: string
           issued_at?: string | null
           kyc_profile_id: string
+          mime_type?: string | null
           storage_path: string
           uploaded_at?: string
           uploaded_by_user_id?: string | null
@@ -2567,9 +2571,11 @@ export type Database = {
           created_at?: string
           document_type?: Database["public"]["Enums"]["kyc_document_type"]
           expires_at?: string | null
+          file_size_bytes?: number | null
           id?: string
           issued_at?: string | null
           kyc_profile_id?: string
+          mime_type?: string | null
           storage_path?: string
           uploaded_at?: string
           uploaded_by_user_id?: string | null
@@ -7377,6 +7383,7 @@ export type Database = {
         | "signature"
         | "vat_certificate"
         | "company_cert"
+        | "passport"
       kyc_identity_type: "national_id" | "passport" | "juristic_id"
       kyc_status: "pending" | "verified" | "rejected" | "expired" | "revoked"
       membership_level: "bronze" | "silver" | "gold"
@@ -7655,6 +7662,7 @@ export const Constants = {
         "signature",
         "vat_certificate",
         "company_cert",
+        "passport",
       ],
       kyc_identity_type: ["national_id", "passport", "juristic_id"],
       kyc_status: ["pending", "verified", "rejected", "expired", "revoked"],
