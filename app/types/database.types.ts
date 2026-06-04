@@ -2540,6 +2540,61 @@ export type Database = {
         }
         Relationships: []
       }
+      kyc_document_access_log: {
+        Row: {
+          action: string
+          actor_role: string | null
+          actor_user_id: string | null
+          created_at: string
+          document_id: string | null
+          document_type: Database["public"]["Enums"]["kyc_document_type"] | null
+          id: string
+          ip_address: unknown
+          kyc_profile_id: string | null
+          reason: string | null
+          result: string
+          storage_bucket: string | null
+          storage_path: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          document_id?: string | null
+          document_type?:
+            | Database["public"]["Enums"]["kyc_document_type"]
+            | null
+          id?: string
+          ip_address?: unknown
+          kyc_profile_id?: string | null
+          reason?: string | null
+          result: string
+          storage_bucket?: string | null
+          storage_path?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          actor_role?: string | null
+          actor_user_id?: string | null
+          created_at?: string
+          document_id?: string | null
+          document_type?:
+            | Database["public"]["Enums"]["kyc_document_type"]
+            | null
+          id?: string
+          ip_address?: unknown
+          kyc_profile_id?: string | null
+          reason?: string | null
+          result?: string
+          storage_bucket?: string | null
+          storage_path?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       kyc_documents: {
         Row: {
           created_at: string
