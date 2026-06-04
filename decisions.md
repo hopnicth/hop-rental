@@ -120,6 +120,51 @@ Decision: `docs/customer-cancellation-refund-handoff.md` — defer archive decis
 Reason: Strongest ARCHIVE candidate (superseded handoff note), but contains open no-show policy questions (late-cancellation, undo-no-show, dashboard surfacing) not yet confirmed as captured elsewhere.
 Impact: File left in place pending human confirmation that those questions are recorded in decisions.md or the Thai policy file.
 
+## 2026-06-02 (TASK 4.1b audit)
+Decision: Walk-in KYC gate resolves via `rental_bookings.kyc_profile_id` (direct FK to `kyc_profiles`), NOT by `walk_in_phone` matching.
+Reason: Phone is a contact field, not an identity key. A phone-based lookup could bind the wrong verified profile to a booking, which is a security risk. The schema FK set in migration 106 is the intended gate input for walk-in bookings. Registered bookings continue to resolve via `user_id → kyc_profiles.user_id` — the two paths are mutually exclusive (`if (userId)` takes precedence).
+Impact: `loadRentalPickupReadiness` and `assertPickupCustomerEvidence` must add `kyc_profile_id` to their booking SELECT strings and branch on it for walk-in resolution. Walk-in bookings with `kyc_profile_id = null` remain blocked (`no_profile`) until TASK 4 UI sets the column.
+
+## 2026-06-02 (TASK 4.1b audit)
+Decision: KYC snapshot columns in `rental_booking_fulfillments` are written atomically at `confirmPickup` time by returning a `KycPickupSnapshot` struct from `assertPickupCustomerEvidence` and including it in the fulfillment INSERT.
+Reason: The snapshot must freeze the KYC authorization evidence at the exact moment the gate passes — same `new Date()` call that evaluates the gate. Splitting gate evaluation and snapshot write into separate steps would create a TOCTOU window where the snapshot could differ from the gate decision. The snapshot is audit evidence only; it must never feed back into gate resolution.
+Impact: `assertPickupCustomerEvidence` return type changes from `void` to `KycPickupSnapshot`. `RentalFulfillmentPrerequisites` gains a `kycSnapshot` field. Override SELECT must include `id` to populate `kyc_override_id`. Profile SELECT must include `id` to populate `kyc_profile_id`. For `return` events, all snapshot columns remain NULL.
+
+## 2026-05-31 (TASK 4.0b + 4.1a)
+Decision: Walk-in KYC is NOT owned by `walk_in_customers` (phone-rooted entity). KYC ownership is identity-hash-rooted via `kyc_profiles` only.
+Reason: `walk_in_customers` uses `phone TEXT PRIMARY KEY` — there is no stable UUID id column. Adding a phone-based FK for KYC ownership would couple KYC resolution to phone matching, which is explicitly prohibited. Identity-hash-based lookup (`hashKycIdentity`) is the only safe dedup mechanism.
+Impact: `kyc_profiles` retains `user_id` as the only owner FK. Walk-in gate resolution uses `rental_bookings.kyc_profile_id` (set explicitly by staff via POS V3 KYC mode), not phone lookup.
+
+## 2026-05-31 (TASK 4.1a)
+Decision: `rental_bookings.kyc_profile_id UUID NULL` is the walk-in gate resolution input. Registered-user bookings resolve via `user_id → kyc_profiles.user_id` (unchanged).
+Reason: Provides a stable, identity-rooted link from a booking to its KYC profile without phone matching. Staff explicitly sets this column via POS V3 KYC mode — it is never auto-populated by phone.
+Impact: Gate code (`rental-pickup-readiness.ts` + `rental-fulfillment.ts`) must be updated in TASK 4 to use `rental_bookings.kyc_profile_id` for walk-in path, rather than the current phone-based `kyc_profiles.walk_in_phone` lookup.
+
+## 2026-05-31 (TASK 4.1a)
+Decision: Pickup-time KYC authorization snapshot written to `rental_booking_fulfillments` (5 new columns). No new table created.
+Reason: `rental_booking_fulfillments` is already the pickup audit table (one row per pickup/return event, append-only by application design). Adding snapshot columns there avoids a new table and keeps all pickup evidence co-located.
+Impact: `rental-fulfillment.ts` `confirmPickup` must write snapshot columns atomically in the same INSERT. Snapshot is audit evidence only — not a gate resolution input. Three CHECK constraints enforce snapshot consistency at the DB layer.
+
+## 2026-05-31 (TASK 4.1a)
+Decision: No DB-level immutability trigger on `rental_booking_fulfillments`. Application-layer append-only invariant is sufficient for this phase.
+Reason: `rental_booking_fulfillments` is already `REVOKE ALL FROM authenticated/anon; GRANT ALL TO service_role`. Only server-side code writes to it, and no UPDATE code path exists in the application. A trigger would add friction without meaningful security benefit at this stage.
+Impact: If a trigger is added later, it should be a separate migration scoped to the KYC snapshot columns, not a whole-row freeze.
+
+## 2026-05-31 (TASK 4.1a)
+Decision: Snapshot consistency CHECKs added to `rental_booking_fulfillments`: 'verified' → `kyc_profile_id IS NOT NULL`; 'override' → `kyc_override_id IS NOT NULL`.
+Reason: The snapshot is written atomically in a single INSERT at confirmPickup time, so staged-rollout concerns do not apply. DB-level enforcement catches any future implementation bugs that would write an inconsistent snapshot.
+Impact: confirmPickup code must supply all required snapshot fields when writing `kyc_authorized_via`. A partial write will be rejected with a CHECK violation.
+
+## 2026-06-02
+Decision: Two snapshot-consistency CHECK constraints removed from migration 106 before commit (`chk_fulfillment_kyc_verified_has_profile`, `chk_fulfillment_kyc_override_has_id`).
+Reason: Both CHECKs conflict with `ON DELETE SET NULL` on the `kyc_profile_id` / `kyc_override_id` FKs — a cascade nullification would set the UUID to NULL while `kyc_authorized_via` retains `'verified'`/`'override'`, causing a CHECK violation on the existing row. Snapshot consistency is enforced by the application's atomic INSERT at confirmPickup time instead.
+Impact: DB-layer immutability is lighter; `confirmPickup` server code owns correctness for snapshot fields. Any refactor to `confirmPickup` must preserve the invariant: `kyc_authorized_via = 'verified'` → `kyc_profile_id NOT NULL`; `kyc_authorized_via = 'override'` → `kyc_override_id NOT NULL`.
+
+## 2026-06-02
+Decision: `supabase/migrations/102_lkb_branch_public_and_dedup.sql` was edited despite the "no-edit old migrations" rule (`supabase/CLAUDE.md §8`). Approved as an explicit one-time exception.
+Reason: Migration 102 contained a hardcoded inventory UUID (`e4ad1acc-66df-407e-96c1-6bf87d5b68f4`) that does not exist on fresh `db reset --local` (the branch was created out-of-band on staging before migration 102 was written). The UUID blocked every local/CI reset at migration 102, preventing migration 106 from applying in a clean chain. The fix is reset-safety and idempotency only — it does not alter staging runtime data because migration 102 will not re-run remotely.
+Impact: `supabase db reset --local` now completes cleanly through migration 106. The rule holds for all other migrations; this exception is specific to migration 102 and the out-of-band branch scenario.
+
 ## 2026-06-02 (TASK 4.1b — committed `c8866f8`)
 Decision: Override authorization for the pickup gate is resolved through ONE shared predicate, `findPickupOverride(overrides, bookingId)` in `server/utils/kyc.ts`. `hasValidPickupOverride` (boolean) and `resolvePickupKyc` (gate) both delegate to it; `resolvePickupKyc` now surfaces `matchedOverrideId` (the exact authorizing override row id, never `overrides[0]`). `KycOverrideEntry.id` is REQUIRED so every override SELECT must include `id` at compile time. The pickup audit snapshot (`rental_booking_fulfillments` 5 KYC columns) is assembled from the same fresh query/`new Date()` that authorized the gate and is write-only audit evidence — never a gate input. Walk-in bookings resolve KYC via `rental_bookings.kyc_profile_id` (FK), registered via `user_id` first; no phone matching.
 Reason: A single predicate makes readiness (display) and confirm (authoritative) gates structurally incapable of diverging on override authorization. Required `id` turns a possible runtime gap into a compile-time error. The matched-id snapshot records exactly which override row authorized a given pickup, for audit.
@@ -198,3 +243,23 @@ Storage-policy companion (REQUIRED scope for the document upload task — see po
 - **Audit/access expectations** — access to KYC documents should be logged/auditable (who read what, when); define the audit surface even if minimal for MVP.
 - **AV / malware-scanning gap** — record the current **no antivirus/malware-scanning** gap as an explicit decision: either accept the gap for MVP (documented risk) or specify the scanning step. Do not leave it implicit.
 - **PDPA considerations** — retention, access, deletion, and audit above must be consistent with PDPA obligations for sensitive personal data.
+
+## 2026-06-05 (Phase 1B — KYC document upload endpoint, committed `010ee9b`, pushed)
+Decision: KYC document upload is server-mediated only via `POST /api/admin/kyc/profiles/[id]/documents` (`requirePlatformAdmin`; no customer self-upload for MVP) into the dedicated private `kyc-profile-documents` bucket (migration 109; no `storage.objects` policies — verified zero on remote). Security gate at the application layer: (a) hard streaming body limit counting ACTUAL bytes (never Content-Length; chunked/spoofed-CL cannot bypass), with the capped buffer handed to h3's multipart parser via the `event.node.req.rawBody` pre-read fallback — proven by a real-h3 integration spec plus an h3-source upgrade canary; (b) magic-byte MIME sniffing only (JPEG `FF D8 FF`, full 8-byte PNG signature, `%PDF-` at offset 0; SVG and everything else rejected 415; client MIME never trusted); (c) opaque `kyc/<random-uuid>.<ext>` object keys never derived from profile id, identity value, or filename; (d) documentType coherence keyed on the profile's `customer_type × identity_type` pair, mirroring the create-time guard — `individual×national_id → id_card|signature`, `individual×passport → passport|signature`, `company×juristic_id → company_cert|vat_certificate|signature`, any other pair fails closed 422; (e) `company_cert` requires `issuedAt`; a future `issuedAt` is rejected for ALL types (Asia/Bangkok); `expiresAt < issuedAt` rejected — capture/sanity only, expiry ENFORCEMENT deferred to the verify/gate phase; (f) the upload access-log write is typed against the generated `kyc_document_access_log` Insert type, best-effort with a `console.error` breadcrumb (`failClosed: true` reserved for downloads); (g) responses go through `toSafeKycDocument` only — no `storage_path`, no bucket, no public/signed URL ever returned.
+Reason: The kyc_documents table and the access log are immutable evidence surfaces; every rule above prevents poisoned or leaky evidence (wrong-identity documents, guessable paths, PII in the audit trail, spoofed sizes/types) rather than trusting client input.
+Impact: `server/utils/kyc-documents.ts` + `kyc-document-view.ts` are the only sanctioned helpers for KYC document storage/serialization (see `docs/index/server-utils-index.md` rows). 165 targeted tests + tsc gate the contract. An h3 upgrade that drops the `rawBody` fallback fails the integration spec loudly.
+
+## 2026-06-05 (Decision A — session docs + probe row permanence)
+Decision: Session docs (`decisions.md`, `handoff.md`, `progress.md`) are committed BEFORE Phase 2 begins. The staging probe-row note is a permanent part of the docs: a non-PII probe row exists in remote/staging `public.kyc_document_access_log` (id `f122e850-2c73-49ec-a6c1-12e961f7fd36`, action `upload`, result `allowed`, reason `remote-verify-probe`, all PII fields NULL). It must never be deleted (the log is append-only by design); audits filter it with `reason <> 'remote-verify-probe'`; all future remote verification of immutable logs must be read-only / metadata-only so no further permanent probe rows are created.
+Reason: The probe row outlives every session — undocumented, it would look like an anomaly in future audits. Doc debt accumulating across phases makes handoffs unreliable.
+Impact: This commit (docs-only) lands before any Phase 2 file is created. The probe-row note lives in `handoff.md` (2026-06-04 entry) and `progress.md` Notes, now durable on staging.
+
+## 2026-06-05 (Decision B — Phase 2 sequencing)
+Decision: Phase 2 starts with the super_admin-only server-mediated download endpoint. Download and purge are SEPARATE commits. The purge primitive is deferred until the legal retention scope is decided. No HTTP delete endpoint yet. Denied non-super_admin download attempts must be logged WITHOUT loading the document row (no document/profile data touched on the deny path). Non-super_admin download must return a uniform 403 that does not reveal whether the document exists.
+Reason: Download is the highest-value missing primitive and its fail-closed logging contract (`failClosed: true`) is already reserved in `logKycDocumentAccess`. Purge has legal dependencies (retention duration) that code must not preempt. A deny path that loads the row or varies its response would leak document existence to non-authorized staff.
+Impact: Phase 2 commit 1 = download endpoint only. `logKycDocumentAccess(..., { failClosed: true })` is mandatory before issuing any signed URL. Deny-path log entries carry only the requested ids as opaque references, never loaded row data.
+
+## 2026-06-05 (Decision C — production readiness gate for KYC documents)
+Decision: Real KYC document upload/download in PRODUCTION is blocked until ALL of: (1) legal retention duration is decided and recorded in decisions.md; (2) the no-AV/malware-scanning gap is remediated or explicitly accepted by the owner and recorded; (3) the production `storage.objects` policy gate is re-run and passes (zero policies matching the KYC bucket); (4) the h3 version/canary check is pinned/run in production CI; (5) production verification never inserts probe rows into immutable logs (read-only / metadata-only checks only).
+Reason: Staging verification does not transfer to production: policies, h3 version, and log contents are environment-specific, and retention/AV are owner-level compliance calls that engineering cannot default.
+Impact: Phase 2+ code may land on staging, but production enablement requires a recorded check against all five gates. Item (5) makes the staging probe-row mistake structurally unrepeatable in production.

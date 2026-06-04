@@ -1,5 +1,5 @@
 # PROGRESS
-Last updated: 2026-05-31 (session 2 update)
+Last updated: 2026-06-05 (KYC document storage Phase 1B complete — see session section at bottom)
 
 ## Done ✅
 
@@ -59,9 +59,29 @@ Last updated: 2026-05-31 (session 2 update)
 - `server/utils/rental-pickup-readiness.ts` — replaced `users.kyc_status` / `walk_in_customers.id_card_url` gate with `kyc_profiles` + `kyc_pickup_overrides` lookup via `resolvePickupKyc`; `selectBestKycProfile` helper (prefer verified + latest valid_until; fallback to most-recent by created_at)
 - `server/utils/rental-fulfillment.ts` — replaced `assertPickupCustomerEvidence` body with `kyc_profiles`-based gate using fresh `new Date()` at confirm time (TOCTOU-safe)
 - `docs/index/server-utils-index.md` — added `rental-pickup-readiness.ts` row; updated `rental-fulfillment.ts` row (domain now includes `kyc`); updated `kyc.ts` row with orphan/migration-plan and plaintext-storage rules
-- Tests: added 66 new tests across 3 spec files (rental-pickup-readiness, rental-fulfillment, pos-v2-pickup-completion); all pass; pre-existing 20 failures unchanged
-- Judgment calls: (a) `idEvidencePresent` kept as `false` (shape-compat, semantically hollow — TASK 4 decides); (b) walk-in → `null` profile → `no_profile` blocked (TASK 4 deferred); (c) KYC blocker codes changed from `customer_kyc_not_verified`/`walk_in_id_evidence_missing` to `kyc_pickup_gate_blocked`; (d) override emits warning `kyc_pickup_via_override`; (e) `kycProfile` default in `mockClient` is verified so existing fulfillment tests pass the gate without individual scenario updates
-- Status: NOT committed/pushed — pending Opus 4.8 review before push
+- Tests: +66 new tests (1923 total, 1903 pass, 20 pre-existing failures unchanged); `npx tsc --noEmit` clean
+- Reviewed: Opus 4.8 GO — committed `1f151b1`, pushed to staging
+
+### KYC Foundation — TASK 4.1a: Migration 106 (walk-in link + pickup snapshot)
+- Created `supabase/migrations/106_kyc_booking_link_and_pickup_snapshot.sql`
+- `rental_bookings.kyc_profile_id UUID NULL FK → kyc_profiles(id) ON DELETE SET NULL` + index
+- `rental_booking_fulfillments`: 5 KYC snapshot columns (`kyc_profile_id`, `kyc_status_snapshot`, `kyc_valid_until_snapshot`, `kyc_authorized_via`, `kyc_override_id`) + 3 CHECK constraints + 2 indexes
+- Two snapshot-consistency CHECKs removed after Opus review (conflict with ON DELETE SET NULL cascade); consistency enforced by application at INSERT time
+- Reviewed: Opus 4.8 GO — committed `fc9f281`, pushed to staging
+
+### Migration 102 reset blocker — resolved
+- Root cause: hardcoded inventory UUID `e4ad1acc-66df-407e-96c1-6bf87d5b68f4` in statement 4 — UUID does not exist on fresh local reset
+- Fix: (1) seed `branch-e12b7a81` via `INSERT … ON CONFLICT DO NOTHING` so trigger auto-creates Default inventory; (2) replace hardcoded UUID with dynamic subquery; (3) add `AND EXISTS` guard
+- Pre-apply checks: all NOT NULL/no-default columns confirmed supplied; `is_public = TRUE` explicitly set
+- Committed `4aba307 fix(branches): make LKB dedup migration reset-safe`, pushed to staging
+- `supabase db reset --local` now passes all 106 migrations cleanly; `npx tsc --noEmit` clean
+
+### KYC Foundation — TASK 4.1b: Audit complete
+- Full pre-implementation audit of walk-in KYC gate + snapshot write changes
+- Exact code paths mapped: `rental-pickup-readiness.ts`, `rental-fulfillment.ts`, both routes
+- Implementation plan locked (see HANDOFF.md 2026-06-02 entry)
+- DB types regenerated post-migration 106, committed `bf32905`, pushed to `origin/staging`
+- `origin/staging` HEAD: `bf32905 chore(types): regenerate database types for KYC snapshot schema`
 
 ## In Progress 🔄
 - `HomeCategoryShortcutRail.vue` — uncommitted changes (home category shortcuts, pre-existing)
@@ -72,10 +92,17 @@ Last updated: 2026-05-31 (session 2 update)
   - `pos-v2-pickup-completion.spec.ts`, `admin-pos-v3-*` specs
 
 ## Next 📋
-- **IMMEDIATE**: TASK 3 commit — get Opus 4.8 review of diff, then commit + push to staging
-- TASK 4: POS v3 KYC mode UI (lookup, submit, verify)
-- TASK 5: Pickup container KYC gate + state preservation
-- TASK 6: Super admin override + revoke flow
+- **IMMEDIATE: TASK 4.1b implementation** — walk-in KYC gate + snapshot write (plan is in HANDOFF.md 2026-06-02):
+  - `server/utils/rental-pickup-readiness.ts`: add `kyc_profile_id` to booking SELECT; walk-in branch queries by `rental_bookings.kyc_profile_id` not phone
+  - `server/utils/rental-fulfillment.ts`: same booking SELECT fix; add `id` to KycProfileRow + override SELECT; `assertPickupCustomerEvidence` returns `KycPickupSnapshot`; write snapshot to fulfillment INSERT
+  - `docs/index/server-utils-index.md`: update both util rows
+  - Tests: `rental-pickup-readiness.spec.ts` + `tests/server/utils/rental-fulfillment.spec.ts`
+  - One commit. Opus 4.8 review required before push (security-core pickup gate change).
+- **TASK 4.2**: `server/api/admin/kyc/profiles/lookup.get.ts` — identity hash lookup endpoint
+- **TASK 4 (API)**: `server/api/admin/kyc/profiles/index.post.ts`, `[id]/documents.post.ts`, `[id]/verify.post.ts`
+- **TASK 4 (UI)**: POS V3 KYC mode container (`AdminPosV3KycContainer.vue`) — lookup, create, upload, verify; wire into pos-v3 index
+- TASK 5: Pickup container KYC gate + state preservation + i18n keys for `kyc_pickup_gate_blocked` / `kyc_pickup_via_override` + walk-in guard idiom unification
+- TASK 6: Super admin override creation UI + expiry (`valid_until`) column on `kyc_pickup_overrides` + gate update — Opus review required
 - TASK 7: Tests
 - Validate auth fix on production domain (first Google OAuth login)
 - Consider adding `ensureProfileLoaded()` to default layout for non-admin pages
@@ -109,3 +136,31 @@ Last updated: 2026-05-31 (session 2 update)
 ### Notes
 - `staging` in sync with origin at `76c2085`. Working tree clean.
 - `phase-2d-booking-deposit-acceptance-checklist.md` and `phase-2e-pos-rental-operational-flow-audit.md` are KEEP — both load-bearing (see decisions.md 2026-05-31).
+- KYC access-log: a permanent non-PII probe row exists in remote/staging `public.kyc_document_access_log` (id `f122e850-2c73-49ec-a6c1-12e961f7fd36`, action `upload`, result `allowed`, reason `remote-verify-probe`). Append-only table — cannot be deleted. Filter with `reason <> 'remote-verify-probe'` during audits. Future immutable-log remote checks must be metadata-only.
+
+---
+
+## Session 2026-06-04/05 — KYC document storage (migration 109) + Phase 1B upload endpoint
+
+### Done ✅
+- Migration 109 fully complete on remote/staging: dedicated private bucket `kyc-profile-documents` (10 MB, JPEG/PNG/PDF) + append-only `public.kyc_document_access_log` (UPDATE/DELETE/TRUNCATE-blocking triggers; service_role ALL / super_admin SELECT) — `60bd023`
+- Remote storage-policy gate PASSED: zero `storage.objects` policies on remote — server-mediated-only guarantee cleared (human-run Dashboard SQL)
+- DB types regenerated for `kyc_document_access_log` (+55 lines, no unrelated churn) — `1f10a03`, pushed
+- **Phase 1B upload endpoint — `010ee9b feat(kyc): add document upload endpoint`, pushed to `origin/staging`** (7 files, 2409 insertions):
+  - `server/api/admin/kyc/profiles/[id]/documents.post.ts` — requirePlatformAdmin; hard streaming body limit (actual bytes, never Content-Length) → capped-buffer handoff to real h3 multipart via `req.rawBody`; magic-byte MIME only (full 8-byte PNG sig; SVG rejected); 10 MB actual-bytes file cap; documentType coherence on `customer_type × identity_type` (mirrors create guard; fail closed); company_cert requires non-future `issuedAt`; future `issuedAt` rejected for all types; `expiresAt ≥ issuedAt`; opaque `kyc/<uuid>.<ext>` keys; orphan cleanup on insert failure; best-effort upload access log
+  - `server/utils/kyc-documents.ts` — limiter, sniffer, key builder, single-IP XFF parser, date validators, access-log writer typed against generated Insert (console.error breadcrumb; `failClosed` reserved for downloads)
+  - `server/utils/kyc-document-view.ts` — safe serializer (no storage_path/bucket/URLs/uploader ever)
+  - 3 spec files (124 tests incl. real-h3 integration proof + h3 upgrade canary) + 2 rows in `docs/index/server-utils-index.md`
+- Two Opus review rounds passed (5 blockers fixed; identity_type coherence confirmation patch applied)
+- Validation at commit: `npx tsc --noEmit` clean; 165/165 targeted tests pass
+
+### Next 📋
+- **Phase 2 (per decisions.md 2026-06-05 Decision B): super_admin-only server-mediated download endpoint** — fail-closed access logging (`failClosed: true` before signed URL); denied non-super_admin attempts logged WITHOUT loading the document row; uniform 403 (no existence leak); separate commit from purge
+- Purge primitive: DEFERRED until legal retention scope decided (no HTTP delete endpoint)
+- Production readiness gate (decisions.md 2026-06-05 Decision C): retention duration, AV-gap acceptance, prod storage-policy re-run, h3 canary in prod CI, read-only prod verification — all required before production enablement
+- Verify endpoint (evidence-first, requires retained `kyc_documents`) — after download phase
+- Earlier KYC TASK backlog (POS V3 KYC UI wiring, TASK 5 i18n, TASK 6 override expiry) — unchanged
+
+### Notes
+- `origin/staging` HEAD: `010ee9b` — local in sync; session docs committed separately right after (this commit)
+- No migration was added in Phase 1B; `database.types.ts` untouched since `1f10a03`

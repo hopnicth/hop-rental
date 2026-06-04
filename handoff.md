@@ -1,5 +1,536 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-05 (Phase 1B upload endpoint shipped — next: Phase 2 download)
+
+### State at handoff
+
+- Branch: `staging`
+- Tip commit: `010ee9b feat(kyc): add document upload endpoint` — pushed; `origin/staging` in full sync
+- Migration 109 live on remote (bucket `kyc-profile-documents` + append-only `kyc_document_access_log`); remote storage-policy gate passed (zero `storage.objects` policies)
+- `npx tsc --noEmit`: clean · 165/165 targeted tests pass
+- No migration added in Phase 1B; `database.types.ts` untouched since `1f10a03`
+
+### What was completed (see progress.md 2026-06-04/05 session + decisions.md 2026-06-05 entries)
+
+- Phase 1B upload endpoint + utils + safe serializer + 124 tests (incl. real-h3 integration proof of the `req.rawBody` capped-buffer handoff + h3 upgrade canary)
+- Two Opus review rounds: 5 blockers fixed (real-h3 proof, typed access-log Insert + breadcrumb, customer_type×identity_type coherence, issued_at/expires_at capture, full 8-byte PNG signature)
+- Session docs committed (this commit) BEFORE Phase 2 per decisions.md 2026-06-05 Decision A
+
+### IMMEDIATE NEXT ACTION: Phase 2 — download endpoint (decisions.md 2026-06-05 Decision B)
+
+- **super_admin-only** server-mediated download; signed URL issued ONLY after `logKycDocumentAccess(..., { failClosed: true })` succeeds
+- Denied non-super_admin attempts: log WITHOUT loading the document row; **uniform 403** — must not reveal whether the document exists
+- Download and purge are SEPARATE commits; purge primitive DEFERRED until legal retention scope is decided; no HTTP delete endpoint
+- Production enablement stays blocked behind decisions.md 2026-06-05 Decision C (retention, AV gap, prod policy gate re-run, h3 canary in prod CI, read-only prod verification)
+
+### Constraints
+
+- Do NOT regenerate types (schema unchanged since `1f10a03`)
+- Do NOT touch pre-existing dirty files (home rails, locale JSONs, DESIGN.md, PRODUCT.md, .claude/skills, .impeccable)
+- Immutable-log verification: read-only / metadata-only — never insert probe rows (the one permanent probe row is documented below, 2026-06-04 note)
+
+---
+
+## Claude Code → Claude Code / 2026-06-02 (TASK 4.1b audit complete — ready to implement)
+
+### State at handoff
+
+- Branch: `staging`
+- Tip commit: `bf32905 chore(types): regenerate database types for KYC snapshot schema`
+- `origin/staging` in full sync with local at `bf32905` — no divergence
+- Migration 106 is live on remote/staging (verified all 10 schema checks)
+- `app/types/database.types.ts` regenerated and pushed (migration 106 KYC columns present)
+- `npx tsc --noEmit`: clean (exit 0)
+
+### What was completed this session
+
+1. **Migration 106 remote gate** — dry-run confirmed only 106 pending (102 already applied, not re-run). Applied via `supabase db push --linked`. All 10 schema verification checks passed on remote.
+
+2. **DB types regeneration** — `supabase gen types typescript --project-id yzjczvzwmbbeyoodrjwm --schema public`. Confirmed all 6 migration 106 KYC columns in generated types. Committed `bf32905`, pushed to `origin/staging`.
+
+3. **TASK 4.1b audit (read-only)** — full code-path survey of pickup readiness + confirm pickup. Implementation plan locked. No files changed.
+
+### IMMEDIATE NEXT ACTION: Implement TASK 4.1b
+
+**One commit.** Opus 4.8 review required before push.
+
+**Commit message**: `feat(kyc): resolve walk-in KYC via booking.kyc_profile_id + write pickup snapshot (TASK 4.1b)`
+
+#### Files to change
+
+**`server/utils/rental-pickup-readiness.ts`**
+
+1. `PICKUP_READINESS_BOOKING_SELECT` (line 104): add `, kyc_profile_id`
+2. `loadRentalPickupReadiness` — walk-in branch in the `kycProfilesResult` slot of `Promise.all` (currently line 406–413):
+   - Old: `Promise.resolve({ data: [], error: null })` always
+   - New three-way: `userId` → existing (unchanged) · `!userId && kycProfileId` → `.from("kyc_profiles").select(KYC_PROFILE_SELECT).eq("id", kycProfileId).limit(1)` · `!userId && !kycProfileId` → empty array (unchanged)
+   - `kycProfileId` = `nullableText(bookingRow.kyc_profile_id)`
+
+**`server/utils/rental-fulfillment.ts`**
+
+1. `CURRENT_BOOKING_SELECT` (line 101): add `, kyc_profile_id`
+2. Local `KycProfileRow` type (line 21): add `id: string`
+3. Override SELECT in `assertPickupCustomerEvidence` (line 255): `"booking_id"` → `"id, booking_id"`
+4. Profile SELECT in `assertPickupCustomerEvidence` (line 247): `"status, valid_until, created_at"` → `"id, status, valid_until, created_at"`
+5. Walk-in branch in `assertPickupCustomerEvidence` (lines 240–244): when `!userId && rowString(row, "kyc_profile_id")`, query `kyc_profiles` by `.eq("id", kyc_profile_id)` (single row) instead of `kycProfile = null`
+6. New interface `KycPickupSnapshot` (local):
+   ```ts
+   interface KycPickupSnapshot {
+     kycProfileId: string | null;
+     kycStatusSnapshot: string | null;
+     kycValidUntilSnapshot: string | null;
+     kycAuthorizedVia: 'verified' | 'override';
+     kycOverrideId: string | null;
+   }
+   ```
+7. `assertPickupCustomerEvidence`: change return from `void` to `KycPickupSnapshot`. After gate passes, assemble:
+   - `via === "kyc_verified"`: `kycAuthorizedVia='verified'`, `kycProfileId=kycProfile!.id`, `kycStatusSnapshot=kycProfile!.status`, `kycValidUntilSnapshot=kycProfile!.valid_until`, `kycOverrideId=null`
+   - `via === "override"`: `kycAuthorizedVia='override'`, `kycOverrideId=overrides[0]?.id ?? null`, `kycProfileId=kycProfile?.id ?? null`, `kycStatusSnapshot=kycProfile?.status ?? null`, `kycValidUntilSnapshot=kycProfile?.valid_until ?? null`
+8. `RentalFulfillmentPrerequisites` interface: add `kycSnapshot: KycPickupSnapshot | null`
+9. `assertRentalFulfillmentPrerequisites`: capture return from `assertPickupCustomerEvidence`, include in returned prerequisites
+10. `completeRentalBookingFulfillment` fulfillment INSERT: spread snapshot fields when `eventType === "pickup" && prerequisites.kycSnapshot`
+
+**`docs/index/server-utils-index.md`**: update `rental-pickup-readiness.ts` row (walk-in path changed) and `rental-fulfillment.ts` row (snapshot write added)
+
+#### Tests to update
+
+**`tests/server/rental-pickup-readiness.spec.ts`**:
+- `booking()` fixture: add `kyc_profile_id: null` default; allow override to `"kyc-1"`
+- New tests: walk-in with `kyc_profile_id` → verified → ready · walk-in with expired profile → blocked with `kycReason: "expired"` · walk-in with `kyc_profile_id = null` → still `no_profile` blocked
+- Update test label for "deferred to TASK 4" walk-in test
+
+**`tests/server/utils/rental-fulfillment.spec.ts`**:
+- `baseKycProfile`: add `id: "kyc-1"`
+- `baseBooking`: add `kyc_profile_id: "kyc-1"` for registered cases; null for walk-in
+- Override entries: add `id: "override-1"` alongside existing `booking_id`
+- New tests: walk-in with `kyc_profile_id` set + verified → succeeds · walk-in with `kyc_profile_id = null` → blocked · snapshot columns present on pickup success (`kyc_authorized_via = 'verified'`) · override snapshot (`kyc_authorized_via = 'override'`, `kyc_override_id` set) · return event → snapshot null
+- Update "walk-in → TASK 4 deferred" test description
+
+#### Key constraints
+
+- Snapshot columns must NEVER feed back into gate resolution — write-only audit evidence
+- `assertPickupCustomerEvidence` must use fresh `new Date()` (already does — keep as-is)
+- Walk-in with `kyc_profile_id = null` → `no_profile` → blocked (unchanged behavior, new code path)
+- Registered bookings: `user_id` path takes precedence; `kyc_profile_id` column not used for registered
+- `kyc.ts` unchanged — no new exports needed
+- Opus 4.8 review before push (security-core pickup gate + snapshot write)
+
+### Unstaged / untracked (pre-existing — leave alone)
+
+```
+ M app/components/home/HomeCategoryShortcutRail.vue
+ M app/components/home/HomeHorizontalRail.vue
+ M decisions.md
+ M handoff.md
+ M i18n/locales/cn.json
+ M i18n/locales/en.json
+ M i18n/locales/jp.json
+ M i18n/locales/th.json
+ M progress.md
+?? .claude/skills/
+?? .impeccable/
+?? DESIGN.md
+?? PRODUCT.md
+```
+
+---
+
+## Claude Code → Claude Code / 2026-06-02 (migration 102 pushed — reset blocker resolved)
+
+### State at handoff
+
+- Branch: `staging`
+- Tip commit: `4aba307 fix(branches): make LKB dedup migration reset-safe`
+- `origin/staging` in full sync with local at `4aba307` — **no divergence**
+- `supabase db reset --local`: **PASSES** — all 106 migrations apply cleanly in sequence
+- `npx tsc --noEmit`: clean (exit 0)
+
+### What was completed this session
+
+**Pre-apply verification (two checks):**
+
+1. `store_branches` INSERT column completeness — all NOT NULL / no-default columns confirmed supplied in the seed INSERT (`id`, `code`, `name_th`, `name_en`, `is_active`, `is_public`, `sort_order`). No missing required columns.
+2. `is_public` for `branch-e12b7a81` — confirmed `TRUE`, set explicitly in both the seed INSERT and the UPDATE. Not relying on `DEFAULT false`.
+
+**Migration 102 fix committed and pushed:**
+
+Commit `4aba307 fix(branches): make LKB dedup migration reset-safe`
+- Removed hardcoded `inventory_id = 'e4ad1acc-66df-407e-96c1-6bf87d5b68f4'` from statement 4
+- Added statement 1a: `INSERT INTO store_branches … ON CONFLICT (id) DO NOTHING` — seeds `branch-e12b7a81` on fresh reset with `is_public = TRUE`; triggers `store_branches_after_insert_seed_inventories_trg` to auto-create Default + Rental inventories via `gen_random_uuid()`
+- Statement 4 now uses dynamic subquery: `SELECT id FROM inventories WHERE branch_id = 'branch-e12b7a81' AND name = 'Default' LIMIT 1`
+- Defensive `AND EXISTS` guard so UPDATE is a safe no-op if Default inventory is absent
+- Fix is idempotent on staging (branch already exists → `ON CONFLICT DO NOTHING`; sku rows already migrated → `WHERE branch_id = 'store-nikhom-lkb'` matches nothing)
+
+**Push:**
+- `git push origin staging` → fast-forward `1f151b1..4aba307`
+- Staged and committed only `supabase/migrations/102_lkb_branch_public_and_dedup.sql` — no unrelated files included
+
+**SQL verification (post-reset):**
+- `branch-e12b7a81`: exists, `is_active=t`, `is_public=t`
+- Exactly 1 Default inventory for `branch-e12b7a81` (fresh `gen_random_uuid()` — hardcoded UUID absent)
+- All 8 `sku_branch_inventory` rows: `branch_id=branch-e12b7a81`, `branch_code=LKB`, `inventory_id` → dynamically resolved Default
+- `store-nikhom-lkb`: `is_active=f`, `is_public=f`
+- `rental_bookings.kyc_profile_id` (uuid, nullable) — migration 106 confirmed applied
+- `rental_booking_fulfillments` KYC snapshot columns: `kyc_profile_id`, `kyc_status_snapshot`, `kyc_valid_until_snapshot`, `kyc_authorized_via`, `kyc_override_id` — all present
+
+### IMMEDIATE NEXT ACTIONS (in order)
+
+**Step 1 — Regenerate DB types**
+
+Migration 106 is now on staging and in the reset-clean chain. Types are stale.
+
+```bash
+supabase gen types typescript --linked > app/types/database.types.ts
+git add app/types/database.types.ts
+git commit -m "chore(db): regenerate types from staging schema (post-migration 106)"
+git push
+```
+
+**Step 2 — TASK 4.2: KYC lookup API endpoint**
+
+New file: `server/api/admin/kyc/profiles/lookup.get.ts`
+- Auth: `requirePlatformAdmin(event)`
+- Query params: `identityType` (`national_id | juristic_id | passport`), `rawValue`
+- Server-side: call `hashKycIdentity(identityType, rawValue)` from `server/utils/kyc.ts`
+- Query: `SELECT … FROM kyc_profiles WHERE identity_hash = $hash ORDER BY created_at DESC`
+- Return: profile (status, identity_last4, customer_type, etc.) or `{ profile: null }`
+- Raw identity value must NEVER be logged or stored — only the hash hits the DB
+- Update `docs/index/server-utils-index.md` if a new server util is created
+
+**Step 3 — TASK 4 (UI + API + gate wiring)** — see prior handoff entry for full spec
+
+### Unstaged / untracked (pre-existing — leave alone)
+
+```
+ M app/components/home/HomeCategoryShortcutRail.vue
+ M app/components/home/HomeHorizontalRail.vue
+ M decisions.md
+ M handoff.md
+ M i18n/locales/cn.json
+ M i18n/locales/en.json
+ M i18n/locales/jp.json
+ M i18n/locales/th.json
+ M progress.md
+?? .claude/skills/
+?? .impeccable/
+?? DESIGN.md
+?? PRODUCT.md
+```
+
+None of these are staged or committed. Stage and commit session docs (`decisions.md`, `handoff.md`, `progress.md`) as a separate docs commit if desired before continuing.
+
+### Constraints
+
+- Do NOT run `supabase db push` — migrations 105 and 106 are already on staging
+- Do NOT regenerate types until Step 1 above is run (linked project = staging)
+- `KYC_HASH_SECRET` must be set in env before any hash-based lookup or create route is tested
+- All new KYC intake code must call `hashKycIdentity` — never `hashIdentity` directly on raw input
+- `kyc_authorized_via` in fulfillment snapshot: write `'verified'` or `'override'` only
+- Snapshot consistency (`verified → kyc_profile_id NOT NULL`, `override → kyc_override_id NOT NULL`) enforced by application at INSERT time
+- Model strategy: Sonnet 4.6 drafts; Opus 4.8 reviews security-core (KYC hashing, RLS, pickup gate changes) before commit
+
+---
+
+## Claude Code → Claude Code (new terminal) / 2026-06-01 (migration 102 fix + migration 106 ready to push)
+
+### State at handoff
+
+- Branch: `staging`
+- Local-only commit (NOT pushed): `fc9f281 feat(kyc): add booking KYC link and pickup snapshot schema`
+  - Contains only: `supabase/migrations/106_kyc_booking_link_and_pickup_snapshot.sql`
+- Unstaged/uncommitted modified file: `supabase/migrations/102_lkb_branch_public_and_dedup.sql`
+  - The 102 fix is **not yet committed**
+- Unstaged: `decisions.md`, `handoff.md`, `progress.md` (session docs — stage and commit as usual)
+- `npx tsc --noEmit`: clean (exit 0)
+- `supabase db reset --local`: **NOW PASSES** — all 106 migrations apply cleanly in sequence
+
+### What was completed this session
+
+**TASK 4.1a — Migration 106 reviewed and locally committed:**
+
+File: `supabase/migrations/106_kyc_booking_link_and_pickup_snapshot.sql`
+
+- `rental_bookings.kyc_profile_id UUID NULL` FK → `kyc_profiles(id)` ON DELETE SET NULL + index + comment
+- `rental_booking_fulfillments`: 5 KYC pickup-time snapshot columns + 1 allowed-values CHECK + 2 FKs + 2 indexes + 5 comments
+- Two snapshot-consistency CHECKs (`chk_fulfillment_kyc_verified_has_profile`, `chk_fulfillment_kyc_override_has_id`) were **removed** after review — they conflict with `ON DELETE SET NULL` (FK cascade would set UUID to NULL while `kyc_authorized_via` stays `'verified'`/`'override'`, violating the CHECK). Consistency is enforced by the application's atomic INSERT at confirmPickup time instead.
+- Commit: `fc9f281` — local only, **not pushed**
+
+**Migration 102 reset blocker — audited and fixed:**
+
+Root cause: `102_lkb_branch_public_and_dedup.sql` statement 4 hardcoded inventory UUID `e4ad1acc-66df-407e-96c1-6bf87d5b68f4` (canonical Default pool for `branch-e12b7a81`). That branch was created out-of-band on staging before migration 102 was written. On fresh `db reset --local`, the branch and its inventory never existed, causing the `sku_branch_inventory_sync_branch_id_trg` trigger (migration 021) to raise `SQLSTATE P0001`.
+
+Fix applied to `102_lkb_branch_public_and_dedup.sql` (3 hunks, NOT yet committed):
+1. Added statement 1a: `INSERT INTO store_branches (branch-e12b7a81 …) ON CONFLICT (id) DO NOTHING` — causes the `store_branches_after_insert_seed_inventories_trg` (migration 023) to auto-create Default + Rental inventories via `gen_random_uuid()`. `is_public = TRUE` set explicitly.
+2. Replaced hardcoded `inventory_id = 'e4ad1acc-...'` with dynamic subquery: `(SELECT id FROM inventories WHERE branch_id = 'branch-e12b7a81' AND name = 'Default' LIMIT 1)`.
+3. Added `AND EXISTS (...)` guard so the UPDATE is a safe no-op if the Default inventory is absent.
+
+SQL verification after reset confirms:
+- `branch-e12b7a81` exists, `is_active=t`, `is_public=t`
+- Exactly 1 Default inventory for `branch-e12b7a81` (fresh `gen_random_uuid()` — NOT `e4ad1acc-...`)
+- Hardcoded UUID `e4ad1acc-...` does NOT exist in `inventories` (not needed)
+- All 8 `sku_branch_inventory` rows remapped: `branch_id=branch-e12b7a81`, `branch_code=LKB`
+- `store-nikhom-lkb`: `is_active=f`, `is_public=f`
+- Migration 106 reached and applied: `rental_bookings.kyc_profile_id` and all 5 fulfillment KYC columns confirmed present
+
+### IMMEDIATE NEXT ACTIONS (in order)
+
+**Step 1 — Commit migration 102 fix**
+
+```bash
+git add supabase/migrations/102_lkb_branch_public_and_dedup.sql
+git commit -m "fix(db): make migration 102 self-contained — seed canonical LKB branch and use dynamic inventory lookup"
+```
+
+**Step 2 — Commit session docs**
+
+```bash
+git add decisions.md handoff.md progress.md
+git commit -m "docs: record TASK 4.1a review + migration 102 reset blocker fix session"
+```
+
+**Step 3 — Push both commits to staging**
+
+```bash
+git push
+```
+
+Confirm remote accepts both commits. Migration 102 change is safe on staging: `ON CONFLICT (id) DO NOTHING` skips the branch INSERT (branch already exists), dynamic lookup finds the existing `e4ad1acc-...` inventory unchanged.
+
+**Step 4 — Regenerate DB types**
+
+Migration 106 adds columns to `rental_bookings` and `rental_booking_fulfillments`. Types are stale.
+
+```bash
+supabase gen types typescript --linked > app/types/database.types.ts
+git add app/types/database.types.ts
+git commit -m "chore(db): regenerate types from staging schema (post-migration 106)"
+git push
+```
+
+**Step 5 — Continue TASK 4.2: KYC lookup API endpoint**
+
+New file: `server/api/admin/kyc/profiles/lookup.get.ts`
+- Auth: `requirePlatformAdmin(event)`
+- Query params: `identityType` (`national_id | juristic_id | passport`), `rawValue`
+- Server-side: call `hashKycIdentity(identityType, rawValue)` from `server/utils/kyc.ts`
+- Query: `SELECT … FROM kyc_profiles WHERE identity_hash = $hash ORDER BY created_at DESC`
+- Return: profile (status, identity_last4, customer_type, etc.) or `{ profile: null }`
+- Raw identity value must NEVER be logged or stored — only the hash hits the DB
+- Add row to `docs/index/server-utils-index.md` if a new server util is created
+
+### DO NOT TOUCH (pre-existing dirty — leave alone)
+
+- `app/pages/index.vue` (M — pre-existing, unrelated)
+- `app/components/home/HomeCategoryShortcutRail.vue` (M — pre-existing, unrelated)
+
+### Constraints
+
+- Do NOT run `supabase db push` until Step 3 above (sequential — 102 fix must go with 106)
+- Do NOT regenerate types until migration 106 is on staging (Step 3 before Step 4)
+- `KYC_HASH_SECRET` must be set in env before any hash-based lookup or create route is tested
+- All new KYC intake code must call `hashKycIdentity` — never `hashIdentity` directly on raw input
+- `kyc_authorized_via` in fulfillment snapshot: write `'verified'` or `'override'` only — CHECK constraint rejects anything else
+- Snapshot consistency (`verified → kyc_profile_id NOT NULL`, `override → kyc_override_id NOT NULL`) enforced by application at INSERT time, not by DB CHECK
+- Model strategy: Sonnet 4.6 drafts; Opus 4.8 reviews security-core (KYC hashing, RLS, pickup gate changes) before commit
+
+### git status at handoff
+
+```
+ M decisions.md
+ M handoff.md
+ M progress.md
+ M supabase/migrations/102_lkb_branch_public_and_dedup.sql
+?? .claude/skills/
+```
+
+Commit `fc9f281` (migration 106) is local only — not yet pushed.
+
+---
+
+## Claude Code → Claude Code (new terminal) / 2026-05-31 (TASK 4.1a done → Opus review + TASK 4.2)
+
+### State at handoff
+
+- Branch: `staging`
+- Tip commit: `1f151b1 feat(kyc): wire KYC pickup gate into readiness + confirm (TASK 3)`
+- Working tree: **one untracked file** — `supabase/migrations/106_kyc_booking_link_and_pickup_snapshot.sql`
+  - Everything else: `handoff.md`, `progress.md` pre-existing uncommitted session docs (not new)
+- Test suite: 1923 total, 1903 pass, 20 pre-existing failures (unchanged — no code touched this session)
+- `npx tsc --noEmit`: clean
+
+### What was completed this session
+
+**TASK 4.0 audit (read-only):** Full pre-implementation survey of POS V3 KYC mode — mapped what exists vs. what TASK 4 must build. No files changed.
+
+**TASK 4.0b audit (read-only):** Walk-in customer entity model audit — confirmed `walk_in_customers` is phone-primary (no UUID id), `rental_bookings` has no stable UUID FK to walk-in entity. Architecture decision locked: KYC is identity-hash-rooted via `kyc_profiles`, not phone-rooted. See DECISIONS.md 2026-05-31 (TASK 4.0b + 4.1a).
+
+**TASK 4.1a — Migration 106 created (NOT committed):**
+- File: `supabase/migrations/106_kyc_booking_link_and_pickup_snapshot.sql`
+- `rental_bookings.kyc_profile_id UUID NULL FK → kyc_profiles(id) ON DELETE SET NULL` + index
+- `rental_booking_fulfillments`: 5 KYC snapshot columns + 3 CHECK constraints + 2 indexes
+- Validated on local DB via `docker exec supabase_db_hop-rental psql` (reset failed at mig 102, see below)
+- `npx tsc --noEmit` clean
+
+### DO NOT TOUCH (pre-existing dirty — leave alone)
+
+- `app/pages/index.vue` (M — pre-existing)
+- `app/components/home/HomeCategoryShortcutRail.vue` (M — pre-existing)
+
+### IMMEDIATE NEXT ACTION
+
+**Step 1 — Opus 4.8 review of migration 106 (security-core schema change — required before commit)**
+
+Prompt Opus with:
+- The full diff of `supabase/migrations/106_kyc_booking_link_and_pickup_snapshot.sql`
+- `docs/kyc-pos-v3-design.md` §3, §4, §9 (pickup gate, identity model, override model)
+- `decisions.md` 2026-05-31 (TASK 4.0b + TASK 4.1a blocks)
+- Review focus: FK direction correctness, CHECK constraint completeness, ON DELETE SET NULL safety, RLS grant analysis, snapshot-vs-gate separation
+
+**Step 2 — After Opus GO: commit migration 106**
+
+```bash
+git add supabase/migrations/106_kyc_booking_link_and_pickup_snapshot.sql
+git commit -m "feat(kyc): add walk-in booking KYC link + pickup fulfillment snapshot (TASK 4.1a)"
+```
+
+**Step 3 — Regenerate DB types**
+
+```bash
+supabase gen types typescript --linked > app/types/database.types.ts
+git add app/types/database.types.ts
+git commit -m "chore(db): regenerate types from staging schema (post-migration 106)"
+```
+
+**Step 4 — TASK 4.2: KYC lookup API endpoint**
+
+New file: `server/api/admin/kyc/profiles/lookup.get.ts`
+- Auth: `requirePlatformAdmin(event)`
+- Query params: `identityType` (national_id | juristic_id | passport), `rawValue` (raw identity string)
+- Server-side: call `hashKycIdentity(identityType, rawValue)` from `server/utils/kyc.ts`
+- Query: `SELECT ... FROM kyc_profiles WHERE identity_hash = $hash ORDER BY created_at DESC`
+- Return: profile (with status, identity_last4, customer_type, etc.) or `{ profile: null }`
+- Raw identity value must NEVER be logged or stored — only the hash is used in the query
+- Add to `docs/index/server-utils-index.md` if a new server util is created
+
+**Step 5 — TASK 4 (main): POS V3 KYC mode UI + API routes**
+
+See `docs/kyc-pos-v3-design.md §10, §4, §8, §11` for the full spec.
+
+New API routes needed (all require `requirePlatformAdmin`):
+- `server/api/admin/kyc/profiles/index.post.ts` — create profile
+- `server/api/admin/kyc/profiles/[id]/documents.post.ts` — upload to private `kyc-documents` bucket + insert `kyc_documents` row
+- `server/api/admin/kyc/profiles/[id]/verify.post.ts` — set verified + compute `valid_until` via `computeValidUntil`
+
+New component: `app/components/admin/pos/AdminPosV3KycContainer.vue`
+- Identity input (type selector + raw value field)
+- Hash + lookup via new endpoint
+- Profile display (status, last4, docs uploaded)
+- Create profile form if not found
+- Document upload (id_card required; signature required; company docs for company type)
+- Verify CTA
+
+Wire into `app/pages/admin/pos-v3/index.vue`:
+- Add `v-if="activeMode === 'kyc'"` section mounting `AdminPosV3KycContainer`
+- Pass `userContext` (resolved user) to the container when available
+- After KYC attach: set `rental_bookings.kyc_profile_id` on the booking via PATCH endpoint
+
+**Step 6 — TASK 4 gate wiring (after UI is done)**
+
+Update `server/utils/rental-pickup-readiness.ts`:
+- Walk-in path: read `rental_bookings.kyc_profile_id` → look up `kyc_profiles` by that ID
+- (Current code still queries by `walk_in_phone` from the old design — replace)
+
+Update `server/utils/rental-fulfillment.ts` `assertPickupCustomerEvidence`:
+- Same: use `rental_bookings.kyc_profile_id` for walk-in lookup
+- Write KYC snapshot columns to `rental_booking_fulfillments` at INSERT time
+
+Both files require Opus 4.8 review before commit.
+
+### Known local environment issue
+
+`supabase db reset --local` and `supabase db push --local` both fail at migration 102 (`sku_branch_inventory` update references inventory UUID `e4ad1acc-...` not present in local seed). This is a pre-existing issue unrelated to KYC work.
+
+**Workaround for local migration validation:**
+Apply migrations directly via docker:
+```bash
+docker exec -i supabase_db_hop-rental psql -U postgres -d postgres < supabase/migrations/NNN_name.sql
+```
+
+Validate with:
+```bash
+docker exec supabase_db_hop-rental psql -U postgres -d postgres -c "SELECT ..."
+```
+
+### Constraints
+
+- Do NOT run `supabase db push` to staging — migration 106 must get Opus review first
+- Do NOT regenerate types until migration 106 is committed to staging
+- Do NOT touch DO-NOT-TOUCH files above
+- KYC_HASH_SECRET must be set before any hash-based lookup or create route is tested
+- All new KYC intake: call `hashKycIdentity` — never `hashIdentity` directly
+- `kyc_authorized_via` in fulfillments snapshot: write 'verified' or 'override' only — CHECK constraints will reject anything else
+
+---
+
+## Claude Code → Claude Code (new terminal) / 2026-05-31 (TASK 3 done → TASK 4)
+
+### State at handoff
+
+- Branch: `staging`
+- Tip commit: `1f151b1 feat(kyc): wire KYC pickup gate into readiness + confirm (TASK 3)`
+- Working tree: **clean** (all TASK 3 files committed and pushed)
+- Test suite: 1923 total, 1903 pass, 20 pre-existing failures (unchanged)
+- `npx tsc --noEmit`: clean
+
+### What was completed this session
+
+TASK 3 — KYC pickup gate wired into both gate points:
+- `server/utils/rental-pickup-readiness.ts`: reads `kyc_profiles` + `kyc_pickup_overrides`, calls `resolvePickupKyc`
+- `server/utils/rental-fulfillment.ts`: `assertPickupCustomerEvidence` replaced with fresh `kyc_profiles`-based gate (TOCTOU-safe `new Date()`)
+- `docs/index/server-utils-index.md`: new `rental-pickup-readiness.ts` row; updated `rental-fulfillment.ts` and `kyc.ts` rows
+- `docs/kyc-pos-v3-design.md §9`: override no-expiry / TASK 6 deferral note added
+- All session decisions recorded in `decisions.md`
+
+Reviewed: Opus 4.8 — GO (no blockers)
+
+### DO NOT TOUCH (pre-existing dirty/unrelated — leave alone)
+
+These files have pre-existing uncommitted changes. Do NOT stage or modify them:
+- `app/pages/index.vue`
+- `app/components/home/HomeCategoryShortcutRail.vue`
+- `scripts/translate-i18n.mjs` (already deleted, do not re-create)
+
+### Immediate next action: TASK 4
+
+**TASK 4 — POS V3 KYC mode UI** (lookup, submit, verify) per `docs/kyc-pos-v3-design.md §10 + §4`.
+
+Entry point: POS V3 "KYC mode" tab — staff looks up customer by identity, finds/creates `kyc_profiles` row, submits documents, marks verified.
+
+Key design references:
+- `docs/kyc-pos-v3-design.md §4` — identity normalization + `hashKycIdentity` contract
+- `docs/kyc-pos-v3-design.md §4a` — v1 HMAC format (permanent — do not change)
+- `docs/kyc-pos-v3-design.md §8` — KYC type requirements (individual vs company)
+- `docs/kyc-pos-v3-design.md §11` — staff/super_admin authority
+- Migration 105 — `kyc_profiles`, `kyc_documents`, `kyc_pickup_overrides` schema + RLS
+
+Model strategy: Sonnet 4.6 drafts; Opus 4.8 reviews security-core (hashing, RLS, profile create/verify) before commit.
+
+### Open items carried forward
+
+1. **TASK 4/5** — walk-in guard idiom unification: `rental-pickup-readiness.ts` uses `userId === ""` (empty string), `rental-fulfillment.ts` uses `if (userId)` (falsy). Unify behind one predicate when walk-in path grows.
+2. **TASK 5** — i18n / frontend rendering: add th/en/cn/jp keys for `kyc_pickup_gate_blocked`, `kycReason` values (`expired`, `pending`, `rejected`, `revoked`, `no_profile`), and `kyc_pickup_via_override`. Audit readiness UI for raw English message leakage.
+3. **TASK 6** — override expiry: add `valid_until` to `kyc_pickup_overrides` (new migration), update gate. Requires Opus review. Do NOT implement before TASK 6.
+
+### Constraints
+
+- Do NOT run `supabase db push` — migration 105 already on staging
+- Do NOT regenerate types unless a new migration is added
+- Do NOT touch DO-NOT-TOUCH files above
+- KYC_HASH_SECRET must be set in env before testing identity hashing
+- All new KYC intake code must call `hashKycIdentity` — never `hashIdentity` directly on raw input
+
+---
+
 ## Claude Chat → Claude Code / 2026-05-29
 
 ### Task 1: CLAUDE.md system audit and repair
@@ -113,11 +644,9 @@ Open items (non-blocking — carry to TASK 4/5):
    - Requires Opus review before implementation (schema + gate change)
    Do NOT implement any expiry logic before TASK 6. Do NOT assign override-display or i18n to TASK 6.
 
-Next:
-1. Get Opus 4.8 review of the diff before committing
-2. Commit as single `feat(kyc): wire KYC pickup gate into readiness + confirm (TASK 3)` commit
-3. Push to staging
-4. Proceed to TASK 4 (POS V3 KYC mode UI)
+Status: **DONE — Opus 4.8 GO — committed `1f151b1`, pushed to staging.**
+
+Next: TASK 4 (POS V3 KYC mode UI — see below)
 
 ### IMMEDIATE NEXT ACTION
 
@@ -223,3 +752,10 @@ Next for new terminal:
 3. Continue KYC TASK 3–7 backlog (unchanged from prior sessions) or extend server-utils index.
 
 Status: DONE (this session complete; working tree clean; all pushes confirmed).
+
+## KYC access-log remote verification probe row (2026-06-04)
+A permanent, non-PII verification probe row exists in remote/staging `public.kyc_document_access_log` (the table is append-only by design — DO NOT attempt to delete it):
+- id: `f122e850-2c73-49ec-a6c1-12e961f7fd36`
+- action: `upload` · result: `allowed` · reason: `remote-verify-probe` · all PII/document fields NULL
+Filter it out (e.g. `WHERE reason <> 'remote-verify-probe'`) in any audit/log review.
+Process note: future remote verification of immutable logs must be **read-only / metadata-only** (no insert-based checks) so no further permanent probe rows are created.
