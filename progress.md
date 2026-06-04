@@ -1,5 +1,5 @@
 # PROGRESS
-Last updated: 2026-06-05 (KYC document storage Phase 1B complete — see session section at bottom)
+Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure server-proxy download; spec: `docs/kyc-phase-2-download-spec.md`; see session section at bottom + decisions.md Decisions D/E/F/G)
 
 ## Done ✅
 
@@ -164,3 +164,34 @@ Last updated: 2026-06-05 (KYC document storage Phase 1B complete — see session
 ### Notes
 - `origin/staging` HEAD: `010ee9b` — local in sync; session docs committed separately right after (this commit)
 - No migration was added in Phase 1B; `database.types.ts` untouched since `1f10a03`
+
+---
+
+## Session 2026-06-05 — Vercel streaming spike (Phase 2 pre-implementation gate) + Phase 2 spec locked
+
+### Done ✅
+- **Vercel streaming spike PASS — Phase 2 = PURE server-proxy download** (decisions.md 2026-06-05 Decision D; full locked spec now tracked at `docs/kyc-phase-2-download-spec.md`)
+  - Throwaway branch `spike/vercel-streaming` (commit `99a2038`, never merged, deleted) with one temp route `server/api/_spike/stream.get.ts`; tested against a real Vercel Preview deployment (`dpl_Ae9LzghH3wCtn8C7Txucz6C9cn13`)
+  - Synthetic 6 MB stream (incompressible random bytes): 200, exact bytes, SHA-256 match
+  - Synthetic 10 MB stream (= KYC bucket max): 200, 10,485,760 bytes, SHA-256 match
+  - Real-object pass (mandatory): temp 6 MB `catalog-media` fixture through the exact production shape `storage.download()` → `blob.stream()` → response: 200, end-to-end SHA-256 identical
+  - No 413 / FUNCTION_PAYLOAD_TOO_LARGE / truncation anywhere
+  - Runtime baseline recorded (Decision D): Nuxt 4.3.1 / Nitro 2.13.1 / `Nitro preset: vercel` / Node λ (not Edge) / nodeVersion 24.x / region iad1 / **Fluid Compute enabled** (`resourceConfig.fluid === true`) / streamed responses carry no Content-Length over HTTP/2 → production endpoint will OMIT Content-Length
+  - Hybrid signed-URL fallback shelved as documented contingency (`docs/kyc-phase-2-download-spec.md` §9)
+- Schema check: all 5 denial-payload columns (`document_id`, `kyc_profile_id`, `document_type`, `storage_bucket`, `storage_path`) confirmed nullable in migration 109 + generated types — malformed-id deny logging is schema-valid, no migration impact (Decision G)
+- Decisions recorded: D (pure proxy + platform baseline + guards), E (download `allowed` semantics + `attachment` disposition), F (PDPA/IP stance), G (malformed-id log purity)
+- `docs/kyc-phase-2-download-spec.md` created — single tracked source for the Phase 2 download design (endpoint order, migration 110 runbook, path-validator single source of truth, test matrix, shelved hybrid contingency, Fluid Compute guard, bucket cap coupling)
+- Spike cleanup verified: spike branch (remote+local) deleted, preview deployment removed, protection-bypass automation secret revoked (`protectionBypass: {}` after revoke), temp fixture `catalog-media/spike/streaming-fixture-6mb.jpg` deleted (re-fetch 400), local temp files removed; working tree back on `staging` @ `4a43239` with only pre-existing dirty files
+
+### Next 📋
+- **Phase 2 implementation per `docs/kyc-phase-2-download-spec.md`**: re-verify `supabase db reset --local` through 109 (last proven at 106) → author migration 110 (widen `kyc_document_access_log_action_chk` to add `'download'`; runbook in spec §4) → endpoint + utils + tests (spec §2/§3/§5)
+- Planned enforced guard: CI/deploy-time assertion that Vercel `resourceConfig.fluid === true`; if Fluid Compute is disabled → re-spike before production use (Decision D impact 2)
+- Re-run streaming spike if the KYC bucket 10 MB limit is ever raised (Decision D impact 3)
+- Optional hardening: 10 MB real-object pass next time a preview spike runs (Decision D impact 4)
+
+### Blocked 🚫
+- (unchanged) Production enablement blocked by Decision C's five gates; purge primitive deferred pending legal retention scope
+
+### Notes
+- NOT done this session by instruction: no download endpoint code, no migration 110, nothing staged/committed/pushed
+- Operational learnings for future preview spikes recorded in HANDOFF.md 2026-06-05 spike entry (SSO bypass secret flow, `catalog-media` MIME allowlist, `sb_secret_…` apikey header)

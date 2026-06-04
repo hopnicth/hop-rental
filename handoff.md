@@ -1,5 +1,45 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-05 (streaming spike PASS — Phase 2 unblocked as pure proxy; endpoint + migration 110 NOT started)
+
+### State at handoff
+
+- Branch: `staging` @ `4a43239` — in sync with origin; nothing staged or committed this session
+- Working tree: docs-only changes pending commit (`decisions.md`, `progress.md`, `handoff.md` — tracked lowercase — plus new `docs/kyc-phase-2-download-spec.md`) + the pre-existing unrelated dirty files (home rails, 4 locale JSONs, DESIGN.md, PRODUCT.md, .claude/, .impeccable/) — do not touch the unrelated ones
+- Spike fully cleaned: branch `spike/vercel-streaming` deleted (remote+local, was `99a2038`, never merged), Vercel preview deployment removed, protection-bypass secret revoked, temp fixture `catalog-media/spike/streaming-fixture-6mb.jpg` deleted, `server/api/_spike/` gone
+- Migration 110: NOT authored. Download endpoint: NOT implemented. `database.types.ts`: untouched.
+
+### What was completed this session
+
+1. **Vercel streaming spike — PASS on all three tests** (full evidence in decisions.md 2026-06-05 Decision D): synthetic 6 MB + 10 MB random-byte streams and a real-object `storage.download()` → `blob.stream()` pass all delivered exact, checksum-verified bytes from a live Preview URL. No 413 / payload-limit failures.
+2. **Phase 2 direction locked: PURE server-proxy** (Decision D) — hybrid signed-URL fallback shelved as documented contingency. Decision B's mechanism wording amended (fail-closed allowed log before BYTE DELIVERY).
+3. **`docs/kyc-phase-2-download-spec.md` created** — the single tracked spec for the Phase 2 download design (endpoint order §2.1, internal SELECT §2.2, path-validator single source of truth §2.3, audit table + malformed-id log purity §3, migration 110 runbook §4, test matrix §5, platform guards §8, shelved hybrid contingency §9). Replaces all chat-only "rev-3 plan" references.
+4. Download `allowed` semantics + `attachment` disposition recorded (Decision E); PDPA/IP stance recorded (Decision F); malformed-id log purity recorded (Decision G).
+5. Access-log denial-payload nullability verified (all 5 sibling columns nullable) — malformed-id deny logging design is schema-valid.
+
+### Operational notes for the next preview spike (learned this session)
+
+- Preview deployments are SSO-protected (`ssoProtection: all_except_custom_domains`) → generate a Protection Bypass for Automation secret via the Vercel API (`PATCH /v1/projects/<id>/protection-bypass`), send as `x-vercel-protection-bypass`, REVOKE after
+- `catalog-media` bucket rejects `application/octet-stream` (bucket-level declared-MIME allowlist) — upload spike fixtures with an allowed declared MIME (bytes can still be random)
+- Local `.env` has the new `sb_secret_…` key — Storage REST needs it in the `apikey` header (Bearer-only → "Invalid Compact JWS")
+
+### IMMEDIATE NEXT ACTION: Phase 2 implementation per `docs/kyc-phase-2-download-spec.md`
+
+Remaining pre-implementation steps, in order:
+1. Re-verify `supabase db reset --local` is clean through 109 (last proven at 106 on 2026-06-02) — spec §4 step 0
+2. Author migration 110 — widen `kyc_document_access_log_action_chk` (verified name, migration 109 line 79) to add `'download'`; constraint-only, NO types regen; full runbook in spec §4 (incl. local `action='download'` insert test + metadata-only remote verification)
+3. Owner approval of migration 110, then endpoint + utils + tests per spec §2/§3/§5/§6
+4. Endpoint specifics locked: pure proxy; OMIT Content-Length; `Content-Disposition: attachment` (owner decision); allowed-log → fetch → stream order; `storage_download_failed` correction row; malformed-id log purity (Decision G)
+
+### Constraints
+
+- Production enablement still blocked by Decision C's five gates (retention, AV gap, prod policy gate, h3 canary in CI, read-only prod verification)
+- Fluid Compute guard (Decision D impact 2): plan an enforced CI/deploy-time `resourceConfig.fluid === true` assertion; if disabled → re-spike before production
+- Bucket cap coupling (Decision D impact 3): raising the 10 MB KYC bucket limit requires a re-spike first
+- Immutable-log verification stays read-only / metadata-only (Decision A); never insert probe rows remotely
+
+---
+
 ## Claude Code → Claude Code / 2026-06-05 (Phase 1B upload endpoint shipped — next: Phase 2 download)
 
 ### State at handoff
