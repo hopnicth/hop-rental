@@ -18,6 +18,10 @@
  *  7. No manual audit logging from the UI
  *  8. Page/nav wiring — admin layout + role middleware; nav entry exists;
  *     raw identity value cleared from state after lookup
+ *  9. Create-pending-profile flow — POST /api/admin/kyc/profiles (body-only
+ *     identity), coherence-mirrored type options, raw identity cleared after
+ *     submit, success feeds the SAME profile render path as lookup, and no
+ *     verify/approve/reject/delete affordance exists
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -184,5 +188,56 @@ describe("page + nav wiring", () => {
   it("page renders the masked identityLast4 only — never a raw identity binding", () => {
     expect(pageSrc).toContain("identityLast4");
     expect(pageSrc).not.toMatch(/\{\{\s*identityValue/);
+    expect(pageSrc).not.toMatch(/\{\{\s*create\.identityValue/);
+  });
+});
+
+describe("create pending profile flow", () => {
+  it("posts exactly to /api/admin/kyc/profiles with the identity in the body", () => {
+    const createBody = pageSrc.slice(
+      pageSrc.indexOf("async function createProfile"),
+      pageSrc.indexOf("function formatDate"),
+    );
+    expect(createBody).toContain('"/api/admin/kyc/profiles"');
+    expect(createBody).toContain('method: "POST"');
+    expect(createBody).toContain("identityValue: create.identityValue");
+    // never in a URL/query string
+    expect(pageSrc).not.toMatch(/profiles\?/);
+    expect(pageSrc).not.toMatch(/identityValue=/);
+  });
+
+  it("clears the raw identity from state after every create submit", () => {
+    const createBody = pageSrc.slice(
+      pageSrc.indexOf("async function createProfile"),
+      pageSrc.indexOf("function formatDate"),
+    );
+    const finallyBlock = createBody.slice(createBody.indexOf("} finally {"));
+    expect(finallyBlock).toContain('create.identityValue = ""');
+  });
+
+  it("success feeds the SAME profile render path as a lookup hit", () => {
+    // Both handlers assign the response profile into the single `profile` ref
+    // that gates the profile card + documents panel.
+    const assignments = pageSrc.match(/profile\.value = res\.profile/g) ?? [];
+    expect(assignments.length).toBeGreaterThanOrEqual(2);
+    expect(pageSrc).toContain('<AdminKycDocumentsPanel :profile="profile" />');
+  });
+
+  it("mirrors the customerType × identityType coherence guard", () => {
+    expect(pageSrc).toContain("CREATE_IDENTITY_OPTIONS");
+    expect(pageSrc).toContain('"juristic_id"');
+    // identity-type options are derived from the selected customer type
+    expect(pageSrc).toContain("CREATE_IDENTITY_OPTIONS[create.customerType]");
+  });
+
+  it("create form only appears when no profile is selected", () => {
+    expect(pageSrc).toMatch(/<UCard v-if="!profile">/);
+  });
+
+  it("no verify/approve/reject/delete/purge affordance anywhere in the admin KYC UI", () => {
+    for (const [, src] of kycUiSources) {
+      expect(src).not.toMatch(/label="(Verify|Approve|Reject|Delete|Purge)/i);
+      expect(src).not.toMatch(/method:\s*"(DELETE|PATCH|PUT)"/);
+    }
   });
 });

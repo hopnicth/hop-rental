@@ -8,7 +8,13 @@
  * value is CLEARED from component state after every lookup — display uses the
  * masked identityLast4 from the response only.
  *
- * Access: staff + super_admin (lookup/list/upload are platform-admin APIs).
+ * Minimal admin intake: when no profile is selected, a "Create pending KYC
+ * profile" form posts to the existing /api/admin/kyc/profiles endpoint
+ * (always status 'pending'; server dedupes walk-in identities) and feeds the
+ * returned SafeKycProfile into the SAME render path as a lookup hit. The raw
+ * identity value is cleared from state after every create submit too.
+ *
+ * Access: staff + super_admin (lookup/create/list/upload are platform-admin APIs).
  * Document download inside the panel is super_admin only.
  */
 import AdminKycDocumentsPanel from "~/components/admin/kyc/AdminKycDocumentsPanel.vue";
@@ -40,6 +46,81 @@ const identityValue = ref("");
 const searching = ref(false);
 const searched = ref(false);
 const profile = ref<AdminKycProfile | null>(null);
+
+// ── Create pending profile (minimal admin intake) ───────────────────────────
+// Mirrors the create endpoint's customerType × identityType coherence guard
+// (individual → national_id | passport; company → juristic_id). Server stays
+// authoritative (400 INCOHERENT_IDENTITY_FOR_CUSTOMER_TYPE).
+const CUSTOMER_TYPE_OPTIONS = [
+  { value: "individual", label: "Individual" },
+  { value: "company", label: "Company" },
+];
+
+const CREATE_IDENTITY_OPTIONS: Record<
+  string,
+  Array<{ value: string; label: string }>
+> = {
+  individual: IDENTITY_TYPE_OPTIONS.filter((o) => o.value !== "juristic_id"),
+  company: IDENTITY_TYPE_OPTIONS.filter((o) => o.value === "juristic_id"),
+};
+
+const create = reactive({
+  customerType: "individual",
+  identityType: "national_id",
+  identityValue: "",
+});
+
+watch(
+  () => create.customerType,
+  (customerType) => {
+    create.identityType =
+      CREATE_IDENTITY_OPTIONS[customerType]?.[0]?.value ?? "national_id";
+  },
+);
+
+const creating = ref(false);
+
+async function createProfile() {
+  if (creating.value || create.identityValue.trim().length === 0) return;
+  creating.value = true;
+  try {
+    const res = await $fetch<{
+      profile: AdminKycProfile;
+      created: boolean;
+      reused: boolean;
+    }>("/api/admin/kyc/profiles", {
+      method: "POST",
+      body: {
+        customerType: create.customerType,
+        identityType: create.identityType,
+        identityValue: create.identityValue,
+      },
+    });
+    // Same render path as a lookup hit — the documents panel takes over.
+    profile.value = res.profile;
+    searched.value = true;
+    toast.add({
+      title: res.reused
+        ? "Existing pending profile reused"
+        : "Pending KYC profile created",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (e) {
+    const err = e as { data?: { statusMessage?: string }; statusMessage?: string };
+    toast.add({
+      title: "Create failed",
+      description:
+        err?.data?.statusMessage ?? err?.statusMessage ?? "Unknown error",
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    // The raw identity value never stays in component state after a submit.
+    create.identityValue = "";
+    creating.value = false;
+  }
+}
 
 async function lookupProfile() {
   if (searching.value || identityValue.value.trim().length === 0) return;
@@ -128,6 +209,52 @@ function formatDate(value: string | null): string {
     >
       No KYC profile found for that identity.
     </p>
+
+    <UCard v-if="!profile">
+      <template #header>
+        <h3 class="font-semibold">Create pending KYC profile</h3>
+      </template>
+      <p class="mb-3 text-sm text-muted">
+        Walk-in intake: creates a <span class="font-medium">pending</span>
+        profile (or reuses an existing walk-in profile for the same identity),
+        then documents can be uploaded below.
+      </p>
+      <form
+        class="flex flex-wrap items-end gap-3"
+        @submit.prevent="void createProfile()"
+      >
+        <UFormField label="Customer type">
+          <USelect
+            v-model="create.customerType"
+            :items="CUSTOMER_TYPE_OPTIONS"
+            class="w-44"
+          />
+        </UFormField>
+        <UFormField label="Identity type">
+          <USelect
+            v-model="create.identityType"
+            :items="CREATE_IDENTITY_OPTIONS[create.customerType] ?? []"
+            class="w-56"
+          />
+        </UFormField>
+        <UFormField label="Identity value" hint="Sent securely; never stored">
+          <UInput
+            v-model="create.identityValue"
+            placeholder="Identity number"
+            autocomplete="off"
+            class="w-64"
+          />
+        </UFormField>
+        <UButton
+          type="submit"
+          label="Create profile"
+          color="primary"
+          variant="soft"
+          :loading="creating"
+          :disabled="creating || create.identityValue.trim().length === 0"
+        />
+      </form>
+    </UCard>
 
     <template v-if="profile">
       <UCard>

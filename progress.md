@@ -319,3 +319,18 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 - `docs/kyc-production-enablement-checklist.md` gained gate **§4.0**: every `.env.example` key present in the deployed environment (explicitly `KYC_HASH_SECRET`) — run BEFORE manual smoke, not during it
 - Smoke record (explicit): API smoke passed with synthetic profile/document ONLY; SHA-256 source/download EXACT match; UI runtime/browser portion PENDING the env fix; the missing staging `KYC_HASH_SECRET` caused the UI lookup/profile blocker (environment config issue, NOT a code defect); **no real customer KYC document was downloaded**; the 4 immutable access-log rows from the synthetic smoke are PRESERVED; manual fixture cleanup was NOT a Decision H purge and wrote NO delete audit row (that primitive does not exist yet)
 - Owner next: set `KYC_HASH_SECRET` in Vercel staging + local `.env` (never printed/committed) → redeploy → run the owed in-browser UI smoke
+
+---
+
+## Session 2026-06-06 (later) — Admin KYC profile create flow (minimal intake; UI-only)
+
+### Done ✅
+- **Endpoint inspection first (no backend gap found — zero backend changes):** `POST /api/admin/kyc/profiles` is requirePlatformAdmin (staff may create); body `customerType`/`identityType`/`identityValue` with coherence guard; returns `{ profile: SafeKycProfile, created, reused }`; dedupes walk-in identities (reuses best `user_id IS NULL` profile, never duplicates, never reuses a registered user's profile); status always `pending`; upload API accepts pending profiles (proven in the 2026-06-06 smoke)
+- `/admin/kyc`: "Create pending KYC profile" card (UI-only) shown whenever no profile is selected — customerType select, coherence-mirrored identityType select (individual → national_id|passport; company → juristic_id; auto-resets on customerType change), identity input; POST body-only; raw identity cleared from state in `finally`; success feeds `res.profile` into the SAME `profile` ref/render path as a lookup hit → existing AdminKycDocumentsPanel renders (panel untouched)
+- Spec extended (+6, now 31): create POSTs exactly `/api/admin/kyc/profiles`, identity never in URL/query, cleared-after-submit, same-render-path assignment ×2, coherence mirror, create-form-only-when-no-profile, and NO verify/approve/reject/delete/purge affordance (no DELETE/PATCH/PUT methods anywhere in the KYC UI)
+- Validation: tsc clean · targeted KYC suites 129/129 · full suite 2252 pass / 20 fail (POS baseline unchanged; +6 = new tests; zero KYC failures)
+- Untouched: panel component, POS V3, pickup gate, migrations, `database.types.ts`, `server/utils/`, locale files (Decision J), `app/types/admin-kyc.ts` (create response typed inline)
+
+### Notes
+- /admin/kyc standalone is intentional; POS V3 KYC UI wiring remains a later integration
+- Flow still requires `KYC_HASH_SECRET` in the environment — create/lookup 500 `KYC_HASH_UNAVAILABLE` until the owner sets it (staging + local); the owed in-browser smoke now covers create → upload → download end-to-end from a bare environment

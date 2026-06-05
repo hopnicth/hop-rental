@@ -1,5 +1,16 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-06 (Admin KYC create-pending-profile flow — UI-only, panel untouched)
+
+Task: minimal admin intake on /admin/kyc — create pending profile → upload documents (real capability, not dev scaffold)
+Files: `app/pages/admin/kyc/index.vue` (create card + handler), `tests/server/admin-kyc-documents-panel-ui.spec.ts` (+6 → 31), progress.md, this file
+Status: done pending push approval; NO backend changes (create endpoint contract verified sufficient: platform-admin, pending-only, walk-in dedupe via `reused`, SafeKycProfile response)
+Reminders: needs `KYC_HASH_SECRET` set before the flow works anywhere; /admin/kyc stays standalone (no POS V3 wiring yet); download still super_admin-only; Decision J EN-only admin UI
+Next: owner sets staging+local `KYC_HASH_SECRET` → redeploy → owed in-browser smoke can now start from a BARE staging DB: create profile in UI → upload → list → staff no-Download/403 → super_admin download completes + SHA-256
+
+---
+
+
 ## Claude Code → Claude Code / 2026-06-06 (Admin KYC Panel v1 smoke: API-level PASS, SHA-256 exact; BLOCKER: KYC_HASH_SECRET missing on staging Vercel)
 
 Task: staging smoke test of Admin KYC Documents Panel v1 (deploy `9929c88`)
