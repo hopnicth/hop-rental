@@ -195,3 +195,32 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 ### Notes
 - NOT done this session by instruction: no download endpoint code, no migration 110, nothing staged/committed/pushed
 - Operational learnings for future preview spikes recorded in HANDOFF.md 2026-06-05 spike entry (SSO bypass secret flow, `catalog-media` MIME allowlist, `sb_secret_…` apikey header)
+
+---
+
+## Session 2026-06-05 — Phase 2 proxy download: migration 110 + endpoint implemented
+
+### Done ✅
+- **Migration 110 committed + pushed + applied to remote/staging** — `4090d78 fix(kyc): allow download action in document access log`
+  - Local runbook green (spec §4): baseline reset re-verified clean through 109, then 110-chain reset clean; local behavioral checks passed (`action='download'` insert OK, `'bogus'` rejected by check, UPDATE/DELETE/TRUNCATE still blocked by append-only triggers on an actually-affected row)
+  - Remote gate: dry-run showed ONLY 110 pending → applied; metadata-only verification (no probe rows, Decision A/C): remote `kyc_document_access_log_action_chk` now `('upload','download_signed_url','delete','download')`; `result_chk` unchanged
+  - **Sequencing invariant honored: remote constraint widened BEFORE any endpoint code deploy** (a deploy-first ordering would 500 every download on the fail-closed allowed log)
+- **Phase 2 endpoint implemented and committed locally — `4e3830f feat(kyc): add server-proxy document download endpoint`** (8 files, +1278/−5; Opus security-core source review PASSED after one required fix):
+  - `server/api/admin/kyc/documents/[id]/download.get.ts` — pure proxy per `docs/kyc-phase-2-download-spec.md` §2.1 strict order: guard → `asUuidOrNull` classify → uniform no-oracle 403 for non-super_admin (kyc_documents NEVER queried, storage never touched, best-effort denial log, malformed-id purity per Decision G) → 400/404 super_admin-only → fail-closed path validator → MIME allowlist → **fail-closed allowed log BEFORE storage fetch** → `blob.stream()` with `no-store`/`nosniff`/`attachment; filename="kyc-<id>.<ext>"`, Content-Length omitted (Decision D)
+  - **Opus-required fix applied: `read_failed` path** — DB read error now returns opaque `KYC_DOCUMENT_READ_FAILED` (raw DB/Supabase error text NEVER reaches the client; real error to server logs only) + best-effort audit row `action='download'`, `result='denied'`, `reason='read_failed'` (valid document_id, no storage path); no allowed row and no storage access on that path; recorded in spec §3.4 (committed in `4e3830f`)
+  - `server/utils/kyc-documents.ts` — `'download'` action; `isSafeKycDocumentStoragePath` (extension alternation derived from `KYC_DOCUMENT_MIME_EXTENSIONS`, regex-escaped — single source of truth with the key builder); `kycDocumentExtensionForMime`; `asUuidOrNull`
+  - `server/utils/kyc-document-view.ts` — `KYC_DOCUMENT_DOWNLOAD_INTERNAL_SELECT` (server-internal, never serialized)
+  - Tests: `kyc-document-download-api.spec.ts` (25), `kyc-document-download-h3-integration.spec.ts` (2, real-h3 wire proof incl. no-Content-Length + byte round-trip), `kyc-document-upload-utils.spec.ts` +131 lines (validator round-trip via the REAL builder, asUuidOrNull table, escape-literal proof)
+  - `docs/index/server-utils-index.md` both rows updated same-commit
+- **Validation at commit:** `npx tsc --noEmit` clean; targeted KYC specs 143/143; full `npx vitest run` 2173 passed / 20 failed — the 20 are the documented pre-existing POS baseline (same 6 files), **zero new failures, zero KYC failures**
+
+### Next 📋
+- **IMMEDIATE: staging smoke test after deploy** — one real-document download as super_admin against the deployed endpoint: 200 + byte integrity + header set (`no-store`, `attachment`, `nosniff`, allowlisted Content-Type, no Content-Length, no path/bucket leakage) + read-back of the genuine `download/allowed` access-log row (read-only — no probe inserts, no mutation)
+- Admin UI for download (separate phase; none shipped here)
+- Purge primitive still DEFERRED pending legal retention scope (Decision B)
+- Fluid Compute CI guard (`resourceConfig.fluid === true`) still pending (Decision D impact 2)
+- Production enablement still blocked by Decision C's five gates
+
+### Notes
+- This session's commits: `4090d78` (migration, pushed) → `4e3830f` (endpoint, local until the docs commit lands) → docs commit (this entry)
+- No UI, no locale keys, no purge, no `database.types.ts` change anywhere in the batch

@@ -1,5 +1,35 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-05 (Phase 2 SHIPPED locally: migration 110 on remote + proxy download endpoint committed — next: push + staging smoke test)
+
+### State at handoff
+
+- Branch: `staging`; commits this session: `4090d78` (migration 110 — PUSHED, applied to remote/staging, metadata-verified) → `4e3830f` (endpoint feature — local) → docs commit (this entry)
+- Remote DB: `kyc_document_access_log_action_chk` now includes `'download'` — the endpoint can deploy safely (constraint-before-code sequencing honored)
+- Opus security-core source review: PASSED after one required fix (read_failed opaque error path)
+- Validation: tsc clean · targeted KYC specs 143/143 · full suite 2173 pass / 20 fail = unchanged pre-existing POS baseline (6 files), zero KYC failures
+- Working tree after docs commit: only the pre-existing unrelated dirty files (home rails, 4 locale JSONs, DESIGN.md, PRODUCT.md, .claude/, .impeccable/)
+
+### What shipped (see progress.md session section + docs/kyc-phase-2-download-spec.md)
+
+1. **Migration 110** — widened the action check constraint (constraint-only; no types regen). Local runbook + local behavioral verification (insert/check/append-only) green; remote dry-run showed only 110; applied; metadata-only remote verification passed (no probe rows — Decision A/C).
+2. **`GET /api/admin/kyc/documents/:id/download`** — pure server-proxy per spec §2.1: uniform no-oracle 403 (non-super_admin never touches kyc_documents/storage), Decision-G malformed-id log purity (`asUuidOrNull`; raw ids never logged), fail-closed allowed log BEFORE storage fetch, best-effort denial rows (`not_super_admin[_malformed_id]` / `malformed_document_id` / `read_failed` / `not_found` / `unsafe_path` / `invalid_mime`) + `storage_download_failed` correction row, map-derived path validator, `attachment` opaque filename, `no-store`/`nosniff`, Content-Length omitted, `blob.stream()` return.
+3. **read_failed fix (Opus blocker)** — DB read errors return opaque `KYC_DOCUMENT_READ_FAILED`; raw error server-logs only; best-effort `denied/read_failed` row; no allowed row; no storage access. Spec §3.4 records the general principle: infrastructure failures → opaque machine codes to clients.
+
+### IMMEDIATE NEXT ACTION: push (with owner instruction) → staging smoke test
+
+Smoke test contract (owner-approved; one permanent immutable access-log row is acceptable):
+- super_admin auth → GET the endpoint for a real safe/non-sensitive document → expect 200, byte integrity, header set (`no-store`, allowlisted Content-Type, `nosniff`, `attachment; filename="kyc-<id>.<ext>"`, NO Content-Length, no path/bucket/URL leakage)
+- READ-ONLY access-log verification: a genuine `download/allowed` row with correct document_id/actor/bucket/opaque path — never insert probe rows, never mutate the log (Decision A)
+- If staging has no kyc_documents row yet, create a synthetic non-PII profile+document via service role (record ids in handoff) rather than probing the log directly
+
+### Constraints (unchanged)
+
+- Production enablement blocked by Decision C's five gates; purge deferred (Decision B); Fluid Compute guard + bucket-cap re-spike rules stand (Decision D); immutable-log checks read-only/metadata-only (Decision A)
+- No UI, no locale keys in this phase
+
+---
+
 ## Claude Code → Claude Code / 2026-06-05 (streaming spike PASS — Phase 2 unblocked as pure proxy; endpoint + migration 110 NOT started)
 
 ### State at handoff
