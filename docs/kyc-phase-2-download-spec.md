@@ -1,7 +1,7 @@
 # KYC Phase 2 — super_admin-only server-proxy document download (locked spec)
 
 > Status: **APPROVED FOR IMPLEMENTATION — not yet implemented.**
-> Locked by `DECISIONS.md` 2026-06-05 Decisions B (sequencing, as amended), D (pure proxy + platform baseline), E (allowed semantics + attachment), F (PDPA/IP), G (malformed-id log purity).
+> Locked by `DECISIONS.md` 2026-06-05 Decisions B (sequencing, as amended), D (pure proxy + platform baseline), E (allowed semantics + attachment), F (PDPA/IP), G (malformed-id log purity); 2026-06-06 Decision I (Fluid guard = manual gate, Vercel API only).
 > Spike evidence: Vercel Preview streaming spike PASS, 2026-06-05 (Decision D).
 > This file is the single tracked source for what chat planning called the "rev-3 plan".
 
@@ -265,13 +265,37 @@ npx vitest run tests/server/kyc-document-upload-api.spec.ts tests/server/kyc-doc
 npx vitest run    # full suite before Done
 ```
 
-## 8. Platform guards (Decision D)
+## 8. Platform guards (Decision D, amended by Decision I)
 
-- **Fluid Compute guard:** pure proxy is contingent on Vercel
-  `resourceConfig.fluid === true` (this is why >4.5 MB delivery works). Planned
-  enforced check: CI/deploy-time assertion via the Vercel API (or equivalent
-  build-output evidence) — not prose-only. If Fluid Compute is disabled, the KYC
-  proxy download must be RE-SPIKED before any further production use.
+- **Fluid Compute guard (IMPLEMENTED as a manual gate — Decision I):** pure
+  proxy is contingent on Vercel `resourceConfig.fluid === true` (this is why
+  >4.5 MB delivery works). Enforced check: `scripts/check-vercel-fluid.mjs`
+  (`npm run check:vercel-fluid`) — a **manual production-enablement gate** run
+  with an **ephemeral Vercel token** (create → run → revoke; never stored in
+  the repo, `.env`, or any CI secret) BEFORE enabling production KYC download.
+  - Source of truth is the **Vercel API only**:
+    `GET https://api.vercel.com/v9/projects/{VERCEL_PROJECT_ID}[?teamId={VERCEL_TEAM_ID}]`.
+    Build-output evidence is NOT available — Fluid Compute is a project-level
+    setting absent from `.vc-config.json` (verified; the former "equivalent
+    build-output evidence" option is removed).
+  - Verdicts (three-state, fail-loud): **PASS** = strict boolean `true` +
+    response `id` matches `VERCEL_PROJECT_ID` (exit 0). **FAIL** = explicit
+    boolean `false` (exit 1). **UNKNOWN** = auth/API error, project-id
+    mismatch, missing/non-boolean flag (string `"true"` rejected), or shape
+    change (exit 2) — UNKNOWN is a hard stop, never treated as a pass.
+  - Any non-PASS: production enablement STOPS and the KYC proxy download must
+    be RE-SPIKED before any further production use (§9 contingency activates
+    only with owner approval).
+  - Tests: `tests/server/vercel-fluid-guard.spec.ts` — fixture-based only, no
+    live API calls. Offline CLI dry-run: `--fixture <file.json>`.
+  - Scheduled/CI monitoring (e.g. GitHub Actions) is a future option ONLY if
+    the owner explicitly accepts the standing-token risk: Vercel tokens are
+    not read-only, and Actions detect but cannot block Vercel Git deploys.
+  - **Live-API verification status: PENDING** — script implemented and
+    fixture-verified 2026-06-06; the one-time live run (ephemeral token) is
+    deferred. Record date + verdict here when it is run.
+  - When Decision C production work begins, the FIRST step is a consolidated
+    `docs/kyc-production-enablement-checklist.md` listing this check.
 - **Bucket cap coupling:** approved under the current `kyc-profile-documents`
   10 MB limit (migration 109). Raising the limit above 10 MB requires re-running
   the streaming spike at the new maximum BEFORE the larger limit ships.

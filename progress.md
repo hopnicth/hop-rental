@@ -230,3 +230,31 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 - **Synthetic fixture removed** (post-smoke cleanup, exact ids only): storage object `kyc/2552f565-….jpg` deleted, `kyc_documents` row `bb92221e-…` deleted, `kyc_profiles` row `7a651dfb-…` (literal `smoke-test-…` identity_hash, zero references) deleted; read-backs confirm gone; both KYC tables back to 0 rows — nothing else affected
 - **Access-log row PRESERVED** — it now outlives its deleted document/profile, live-confirming the migration-109 audit-survival design
 - **Future purge lesson captured as decisions.md Decision H**: fail-closed `action='delete'` audit row BEFORE removal; log failure aborts the purge; no document removed without a committed delete row; manual no-audit-row cleanup acceptable only for this one-off synthetic fixture
+
+---
+
+## Session 2026-06-06 — Fluid Compute guard implemented (manual production-enablement gate; Decision I)
+
+### Done ✅
+- **`scripts/check-vercel-fluid.mjs` implemented** (Decision D impact 2 guard, enforcement model amended by Decision I)
+  - Pure evaluator (`evaluateFluidGuard`) + thin CLI; Vercel API ONLY (`GET /v9/projects/{VERCEL_PROJECT_ID}[?teamId=…]`) — "build-output evidence" alternative removed (verified: Fluid is project-level, absent from `.vc-config.json`)
+  - Three-state fail-loud verdicts: PASS = strict boolean `resourceConfig.fluid === true` + project-id match (exit 0); FAIL = explicit `false` (exit 1); UNKNOWN = auth/API error, id mismatch, missing/non-boolean flag (string `"true"` rejected), shape change (exit 2; never a pass)
+  - All non-PASS output carries the production-stop + re-spike directive (Decision D); token from `process.env` only, never printed (interpolated exactly once — the Authorization header; pinned by source-inspection test)
+  - Offline dry-run mode `--fixture <file.json>`; all three exit codes demonstrated locally
+- `tests/server/vercel-fluid-guard.spec.ts` — 29 tests, fixture-based only (no live API calls): PASS/FAIL/UNKNOWN matrix (17 unknown cases incl. string `"true"`, wrong project id, 401/403/404/500, malformed bodies), exit-code mapping, token-hygiene + API-only source inspection
+- `package.json` — added `check:vercel-fluid` script
+- Docs: Decision I appended (decisions.md); spec §8 rewritten (manual gate, API-only, verdict table, PENDING live-run status, future-CI condition, enablement-checklist note)
+- Validation: `npx tsc --noEmit` clean · new spec 29/29 · full `npx vitest run` 2202 pass / 20 fail — the 20 verified pre-existing at clean HEAD in a temp worktree (same 6 POS-baseline files; zero new failures)
+
+### Next 📋
+- **Live one-time Vercel API run of `npm run check:vercel-fluid`** — owner deferred 2026-06-06; needs ephemeral token + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID` if team-owned; team-vs-personal still undetermined); on PASS, record date + verdict in spec §8 and revoke the token
+- When Decision C production work begins: create `docs/kyc-production-enablement-checklist.md` FIRST, listing this check + the five gates
+- Optional future: GitHub Actions scheduled monitor — only if owner accepts standing non-read-only Vercel token risk
+- (carried) Admin download UI · purge primitive (blocked on retention) · verify endpoint · earlier KYC TASK backlog
+
+### Blocked 🚫
+- (unchanged) Production enablement blocked by Decision C's five gates + the pending live Fluid check; purge deferred pending legal retention scope
+
+### Notes
+- NOT done by instruction: no GitHub Actions workflow, no standing CI secret, no endpoint changes, no migration, no `database.types.ts`, no UI; nothing staged/committed/pushed; unrelated dirty files untouched
+- Team-vs-personal Vercel ownership is unresolvable from the repo (no `.vercel/`, no `VERCEL_*` env vars) — determine from the dashboard URL before the live run

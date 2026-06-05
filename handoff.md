@@ -1,5 +1,62 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-06 (Fluid Compute guard shipped as manual gate — live API run PENDING)
+
+Task: Fluid Compute verification script (Decision D impact 2, enforcement model amended by Decision I)
+Files touched: `scripts/check-vercel-fluid.mjs` (new), `tests/server/vercel-fluid-guard.spec.ts` (new), `package.json` (+`check:vercel-fluid`), `docs/kyc-phase-2-download-spec.md` (§8 + lock header), `decisions.md` (Decision I), `progress.md`, this file
+Status: **done** (implementation + tests + docs) / **one follow-up pending**: the one-time LIVE Vercel API run
+Next:
+1. Owner provides an EPHEMERAL Vercel token + `VERCEL_PROJECT_ID` (+ `VERCEL_TEAM_ID` if team-owned — ownership undetermined; check the dashboard URL) → run `npm run check:vercel-fluid` → on PASS, record date + verdict in spec §8 → revoke the token immediately
+2. Until that run reports PASS, the Fluid gate counts as NOT satisfied for Decision C production enablement
+3. No GitHub Actions / standing CI secret was created (Decision I) — future CI monitor only with explicit owner acceptance of standing-token risk
+
+Verification state: tsc clean · new spec 29/29 · full suite 2202/2222 (20 fails = pre-existing POS baseline, re-verified at clean HEAD in a temp worktree) · all three CLI exit codes demonstrated via `--fixture`
+
+---
+
+## Claude Code → Claude Code (new terminal) / 2026-06-05 (Phase 2 CLOSED — download endpoint live, smoke-tested, cleaned up; handover for terminal switch)
+
+Task: KYC Phase 2 — server-proxy document download (spec: `docs/kyc-phase-2-download-spec.md`)
+Status: **DONE** — nothing in progress, nothing blocked mid-task
+Files touched this session: see commits below; working tree carries ONLY pre-existing unrelated dirty files
+
+### State at handoff (verified)
+
+- Branch: `staging` @ `8ddb995` — **in full sync with `origin/staging`** (everything pushed)
+- Session commit chain (all on remote):
+  1. `6125f3a` docs(kyc): record Phase 2 proxy download decision (Decisions D–G + spec file)
+  2. `4090d78` fix(kyc): allow download action in document access log (migration 110 — applied to remote DB, metadata-verified)
+  3. `4e3830f` feat(kyc): add server-proxy document download endpoint (8 files, Opus-approved after read_failed fix)
+  4. `6249cf8` docs(kyc): record Phase 2 proxy download implementation
+  5. `8ddb995` docs(kyc): record purge audit requirement (Decision H)
+- Deployed + LIVE: smoke test PASSED on `https://www.hopnic.co.th` (200, SHA-256 exact, full safe header set, no Content-Length, genuine `download`/`allowed` access-log row verified read-only)
+- Post-smoke cleanup DONE: synthetic fixture removed by exact ids; `kyc_documents` and `kyc_profiles` are both back to **0 rows** on remote; the genuine access-log row for document `bb92221e-…` is PRESERVED forever (by design)
+- Validation at close: `npx tsc --noEmit` clean · full `npx vitest run` = 2173 pass / 20 fail — the 20 are the documented pre-existing POS baseline (6 files), **zero KYC failures**
+- Working tree (pre-existing, DO NOT TOUCH, never stage): `HomeCategoryShortcutRail.vue`, `HomeHorizontalRail.vue`, `i18n/locales/{cn,en,jp,th}.json`, untracked `.claude/skills/`, `.impeccable/`, `DESIGN.md`, `PRODUCT.md`
+
+### Next (pick up in any order; none started)
+
+1. **Admin download UI** — wire the endpoint into the admin KYC view (needs i18n keys ×4 locales per CLAUDE.md rules; none exist yet)
+2. **Purge primitive** — BLOCKED on legal retention decision (Decision C item 1); when unblocked, MUST follow Decision H: fail-closed `action='delete'` log BEFORE removal; abort on log failure; `'delete'` already in the action constraint
+3. **Fluid Compute CI guard** — enforced check that Vercel `resourceConfig.fluid === true` (Decision D impact 2); re-spike before production if ever disabled
+4. **Verify endpoint** (evidence-first, Decision from 2026-06-03) — next KYC API phase after download
+5. Production enablement — still blocked by ALL FIVE Decision C gates (retention, AV gap, prod storage-policy re-run, h3 canary in prod CI, read-only prod verification)
+
+### Hard rules for the next session (read before touching KYC)
+
+- Read `docs/kyc-phase-2-download-spec.md` + decisions.md Decisions A–H before any KYC document work
+- `kyc_document_access_log` is append-only and immutable: NEVER delete/mutate rows; remote verification is read-only/metadata-only; never insert probe rows (Decision A)
+- Raising the 10 MB KYC bucket cap requires re-running the streaming spike first (Decision D impact 3)
+- Server-utils index (`docs/index/server-utils-index.md`) must be updated in the same commit as any `server/utils/` behavior change
+
+### Operational notes (verified this session)
+
+- Supabase CLI is linked (project `yzjczvzwmbbeyoodrjwm`); `.env` has `sb_secret_…` key — Storage REST needs it in BOTH `apikey` and `Authorization: Bearer` headers
+- Vercel CLI authed as `hopnicth-9868`; previews are SSO-protected (use Protection Bypass for Automation via API, revoke after); custom domains `hopnic.co.th`/`www` are unprotected; apex 307-redirects to `www`
+- super_admin test sessions can be minted via GoTrue admin magic-link (`generate_link` → `verify` → `sb-<ref>-auth-token` cookie = `base64-` + base64url(session JSON)); ALWAYS logout the minted session after
+
+---
+
 ## Claude Code → Claude Code / 2026-06-05 (Phase 2 SHIPPED locally: migration 110 on remote + proxy download endpoint committed — next: push + staging smoke test)
 
 ### State at handoff

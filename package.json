@@ -9,7 +9,8 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:vercel-fluid": "node scripts/check-vercel-fluid.mjs"
   },
   "dependencies": {
     "@nuxt/a11y": "^1.0.0-alpha.1",
