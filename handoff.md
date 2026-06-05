@@ -1,5 +1,21 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-06 (Company KYC VAT rule recorded — Verify KYC planning input; docs only)
+
+Task: record owner-locked company verify-readiness rule before Minimal Verify KYC planning
+Status: docs only — no code; Verify implementation NOT started
+The rule (full text in progress.md same-date entry):
+1. `company + juristic_id` → `company_cert` ALWAYS required
+2. VAT status recorded EXPLICITLY by the verifier at verify time — server-enforced, FAIL-CLOSED (no company verification without it); binary enum `vat_registered` | `not_vat_registered`
+3. `vat_registered` → `vat_certificate` must exist; `not_vat_registered` → not required; NEVER infer VAT status from document presence/absence
+4. VAT status lives on the immutable verification decision/audit record (verifier id, timestamp, outcome, reviewed document ids)
+5. Uploads stay additive (`company_cert` + `vat_certificate` coexist; one type never blocks/replaces/implies the other; single-file picker OK; `signature` optional)
+Verify-planning checklist additions: super_admin-only unless view/download policy changes; server-side readiness enforcement (UI = convenience); INSPECT whether any uniqueness constraint exists on `(kyc_profile_id, document_type)` before planning additive/re-upload behavior
+Standing blockers unchanged: KYC_HASH_SECRET env (staging + local) → redeploy → owed in-browser smoke → THEN produce the Verify KYC plan (plan only)
+
+---
+
+
 ## Claude Code → Claude Code / 2026-06-06 (Admin KYC create-pending-profile flow — UI-only, panel untouched)
 
 Task: minimal admin intake on /admin/kyc — create pending profile → upload documents (real capability, not dev scaffold)

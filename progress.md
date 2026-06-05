@@ -334,3 +334,25 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 ### Notes
 - /admin/kyc standalone is intentional; POS V3 KYC UI wiring remains a later integration
 - Flow still requires `KYC_HASH_SECRET` in the environment — create/lookup 500 `KYC_HASH_UNAVAILABLE` until the owner sets it (staging + local); the owed in-browser smoke now covers create → upload → download end-to-end from a bare environment
+
+---
+
+## Session 2026-06-06 (later) — Company KYC VAT requirement recorded for Minimal Verify KYC planning (docs only)
+
+### Verify-planning requirement — company KYC verify-readiness rule (owner-locked)
+- For `company + juristic_id`, **`company_cert` is always required**.
+- **VAT status must be explicitly recorded by the verifier at verify time** — server-enforced and FAIL-CLOSED: company verification cannot proceed without a recorded VAT status.
+- Clean binary enum unless future policy requires otherwise: `vat_registered` | `not_vat_registered`.
+- If `vat_registered` → a `vat_certificate` document must exist. If `not_vat_registered` → `vat_certificate` is not required.
+- The system must NEVER infer VAT status silently from the presence/absence of `vat_certificate`.
+- VAT status lives on the **immutable verification decision/audit record**, together with verifier id, timestamp, outcome, and reviewed document ids.
+- Upload remains ADDITIVE: multiple documents can attach to the same `kyc_profile_id`; `company_cert` and `vat_certificate` must coexist under one profile; uploading one type must not block, replace, or imply completion of the other; single-file upload at a time is acceptable (no multi-file picker); `signature` remains optional unless product/legal later decides otherwise.
+
+### Additional Minimal Verify KYC planning notes
+- Verify remains **super_admin-only** unless the document-view/download policy changes.
+- The verify endpoint must enforce the readiness rule **server-side**; UI checks are convenience only.
+- At planning time: inspect whether the current document model has any uniqueness constraint on `(kyc_profile_id, document_type)` that would affect additive uploads or re-upload behavior.
+- (Standing from Opus review): verify gets its own immutable profile-level audit trail (NOT `kyc_document_access_log`); thin pickup-gate contract `status = 'verified' AND now < valid_until`; `valid_until = verified_at + 1 year` as a named constant; conscious yes/no on minimal super_admin revoke in v1; reject/renewal/user-linking/POS V3 integration stay out unless explicitly approved; document preview stays blocked.
+
+### Notes
+- Docs-only session: no app/server/migration/type/locale/POS V3 changes; implementation NOT started
