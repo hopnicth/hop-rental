@@ -273,3 +273,22 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 
 ### Notes
 - Docs-only session: no code, no endpoint, no migration, no `database.types.ts`, no UI; unrelated dirty files untouched; nothing staged/committed/pushed
+
+---
+
+## Session 2026-06-06 (later) — Admin KYC Documents Panel v1 implemented (staging)
+
+### Done ✅
+- **List endpoint (the one approved backend addition): `GET /api/admin/kyc/profiles/:id/documents`** — requirePlatformAdmin; `asUuidOrNull` id classification (uppercase normalized, junk → 400); profile existence gate (404; bare-id select); `KYC_DOCUMENT_SAFE_SELECT` + `toSafeKycDocument` only (uploaded_at desc); opaque 500 machine codes (`KYC_PROFILE_READ_FAILED` / `KYC_DOCUMENT_LIST_FAILED`); zero storage access; **list access intentionally unlogged in v1** — safe metadata only, lower sensitivity than document delivery; revisit if metadata listing is later deemed auditable (Decision J)
+- **Admin UI**: `app/pages/admin/kyc/index.vue` (lookup-first; identity in POST body; raw value cleared from state after every lookup; masked identityLast4 display only) + `app/components/admin/kyc/AdminKycDocumentsPanel.vue` (safe-metadata list, coherence-filtered upload via existing API with issuedAt/expiresAt, super_admin-only Download button via shared `useUserProfile().profile.platformRole`, blob download with Content-Disposition filename + NEXT-TICK object-URL revoke, clean 403/404/500 toasts) + nav entry in staff-visible group + `app/types/admin-kyc.ts` client mirrors
+- Tests: `admin-kyc-documents-list-api.spec.ts` (19) + `admin-kyc-documents-panel-ui.spec.ts` (25 — leak guard, no preview, role gate, FormData contract, refresh-after-upload, next-tick revoke, POST lookup, nav/middleware wiring)
+- Decision J recorded: admin back-office English-only i18n scope (4-locale rule = customer-facing), unlogged list v1, next-tick revoke
+- No migrations, no `database.types.ts`, no `server/utils/` changes (⇒ no index row), no locale files, no POS V3 changes, no booking payload changes
+
+### Next 📋
+- Staging manual smoke of the panel (lookup → upload → list → super_admin download; staff sees no Download button); note: object-URL revoke is next-tick by design
+- (carried) owner/legal long-poles (checklist §1) remain the production critical path; live Fluid check pending
+- Future candidates (explicitly out of v1): verify/approve UI, purge, renewal, retention display, bulk export, previews/thumbnails
+
+### Notes
+- Validation: see handoff entry — tsc clean, targeted specs green, full-suite delta = POS-20 baseline only

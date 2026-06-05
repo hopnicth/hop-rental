@@ -90,6 +90,7 @@ const navGroups = computed<AdminNavGroup[]>(() => {
         { label: "Branch & Inventory", to: "/admin/branches-inventory" },
         { label: "Orders", to: "/admin/orders" },
         { label: "Booking Manager", to: "/admin/rental-bookings" },
+        { label: "KYC", to: "/admin/kyc" },
         { label: "POS", to: "/admin/pos" },
         { label: "POS V3", to: "/admin/pos-v3" },
         { label: "Refunds", to: "/admin/refunds", badge: refundsBadge.value },

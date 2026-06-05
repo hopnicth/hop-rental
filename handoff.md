@@ -1,5 +1,20 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-06 (Admin KYC Documents Panel v1 — staging; two commits, not yet pushed at write time)
+
+Task: Admin KYC Documents Panel v1 (list endpoint + lookup page + panel component + tests; locked decisions 1–6 honored)
+Files: `server/api/admin/kyc/profiles/[id]/documents.get.ts` (NEW) · `app/pages/admin/kyc/index.vue` (NEW) · `app/components/admin/kyc/AdminKycDocumentsPanel.vue` (NEW) · `app/types/admin-kyc.ts` (NEW) · `app/layouts/admin.vue` (+1 nav line) · 2 new specs · decisions.md (Decision J) · progress.md · this file
+Status: done pending push approval
+Key contracts:
+1. List endpoint = the single approved backend addition; safe view module only; **list access intentionally unlogged in v1** (safe metadata, lower sensitivity than delivery; revisit if later deemed auditable — Decision J)
+2. Admin UI is English-only per Decision J (4-locale rule = customer-facing); the four dirty locale JSONs were NOT touched
+3. Download: super_admin-only button (server authoritative; 403 toast on role drift); blob + Content-Disposition filename; **next-tick `URL.revokeObjectURL` — do not "fix" to synchronous, it can cancel downloads** (smoke-test note)
+4. Staging UI is NOT gated by the production enablement checklist; production exposure stays behind Decision C
+Next: staging manual smoke (lookup → upload → list → download as super_admin; staff must see no Download button)
+
+---
+
+
 ## Claude Code → Claude Code / 2026-06-06 (KYC production enablement checklist created — docs only)
 
 Task: consolidate all KYC production-enablement gates into one operational checklist
