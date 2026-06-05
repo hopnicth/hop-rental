@@ -224,3 +224,9 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 ### Notes
 - This session's commits: `4090d78` (migration, pushed) → `4e3830f` (endpoint, local until the docs commit lands) → docs commit (this entry)
 - No UI, no locale keys, no purge, no `database.types.ts` change anywhere in the batch
+
+### Post-push update (same day): smoke test + cleanup ✅
+- Pushed `4090d78..6249cf8`; deployment for `6249cf8` verified READY; **staging smoke test PASSED** on `https://www.hopnic.co.th`: super_admin download → 200, 4096/4096 bytes SHA-256 exact, headers `no-store`/`attachment` (opaque filename)/`nosniff`/`image/jpeg`, NO Content-Length, zero path/bucket/URL leakage; genuine `download`/`allowed` access-log row verified read-only (correct document/actor/bucket/opaque path)
+- **Synthetic fixture removed** (post-smoke cleanup, exact ids only): storage object `kyc/2552f565-….jpg` deleted, `kyc_documents` row `bb92221e-…` deleted, `kyc_profiles` row `7a651dfb-…` (literal `smoke-test-…` identity_hash, zero references) deleted; read-backs confirm gone; both KYC tables back to 0 rows — nothing else affected
+- **Access-log row PRESERVED** — it now outlives its deleted document/profile, live-confirming the migration-109 audit-survival design
+- **Future purge lesson captured as decisions.md Decision H**: fail-closed `action='delete'` audit row BEFORE removal; log failure aborts the purge; no document removed without a committed delete row; manual no-audit-row cleanup acceptable only for this one-off synthetic fixture

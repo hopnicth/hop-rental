@@ -28,6 +28,13 @@ Smoke test contract (owner-approved; one permanent immutable access-log row is a
 - Production enablement blocked by Decision C's five gates; purge deferred (Decision B); Fluid Compute guard + bucket-cap re-spike rules stand (Decision D); immutable-log checks read-only/metadata-only (Decision A)
 - No UI, no locale keys in this phase
 
+### POST-PUSH UPDATE (same day): smoke test PASSED + cleanup COMPLETE + purge invariant locked
+
+- Phase 2 endpoint is COMPLETE: pushed (`4090d78..6249cf8`), deployed, and smoke-tested live on `https://www.hopnic.co.th` — 200, exact SHA-256 byte match, full header set (`no-store` / `attachment` / `nosniff` / `image/jpeg` / NO Content-Length, zero path/bucket leakage), genuine `download`/`allowed` access-log row verified read-only
+- Smoke cleanup COMPLETE: synthetic fixture fully removed by exact ids (document `bb92221e-…`, profile `7a651dfb-…`, object `kyc/2552f565-….jpg`); both KYC tables back to 0 rows; the genuine access-log row PRESERVED (it now outlives its document — migration-109 purge-survival confirmed live)
+- **Future purge phase MUST follow decisions.md 2026-06-05 Decision H**: fail-closed `action='delete'` audit row BEFORE removing object/rows; log-write failure aborts the purge; no document removed without a committed delete audit row. `'delete'` is already in the action vocabulary — no schema change needed.
+- **Access-log rows must never be deleted or mutated** (append-only; Decisions A/H)
+
 ---
 
 ## Claude Code → Claude Code / 2026-06-05 (streaming spike PASS — Phase 2 unblocked as pure proxy; endpoint + migration 110 NOT started)
