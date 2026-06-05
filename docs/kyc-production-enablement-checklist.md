@@ -46,8 +46,12 @@
 - [ ] **3.4 Production access log clean of probe rows** — `kyc_document_access_log` in production contains ZERO remote-verification probe rows. Probe rows were a staging-only mistake (Decision A); production verification is read-only / metadata-only. The ONLY acceptable production rows are genuine access events, including the labeled synthetic smoke-test row from §5.
   - Verified (read-only query) by: ______ · Date: ______
 
-## 4. App / runtime gates (Decision C item 4)
+## 4. App / runtime gates (Decision C item 4; env gate per Decision K)
 
+- [ ] **4.0 Required env vars/secrets present (run FIRST — before any manual smoke)** — every required key in `.env.example` is present in the target deployed environment. Explicitly including **`KYC_HASH_SECRET`**, which is a **permanent, hash-only, NON-ROTATABLE secret** (Decision K): no raw identity is stored anywhere, so it must be set BEFORE the first real KYC profile is created, securely backed up outside git, and treated as unloseable — losing it orphans every existing profile; compromise cannot be cleanly rotated without re-collecting identities. Staging and production secrets are independent. This gate exists because the 2026-06-06 staging smoke hit a missing `KYC_HASH_SECRET` mid-smoke (`KYC_HASH_UNAVAILABLE`); the check must catch that before smoke, not during it.
+  - **Confidentiality (Decision K):** identity spaces are structured/guessable — the secret is what stops an attacker holding `identity_hash` values from enumerating candidates and confirming who is enrolled; secret + hash table together compromised = de-anonymization → PDPA breach assessment. Keep secret and hashes in SEPARATE trust zones (today: Vercel env vs Supabase DB — preserve this); protect the secret and its backup at least as strongly as database access; never print, paste, log, or commit the value — presence/evidence references only.
+  - Env keys verified present (list): ______ · Verified by: ______ · Date: ______
+  - `KYC_HASH_SECRET` backed up outside git (where, by whom): ______
 - [ ] **4.1 h3 version pinned/confirmed** — installed h3 is `1.15.5` (current project standard; re-verify against `package-lock.json` at enablement time). If h3 was upgraded, the rawBody canary below MUST pass before enablement.
   - Installed version at enablement: ______
 - [ ] **4.2 h3/rawBody canary run** — `npx vitest run tests/server/kyc-document-upload-h3-integration.spec.ts` (includes the "h3 upgrade canary" asserting `readRawBody` still honors the `req.rawBody` pre-read fallback). The repo has NO CI workflow — this canary is MANUAL unless/until CI exists (and adding CI for it would be a separate owner decision per Decision I's standing-token rule if it ever needs secrets).

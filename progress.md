@@ -292,3 +292,30 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 
 ### Notes
 - Validation: see handoff entry — tsc clean, targeted specs green, full-suite delta = POS-20 baseline only
+
+---
+
+## Session 2026-06-06 (later) — Admin KYC Panel v1 staging smoke test (API-level PASS; one env blocker found)
+
+### Done ✅
+- **Staging smoke PASSED at the API level** on `https://www.hopnic.co.th` (deploy `9929c88`), synthetic data only:
+  - Synthetic profile `2c9f4de7-ea6d-4d6f-8c50-43427ec34483` (service-role insert, literal `smoke-test-admin-kyc-panel-v1-2026-06-06` identity_hash — same precedent as the Phase 2 smoke) · synthetic 1,048,580-byte JPEG (magic bytes + random)
+  - Staff (minted session, logged out after): upload 200 (safe whitelist response), NEW list endpoint 200 (safe fields only), coherence negative `id_card`-on-passport-profile → 422
+  - **Staff download oracle**: malformed / nonexistent-uuid / real id → three 403s, identical status+statusMessage+body (only h3's request-URL echo differs) — no existence signal
+  - **super_admin download**: 200, `attachment; filename="kyc-453303f1-….jpg"` from server Content-Disposition, `no-store`/`nosniff`/`image/jpeg`, NO Content-Length (streamed), zero storage/bucket/signed leakage in headers
+  - **SHA-256 byte integrity: EXACT MATCH** `dbe850f7…` (source fixture vs proxied download, 1,048,580/1,048,580)
+  - Audit trail verified read-only: `upload/allowed`(staff) → `download/denied/not_super_admin`(staff) → `download/denied/not_super_admin_malformed_id` with `document_id=null` (Decision G) → `download/allowed`(super_admin); rows `b6904f1a…`/`809d3dd1…`/`3e4649b2…`/`d46e9fa1…` PRESERVED forever (by design)
+  - Manual synthetic fixture cleanup (owner-approved, NOT a Decision H purge — that primitive doesn't exist yet): storage object `kyc/88be35db-44d3-47f8-8d11-48147d8b77a6.jpg` deleted (re-fetch 400), `kyc_documents` + `kyc_profiles` rows deleted by exact id; both tables back to 0 rows; no real customer KYC touched; local temp files removed; minted sessions logged out (204/204)
+
+### Blocked 🚫
+- **`KYC_HASH_SECRET` is NOT set in the staging Vercel environment** (also absent from local `.env`; only `.env.example` documents it) → `POST /api/admin/kyc/profiles/lookup` and profile create return 500 `KYC_HASH_UNAVAILABLE`. **The /admin/kyc page's lookup flow is dead on staging until the owner sets this env var** (generate per `.env.example`: `openssl rand -hex 32`). This also blocks the in-browser UI portion of the smoke (panel renders only after a successful lookup).
+
+### Next 📋
+- Owner: set `KYC_HASH_SECRET` in Vercel (staging env) + local `.env`, redeploy/restart → then run the 2-minute in-browser pass: lookup → panel renders → staff sees no Download button → super_admin click-download **completes in a real browser** (next-tick revoke check) → DevTools: no preview elements, no local/sessionStorage writes
+- UI leak/preview/role-gate behavior is meanwhile pinned by the 25-test source-inspection spec (not a substitute for the one-time real-browser click)
+
+### Addendum (same session) — KYC_HASH_SECRET architectural finding recorded (Decision K)
+- Verified from the data model before recording: NO raw identity stored anywhere (kyc_profiles = keyed `identity_hash` + masked `identity_last4` only, migration 105; pickup snapshots = status/dates only, migration 106; no plaintext identity column in any migration) → **`KYC_HASH_SECRET` is a permanent, hash-only, NON-ROTATABLE secret (Decision K)**: must exist before the first real profile per environment; backed up outside git; losing it orphans all profiles; compromise = re-collection project, not a config rotation
+- `docs/kyc-production-enablement-checklist.md` gained gate **§4.0**: every `.env.example` key present in the deployed environment (explicitly `KYC_HASH_SECRET`) — run BEFORE manual smoke, not during it
+- Smoke record (explicit): API smoke passed with synthetic profile/document ONLY; SHA-256 source/download EXACT match; UI runtime/browser portion PENDING the env fix; the missing staging `KYC_HASH_SECRET` caused the UI lookup/profile blocker (environment config issue, NOT a code defect); **no real customer KYC document was downloaded**; the 4 immutable access-log rows from the synthetic smoke are PRESERVED; manual fixture cleanup was NOT a Decision H purge and wrote NO delete audit row (that primitive does not exist yet)
+- Owner next: set `KYC_HASH_SECRET` in Vercel staging + local `.env` (never printed/committed) → redeploy → run the owed in-browser UI smoke

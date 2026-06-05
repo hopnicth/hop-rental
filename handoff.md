@@ -1,5 +1,20 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-06 (Admin KYC Panel v1 smoke: API-level PASS, SHA-256 exact; BLOCKER: KYC_HASH_SECRET missing on staging Vercel)
+
+Task: staging smoke test of Admin KYC Documents Panel v1 (deploy `9929c88`)
+Status: **API-level PASS** (synthetic-only; byte-exact proxy download; oracle clean; audit rows correct & preserved; fixture cleaned up by exact ids) / **in-browser UI pass BLOCKED**
+Blocker for next session: set `KYC_HASH_SECRET` (Vercel staging env + local `.env`, see `.env.example`) — without it `/api/admin/kyc/profiles/lookup` 500s (`KYC_HASH_UNAVAILABLE`) and the /admin/kyc page cannot reach the panel. After setting: do the real-browser pass (lookup → upload → staff no-Download-button → super_admin download COMPLETES → no preview/storage leaks in DevTools). Remember: object-URL revoke is next-tick by design — do not "fix" to synchronous.
+Evidence ids (permanent log rows, synthetic test — for future auditors): document `453303f1-d7a0-4612-a9ff-7f5c37da45d3`, profile `2c9f4de7-ea6d-4d6f-8c50-43427ec34483`, log rows `b6904f1a…` (upload/allowed), `809d3dd1…` (denied staff), `3e4649b2…` (denied malformed, document_id null), `d46e9fa1…` (download/allowed super_admin).
+
+### Addendum — Decision K + checklist gate (same day)
+- **Decision K recorded:** `KYC_HASH_SECRET` = permanent, hash-only, NON-ROTATABLE (no raw identity stored anywhere — verified in schema). Must be set BEFORE first real profile per environment; back up outside git; staging/production secrets independent. Never print or commit it.
+- Checklist §4.0 added: full `.env.example` env completeness (incl. `KYC_HASH_SECRET`) is a production gate run BEFORE manual smoke.
+- After owner sets the staging secret + redeploys, run the owed in-browser smoke: lookup renders panel → staff lookup/list/upload, NO Download button, direct download still uniform 403 → super_admin Download button, click-download COMPLETES in a real browser, SHA-256 matches fixture, filename from Content-Disposition → DevTools: no preview/iframe/embed, no storage path/bucket/signed URL/raw identity anywhere.
+
+---
+
+
 ## Claude Code → Claude Code / 2026-06-06 (Admin KYC Documents Panel v1 — staging; two commits, not yet pushed at write time)
 
 Task: Admin KYC Documents Panel v1 (list endpoint + lookup page + panel component + tests; locked decisions 1–6 honored)
