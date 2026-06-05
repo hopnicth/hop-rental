@@ -19,6 +19,13 @@
  *     Asia/Bangkok future check for issued_at / expires_at capture
  *  7. KYC document safe view — SELECT/mapper never expose storage_path,
  *     storage_bucket, URLs, or uploader id
+ *  8. Phase 2 download helpers (docs/kyc-phase-2-download-spec.md §2.3) —
+ *     isSafeKycDocumentStoragePath round-trips keys from the REAL builder for
+ *     every MIME in the map (single source of truth); rejects traversal/URL/
+ *     legacy/non-UUID/uppercase-hex/empty/non-string; kycDocumentExtensionForMime
+ *     allowlist; asUuidOrNull strict classification (Decision G log purity);
+ *     KycDocumentAccessAction includes 'download'; internal download SELECT
+ *     includes storage_path while the safe SELECT still excludes it
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "~/types/database.types";
@@ -26,17 +33,23 @@ import {
   KYC_DOCUMENT_MAX_FILE_BYTES,
   KYC_DOCUMENT_UPLOAD_BODY_LIMIT_BYTES,
   KYC_PROFILE_DOCUMENTS_BUCKET,
+  asUuidOrNull,
   buildKycDocumentStorageKey,
   isFutureKycDate,
+  isSafeKycDocumentStoragePath,
+  kycDocumentExtensionForMime,
   logKycDocumentAccess,
   parseKycDateOnly,
   parseSingleForwardedIp,
   readRawBodyWithHardLimit,
   sniffKycDocumentMime,
+  type KycDocumentAccessAction,
   type KycDocumentAccessLogEntry,
   type KycDocumentAccessLogInsert,
+  type KycDocumentCanonicalMime,
 } from "../../server/utils/kyc-documents";
 import {
+  KYC_DOCUMENT_DOWNLOAD_INTERNAL_SELECT,
   KYC_DOCUMENT_SAFE_SELECT,
   toSafeKycDocument,
 } from "../../server/utils/kyc-document-view";
@@ -494,6 +507,124 @@ describe("KYC document safe view", () => {
     expect(serialized).not.toContain("storageBucket");
     expect(serialized).not.toContain("kyc/secret.jpg");
     expect(serialized).not.toContain("http");
+  });
+});
+
+// ── Phase 2 download helpers ─────────────────────────────────────────────────
+
+const ALL_CANONICAL_MIMES: KycDocumentCanonicalMime[] = [
+  "image/jpeg",
+  "image/png",
+  "application/pdf",
+];
+
+describe("isSafeKycDocumentStoragePath", () => {
+  it("round-trips every key the REAL builder produces, for every MIME in the map", () => {
+    for (const mime of ALL_CANONICAL_MIMES) {
+      const key = buildKycDocumentStorageKey(mime);
+      expect(isSafeKycDocumentStoragePath(key)).toBe(true);
+    }
+  });
+
+  it("rejects traversal, URLs, legacy paths, non-UUID keys, and absolute paths", () => {
+    for (const bad of [
+      "kyc/../../etc/passwd",
+      "kyc/../x.jpg",
+      "https://evil.example/kyc/a.jpg",
+      "http://x/kyc/a.jpg",
+      "users/123/id-card/x.jpg",
+      "walk-in-customers/0812345678/id-card/x.jpg",
+      "kyc/not-a-uuid.jpg",
+      "/kyc/cccccccc-cccc-4ccc-8ccc-cccccccccccc.jpg",
+      "kyc/cccccccc-cccc-4ccc-8ccc-cccccccccccc.jpg.exe",
+      "kyc/cccccccc-cccc-4ccc-8ccc-cccccccccccc.svg",
+    ]) {
+      expect(isSafeKycDocumentStoragePath(bad)).toBe(false);
+    }
+  });
+
+  it("rejects uppercase hex (strict — the builder only emits lowercase)", () => {
+    const key = buildKycDocumentStorageKey("image/jpeg");
+    expect(isSafeKycDocumentStoragePath(key.toUpperCase())).toBe(false);
+  });
+
+  it("rejects empty and non-string inputs", () => {
+    expect(isSafeKycDocumentStoragePath("")).toBe(false);
+    expect(isSafeKycDocumentStoragePath(null)).toBe(false);
+    expect(isSafeKycDocumentStoragePath(undefined)).toBe(false);
+    expect(isSafeKycDocumentStoragePath(42)).toBe(false);
+  });
+
+  it("treats the extension dot as a literal (regex metacharacters are escaped)", () => {
+    const key = buildKycDocumentStorageKey("image/jpeg");
+    // '.' must not act as a wildcard: replacing it with another char must fail.
+    expect(isSafeKycDocumentStoragePath(key.replace(".jpg", "Xjpg"))).toBe(false);
+    // And a mutated extension must fail (alternation is exact, not prefix).
+    expect(isSafeKycDocumentStoragePath(key.replace(".jpg", ".jp"))).toBe(false);
+    expect(isSafeKycDocumentStoragePath(key.replace(".jpg", ".jpgg"))).toBe(false);
+  });
+});
+
+describe("kycDocumentExtensionForMime", () => {
+  it("maps every canonical MIME to its extension (same map as the builder)", () => {
+    expect(kycDocumentExtensionForMime("image/jpeg")).toBe("jpg");
+    expect(kycDocumentExtensionForMime("image/png")).toBe("png");
+    expect(kycDocumentExtensionForMime("application/pdf")).toBe("pdf");
+  });
+
+  it("fails closed on anything outside the allowlist", () => {
+    expect(kycDocumentExtensionForMime("image/gif")).toBeNull();
+    expect(kycDocumentExtensionForMime("image/svg+xml")).toBeNull();
+    expect(kycDocumentExtensionForMime("")).toBeNull();
+    expect(kycDocumentExtensionForMime(null)).toBeNull();
+    expect(kycDocumentExtensionForMime(undefined)).toBeNull();
+  });
+});
+
+describe("asUuidOrNull (Decision G — audit-log purity)", () => {
+  const UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  it("returns a lowercase uuid unchanged", () => {
+    expect(asUuidOrNull(UUID)).toBe(UUID);
+  });
+
+  it("accepts uppercase but normalizes to lowercase", () => {
+    expect(asUuidOrNull(UUID.toUpperCase())).toBe(UUID);
+  });
+
+  it("returns null for near-UUIDs, padding, and injection-ish strings", () => {
+    expect(asUuidOrNull(`${UUID}x`)).toBeNull();
+    expect(asUuidOrNull(UUID.slice(0, -1))).toBeNull();
+    expect(asUuidOrNull(` ${UUID}`)).toBeNull();
+    expect(asUuidOrNull(UUID.replace(/-/g, ""))).toBeNull();
+    expect(asUuidOrNull("../../etc/passwd")).toBeNull();
+    expect(asUuidOrNull("DROP TABLE kyc_documents")).toBeNull();
+    expect(asUuidOrNull("<script>alert(1)</script>")).toBeNull();
+  });
+
+  it("returns null for empty / non-string input", () => {
+    expect(asUuidOrNull("")).toBeNull();
+    expect(asUuidOrNull(null)).toBeNull();
+    expect(asUuidOrNull(undefined)).toBeNull();
+    expect(asUuidOrNull(42)).toBeNull();
+  });
+});
+
+describe("download action + internal select contract", () => {
+  it("KycDocumentAccessAction includes 'download' (migration 110 vocabulary)", () => {
+    const action: KycDocumentAccessAction = "download";
+    expect(action).toBe("download");
+  });
+
+  it("internal download SELECT includes storage_path but never uploader/bucket columns", () => {
+    expect(KYC_DOCUMENT_DOWNLOAD_INTERNAL_SELECT).toContain("storage_path");
+    expect(KYC_DOCUMENT_DOWNLOAD_INTERNAL_SELECT).not.toContain(
+      "uploaded_by_user_id",
+    );
+  });
+
+  it("the SAFE select still excludes storage_path (the internal select did not leak into it)", () => {
+    expect(KYC_DOCUMENT_SAFE_SELECT).not.toContain("storage_path");
   });
 });
 

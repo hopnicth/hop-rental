@@ -25,6 +25,27 @@
 export const KYC_DOCUMENT_SAFE_SELECT =
   "id, kyc_profile_id, document_type, mime_type, file_size_bytes, uploaded_at, created_at";
 
+/**
+ * SERVER-INTERNAL ONLY — includes storage_path so the download endpoint can
+ * fetch the object. NEVER serialize this row (or any field of it) into a JSON
+ * response, response header, or error message. The download endpoint's success
+ * response is raw bytes; storage_path/bucket must never reach the client
+ * (docs/kyc-phase-2-download-spec.md §2.2). There is no storage_bucket column —
+ * the bucket is the KYC_PROFILE_DOCUMENTS_BUCKET constant.
+ */
+export const KYC_DOCUMENT_DOWNLOAD_INTERNAL_SELECT =
+  "id, kyc_profile_id, document_type, mime_type, file_size_bytes, storage_path";
+
+/** DB-row shape for the download endpoint (matches the INTERNAL select). Server-side only. */
+export interface KycDocumentDownloadRow {
+  id: string;
+  kyc_profile_id: string;
+  document_type: string;
+  mime_type: string | null;
+  file_size_bytes: number | null;
+  storage_path: string | null;
+}
+
 /** DB-row shape consumed by `toSafeKycDocument` (matches KYC_DOCUMENT_SAFE_SELECT). */
 export interface KycDocumentSafeRow {
   id: string;

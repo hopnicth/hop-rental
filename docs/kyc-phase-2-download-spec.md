@@ -109,6 +109,7 @@ X-Content-Type-Options: nosniff
 | staff (non-super_admin), uuid-shaped id | `download` | `denied` | `not_super_admin` | best-effort |
 | staff (non-super_admin), malformed id | `download` | `denied` | `not_super_admin_malformed_id` | best-effort |
 | super_admin, malformed id | `download` | `denied` | `malformed_document_id` | best-effort |
+| super_admin, `kyc_documents` read fails (infrastructure) | `download` | `denied` | `read_failed` | best-effort |
 | super_admin, row absent | `download` | `denied` | `not_found` | best-effort |
 | super_admin, unsafe stored path | `download` | `denied` | `unsafe_path` (storage_path = null in the row) | best-effort |
 | super_admin, non-allowlisted mime | `download` | `denied` | `invalid_mime` | best-effort |
@@ -141,6 +142,27 @@ X-Content-Type-Options: nosniff
 
 `logKycDocumentAccess` best-effort mode returns false (never throws): a downed
 log table must never escalate the uniform 403 into a 500 (tested).
+
+### 3.4 Infrastructure read failure (`read_failed`) — opaque client errors
+
+When the super_admin-path `kyc_documents` read itself errors (DB/Supabase
+infrastructure failure, NOT row absence):
+
+- the client receives an OPAQUE 500 `KYC_DOCUMENT_READ_FAILED` — the raw
+  DB/Supabase error message is NEVER returned in `statusMessage` (it can leak
+  internals); the real error is logged server-side only (`console.error`);
+- a BEST-EFFORT audit row is written: `action='download'`, `result='denied'`,
+  `reason='read_failed'`, `document_id=<valid route uuid>`, no storage path
+  (the row was never loaded);
+- NO allowed row is written and storage is NEVER touched on this path;
+- the row is best-effort, NOT fail-closed — an infrastructure read failure
+  must not additionally depend on the log table being up, and its own log
+  failure must not mask the opaque 500.
+
+Principle (applies to every infrastructure error in this endpoint):
+infrastructure failures return opaque machine-code errors to the client; real
+error details stay in server logs; the audit row for such failures is
+best-effort, never fail-closed.
 
 ## 4. Migration 110 runbook
 

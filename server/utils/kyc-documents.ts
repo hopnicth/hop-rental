@@ -1,5 +1,6 @@
 /**
- * KYC document upload/storage helpers + access-log writer (Phase 1B upload).
+ * KYC document upload/storage helpers + access-log writer (Phase 1B upload +
+ * Phase 2 download — docs/kyc-phase-2-download-spec.md).
  *
  * Covers:
  *  - Bucket + size-limit constants for the dedicated `kyc-profile-documents` bucket
@@ -10,10 +11,18 @@
  *    the client-declared MIME is NEVER trusted
  *  - buildKycDocumentStorageKey — opaque random-UUID object key, by construction
  *    not derived from profile id, identity value, or any human-readable input
+ *  - isSafeKycDocumentStoragePath — fail-closed validator for STORED paths;
+ *    its extension alternation is derived from KYC_DOCUMENT_MIME_EXTENSIONS
+ *    (single source of truth with the key builder — they cannot drift)
+ *  - kycDocumentExtensionForMime — canonical MIME → extension lookup (the only
+ *    sanctioned mapping; download filenames must derive from it)
+ *  - asUuidOrNull — strict UUID-shape classifier for route ids so a raw
+ *    attacker-controlled string is NEVER inserted into the uuid-typed
+ *    kyc_document_access_log.document_id column (decisions.md Decision G)
  *  - parseSingleForwardedIp — extracts ONE validated IP from an x-forwarded-for
  *    chain so a multi-hop comma list is never inserted into an `inet` column
  *  - logKycDocumentAccess — append-only writer for public.kyc_document_access_log
- *    (best-effort by default; failClosed for future allowed-download logging);
+ *    (best-effort by default; failClosed for allowed-download logging);
  *    payload typed against the generated database.types.ts Insert shape
  *  - parseKycDateOnly / isFutureKycDate — strict YYYY-MM-DD date-only input
  *    validation for kyc_documents.issued_at / expires_at capture
@@ -145,6 +154,63 @@ export function buildKycDocumentStorageKey(
   return `kyc/${randomUUID()}.${KYC_DOCUMENT_MIME_EXTENSIONS[mime]}`;
 }
 
+/**
+ * Canonical MIME → file extension. Returns null for anything outside the
+ * JPEG/PNG/PDF allowlist (fail closed). Download filenames and Content-Type
+ * gating must use this — never a second hand-rolled mapping.
+ */
+export function kycDocumentExtensionForMime(mime: unknown): string | null {
+  if (typeof mime !== "string") return null;
+  return KYC_DOCUMENT_MIME_EXTENSIONS[mime as KycDocumentCanonicalMime] ?? null;
+}
+
+/** Escape a literal for safe embedding inside a RegExp alternation. */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Built ONCE from the same map the key builder uses — adding a MIME to
+// KYC_DOCUMENT_MIME_EXTENSIONS automatically extends builder AND validator;
+// they cannot drift. Values are regex-escaped so a future extension containing
+// a metacharacter can never silently widen the pattern.
+const SAFE_KYC_STORAGE_PATH_RE = new RegExp(
+  `^kyc/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.(${Object.values(
+    KYC_DOCUMENT_MIME_EXTENSIONS,
+  )
+    .map(escapeRegExp)
+    .join("|")})$`,
+);
+
+/**
+ * Validate that a STORED storage path has exactly the opaque Phase-1B shape
+ * produced by buildKycDocumentStorageKey: `kyc/<lowercase-uuid>.<ext>` with an
+ * extension from KYC_DOCUMENT_MIME_EXTENSIONS. Everything else fails closed —
+ * traversal, URLs, legacy `users/...` paths, non-UUID keys, uppercase hex,
+ * empty or non-string input. A failing path must NEVER be fetched and must
+ * NEVER be written to the access log (it may be PII-bearing).
+ */
+export function isSafeKycDocumentStoragePath(path: unknown): boolean {
+  return typeof path === "string" && SAFE_KYC_STORAGE_PATH_RE.test(path);
+}
+
+// ── Route-id classification (audit-log purity — Decision G) ─────────────────
+
+const UUID_SHAPE_RE =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * Classify an attacker-controlled route id. Returns the LOWERCASED uuid when
+ * the input is exactly uuid-shaped, else null. kyc_document_access_log
+ * .document_id is uuid-typed — inserting a raw non-UUID string would make the
+ * BEST-EFFORT denied log fail silently (a vanished audit row). Callers must
+ * log `document_id = null` plus a `*_malformed_*` reason for null results and
+ * must never write the raw input anywhere in the log entry.
+ */
+export function asUuidOrNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  return UUID_SHAPE_RE.test(value) ? value.toLowerCase() : null;
+}
+
 // ── x-forwarded-for parsing ──────────────────────────────────────────────────
 
 /**
@@ -196,7 +262,17 @@ export function isFutureKycDate(dateOnly: string, now: Date = new Date()): boole
 
 // ── Access-log writer ────────────────────────────────────────────────────────
 
-export type KycDocumentAccessAction = "upload" | "download_signed_url" | "delete";
+/**
+ * Allowed audit actions (migration 110 widened the DB check constraint).
+ * `download` = Phase 2 server-proxy delivery; `download_signed_url` is the
+ * historical value and the shelved hybrid contingency's vocabulary
+ * (docs/kyc-phase-2-download-spec.md §9).
+ */
+export type KycDocumentAccessAction =
+  | "upload"
+  | "download"
+  | "download_signed_url"
+  | "delete";
 export type KycDocumentAccessResult = "allowed" | "denied";
 export type KycDocumentType = Database["public"]["Enums"]["kyc_document_type"];
 
