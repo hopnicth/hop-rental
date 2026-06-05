@@ -55,6 +55,12 @@
 | `phase-2d-booking-deposit-acceptance-checklist.md` | **CLOSED** — POS V3 BDC flow acceptance. Test suite 864/864 pass |
 | `phase-2e-pos-rental-operational-flow-audit.md`    | POS V3 operational flow audit                                    |
 
+### Operational Checklists (Active)
+
+| ไฟล์                                          | cover อะไร                                                                                                                                                                                                                                                              |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kyc-production-enablement-checklist.md`      | **ACTIVE** — Production-only checklist for enabling KYC document upload/download; consolidates Decision C/D/F/H/I gates, owner/legal long-poles, Fluid Compute check, storage/security gates, production smoke test, rollback, monitoring, super_admin roster, purge/retention dependencies. ไม่ gate staging Admin UI |
+
 ### Planning
 
 | ไฟล์                              | cover อะไร                          |

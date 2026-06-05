@@ -258,3 +258,18 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 ### Notes
 - NOT done by instruction: no GitHub Actions workflow, no standing CI secret, no endpoint changes, no migration, no `database.types.ts`, no UI; nothing staged/committed/pushed; unrelated dirty files untouched
 - Team-vs-personal Vercel ownership is unresolvable from the repo (no `.vercel/`, no `VERCEL_*` env vars) — determine from the dashboard URL before the live run
+
+---
+
+## Session 2026-06-06 (later) — KYC production enablement checklist created
+
+### Done ✅
+- `docs/kyc-production-enablement-checklist.md` created — single durable operational checklist consolidating Decisions C/D/F/H/I for PRODUCTION enablement of KYC document upload/download (scope/status, owner-legal gates, Fluid gate, storage/security gates, runtime gates incl. manual h3 canary, 10 MB production smoke procedure with audit-residue acceptance + recorded log-row id, rollback path, monitoring, super_admin roster review, purge dependency, sign-off block). No new decision made — consolidation only, so no decisions.md entry.
+
+### Next 📋
+- **CRITICAL PATH = owner/legal long-poles (checklist §1): retention duration + AV posture** — longest lead time; start now, everything else can parallel
+- Admin download UI on staging — NOT gated by this checklist (staging endpoint already smoke-tested); proceed independently
+- Live Fluid check (`npm run check:vercel-fluid`, ephemeral token) — record into checklist §2.1 + spec §8 when run
+
+### Notes
+- Docs-only session: no code, no endpoint, no migration, no `database.types.ts`, no UI; unrelated dirty files untouched; nothing staged/committed/pushed

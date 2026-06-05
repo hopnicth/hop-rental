@@ -1,5 +1,18 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-06 (KYC production enablement checklist created — docs only)
+
+Task: consolidate all KYC production-enablement gates into one operational checklist
+Files touched: `docs/kyc-production-enablement-checklist.md` (NEW), `progress.md`, this file
+Status: **done** (docs-only; nothing staged/committed/pushed at handoff time)
+Next:
+1. **Start the long-poles now (checklist §1): retention duration + AV posture** — owner/legal decisions, longest lead time, now the critical path
+2. **The checklist is PRODUCTION-ONLY — it must NOT block the staging Admin download UI**; the staging endpoint is already smoke-tested, build the UI independently (i18n keys ×4 locales required)
+3. Live Fluid check (§2.1) + production smoke test (§5, prefer ~10 MB synthetic) get recorded INTO the checklist with evidence when run
+4. No new decisions.md entry was made — the checklist consolidates existing Decisions C/D/F/H/I
+
+---
+
 ## Claude Code → Claude Code / 2026-06-06 (Fluid Compute guard shipped as manual gate — live API run PENDING)
 
 Task: Fluid Compute verification script (Decision D impact 2, enforcement model amended by Decision I)
