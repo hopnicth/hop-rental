@@ -1,5 +1,21 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-07 (Verify KYC slice ①: migrations 111+112 authored, locally verified — remote push + types regen PENDING approval)
+
+Task: Minimal Verify KYC slice ① (schema/RPC/runbook/behavioral checks only — no endpoints, no UI)
+Status: done locally, committed, NOT pushed (git) / NOT applied to remote DB
+Critical sequencing for next session:
+1. Remote `db push --linked` of 111+112 needs EXPLICIT owner approval (dry-run must show only 111+112)
+2. `database.types.ts` regen must use `--linked` AFTER that push (committed types file matches REMOTE generator output — `__InternalSupabase` + legacy FK names; `--local` regen would add unrelated noise; verified 2026-06-07)
+3. Slice ② endpoints depend on the regenerated RPC types
+Key invariants shipped: decision-before-trust in ONE transaction (RPCs, row-locked); fail-closed VAT/attestation/reviewed-ids CHECKs at DB level; closed revoke-reason set (fraud_suspected|document_invalid|verified_in_error|other, no free text); overrides now UPDATE-immutable (DELETE stays = designed invalidation until TASK 6, residual trace-erasure risk accepted + recorded in table COMMENT)
+Atomicity evidence: genuine mid-transaction FK failure rolled back the already-inserted decision row (0 rows, status pending) — single-transaction guarantee proven live
+
+Review resolutions (2026-06-07, pre-push): valid_until authority = DB/RPC (comment amended; TS constant is mirror-only); revoked-shape CHECK added + matrix re-verified (6/6); no UPDATE path on kyc_pickup_overrides (grep: 2 SELECT sites only); service_role cannot set session_replication_role (verified locally as the role; remote by construction, not testable via REST). SLICE ② MUST: pass TRUE authenticated id/name/role from requireSuperAdmin into the RPCs — never hardcode the role param; never widen the EXECUTE grant.
+
+---
+
+
 ## Claude Code → Claude Code / 2026-06-06 (Company KYC VAT rule recorded — Verify KYC planning input; docs only)
 
 Task: record owner-locked company verify-readiness rule before Minimal Verify KYC planning

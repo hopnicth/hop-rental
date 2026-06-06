@@ -356,3 +356,30 @@ Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure
 
 ### Notes
 - Docs-only session: no app/server/migration/type/locale/POS V3 changes; implementation NOT started
+
+---
+
+## Session 2026-06-07 — Minimal Verify KYC slice ①: migrations 111 + 112 authored and locally verified (NOT pushed)
+
+### Done ✅
+- **Migration 111 — `kyc_pickup_overrides` UPDATE block (Option R rider, separate discoverable migration):** BEFORE UPDATE trigger raises for ALL roles (blocks silent rewriting of override_reason/actor/booking refs); DELETE deliberately still allowed (designed invalidation path); residual risk recorded in the table COMMENT: DELETE erases the trace, accepted until TASK 6 — which MUST preserve the no-UPDATE invariant and replace delete-to-invalidate with an auditable marker
+- **Migration 112 — `kyc_verification_decisions` + `kyc_vat_status` enum + atomic RPCs:** 109-style purge-surviving audit (plain UUID snapshots, NO FKs; verifier snapshot decided_by_user_id+name+role; customer_type/identity_type denormalized so CHECKs can bind); fail-closed CHECKs (company VAT, individual no-VAT, valid_until, reviewed-ids ≥1, visual attestation, closed revoke-reason set incl. method='admin_panel' only); append-only triggers (UPDATE/DELETE/TRUNCATE); RLS service-role write + super_admin SELECT; `verify_kyc_profile` / `revoke_kyc_profile` SECURITY DEFINER RPCs (service-role EXECUTE only) doing row-lock → transition check → decision INSERT → profile UPDATE in ONE transaction; valid_until = decided_at + 1 year (sync note with kyc.ts); re-verify of revoked clears the revoked_* mirror (history preserved in decisions); TOCTOU dependency comment recorded (readiness moves into the RPC when Decision H purge ships; reviewed-id ownership already re-checked in-transaction)
+- **Local runbook green:** chain reset-clean through 112 (×2 incl. idempotent re-run); behavioral checks ALL PASS — 111: UPDATE blocked / DELETE allowed; 112: 9/9 CHECK rejections, RPC matrix (verify individual ✓ status+method+1y, double-verify ✗, company-no-VAT ✗, foreign reviewed id ✗, non-super_admin role ✗, missing attestation ✗, company+VAT ✓, bad revoke reason ✗, revoke ✓ + mirrors, revoke-non-verified ✗, re-verify-revoked ✓ + mirrors cleared, history 4 rows), decision UPDATE/DELETE/TRUNCATE blocked; **atomicity proven with a GENUINE mid-transaction failure** (decision INSERT succeeded → profile UPDATE failed on actor FK → rollback left 0 decision rows + status pending)
+- Validation: `npx tsc --noEmit` clean · full suite 2252/20 = POS baseline unchanged
+
+### Important sequencing note — types regen DEFERRED
+- `database.types.ts` regen is intentionally NOT in this commit: the committed file was generated against the LINKED REMOTE (has `__InternalSupabase` + legacy remote FK constraint names); a `--local` regen injects unrelated constraint-name noise. Regen with `--linked` AFTER the approved remote `db push` of 111+112, BEFORE slice ② endpoints (which need the RPC types). tsc is clean meanwhile (nothing references the new objects yet).
+
+### Next 📋
+- Owner approval → `supabase db push --linked --dry-run` (must show ONLY 111+112) → push → metadata-only remote verification → `gen types --linked` regen commit
+- Slice ②: `server/utils/kyc-verification.ts` + verify/revoke/verification-history endpoints + specs · Slice ③ UI · Slice ④ docs (Decision L + design-doc amendments)
+
+### Blocked 🚫
+- Remote migration push awaits explicit approval; production enablement unchanged (Decision C + checklist)
+
+### Addendum (2026-06-07) — SQL review resolutions (pre-push)
+- **Validity authority locked:** DB/RPC (`verify_kyc_profile`) is the SINGLE WRITER AUTHORITY for `valid_until` (+1 year fixed in SQL; never an endpoint parameter — drift-proof). 112 §F comment amended to state this. Slice ② TS `KYC_VALIDITY_PERIOD_MONTHS` = mirror for display/readiness/tests only; source-inspection pins both to +1 year.
+- **Revoked-shape CHECK added** (reviewer-optional, adopted as low-risk): revoked rows must have `vat_status IS NULL`, `valid_until IS NULL`, `visual_review_confirmed = false`, zero reviewed ids. Local matrix extended: 6/6 new rejections PASS; RPC verify→revoke→re-verify still green; clean reset after.
+- **No legitimate UPDATE path on `kyc_pickup_overrides`** (grep-verified): only two SELECT call sites (`rental-fulfillment.ts:254`, `rental-pickup-readiness.ts:395`); zero `.update()/.upsert()/.delete()` chains; the migration-106 hit is an FK definition, not an UPDATE. No INSERT path in runtime code yet either (POS V3 wiring backlog).
+- **service_role cannot disable triggers:** verified empirically on local as the actual role (`SET ROLE service_role` → `SET session_replication_role = replica` → permission denied; `rolsuper=f`, `pg_parameter_acl` empty). Remote: same conclusion BY CONSTRUCTION (hosted Supabase service_role is never superuser; the parameter is SUSET) — an arbitrary-SQL remote test is not possible with available credentials (REST key only) and was NOT attempted.
+- **Slice ② carried requirement (RPC actor params):** the endpoint MUST pass the authenticated user's TRUE id / name snapshot / platform role from `requireSuperAdmin` into the RPC — never hardcode `p_decided_by_role='super_admin'`; `requireSuperAdmin` remains the real guard; the service-role-only EXECUTE grant is never widened.
