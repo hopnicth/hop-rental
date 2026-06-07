@@ -2825,6 +2825,69 @@ export type Database = {
           },
         ]
       }
+      kyc_verification_decisions: {
+        Row: {
+          created_at: string
+          customer_type: Database["public"]["Enums"]["kyc_customer_type"]
+          decided_at: string
+          decided_by_name: string | null
+          decided_by_role: string
+          decided_by_user_id: string
+          id: string
+          identity_type: Database["public"]["Enums"]["kyc_identity_type"]
+          ip_address: unknown
+          kyc_profile_id: string
+          method: string
+          outcome: string
+          reason_code: string | null
+          reviewed_document_ids: string[]
+          user_agent: string | null
+          valid_until: string | null
+          vat_status: Database["public"]["Enums"]["kyc_vat_status"] | null
+          visual_review_confirmed: boolean
+        }
+        Insert: {
+          created_at?: string
+          customer_type: Database["public"]["Enums"]["kyc_customer_type"]
+          decided_at?: string
+          decided_by_name?: string | null
+          decided_by_role: string
+          decided_by_user_id: string
+          id?: string
+          identity_type: Database["public"]["Enums"]["kyc_identity_type"]
+          ip_address?: unknown
+          kyc_profile_id: string
+          method?: string
+          outcome: string
+          reason_code?: string | null
+          reviewed_document_ids?: string[]
+          user_agent?: string | null
+          valid_until?: string | null
+          vat_status?: Database["public"]["Enums"]["kyc_vat_status"] | null
+          visual_review_confirmed?: boolean
+        }
+        Update: {
+          created_at?: string
+          customer_type?: Database["public"]["Enums"]["kyc_customer_type"]
+          decided_at?: string
+          decided_by_name?: string | null
+          decided_by_role?: string
+          decided_by_user_id?: string
+          id?: string
+          identity_type?: Database["public"]["Enums"]["kyc_identity_type"]
+          ip_address?: unknown
+          kyc_profile_id?: string
+          method?: string
+          outcome?: string
+          reason_code?: string | null
+          reviewed_document_ids?: string[]
+          user_agent?: string | null
+          valid_until?: string | null
+          vat_status?: Database["public"]["Enums"]["kyc_vat_status"] | null
+          visual_review_confirmed?: boolean
+        }
+        Relationships: []
+      }
       main_categories: {
         Row: {
           created_at: string
@@ -7355,6 +7418,18 @@ export type Database = {
         Args: { p_product_id: string }
         Returns: undefined
       }
+      revoke_kyc_profile: {
+        Args: {
+          p_decided_by_name: string
+          p_decided_by_role: string
+          p_decided_by_user_id: string
+          p_ip_address?: unknown
+          p_profile_id: string
+          p_reason_code: string
+          p_user_agent?: string
+        }
+        Returns: Json
+      }
       search_products: {
         Args: {
           p_brands?: string[]
@@ -7405,6 +7480,20 @@ export type Database = {
         Args: { raw_value: string; term_kind: string }
         Returns: undefined
       }
+      verify_kyc_profile: {
+        Args: {
+          p_decided_by_name: string
+          p_decided_by_role: string
+          p_decided_by_user_id: string
+          p_ip_address?: unknown
+          p_profile_id: string
+          p_reviewed_document_ids: string[]
+          p_user_agent?: string
+          p_vat_status?: Database["public"]["Enums"]["kyc_vat_status"]
+          p_visual_review_confirmed: boolean
+        }
+        Returns: Json
+      }
     }
     Enums: {
       asset_document_kind:
@@ -7441,6 +7530,7 @@ export type Database = {
         | "passport"
       kyc_identity_type: "national_id" | "passport" | "juristic_id"
       kyc_status: "pending" | "verified" | "rejected" | "expired" | "revoked"
+      kyc_vat_status: "vat_registered" | "not_vat_registered"
       membership_level: "bronze" | "silver" | "gold"
       order_checkout_mode: "payment" | "quotation"
       order_fulfillment_status:
@@ -7721,6 +7811,7 @@ export const Constants = {
       ],
       kyc_identity_type: ["national_id", "passport", "juristic_id"],
       kyc_status: ["pending", "verified", "rejected", "expired", "revoked"],
+      kyc_vat_status: ["vat_registered", "not_vat_registered"],
       membership_level: ["bronze", "silver", "gold"],
       order_checkout_mode: ["payment", "quotation"],
       order_fulfillment_status: [
