@@ -13,6 +13,8 @@ Atomicity evidence: genuine mid-transaction FK failure rolled back the already-i
 
 Review resolutions (2026-06-07, pre-push): valid_until authority = DB/RPC (comment amended; TS constant is mirror-only); revoked-shape CHECK added + matrix re-verified (6/6); no UPDATE path on kyc_pickup_overrides (grep: 2 SELECT sites only); service_role cannot set session_replication_role (verified locally as the role; remote by construction, not testable via REST). SLICE ② MUST: pass TRUE authenticated id/name/role from requireSuperAdmin into the RPCs — never hardcode the role param; never widen the EXECUTE grant.
 
+Remote apply DONE (2026-06-07): 111+112 on remote; dry-run clean before+after; linked types regenerated (purely additive, zero drift) and committed separately. OPERATIONAL: no INSERT path for kyc_pickup_overrides exists in runtime code — v1 walk-ins need super_admin pre-verification via /admin/kyc (no staff_on_site, no app-created override yet). NEXT: Slice ② endpoints (verify/revoke/verification-history) per locked plan.
+
 ---
 
 
