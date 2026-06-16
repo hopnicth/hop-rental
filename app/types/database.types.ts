@@ -6803,6 +6803,65 @@ export type Database = {
           },
         ]
       }
+      sale_order_payment_slips: {
+        Row: {
+          created_at: string
+          file_size_bytes: number
+          id: string
+          mime_type: string
+          order_id: string
+          original_filename: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          file_size_bytes: number
+          id?: string
+          mime_type: string
+          order_id: string
+          original_filename: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path: string
+          uploaded_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          file_size_bytes?: number
+          id?: string
+          mime_type?: string
+          order_id?: string
+          original_filename?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_order_payment_slips_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_providers: {
         Row: {
           contact_email: string | null
