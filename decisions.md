@@ -1,5 +1,21 @@
 # Design Decisions
 
+## 2026-06-17
+Decision: Implement the manual bank-transfer booking-deposit flow as slip EVIDENCE + admin manual confirmation, reusing existing infrastructure rather than building a new payment subsystem.
+Reason: Avoids a 3rd-party payment provider while keeping money handling correct and auditable. Slip upload is decoupled from confirmation so a customer upload can never confirm a booking or move money.
+Impact:
+- Slip files use a NEW private bucket `rental-deposit-slips` (migration 113), served only via short-lived signed URLs through route-authenticated server APIs. Never catalog-media; never permanent public URLs. Modeled on the KYC private-bucket pattern (no KYC code touched).
+- The booking deposit is recorded as a held-balance LIABILITY (`rental_held_balance_events`, event_type `booking_deposit_collection`, source_type `manual_admin_confirmation`) — never revenue, never VAT, never `rental_booking_payment_lines`. No `rental_payment_events` table was created (the held-balance ledger already fits).
+- Booking confirmation goes ONLY through `confirmRentalBooking()`; the manual path omits `requireBookingDepositHeldBalanceEvent` (manual source is not in that helper's closed union) and relies on `requireBookingDepositPaid` + the availability/overlap guard inside confirmation. Idempotent on `source_id = bookingId`.
+- No Omise/QR/payment_attempts/payment-result pages touched. KYC remains paused.
+- database.types.ts was updated by transplanting ONLY the new table block (not a full `--local` regen) to preserve the committed remote-`--linked` style per the 2026-06-07 handoff constraint.
+- Admin slip UI strings are intentionally hardcoded English to match the existing non-i18n'd admin booking detail page; customer-facing strings use i18n with th/cn/jp `[NEEDS_TRANSLATION]` placeholders pending translation.
+
+## 2026-06-16
+Decision: Pause all KYC implementation after Slice ② (verify/revoke/verification-history) and pivot the next slice to a manual bank-transfer payment flow (customer uploads proof-of-transfer image; admin manually reviews/approves; no 3rd-party payment provider for now).
+Reason: 3rd-party payment integration is taking too long; a simpler manual flow unblocks the business sooner. Slice ② was first reviewed at-source and confirmed correct (all six locked KYC auth constraints pass, 72 tests green), so the pause leaves no half-written auth surface.
+Impact: KYC frozen — reject/renewal/purge/delete lifecycle, POS V3, staff_on_site, and user-account linking remain out of scope until resume. The previously-bypassed Slice ② auth-boundary review gate is now CLOSED (evidence in handoff.md 2026-06-16). Next build is Bank Transfer Slice ① = data/state model + one authoritative approve/reject transition only; it reuses KYC security patterns (private bucket + server-proxy, immutable decision log, true-identity-into-writer, access logging) but keeps a separate domain model from `kyc_documents`.
+
 ## 2026-05-29
 Decision: Fix OAuth first-login race in `confirm.vue` by awaiting `refreshProfile()` before `navigateTo()`, not by adding `exchangeCodeForSession()` manually.
 Reason: `@nuxtjs/supabase` already handles the PKCE code exchange automatically. Adding a manual exchange would double-exchange the code and break the flow. The race was purely in the redirect timing, not in the token exchange.

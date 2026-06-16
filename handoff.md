@@ -1,5 +1,53 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-17 (Manual bank-transfer booking-deposit flow — Steps 1–7 DONE, committed on staging, NOT pushed)
+
+Task: Implement a lightweight manual bank-transfer booking-deposit flow. KYC stays PAUSED (untouched).
+
+Flow: customer uploads bank-slip EVIDENCE (status pending_review) → booking stays draft → admin reviews slip → admin clicks "Mark Deposit Received" → held-balance liability recorded + booking confirmed via confirmRentalBooking().
+
+Commits (staging, in order): `204d7a6` (migration) · `144f3e3` (types+util) · `15e12ca` (customer upload API) · `857f10f` (admin visibility+signed access) · `8acc5d2` (admin manual confirm) · `a1ba94e` (customer UI+i18n) · docs commit (this step).
+
+Locked invariants honored (verify before changing):
+- Booking deposit = refundable held LIABILITY (rental_held_balance_events, event_type `booking_deposit_collection`). NOT revenue, NOT VAT. money-summary tests still green.
+- Uploading a slip never confirms; admin confirmation required. Confirmation only via `confirmRentalBooking()` — status never set directly.
+- Slips live in PRIVATE bucket `rental-deposit-slips`; viewed only via short-lived signed URLs. Never catalog-media, never public URLs.
+- No Omise / QR / payment_attempts / payment result pages touched. No `rental_payment_events` created (reused held-balance ledger).
+- Manual held-balance source_type = `manual_admin_confirmation` via `recordRentalHeldBalanceEvent` (free-text source); idempotent on source_id=bookingId. Confirm is NOT gated on requireBookingDepositHeldBalanceEvent (manual source not in that closed union).
+
+Verification: `supabase db reset --local` clean; targeted suites green; `npx tsc --noEmit` = 0. See progress.md for the smoke summary.
+
+OPEN ITEMS for next session:
+1. **i18n PENDING TRANSLATION** — 9 keys under `rentalsPage.depositSlip.*` have `[NEEDS_TRANSLATION]` placeholders in th/cn/jp (en has real values). Grep: `grep -r "NEEDS_TRANSLATION" i18n/locales/`.
+2. **Admin component strings are hardcoded English** — `AdminBookingDepositSlips.vue` / `AdminBookingDepositConfirm.vue` follow the existing non-i18n'd admin booking page convention (deliberate consistency choice). Re-evaluate if admin i18n is later adopted.
+3. **Migration 113 is LOCAL only** — not pushed to remote. Remote `db push --linked` + types regen `--linked` needed before deploy (same gate as the KYC migrations).
+4. **Not pushed** — all 7 commits are local on `staging`.
+5. Deferred features: OCR, bank reconciliation, duplicate-slip detection, full approve/reject workflow, refund flow, customer re-viewing own slip.
+
+## Claude Code → Claude Code / 2026-06-16 (KYC PAUSED — Slice ② review gate CLOSED; switching to Bank Transfer Slice ①)
+
+Task: Pause KYC; correct stale status; perform the bypassed actual-source review of committed Slice ②.
+
+Status correction (IMPORTANT): The prior pause summary said "Slice ② endpoints are planned/cleared but not started." That was OUTDATED. Slice ② is DONE, committed, and passing.
+- Latest relevant commit: `d29ca7d feat(kyc): add verify, revoke, and verification-history endpoints` (2180 insertions).
+- Files live: `server/utils/kyc-verification.ts`, `server/api/admin/kyc/profiles/[id]/verify.post.ts`, `revoke.post.ts`, `verification-history.get.ts`.
+- Tests: `kyc-verify-api`, `kyc-revoke-api`, `kyc-verification-history-api`, `kyc-verification-utils` — 72 tests passing (re-run 2026-06-16).
+
+Review gate — NOW CLOSED: Slice ② was pushed without the mandated auth-boundary source review. Review performed 2026-06-16 against the real committed source (not the summary). All six locked constraints CONFIRMED:
+1. verify guarded by real `requireSuperAdmin` (verify.post.ts:72) — guard throws 403 if `platformRole !== 'super_admin'` (admin.ts:52).
+2. revoke guarded by real `requireSuperAdmin` (revoke.post.ts:56).
+3. `p_decided_by_role: platformRole` in BOTH endpoints — true authenticated role from the guard, never a hardcoded literal (verify.post.ts:216, revoke.post.ts:133).
+4. real authenticated `userId` passed as `p_decided_by_user_id` (verify.post.ts:214, revoke.post.ts:131).
+5. history is `requireSuperAdmin`-only (verification-history.get.ts:40) + RLS super_admin-SELECT-only (mig 112:174); response select excludes ip/ua/actor-id/identity/paths; reviewed_document_ids reduced to a COUNT; RPC errors mapped to opaque 500 (no raw DB text leak).
+6. RPCs are the SINGLE WRITER AUTHORITY for state + `valid_until` (mig 112:185): `valid_until := now + interval '1 year'` computed inside the RPC; decision INSERT + profile UPDATE in one `FOR UPDATE` row-locked transaction; append-only enforced by block-mutation trigger; EXECUTE granted to service_role only. RPC also re-checks role (defence-in-depth). Endpoint never computes valid_until (`KYC_VALIDITY_PERIOD_MONTHS` is a display-only mirror).
+Verdict: PASS — no code changes required. Review gate closed.
+
+KYC is now SAFE TO PAUSE. No half-written auth surface in tree.
+
+Next when KYC resumes (NOT now): Slice ③+ lifecycle — reject/renewal/purge/delete, POS V3 integration, staff_on_site, user-account linking. All still explicitly out of scope.
+
+Next now: Bank Transfer Slice ① — data/state model + authoritative transition design ONLY (no upload mechanics, no admin UI yet). See decisions.md / progress.md.
+
 ## Claude Code → Claude Code / 2026-06-07 (Verify KYC slice ①: migrations 111+112 authored, locally verified — remote push + types regen PENDING approval)
 
 Task: Minimal Verify KYC slice ① (schema/RPC/runbook/behavioral checks only — no endpoints, no UI)

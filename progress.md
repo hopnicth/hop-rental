@@ -1,5 +1,34 @@
 # PROGRESS
-Last updated: 2026-06-05 (Vercel streaming spike PASS — Phase 2 locked to pure server-proxy download; spec: `docs/kyc-phase-2-download-spec.md`; see session section at bottom + decisions.md Decisions D/E/F/G)
+Last updated: 2026-06-17 (Manual bank-transfer booking-deposit flow IMPLEMENTED — Steps 1–7 committed on staging, not pushed)
+
+## 2026-06-17 — Manual bank-transfer booking deposit flow ✅ (Steps 1–7)
+
+KYC remains PAUSED (unchanged). Implemented a lightweight manual bank-transfer booking-deposit flow — customer uploads slip EVIDENCE (does not confirm), admin clicks "Mark Deposit Received" to confirm.
+
+- **Step 1 — DB/storage** (`204d7a6`): migration `113_rental_deposit_slip_storage.sql` — private bucket `rental-deposit-slips` (public=false, 10MB, jpeg/png/pdf), table `rental_booking_deposit_slips` (RLS service_role-only, status pending_review→reviewed/rejected). No held-balance change needed (source_type/payment_method are free-text; `booking_deposit_collection` already exists).
+- **Step 2 — types + util** (`144f3e3`): regenerated types (transplanted only the new table block to keep remote-`--linked` style); `server/utils/rental-deposit-slip-evidence.ts` (magic-byte MIME, 10MB cap, opaque key, private upload, signed-URL helper, safe mapper).
+- **Step 3 — customer upload API** (`15e12ca`): `POST /api/user/rental-bookings/[id]/deposit-slip` — ownership + draft-only; never confirms / mutates money.
+- **Step 4 — admin visibility + signed access** (`857f10f`): `deposit-slips.get.ts`, `deposit-slips/[slipId]/signed-url.get.ts`, `AdminBookingDepositSlips.vue`. Private signed-URL view only.
+- **Step 5 — admin manual confirmation** (`8acc5d2`): `server/utils/rental-manual-deposit-confirmation.ts` + `POST /api/admin/rental-bookings/[id]/record-deposit` + `AdminBookingDepositConfirm.vue`. Records held-balance liability (booking_deposit_collection, manual source, idempotent) then confirms via `confirmRentalBooking` (never sets status directly; never revenue/VAT/Omise).
+- **Step 6 — customer UI + i18n** (`a1ba94e`): upload card in `user/rentals/[bookingId].vue`; 9 `rentalsPage.depositSlip.*` keys (en real; th/cn/jp `[NEEDS_TRANSLATION]`).
+- **Step 7 — docs** (this commit): server-utils-index rows for both new utils; progress/handoff/decisions.
+
+**Deferred (out of scope this phase):** OCR, bank-API reconciliation, duplicate-slip hash detection, full approve/reject workflow, refund flow, customer viewing their own uploaded slip back. i18n th/cn/jp translations PENDING (see handoff).
+
+## 2026-06-16 — KYC paused; status corrected; Slice ② review gate closed 🔒
+
+- **Status correction:** earlier notes said "Slice ② planned/cleared but not started" — OUTDATED. Slice ② is **DONE, committed, passing**. Latest commit `d29ca7d feat(kyc): add verify, revoke, and verification-history endpoints`.
+- **Actual-source review of committed Slice ② = PASS** (auth boundary). All six locked constraints confirmed against real source: super_admin guards on verify/revoke/history; `p_decided_by_role` = true authenticated role (not hardcoded); real `userId` into RPC; history minimized + RLS super_admin-only; RPCs are the single writer authority for state + `valid_until`. 72 tests passing. **Bypassed review gate is now CLOSED.** (Full evidence in handoff.md 2026-06-16.)
+- **KYC is paused.** Out of scope until resume: reject/renewal/purge/delete lifecycle, POS V3, staff_on_site, user-account linking, preview/open-in-new-tab.
+
+## Next 📋 — Bank Transfer Slice ① (manual transfer + proof upload)
+
+- **Scope of Slice ① = data/state model + authoritative transition ONLY.** No upload mechanics, no admin review UI, no notifications yet.
+- Payment status machine: `awaiting_transfer → proof_submitted → under_review → approved | rejected`.
+- One server-side authoritative writer for approve/reject (mirror KYC RPC discipline — client may only reach `proof_submitted`).
+- Approval binds to expected amount + specific order/booking; idempotent / replay-safe.
+- Reuse `payment_attempts` rather than forking a new payment record where possible.
+- Reuse KYC *patterns* (private bucket + server-proxy, immutable decision log, true-identity-into-writer, access logging) but a *separate* domain model from `kyc_documents`.
 
 ## Done ✅
 
