@@ -46,6 +46,14 @@ const cancelling = ref(false);
 const cancelError = ref<string | null>(null);
 const documentIssueStatus = ref<string | null>(null);
 const refundProofLoading = ref(false);
+const slipFile = ref<File | null>(null);
+const slipUploading = ref(false);
+const slipUploaded = ref<{ originalFilename: string; status: string } | null>(
+  null,
+);
+const canUploadDepositSlip = computed(
+  () => detail.value?.booking.status === "draft",
+);
 const form = reactive({
   refundBankName: "",
   refundBankAccountNumber: "",
@@ -244,6 +252,44 @@ async function loadDetail() {
     loading.value = false;
   }
 }
+function onSlipChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  slipFile.value = input.files?.[0] ?? null;
+}
+async function uploadDepositSlip() {
+  if (!slipFile.value) {
+    toast.add({ title: t("rentalsPage.depositSlip.noFile"), color: "warning" });
+    return;
+  }
+  slipUploading.value = true;
+  try {
+    const fd = new FormData();
+    fd.append("file", slipFile.value);
+    const res = await $fetch<{
+      slip: { originalFilename: string; status: string };
+    }>(
+      `/api/user/rental-bookings/${encodeURIComponent(bookingId.value)}/deposit-slip`,
+      { method: "POST", body: fd },
+    );
+    slipUploaded.value = res.slip;
+    slipFile.value = null;
+    toast.add({
+      title: t("rentalsPage.depositSlip.uploadSuccess"),
+      color: "success",
+    });
+    await loadDetail();
+  } catch (e) {
+    toast.add({
+      title:
+        e instanceof Error
+          ? e.message
+          : t("rentalsPage.depositSlip.uploadError"),
+      color: "error",
+    });
+  } finally {
+    slipUploading.value = false;
+  }
+}
 async function issueDoc(
   type:
     | "rental_booking_confirmation"
@@ -391,6 +437,44 @@ watch(bookingId, () => void loadDetail(), { immediate: true });
             ><br />{{ detail.booking.bookerName || "—" }} ·
             {{ detail.booking.bookerPhone || "—" }}
           </p>
+        </div></UCard
+      >
+      <UCard v-if="canUploadDepositSlip">
+        <template #header
+          ><h2 class="font-semibold">
+            {{ t("rentalsPage.depositSlip.title") }}
+          </h2></template
+        >
+        <div class="space-y-3">
+          <p class="text-sm text-muted">
+            {{ t("rentalsPage.depositSlip.instructions") }}
+          </p>
+          <UAlert
+            color="info"
+            icon="bx:info-circle"
+            :description="t('rentalsPage.depositSlip.note')"
+          />
+          <UAlert
+            v-if="slipUploaded"
+            color="success"
+            icon="bx:check"
+            :title="t('rentalsPage.depositSlip.pendingTitle')"
+            :description="t('rentalsPage.depositSlip.pendingDesc')"
+          />
+          <input
+            type="file"
+            accept="image/jpeg,image/png,application/pdf"
+            class="block w-full text-sm"
+            @change="onSlipChange"
+          />
+          <UButton
+            icon="bx:upload"
+            :loading="slipUploading"
+            :disabled="!slipFile"
+            @click="uploadDepositSlip"
+          >
+            {{ t("rentalsPage.depositSlip.uploadAction") }}
+          </UButton>
         </div></UCard
       >
       <div class="grid gap-6 lg:grid-cols-[1fr_320px]">

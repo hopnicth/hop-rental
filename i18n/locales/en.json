@@ -1003,6 +1003,17 @@
     }
   },
   "rentalsPage": {
+    "depositSlip": {
+      "title": "Upload bank transfer slip",
+      "instructions": "Transfer the booking deposit to our bank account, then upload your transfer slip here as evidence.",
+      "note": "Uploading a slip does not confirm your booking. Our staff will verify it before confirming.",
+      "uploadAction": "Upload slip",
+      "pendingTitle": "Slip uploaded — pending staff review",
+      "pendingDesc": "Our staff will verify your transfer and confirm the booking.",
+      "noFile": "Please choose a slip image or PDF first.",
+      "uploadSuccess": "Slip uploaded — pending review",
+      "uploadError": "Failed to upload slip"
+    },
     "description": "Review submitted rental bookings, pickup hub, and current booking status.",
     "emptyTitle": "No rental bookings yet",
     "emptyDescription": "Submitted rental bookings will appear here once you confirm them from cart.",

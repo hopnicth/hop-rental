@@ -956,6 +956,17 @@
     }
   },
   "rentalsPage": {
+    "depositSlip": {
+      "title": "[NEEDS_TRANSLATION]: Upload bank transfer slip",
+      "instructions": "[NEEDS_TRANSLATION]: Transfer the booking deposit to our bank account, then upload your transfer slip here as evidence.",
+      "note": "[NEEDS_TRANSLATION]: Uploading a slip does not confirm your booking. Our staff will verify it before confirming.",
+      "uploadAction": "[NEEDS_TRANSLATION]: Upload slip",
+      "pendingTitle": "[NEEDS_TRANSLATION]: Slip uploaded — pending staff review",
+      "pendingDesc": "[NEEDS_TRANSLATION]: Our staff will verify your transfer and confirm the booking.",
+      "noFile": "[NEEDS_TRANSLATION]: Please choose a slip image or PDF first.",
+      "uploadSuccess": "[NEEDS_TRANSLATION]: Slip uploaded — pending review",
+      "uploadError": "[NEEDS_TRANSLATION]: Failed to upload slip"
+    },
     "description": "送信済みのレンタル予約、受取拠点、現在のステータスを確認できます。",
     "emptyTitle": "レンタル予約はまだありません",
     "emptyDescription": "カートからレンタル予約を確定すると、ここに表示されます。",
