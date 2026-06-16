@@ -932,6 +932,24 @@
     "returning": "Returning to Booking Deposit payment status…"
   },
   "ordersPage": {
+    "paymentSlip": {
+      "loading": "Loading order…",
+      "loadFailed": "Failed to load order",
+      "orderTitle": "Order {number}",
+      "grandTotal": "Total",
+      "title": "Upload bank transfer slip",
+      "amountToTransfer": "Amount to transfer",
+      "instructions": "Transfer the total to our bank account, then upload your transfer slip here as evidence.",
+      "note": "Uploading a slip does not pay the order. Our staff will verify it before marking it paid.",
+      "pendingTitle": "Slip uploaded — pending staff review",
+      "pendingDesc": "Our staff will verify your transfer and mark the order paid.",
+      "paidTitle": "Payment received",
+      "paidDesc": "Your payment has been verified. Thank you.",
+      "noFile": "Please choose a slip image or PDF first.",
+      "uploadAction": "Upload slip",
+      "uploadSuccess": "Slip uploaded — pending review",
+      "uploadError": "Failed to upload slip"
+    },
     "description": "Track order, payment, and fulfillment progress for your submitted orders and quotation requests.",
     "createdQuotation": "Quotation request sent",
     "createdOrder": "Order submitted",

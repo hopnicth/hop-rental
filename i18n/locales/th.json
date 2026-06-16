@@ -936,6 +936,24 @@
     "returning": "กำลังกลับไปยังหน้าสถานะการชำระเงินมัดจำจอง…"
   },
   "ordersPage": {
+    "paymentSlip": {
+      "loading": "[NEEDS_TRANSLATION]: Loading order…",
+      "loadFailed": "[NEEDS_TRANSLATION]: Failed to load order",
+      "orderTitle": "[NEEDS_TRANSLATION]: Order {number}",
+      "grandTotal": "[NEEDS_TRANSLATION]: Total",
+      "title": "[NEEDS_TRANSLATION]: Upload bank transfer slip",
+      "amountToTransfer": "[NEEDS_TRANSLATION]: Amount to transfer",
+      "instructions": "[NEEDS_TRANSLATION]: Transfer the total to our bank account, then upload your transfer slip here as evidence.",
+      "note": "[NEEDS_TRANSLATION]: Uploading a slip does not pay the order. Our staff will verify it before marking it paid.",
+      "pendingTitle": "[NEEDS_TRANSLATION]: Slip uploaded — pending staff review",
+      "pendingDesc": "[NEEDS_TRANSLATION]: Our staff will verify your transfer and mark the order paid.",
+      "paidTitle": "[NEEDS_TRANSLATION]: Payment received",
+      "paidDesc": "[NEEDS_TRANSLATION]: Your payment has been verified. Thank you.",
+      "noFile": "[NEEDS_TRANSLATION]: Please choose a slip image or PDF first.",
+      "uploadAction": "[NEEDS_TRANSLATION]: Upload slip",
+      "uploadSuccess": "[NEEDS_TRANSLATION]: Slip uploaded — pending review",
+      "uploadError": "[NEEDS_TRANSLATION]: Failed to upload slip"
+    },
     "description": "ติดตามสถานะคำสั่งซื้อ การชำระเงิน และการจัดส่งของคำสั่งซื้อและคำขอใบเสนอราคาของคุณ",
     "createdQuotation": "ส่งคำขอใบเสนอราคาแล้ว",
     "createdOrder": "ส่งคำสั่งซื้อแล้ว",
