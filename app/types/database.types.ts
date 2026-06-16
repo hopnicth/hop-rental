@@ -5756,6 +5756,65 @@ export type Database = {
           },
         ]
       }
+      rental_booking_deposit_slips: {
+        Row: {
+          created_at: string
+          file_size_bytes: number
+          id: string
+          mime_type: string
+          original_filename: string
+          rental_booking_id: string
+          review_note: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          created_at?: string
+          file_size_bytes: number
+          id?: string
+          mime_type: string
+          original_filename: string
+          rental_booking_id: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path: string
+          uploaded_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          created_at?: string
+          file_size_bytes?: number
+          id?: string
+          mime_type?: string
+          original_filename?: string
+          rental_booking_id?: string
+          review_note?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_booking_deposit_slips_rental_booking_id_fkey"
+            columns: ["rental_booking_id"]
+            isOneToOne: false
+            referencedRelation: "rental_bookings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rental_booking_documents: {
         Row: {
           amount: number | null
