@@ -508,6 +508,13 @@ async function handleResolveAlert(id: string): Promise<void> {
         </div>
       </UCard>
 
+      <AdminOrderPaymentSlips
+        v-if="order"
+        :order-id="orderId"
+        :payment-status="order.paymentStatus"
+        @updated="load"
+      />
+
       <div class="grid gap-4 lg:grid-cols-2">
         <!-- Customer -->
         <UCard>
