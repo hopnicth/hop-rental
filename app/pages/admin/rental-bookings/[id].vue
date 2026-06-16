@@ -45,6 +45,7 @@ const updating = ref(false);
 const markingNoShow = ref(false);
 const issuingNoShowDocuments = ref(false);
 const retryingBdc = ref(false);
+const depositSlipsRef = ref<{ loadSlips: () => Promise<void> } | null>(null);
 const issuingDocument = ref<OperationalRentalDocumentType | null>(null);
 const operationalDocumentTypes: OperationalRentalDocumentType[] = [
   "rental_pickup_form",
@@ -1060,6 +1061,12 @@ async function issueMissingNoShowDocuments(): Promise<void> {
         :booking-id="bookingId"
         :documents="ops.documents"
         @updated="onOpsUpdated"
+      />
+
+      <AdminBookingDepositSlips
+        v-if="booking"
+        ref="depositSlipsRef"
+        :booking-id="bookingId"
       />
     </template>
   </div>
