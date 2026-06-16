@@ -384,6 +384,16 @@ watchEffect(() => {
 type PaymentMethod = "credit_card" | "promptpay" | "company_credit";
 const paymentMethod = ref<PaymentMethod>("credit_card");
 
+// LAUNCH FLAG: online cart payment (Omise card / PromptPay / unified mixed
+// checkout) is hidden for launch. Customers use manual bank transfer + slip
+// upload instead (rental -> /user/rentals/[id]; sale -> /user/orders/[id]).
+// TODO: flip to true (or wire an env flag) when online payment is ready.
+const ONLINE_CART_PAYMENT_ENABLED = false;
+
+async function goToBookingDetail(bookingId: string): Promise<void> {
+  await navigateTo(`/user/rentals/${encodeURIComponent(bookingId)}`);
+}
+
 // ── B2B Quotation ──
 // Build a synthetic Address when the user opts to pick up at a branch,
 // so the existing order-submit flow can persist the branch as the address
@@ -487,6 +497,7 @@ const canUseUnifiedCheckout = computed(
 );
 const showPaymentMethodSelector = computed(
   () =>
+    ONLINE_CART_PAYMENT_ENABLED &&
     (hasPurchaseItems.value || canUseBookingOnlyUnifiedCheckout.value) &&
     !isB2BUser.value,
 );
@@ -995,6 +1006,100 @@ async function handleUnifiedCheckoutPay() {
     );
   } finally {
     isCreatingMixedCheckout.value = false;
+  }
+}
+
+// Manual bank-transfer sale checkout (launch): create an unpaid order
+// (payment_status awaiting_payment) and route to its detail page for slip
+// upload. No online payment; the order is NOT paid until admin verifies.
+async function handleManualSaleCheckout() {
+  if (!hasPurchaseItems.value) {
+    showInlineOrderError(t("cart.noSaleItemsTitle"), t("cart.noSaleItemsDesc"));
+    return;
+  }
+  if (!isSaleCheckoutStateReady.value) {
+    showInlineOrderError(
+      t("cart.checkoutStateLoadingTitle"),
+      t("cart.checkoutStateLoadingDesc"),
+    );
+    return;
+  }
+  if (!selectedAddress.value) {
+    showInlineOrderError(
+      isPickupSelected.value
+        ? t("cart.pickupBranchRequiredTitle")
+        : t("cart.deliveryAddressRequiredTitle"),
+      isPickupSelected.value
+        ? t("cart.pickupBranchRequiredDesc")
+        : t("cart.deliveryAddressRequiredDesc"),
+    );
+    return;
+  }
+
+  isSubmittingOrder.value = true;
+  try {
+    const isCartValid = await validateCart();
+    if (!isCartValid) {
+      showInlineOrderError(
+        t("cart.cartChangedTitle"),
+        t("cart.cartChangedDesc"),
+      );
+      return;
+    }
+    const resolvedCompanyId = isB2B.value
+      ? (currentCompany.value?.id ?? selectedAddress.value.companyId ?? null)
+      : null;
+    const idempotencyKey =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `order_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    const response = await $fetch<{
+      order?: { id: string };
+      orderId?: string;
+    }>("/api/orders", {
+      method: "POST",
+      body: {
+        idempotencyKey,
+        checkoutMode: "payment",
+        paymentMethod: "bank_transfer",
+        companyId: resolvedCompanyId,
+        cartId: cartId.value || null,
+        shippingMode: isPickupSelected.value ? "pickup" : "delivery",
+        address: {
+          id: selectedAddress.value.id || null,
+          title: selectedAddress.value.title,
+          contactName: selectedAddress.value.contactName,
+          contactPhone: selectedAddress.value.contactPhone,
+          fullAddress: selectedAddress.value.fullAddress,
+          subDistrict: selectedAddress.value.subDistrict,
+          district: selectedAddress.value.district,
+          province: selectedAddress.value.province,
+          postalCode: selectedAddress.value.postalCode,
+          note: selectedAddress.value.note,
+        },
+        items: cartItems.value.map((item) => ({
+          skuId: item.skuId,
+          quantity: item.quantity,
+        })),
+      },
+    });
+    const newOrderId = response.order?.id ?? response.orderId;
+    if (!newOrderId) {
+      throw new Error("Order created but no order ID was returned.");
+    }
+    // Cart is intentionally NOT cleared — it is cleared only when admin marks
+    // the order paid after verifying the transfer slip.
+    await navigateTo(`/user/orders/${encodeURIComponent(newOrderId)}`);
+  } catch (submitError) {
+    showInlineOrderError(
+      "Order submit failed",
+      submitError instanceof Error
+        ? submitError.message
+        : "Please try again in a moment.",
+    );
+  } finally {
+    isSubmittingOrder.value = false;
   }
 }
 
@@ -1513,7 +1618,20 @@ async function handlePay() {
                 />
 
                 <div
+                  v-if="!ONLINE_CART_PAYMENT_ENABLED && canEditBookingDraft(booking)"
+                  class="pt-2"
+                >
+                  <UButton
+                    :label="t('cart.manualRentalCta')"
+                    icon="bx:upload"
+                    color="primary"
+                    size="sm"
+                    @click="() => void goToBookingDetail(booking.bookingId)"
+                  />
+                </div>
+                <div
                   v-if="
+                    ONLINE_CART_PAYMENT_ENABLED &&
                     hasMultipleRentalBookings &&
                     !canUseUnifiedCheckout &&
                     canEditBookingDraft(booking)
@@ -1579,12 +1697,22 @@ async function handlePay() {
 
         <!-- Prominent "Pay at branch" notice (rental flow) -->
         <UAlert
+          v-if="ONLINE_CART_PAYMENT_ENABLED"
           icon="bx:store"
           color="warning"
           variant="solid"
           class="mt-4"
           :title="t('cart.payAtBranchTitle')"
           :description="t('cart.payAtBranchDesc')"
+        />
+        <UAlert
+          v-else
+          icon="bx:building-house"
+          color="info"
+          variant="solid"
+          class="mt-4"
+          :title="t('cart.manualRentalGuidanceTitle')"
+          :description="t('cart.manualRentalGuidanceDesc')"
         />
         <UAlert
           icon="bx:id-card"
@@ -2520,7 +2648,10 @@ async function handlePay() {
                   @click="requestQuotation"
                 />
               </div>
-              <div class="flex flex-col gap-3 sm:flex-row">
+              <div
+                v-if="ONLINE_CART_PAYMENT_ENABLED"
+                class="flex flex-col gap-3 sm:flex-row"
+              >
                 <UButton
                   v-if="
                     hasSingleRentalBooking &&
@@ -2582,6 +2713,30 @@ async function handlePay() {
                     !bookingDepositAgreementAccepted
                   "
                   @click="handleUnifiedCheckoutPay"
+                />
+              </div>
+              <div v-else class="flex w-full flex-col gap-3">
+                <UAlert
+                  v-if="hasPurchaseItems"
+                  icon="bx:building-house"
+                  color="info"
+                  variant="soft"
+                  :title="t('cart.manualSaleGuidanceTitle')"
+                  :description="t('cart.manualSaleGuidanceDesc')"
+                />
+                <UButton
+                  v-if="hasPurchaseItems && !isB2BUser"
+                  :label="t('cart.manualSaleCta')"
+                  icon="bx:upload"
+                  size="lg"
+                  color="primary"
+                  :loading="isSubmittingOrder"
+                  :disabled="
+                    isSubmittingOrder ||
+                    !hasPurchaseItems ||
+                    !isSaleCheckoutStateReady
+                  "
+                  @click="handleManualSaleCheckout"
                 />
               </div>
               <UAlert

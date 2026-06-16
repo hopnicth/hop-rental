@@ -635,6 +635,12 @@
     "bookerPhonePlaceholder": "เช่น 081-234-5678"
   },
   "cart": {
+    "manualRentalCta": "[NEEDS_TRANSLATION]: Upload deposit slip / View booking",
+    "manualRentalGuidanceTitle": "[NEEDS_TRANSLATION]: Pay the booking deposit by bank transfer",
+    "manualRentalGuidanceDesc": "[NEEDS_TRANSLATION]: Transfer the booking deposit to our bank account, then open each booking to upload your transfer slip. Your booking is not confirmed until staff verify the slip. The booking deposit is a refundable security deposit (not the rental fee); the rental fee is paid later at pickup.",
+    "manualSaleCta": "[NEEDS_TRANSLATION]: Create order and upload slip",
+    "manualSaleGuidanceTitle": "[NEEDS_TRANSLATION]: Pay by bank transfer",
+    "manualSaleGuidanceDesc": "[NEEDS_TRANSLATION]: Create your order, then transfer the total to our bank account and upload your transfer slip on the order page. Staff will verify the slip before the order is marked paid.",
     "pageTitle": "ตะกร้าสินค้า",
     "bookingSection": "รายการเช่า",
     "bookingSectionDesc": "ตรวจสอบรายการเช่า เลือกจุดรับสินค้า แล้วส่งคำขอ",

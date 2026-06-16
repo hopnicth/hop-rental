@@ -631,6 +631,12 @@
     "bookerPhonePlaceholder": "e.g. 081-234-5678"
   },
   "cart": {
+    "manualRentalCta": "Upload deposit slip / View booking",
+    "manualRentalGuidanceTitle": "Pay the booking deposit by bank transfer",
+    "manualRentalGuidanceDesc": "Transfer the booking deposit to our bank account, then open each booking to upload your transfer slip. Your booking is not confirmed until staff verify the slip. The booking deposit is a refundable security deposit (not the rental fee); the rental fee is paid later at pickup.",
+    "manualSaleCta": "Create order and upload slip",
+    "manualSaleGuidanceTitle": "Pay by bank transfer",
+    "manualSaleGuidanceDesc": "Create your order, then transfer the total to our bank account and upload your transfer slip on the order page. Staff will verify the slip before the order is marked paid.",
     "pageTitle": "Shopping Cart",
     "bookingSection": "Rental Items",
     "bookingSectionDesc": "Review rental items, choose a pickup hub, then submit.",
