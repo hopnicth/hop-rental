@@ -94,6 +94,12 @@ function onOpsUpdated(payload: AdminBookingOpsPayload): void {
   ops.value = payload;
 }
 
+async function onDepositConfirmed(): Promise<void> {
+  // Reload booking + ops (now confirmed) and refresh slip review statuses.
+  await load();
+  await depositSlipsRef.value?.loadSlips();
+}
+
 async function applyPatch(
   patch: AdminRentalBookingPatchPayload,
 ): Promise<void> {
@@ -1061,6 +1067,14 @@ async function issueMissingNoShowDocuments(): Promise<void> {
         :booking-id="bookingId"
         :documents="ops.documents"
         @updated="onOpsUpdated"
+      />
+
+      <AdminBookingDepositConfirm
+        v-if="canResumeDepositCollection"
+        :booking-id="bookingId"
+        :default-amount="booking?.depositAmount"
+        :currency-code="booking?.currencyCode"
+        @confirmed="onDepositConfirmed"
       />
 
       <AdminBookingDepositSlips
