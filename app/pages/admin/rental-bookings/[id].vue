@@ -1077,6 +1077,12 @@ async function issueMissingNoShowDocuments(): Promise<void> {
         @confirmed="onDepositConfirmed"
       />
 
+      <AdminPaymentRequestCard
+        v-if="booking"
+        target-type="rental_booking_deposit"
+        :target-id="bookingId"
+      />
+
       <AdminBookingDepositSlips
         v-if="booking"
         ref="depositSlipsRef"

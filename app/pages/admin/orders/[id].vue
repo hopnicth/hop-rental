@@ -508,6 +508,12 @@ async function handleResolveAlert(id: string): Promise<void> {
         </div>
       </UCard>
 
+      <AdminPaymentRequestCard
+        v-if="order"
+        target-type="sale_order"
+        :target-id="orderId"
+      />
+
       <AdminOrderPaymentSlips
         v-if="order"
         :order-id="orderId"

@@ -624,22 +624,51 @@ export async function listManualPaymentRequests(
  * link, or null. Used by order/rental detail pages to show a "related payment
  * request" card without duplicating the central upload UX.
  */
-export async function findCustomerRequestByTarget(
-  client: AnyClient,
-  ownerUserId: string,
-  targetType: "sale_order" | "rental_booking_deposit",
-  targetId: string,
-): Promise<{
+export interface RelatedRequestSummary {
   id: string;
   status: string;
   sourceType: string;
   totalAmountDue: number;
   currency: string;
   link: string;
-} | null> {
-  const tId = asUuidOrNull(targetId);
+}
+
+export async function findCustomerRequestByTarget(
+  client: AnyClient,
+  ownerUserId: string,
+  targetType: "sale_order" | "rental_booking_deposit",
+  targetId: string,
+): Promise<RelatedRequestSummary | null> {
   const uId = asUuidOrNull(ownerUserId);
-  if (!tId || !uId) return null;
+  if (!uId) return null;
+  return findRequestByTarget(client, targetType, targetId, {
+    ownerUserId: uId,
+    link: (id) => `/user/payments/${id}`,
+  });
+}
+
+/**
+ * Admin variant: latest request covering a target, no owner scoping; links to
+ * the admin detail page.
+ */
+export async function findAdminRequestByTarget(
+  client: AnyClient,
+  targetType: "sale_order" | "rental_booking_deposit",
+  targetId: string,
+): Promise<RelatedRequestSummary | null> {
+  return findRequestByTarget(client, targetType, targetId, {
+    link: (id) => `/admin/manual-payment-requests/${id}`,
+  });
+}
+
+async function findRequestByTarget(
+  client: AnyClient,
+  targetType: "sale_order" | "rental_booking_deposit",
+  targetId: string,
+  options: { ownerUserId?: string; link: (id: string) => string },
+): Promise<RelatedRequestSummary | null> {
+  const tId = asUuidOrNull(targetId);
+  if (!tId) return null;
 
   const { data: items } = await client
     .from("manual_payment_request_items")
@@ -651,12 +680,14 @@ export async function findCustomerRequestByTarget(
   ).filter(Boolean);
   if (requestIds.length === 0) return null;
 
-  const { data: requests } = await client
+  let query = client
     .from("manual_payment_requests")
     .select(MANUAL_PAYMENT_REQUEST_SELECT)
     .in("id", requestIds)
-    .eq("customer_id", uId)
     .order("created_at", { ascending: false });
+  if (options.ownerUserId) query = query.eq("customer_id", options.ownerUserId);
+
+  const { data: requests } = await query;
   const rows = (requests ?? []) as Row[];
   if (rows.length === 0) return null;
 
@@ -667,7 +698,7 @@ export async function findCustomerRequestByTarget(
     sourceType: r.sourceType,
     totalAmountDue: r.totalAmountDue,
     currency: r.currency,
-    link: `/user/payments/${r.id}`,
+    link: options.link(r.id),
   };
 }
 
