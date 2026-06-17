@@ -64,6 +64,8 @@ const detail = ref<Detail | null>(null);
 const slipFile = ref<File | null>(null);
 const uploading = ref(false);
 const cancelling = ref(false);
+const dragOver = ref(false);
+const fileInputRef = ref<HTMLInputElement | null>(null);
 
 const currency = computed(() => detail.value?.paymentRequest.currency || "THB");
 function money(amount: number): string {
@@ -115,6 +117,12 @@ async function load(): Promise<void> {
 function onFileChange(event: Event) {
   const input = event.target as HTMLInputElement;
   slipFile.value = input.files?.[0] ?? null;
+}
+
+function onDrop(event: DragEvent): void {
+  dragOver.value = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (file) slipFile.value = file;
 }
 
 async function uploadSlip(): Promise<void> {
@@ -269,12 +277,36 @@ onMounted(load);
         </template>
         <div class="space-y-3">
           <p class="text-sm text-muted">{{ t("paymentRequests.nextStepNote") }}</p>
-          <input
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            class="block w-full text-sm"
-            @change="onFileChange"
-          />
+          <div
+            class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed p-6 text-center transition-colors"
+            :class="dragOver ? 'border-primary bg-primary/5' : 'border-default hover:border-primary/50'"
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="onDrop"
+            @click="fileInputRef?.click()"
+          >
+            <UIcon
+              name="bx:cloud-upload"
+              class="size-8"
+              :class="dragOver ? 'text-primary' : 'text-muted'"
+            />
+            <p class="text-sm text-muted">
+              {{ t("paymentRequests.dropHint") }}
+              <span class="font-medium text-primary underline">{{ t("paymentRequests.chooseFile") }}</span>
+            </p>
+            <p v-if="slipFile" class="flex items-center gap-1 text-sm font-medium text-primary">
+              <UIcon name="bx:paperclip" class="size-4 shrink-0" />
+              {{ slipFile.name }}
+            </p>
+            <p v-else class="text-xs text-muted">JPG · PNG · PDF</p>
+            <input
+              ref="fileInputRef"
+              type="file"
+              accept="image/jpeg,image/png,application/pdf"
+              class="sr-only"
+              @change="onFileChange"
+            />
+          </div>
           <UButton
             icon="bx:upload"
             :loading="uploading"

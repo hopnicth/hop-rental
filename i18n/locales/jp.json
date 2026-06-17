@@ -672,6 +672,8 @@
     "uploadSlip": "[NEEDS_TRANSLATION]: Upload payment slip",
     "uploadAction": "[NEEDS_TRANSLATION]: Upload",
     "noFile": "[NEEDS_TRANSLATION]: Please choose a slip image or PDF first.",
+    "dropHint": "[NEEDS_TRANSLATION]: Drag & drop here, or",
+    "chooseFile": "[NEEDS_TRANSLATION]: Choose file",
     "uploadSuccess": "[NEEDS_TRANSLATION]: Slip uploaded. Staff will review it.",
     "uploadError": "[NEEDS_TRANSLATION]: Failed to upload slip",
     "awaitingPayment": "[NEEDS_TRANSLATION]: Awaiting payment",

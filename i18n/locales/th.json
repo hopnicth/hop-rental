@@ -653,8 +653,8 @@
     "placeholderWarning": "ยังไม่ได้ตั้งค่าข้อมูลบัญชีธนาคาร กรุณาติดต่อเจ้าหน้าที่ก่อนโอนเงิน"
   },
   "paymentHistory": {
-    "title": "[NEEDS_TRANSLATION]: Payment evidence",
-    "empty": "[NEEDS_TRANSLATION]: No payment slip uploaded yet.",
+    "title": "หลักฐานการชำระเงิน",
+    "empty": "ยังไม่มีสลิปการชำระเงิน",
     "status": {
       "pending_review": "[NEEDS_TRANSLATION]: Pending review",
       "reviewed": "[NEEDS_TRANSLATION]: Reviewed",
@@ -691,6 +691,8 @@
     "uploadSlip": "อัปโหลดสลิป",
     "uploadAction": "อัปโหลด",
     "noFile": "กรุณาเลือกไฟล์สลิปหรือ PDF ก่อน",
+    "dropHint": "[NEEDS_TRANSLATION]: Drag & drop here, or",
+    "chooseFile": "[NEEDS_TRANSLATION]: Choose file",
     "uploadSuccess": "อัปโหลดสลิปแล้ว รอเจ้าหน้าที่ตรวจสอบ",
     "uploadError": "อัปโหลดสลิปไม่สำเร็จ",
     "awaitingPayment": "รอชำระเงิน",

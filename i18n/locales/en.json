@@ -687,6 +687,8 @@
     "uploadSlip": "Upload payment slip",
     "uploadAction": "Upload",
     "noFile": "Please choose a slip image or PDF first.",
+    "dropHint": "Drag & drop here, or",
+    "chooseFile": "Choose file",
     "uploadSuccess": "Slip uploaded. Staff will review it.",
     "uploadError": "Failed to upload slip",
     "awaitingPayment": "Awaiting payment",
