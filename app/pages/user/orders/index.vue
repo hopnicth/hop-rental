@@ -9,6 +9,15 @@ import type {
 } from "~/types/order";
 import HopFeatureBar from "~/components/featurebar/HopFeatureBar.vue";
 
+type OrderDetailItem = {
+  id: string;
+  name: string;
+  thumbnail: string | null;
+  unitPrice: number;
+  quantity: number;
+  lineTotal: number;
+};
+
 type BadgeColor =
   | "neutral"
   | "info"
@@ -40,6 +49,37 @@ const { bookingItems } = useBooking();
 const refundTrackingByBookingId = ref<Record<string, RefundHistoryTracking>>(
   {},
 );
+
+// ── Expandable item details ──
+const expandedOrders = ref<Record<string, boolean>>({});
+const loadingDetails = ref<Record<string, boolean>>({});
+const detailError = ref<Record<string, string | null>>({});
+const detailItems = ref<Record<string, OrderDetailItem[]>>({});
+
+function isExpanded(orderId: string): boolean {
+  return expandedOrders.value[orderId] === true;
+}
+
+async function toggleDetails(orderId: string): Promise<void> {
+  if (isExpanded(orderId)) {
+    expandedOrders.value[orderId] = false;
+    return;
+  }
+  expandedOrders.value[orderId] = true;
+  if (detailItems.value[orderId] !== undefined) return;
+  loadingDetails.value[orderId] = true;
+  detailError.value[orderId] = null;
+  try {
+    const res = await $fetch<{ order: Record<string, unknown>; items: OrderDetailItem[] }>(
+      `/api/user/orders/${encodeURIComponent(orderId)}`,
+    );
+    detailItems.value[orderId] = res.items ?? [];
+  } catch {
+    detailError.value[orderId] = t("ordersPage.items.loadError");
+  } finally {
+    loadingDetails.value[orderId] = false;
+  }
+}
 
 const cancelledBookings = computed<BookingItem[]>(() =>
   bookingItems.value
@@ -329,90 +369,238 @@ function fulfillmentStatusColor(status: OrderFulfillmentStatus): BadgeColor {
     </UCard>
 
     <div v-else class="space-y-4">
-      <UCard v-for="order in orders" :key="order.id">
-        <div
-          class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-        >
-          <div class="space-y-1">
-            <p class="font-semibold">{{ order.orderNumber }}</p>
-            <p class="text-sm text-muted">{{ formatDate(order.createdAt) }}</p>
-            <div class="flex flex-wrap gap-2 pt-1">
-              <UBadge :color="orderStatusColor(order.status)" variant="subtle">
-                {{
-                  t("ordersPage.badges.order", {
-                    status: orderStatusLabel(order.status),
-                  })
-                }}
-              </UBadge>
-              <UBadge
-                :color="paymentStatusColor(order.paymentStatus)"
-                variant="subtle"
-              >
-                {{
-                  t("ordersPage.badges.payment", {
-                    status: paymentStatusLabel(order.paymentStatus),
-                  })
-                }}
-              </UBadge>
-              <UBadge
-                :color="fulfillmentStatusColor(order.fulfillmentStatus)"
-                variant="subtle"
-              >
-                {{
-                  t("ordersPage.badges.fulfillment", {
-                    status: fulfillmentStatusLabel(order.fulfillmentStatus),
-                  })
-                }}
-              </UBadge>
-              <UBadge color="neutral" variant="soft">{{
-                modeLabel(order.checkoutMode)
-              }}</UBadge>
-              <UBadge v-if="order.paymentMethod" color="neutral" variant="soft">
-                {{ paymentMethodLabel(order.paymentMethod) }}
-              </UBadge>
+      <UCard v-for="order in orders" :key="order.id" class="overflow-hidden">
+        <div class="flex flex-col gap-4">
+          <!-- Header row: order number + date / total + address -->
+          <div
+            class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+          >
+            <div class="min-w-0 space-y-1.5">
+              <p class="truncate font-bold tracking-tight">
+                {{ order.orderNumber }}
+              </p>
+              <p class="text-xs text-muted">{{ formatDate(order.createdAt) }}</p>
+              <div class="flex flex-wrap gap-1.5 pt-0.5">
+                <UBadge
+                  :color="orderStatusColor(order.status)"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{
+                    t("ordersPage.badges.order", {
+                      status: orderStatusLabel(order.status),
+                    })
+                  }}
+                </UBadge>
+                <UBadge
+                  :color="paymentStatusColor(order.paymentStatus)"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{
+                    t("ordersPage.badges.payment", {
+                      status: paymentStatusLabel(order.paymentStatus),
+                    })
+                  }}
+                </UBadge>
+                <UBadge
+                  :color="fulfillmentStatusColor(order.fulfillmentStatus)"
+                  variant="subtle"
+                  size="xs"
+                >
+                  {{
+                    t("ordersPage.badges.fulfillment", {
+                      status: fulfillmentStatusLabel(order.fulfillmentStatus),
+                    })
+                  }}
+                </UBadge>
+                <UBadge color="neutral" variant="soft" size="xs">{{
+                  modeLabel(order.checkoutMode)
+                }}</UBadge>
+                <UBadge
+                  v-if="order.paymentMethod"
+                  color="neutral"
+                  variant="soft"
+                  size="xs"
+                >
+                  {{ paymentMethodLabel(order.paymentMethod) }}
+                </UBadge>
+              </div>
+            </div>
+
+            <div class="shrink-0 text-left sm:text-right">
+              <p class="text-xs text-muted">{{ t("ordersPage.total") }}</p>
+              <p class="text-xl font-bold text-primary">
+                {{ formatCurrency(order.grandTotal) }}
+              </p>
+              <p class="mt-0.5 text-xs text-muted">
+                {{ order.addressSnapshot.title }}
+              </p>
             </div>
           </div>
 
-          <div class="text-left sm:text-right">
-            <p class="text-sm text-muted">{{ t("ordersPage.total") }}</p>
-            <p class="text-lg font-bold text-primary">
-              {{ formatCurrency(order.grandTotal) }}
+          <!-- Tracking section -->
+          <div
+            v-if="
+              order.trackingNumber ||
+              order.trackingCarrier ||
+              order.trackingNote
+            "
+            class="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
+          >
+            <p class="mb-1 flex items-center gap-1 font-semibold text-primary">
+              <UIcon name="bx:package" />
+              {{ t("ordersPage.tracking.title") }}
             </p>
-            <p class="mt-1 text-xs text-muted">
-              {{ order.addressSnapshot.title }}
-            </p>
+            <div class="space-y-0.5">
+              <p v-if="order.trackingCarrier">
+                <span class="font-medium"
+                  >{{ t("ordersPage.tracking.carrier") }}:</span
+                >
+                {{ order.trackingCarrier }}
+              </p>
+              <p v-if="order.trackingNumber">
+                <span class="font-medium"
+                  >{{ t("ordersPage.tracking.number") }}:</span
+                >
+                <span class="font-mono">{{ order.trackingNumber }}</span>
+              </p>
+              <p v-if="order.shippedAt" class="text-xs text-muted">
+                {{ t("ordersPage.tracking.shippedAt") }}:
+                {{ formatDate(order.shippedAt) }}
+              </p>
+              <p v-if="order.trackingNote" class="mt-1 text-xs">
+                {{ order.trackingNote }}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div
-          v-if="
-            order.trackingNumber || order.trackingCarrier || order.trackingNote
-          "
-          class="mt-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm"
-        >
-          <p class="mb-1 flex items-center gap-1 font-semibold text-primary">
-            <UIcon name="bx:package" />
-            {{ t("ordersPage.tracking.title") }}
-          </p>
-          <div class="space-y-0.5">
-            <p v-if="order.trackingCarrier">
-              <span class="font-medium"
-                >{{ t("ordersPage.tracking.carrier") }}:</span
+          <!-- Action row: expand toggle + view detail link -->
+          <div
+            class="flex items-center justify-between border-t border-default/60 pt-2"
+          >
+            <UButton
+              size="xs"
+              variant="ghost"
+              :icon="
+                isExpanded(order.id) ? 'bx:chevron-up' : 'bx:chevron-down'
+              "
+              :aria-expanded="isExpanded(order.id)"
+              :aria-controls="`order-items-${order.id}`"
+              @click="toggleDetails(order.id)"
+            >
+              {{
+                isExpanded(order.id)
+                  ? t("ordersPage.items.hideDetails")
+                  : t("ordersPage.items.showDetails")
+              }}
+            </UButton>
+            <UButton
+              size="xs"
+              variant="ghost"
+              icon="bx:link-external"
+              :to="`/user/orders/${order.id}`"
+            >
+              {{ t("ordersPage.items.viewDetail") }}
+            </UButton>
+          </div>
+
+          <!-- Expanded items section -->
+          <div
+            v-if="isExpanded(order.id)"
+            :id="`order-items-${order.id}`"
+            class="border-t border-default/60 pt-3"
+          >
+            <!-- Loading -->
+            <div
+              v-if="loadingDetails[order.id]"
+              class="flex items-center gap-2 py-4 text-sm text-muted"
+            >
+              <UIcon name="bx:loader-alt" class="animate-spin" />
+              <span>{{ t("ordersPage.items.loading") }}</span>
+            </div>
+
+            <!-- Error -->
+            <div
+              v-else-if="detailError[order.id]"
+              class="flex items-center gap-1.5 py-3 text-sm text-error"
+            >
+              <UIcon name="bx:error-circle" />
+              {{ detailError[order.id] }}
+            </div>
+
+            <!-- Items list -->
+            <div
+              v-else-if="detailItems[order.id]?.length"
+              class="space-y-2"
+            >
+              <div
+                v-for="item in detailItems[order.id]"
+                :key="item.id"
+                class="flex items-center gap-3"
               >
-              {{ order.trackingCarrier }}
-            </p>
-            <p v-if="order.trackingNumber">
-              <span class="font-medium"
-                >{{ t("ordersPage.tracking.number") }}:</span
+                <div
+                  class="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-elevated"
+                >
+                  <NuxtImg
+                    v-if="item.thumbnail"
+                    :src="item.thumbnail"
+                    :alt="item.name"
+                    loading="lazy"
+                    class="block aspect-square w-full object-cover"
+                  />
+                  <div
+                    v-else
+                    class="flex h-full items-center justify-center"
+                  >
+                    <UIcon name="bx:package" class="text-xl text-muted" />
+                  </div>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-medium">{{ item.name }}</p>
+                  <p class="text-xs text-muted">
+                    {{ item.quantity }} × {{ formatCurrency(item.unitPrice) }}
+                  </p>
+                </div>
+                <p class="shrink-0 text-sm font-semibold">
+                  {{ formatCurrency(item.lineTotal) }}
+                </p>
+              </div>
+
+              <!-- Financial summary -->
+              <div
+                class="mt-3 space-y-1 border-t border-default/60 pt-3 text-sm"
               >
-              <span class="font-mono">{{ order.trackingNumber }}</span>
-            </p>
-            <p v-if="order.shippedAt" class="text-xs text-muted">
-              {{ t("ordersPage.tracking.shippedAt") }}:
-              {{ formatDate(order.shippedAt) }}
-            </p>
-            <p v-if="order.trackingNote" class="mt-1 text-xs">
-              {{ order.trackingNote }}
+                <div class="flex justify-between text-muted">
+                  <span>{{ t("ordersPage.items.subtotal") }}</span>
+                  <span>{{ formatCurrency(order.subtotal) }}</span>
+                </div>
+                <div
+                  v-if="order.discountTotal > 0"
+                  class="flex justify-between text-success"
+                >
+                  <span>{{ t("ordersPage.items.discount") }}</span>
+                  <span>-{{ formatCurrency(order.discountTotal) }}</span>
+                </div>
+                <div
+                  v-if="order.shippingCost > 0"
+                  class="flex justify-between text-muted"
+                >
+                  <span>{{ t("ordersPage.items.shipping") }}</span>
+                  <span>{{ formatCurrency(order.shippingCost) }}</span>
+                </div>
+                <div class="flex justify-between font-bold">
+                  <span>{{ t("ordersPage.items.grandTotal") }}</span>
+                  <span class="text-primary">{{
+                    formatCurrency(order.grandTotal)
+                  }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- No items found -->
+            <p v-else class="py-3 text-sm text-muted">
+              {{ t("ordersPage.emptyDescription") }}
             </p>
           </div>
         </div>

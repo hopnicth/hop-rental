@@ -38,3 +38,23 @@ describe("top-right user QR modal source safeguards", () => {
     expect(userDropdownVue).not.toContain("user.value?.id ? `customer:");
   });
 });
+
+describe("UserDropdown — My Payments navigation item", () => {
+  it("renders My Payments linked to /user/payments", () => {
+    expect(userDropdownVue).toContain('to: "/user/payments"');
+    expect(userDropdownVue).toContain('t("user.payments")');
+  });
+
+  it("uses an existing icon family (bx:)", () => {
+    const paymentsBlock = userDropdownVue.slice(
+      userDropdownVue.indexOf('"/user/payments"') - 80,
+      userDropdownVue.indexOf('"/user/payments"') + 20,
+    );
+    expect(paymentsBlock).toMatch(/bx:/);
+  });
+
+  it("preserves existing logout and orders items", () => {
+    expect(userDropdownVue).toContain('to: "/user/orders"');
+    expect(userDropdownVue).toContain("logout()");
+  });
+});
