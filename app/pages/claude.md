@@ -13,19 +13,22 @@
 
 ---
 
-## Auth middleware — always use definePageMeta
+## Auth middleware
 
-Admin pages:
+Admin pages — use the `role` route middleware (the only registered route middleware, `app/middleware/role.ts`):
 ```ts
 definePageMeta({ middleware: 'role', layout: 'admin' })
 ```
 
-User pages:
-```ts
-definePageMeta({ middleware: 'auth' })
-```
+User pages — do NOT declare a route middleware. There is no `auth` route
+middleware; `middleware: 'auth'` throws "Unknown route middleware: 'auth'" at
+navigation. Authenticated `/user/*` routes are protected globally by
+`@nuxtjs/supabase` `redirectOptions` (login `/user/login`, with a public
+`exclude` list in `nuxt.config.ts`) — leave protected user pages without a route
+middleware (e.g. `cart.vue`, `user/orders/[orderId].vue`,
+`user/rentals/[bookingId].vue`).
 
-Public pages: no middleware
+Public pages: no middleware (add the path to the supabase `exclude` list).
 
 ---
 

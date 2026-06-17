@@ -17,7 +17,9 @@
  */
 import { calculateRentalPaymentLines } from "~/utils/rental-payment-lines";
 
-definePageMeta({ middleware: "auth" });
+// Auth is enforced globally by @nuxtjs/supabase redirectOptions (this route is
+// not in the public `exclude` list), matching cart.vue / rentals detail — no
+// per-page route middleware (the repo has no `auth` middleware, only `role`).
 
 const { t } = useI18n();
 const route = useRoute();
