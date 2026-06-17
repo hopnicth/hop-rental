@@ -1,5 +1,27 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-18 (Browser smoke test complete — 5/5 smokes run)
+
+Task: Manual bank-transfer payment flow browser smoke test against localhost:3000 + remote Supabase.
+
+**Status: COMPLETE** — all 5 smokes run. Code unchanged (smoke test only).
+
+**IDs collected:**
+- Smoke 1 (sale): payment `dd680ad2`, order `ede7305f` (ORD-20260617213307-1CB8BA), ฿140
+- Smoke 2 (booking): payment `50c68582`, booking `b4a89845`, ฿200
+- Smoke 3 (mixed): payment `1f1ff054`, order `ba15ba91` (ORD-20260617214425-73C48B), booking `b4a89845`, ฿480
+
+**All safety invariants held:** no Omise, no auto-pay, no auto-confirm, no inventory deduction, no held_balance_events.
+
+**Bug found — must fix before launch:**
+- **File:** `app/pages/user/orders.vue` + `app/pages/user/orders/[orderId].vue`
+- **Problem:** `orders.vue` acts as the Nuxt parent route for all `/user/orders/*` sub-routes but has no `<NuxtPage />`. Navigating to `/user/orders/[id]` renders `orders.vue` (the list) and silently discards `[orderId].vue` content (which contains `PaymentRequestRelatedCard`).
+- **Fix:** Either add `<NuxtPage />` to `orders.vue` or rename `orders.vue` → `orders/index.vue`.
+
+**Next session:** Fix the `orders.vue` / `[orderId].vue` routing bug, then push branch to origin.
+
+---
+
 ## Claude Code → Claude Code / 2026-06-18 (Remote migration 115 APPLIED to linked project — code NOT pushed)
 
 User explicitly authorized applying ONLY migration 115 to the linked project

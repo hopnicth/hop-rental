@@ -1,6 +1,24 @@
 # PROGRESS
 Last updated: 2026-06-18 (Central manual payment requests + remote migration 115 applied; branch cart-checkout-to-payment-detail, code NOT pushed)
 
+## 2026-06-18 — Browser smoke test: manual payment request flow ✅
+
+All 5 smokes run against localhost:3000 + remote Supabase (yzjczvzwmbbeyoodrjwm).
+
+**Smoke 1 (sale only):** `dd680ad2` | ORD-20260617213307-1CB8BA | ฿140 | ✅ pending_review; order NOT auto-paid  
+**Smoke 2 (booking only):** `50c68582` | booking `b4a89845` | ฿200 deposit | ✅ pending_review; booking stays Draft  
+**Smoke 3 (mixed):** `1f1ff054` | ORD-20260617214425-73C48B + booking `b4a89845` | ฿480 combined | ✅ pending_review; both NOT auto-confirmed  
+**Smoke 4 (/user/payments list):** All 3 requests visible; filter tabs present ✅  
+**Smoke 5 (related pages):**
+- `/user/rentals/[id]` → shows "Related payment request" card with status + "View details" link ✅
+- `/admin/orders/[id]` → shows `pending_review` card + manual status actions unchanged ✅
+- `/admin/rental-bookings/[id]` → shows `pending_review`+`mixed` card; "Mark Deposit Received" action unchanged ✅
+- `/user/orders/[id]` → **BUG: renders orders LIST instead of detail page**; `orders.vue` lacks `<NuxtPage />` so `orders/[orderId].vue` (which contains `PaymentRequestRelatedCard`) never renders
+
+**All safety invariants held:** no Omise, no auto-pay, no auto-confirm, no inventory deduction, no held_balance_events on slip upload.
+
+**Bug to fix:** Add `<NuxtPage />` to `orders.vue` OR rename it to `orders/index.vue` so the nested `[orderId].vue` detail route renders.
+
 ## 2026-06-18 — Migration 115 applied to remote (approved) ✅
 
 User explicitly confirmed the linked project (`hopnicth's Project`, ref yzjczvzwmbbeyoodrjwm —
