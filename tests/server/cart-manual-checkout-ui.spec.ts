@@ -16,15 +16,18 @@ import { resolve } from "node:path";
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 const CART = read("app/pages/user/cart.vue");
 
-describe("cart launch flag + gating", () => {
-  it("online cart payment is disabled by a launch flag", () => {
-    expect(CART).toContain("const ONLINE_CART_PAYMENT_ENABLED = false");
+describe("online + combined payment UI fully removed (not flag-gated)", () => {
+  it("has no online-payment launch flag and no payment-method selector", () => {
+    expect(CART).not.toContain("ONLINE_CART_PAYMENT_ENABLED");
+    expect(CART).not.toContain("showPaymentMethodSelector");
+    expect(CART).not.toContain("paymentMethod = ref");
   });
-  it("payment-method selector is gated by the flag", () => {
-    expect(CART).toMatch(/showPaymentMethodSelector[\s\S]{0,80}ONLINE_CART_PAYMENT_ENABLED/);
-  });
-  it("online footer CTA group is gated by the flag", () => {
-    expect(CART).toContain('v-if="ONLINE_CART_PAYMENT_ENABLED"');
+  it("has no mixed/combined ('ชำระรวม') checkout surface", () => {
+    expect(CART).not.toContain("ชำระรวม");
+    expect(CART).not.toContain("canUseUnifiedCheckout");
+    expect(CART).not.toContain("handleUnifiedCheckoutPay");
+    expect(CART).not.toContain("MixedCheckout");
+    expect(CART).not.toContain("payment_group");
   });
 });
 

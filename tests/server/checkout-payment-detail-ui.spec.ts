@@ -41,9 +41,11 @@ describe("cart is review/checkout only", () => {
     expect(CART).not.toContain("paymentBank.");
     expect(CART).not.toContain("QrcodeVue");
   });
-  it("keeps online payment hidden behind the launch flag", () => {
-    expect(CART).toContain("const ONLINE_CART_PAYMENT_ENABLED = false");
-    expect(CART).toContain('v-if="ONLINE_CART_PAYMENT_ENABLED"');
+  it("has online + combined payment UI fully removed (not flag-gated)", () => {
+    expect(CART).not.toContain("ONLINE_CART_PAYMENT_ENABLED");
+    expect(CART).not.toContain("showPaymentMethodSelector");
+    expect(CART).not.toContain("canUseUnifiedCheckout");
+    expect(CART).not.toContain("ชำระรวม");
   });
 });
 
@@ -101,7 +103,7 @@ describe("checkout/bank/history i18n keys", () => {
   it("th uses the user-provided Thai for checkoutNote + checkoutButton", () => {
     const th = j("th");
     expect(th.cart.checkoutNote).not.toContain("NEEDS_TRANSLATION");
-    expect(th.cart.checkoutButton).toBe("ชำระเงิน");
+    expect(th.cart.checkoutButton).toBe("ดำเนินการชำระเงิน");
   });
   it("cn/jp paymentBank keys carry NEEDS_TRANSLATION placeholders", () => {
     for (const f of ["cn", "jp"]) {
