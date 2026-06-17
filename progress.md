@@ -1,5 +1,15 @@
 # PROGRESS
-Last updated: 2026-06-18 (Central manual payment requests; branch cart-checkout-to-payment-detail, NOT pushed)
+Last updated: 2026-06-18 (Central manual payment requests + remote migration 115 applied; branch cart-checkout-to-payment-detail, code NOT pushed)
+
+## 2026-06-18 — Migration 115 applied to remote (approved) ✅
+
+User explicitly confirmed the linked project (`hopnicth's Project`, ref yzjczvzwmbbeyoodrjwm —
+single live/production-like project) as the smoke target and authorized applying ONLY migration 115.
+`supabase db push --linked` applied only 115. Remote verified: migration `115|115|115`; 3 tables
+reachable via service-role (HTTP 200); anon → 401; bucket `manual-payment-slips` private; service-role
+insert + child item + cascade-delete proof clean (0 residue). tsc=0, payment specs 65/65, grep guards clean.
+Code NOT pushed; no other migration applied. Interactive browser click-through pending (user-run, no
+browser-driving capability here).
 
 ## 2026-06-18 — Central manual payment request model ✅
 

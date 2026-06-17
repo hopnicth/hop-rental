@@ -1,5 +1,23 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-18 (Remote migration 115 APPLIED to linked project — code NOT pushed)
+
+User explicitly authorized applying ONLY migration 115 to the linked project
+`hopnicth's Project` (ref `yzjczvzwmbbeyoodrjwm` — the single live/production-like DB; no
+separate staging). Gate: re-confirmed only 115 pending; additive; no existing-table/data
+writes; no VAT/Omise/KYC.
+
+- `supabase db push --linked` → applied 115 only (in-migration assertions passed on remote).
+- Remote verified: `migration list` shows `115|115|115`; 3 tables reachable via service-role
+  (HTTP 200); anon GET → 401; bucket `manual-payment-slips` `public=false` (jpeg/png/pdf);
+  service-role INSERT request + item then cascade DELETE → 0 residue (the insert that 500'd works now).
+- Local checks: tsc=0; payment specs 65/65; 7 grep guards clean.
+- Code NOT pushed (branch 14 ahead of origin/staging). No other migration applied. No secrets exposed.
+- PENDING: interactive browser click-through (sale-only/booking-only/mixed → /user/payments/[id],
+  slip upload → pending_review, related order/rental/admin links) — must be run by a human (no
+  browser-driving here). DB + endpoint path is proven ready; the runtime 500 root cause is resolved.
+- `.env.local` (gitignored) exists for a local-Supabase smoke option; `.env` remains remote (unchanged).
+
 ## Claude Code → Claude Code / 2026-06-18 (Central manual payment requests — branch cart-checkout-to-payment-detail, NOT pushed)
 
 Task: Replace per-target/query-param manual payment pages with ONE central
