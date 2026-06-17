@@ -4,9 +4,9 @@
  * Source-inspection contract. Covers:
  *  1. Cart is review/checkout only: single Checkout button + terms + note;
  *     NO bank details, NO upload input, NO payment history, NO online-pay UI.
- *  2. Checkout routes to /user/rentals/[id] and /user/orders/[id] (split for
- *     mixed/multiple via a selection state).
- *  3. Detail pages show bank transfer details + payment history + upload.
+ *  2. Checkout routes to the central /user/payments/[id] page (one request).
+ *  3. Order/rental detail pages link to the related payment request (history
+ *     kept) and no longer host the primary bank card + upload form.
  *  4. Central bank config (placeholder) + bank component reads it (no hardcode).
  *  5. New i18n keys exist (en real; th/cn/jp placeholders, except the two
  *     user-provided Thai strings).
@@ -29,10 +29,10 @@ describe("cart is review/checkout only", () => {
     expect(CART).toContain("cart.checkoutButton");
     expect(CART).toContain("cart.checkoutNote");
   });
-  it("routes to detail pages (single) or the combined page (multiple)", () => {
-    expect(CART).toContain("/user/rentals/");
-    expect(CART).toContain("/user/orders/");
-    expect(CART).toContain("/user/checkout-payment?");
+  it("routes to the central /user/payments/[id] page (one request)", () => {
+    expect(CART).toContain("/api/user/manual-payment-requests");
+    expect(CART).toContain("res.redirectTo");
+    expect(CART).not.toContain("/user/checkout-payment?");
   });
   it("does NOT contain bank details, upload input, history, or QR", () => {
     expect(CART).not.toContain("PaymentBankTransferCard");
@@ -49,17 +49,18 @@ describe("cart is review/checkout only", () => {
   });
 });
 
-describe("detail pages show bank + history + upload", () => {
-  it("rental detail has bank card, history, and slip upload", () => {
-    expect(RENTAL).toContain("PaymentBankTransferCard");
+describe("detail pages link to the related payment request (history kept, no primary upload)", () => {
+  it("rental detail uses the related card + history, not the primary upload form", () => {
+    expect(RENTAL).toContain("PaymentRequestRelatedCard");
     expect(RENTAL).toContain("PaymentSlipHistory");
-    expect(RENTAL).toContain("/deposit-slip");
-    expect(RENTAL).toContain("loadDepositSlips");
+    expect(RENTAL).not.toContain("PaymentBankTransferCard");
+    expect(RENTAL).not.toContain("uploadDepositSlip");
   });
-  it("order detail has bank card, history, and slip upload", () => {
-    expect(ORDER).toContain("PaymentBankTransferCard");
+  it("order detail uses the related card + history, not the primary upload form", () => {
+    expect(ORDER).toContain("PaymentRequestRelatedCard");
     expect(ORDER).toContain("PaymentSlipHistory");
-    expect(ORDER).toContain("/payment-slip");
+    expect(ORDER).not.toContain("PaymentBankTransferCard");
+    expect(ORDER).not.toContain("/payment-slip");
   });
 });
 

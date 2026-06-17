@@ -4,8 +4,8 @@
  * Source-inspection contract. Covers:
  *  1. Online cart payment is hidden behind a launch flag (= false)
  *  2. Payment-method selector + online CTAs are gated by that flag
- *  3. Rental CTA routes to /user/rentals/[bookingId]
- *  4. Sale CTA creates a bank_transfer order and routes to /user/orders/[id]
+ *  3. Checkout creates ONE central payment request and routes to /user/payments/[id]
+ *  4. Sale target still creates a bank_transfer order (reused by the request)
  *  5. Manual guidance/CTAs use i18n keys; no hardcoded online-payment literals
  *  6. cart.* manual i18n keys exist (en real; th/cn/jp placeholders)
  */
@@ -32,14 +32,18 @@ describe("online + combined payment UI fully removed (not flag-gated)", () => {
 });
 
 describe("unified manual checkout", () => {
-  it("single Checkout routes to the rental booking detail", () => {
+  it("Checkout creates ONE payment request and routes to /user/payments/[id]", () => {
     expect(CART).toContain("handleCheckout");
-    expect(CART).toContain("/user/rentals/");
+    expect(CART).toContain("/api/user/manual-payment-requests");
+    expect(CART).toContain("res.redirectTo");
   });
-  it("Checkout creates a bank_transfer order and routes to order detail", () => {
+  it("still creates a bank_transfer sale order for the sale target", () => {
     expect(CART).toContain("createManualSaleOrder");
     expect(CART).toContain('paymentMethod: "bank_transfer"');
-    expect(CART).toContain("/user/orders/");
+  });
+  it("no longer routes checkout to the query-param page or order/rental detail", () => {
+    expect(CART).not.toContain("/user/checkout-payment?");
+    expect(CART).not.toMatch(/navigateTo\(\s*[`'"]\/user\/(orders|rentals)\//);
   });
 });
 

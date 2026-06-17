@@ -28,8 +28,13 @@ describe("mixed cart — combined amount + routing", () => {
     expect(CART).toMatch(/orderGrandTotal[\s\S]{0,80}bookingDepositDueNow/);
     expect(CART).toContain('hasPurchaseItems && hasRentalBookings');
   });
-  it("routes mixed/multiple targets to the combined payment page", () => {
-    expect(CART).toContain("/user/checkout-payment?");
+  it("routes mixed/multiple targets to the central payment request page", () => {
+    // Mixed/booking targets now flow through ONE central payment request which
+    // redirects to /user/payments/[id] (the durable replacement for the
+    // query-param /user/checkout-payment page).
+    expect(CART).toContain("/api/user/manual-payment-requests");
+    expect(CART).toContain("res.redirectTo");
+    expect(CART).not.toContain("/user/checkout-payment?");
     expect(CART).toContain("handleCheckout");
   });
   it("keeps a sale-order failure from blocking rental targets", () => {

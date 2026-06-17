@@ -2,8 +2,9 @@
  * Tests: customer deposit-slip upload UI (app/pages/user/rentals/[bookingId].vue)
  *
  * Source-inspection contract. Covers:
- *  1. Uploads via multipart FormData to the customer deposit-slip endpoint
- *  2. Upload UI is gated to draft bookings; makes clear it does not confirm
+ *  1. Links to the central payment request (/user/payments/[id]); the primary
+ *     upload form moved off this page (history role retained)
+ *  2. Related card is gated to draft bookings; it does not confirm
  *  3. Uses i18n keys (no hardcoded strings) and adds no Omise/QR/payment-attempt
  *     coupling
  *  4. i18n keys exist in en.json with th/cn/jp [NEEDS_TRANSLATION] placeholders
@@ -15,25 +16,23 @@ import { resolve } from "node:path";
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 const PAGE = read("app/pages/user/rentals/[bookingId].vue");
 
-describe("customer deposit-slip upload UI", () => {
-  it("posts a multipart slip to the customer deposit-slip endpoint", () => {
-    expect(PAGE).toContain("/deposit-slip");
-    expect(PAGE).toContain("FormData");
-    expect(PAGE).toContain('method: "POST"');
-    expect(PAGE).toContain("uploadDepositSlip");
+describe("customer deposit-slip UI (now links to central payment request)", () => {
+  it("links to the related payment request instead of hosting the upload form", () => {
+    expect(PAGE).toContain("PaymentRequestRelatedCard");
+    expect(PAGE).toContain('target-type="rental_booking_deposit"');
+    // primary upload moved to /user/payments/[id]
+    expect(PAGE).not.toContain("uploadDepositSlip");
   });
 
-  it("gates the upload card to draft bookings", () => {
+  it("gates the related card to draft bookings", () => {
     expect(PAGE).toContain("canUploadDepositSlip");
     expect(PAGE).toContain('detail.value?.booking.status === "draft"');
     expect(PAGE).toContain('v-if="canUploadDepositSlip"');
   });
 
-  it("uses i18n keys for all new strings (no hardcoded copy)", () => {
-    expect(PAGE).toContain("rentalsPage.depositSlip.title");
-    expect(PAGE).toContain("rentalsPage.depositSlip.note");
-    expect(PAGE).toContain("rentalsPage.depositSlip.uploadAction");
-    expect(PAGE).toContain("rentalsPage.depositSlip.pendingTitle");
+  it("keeps the deposit-slip history (history role retained)", () => {
+    expect(PAGE).toContain("PaymentSlipHistory");
+    expect(PAGE).toContain("loadDepositSlips");
   });
 
   it("adds no Omise / payment-attempt / polling coupling", () => {

@@ -55,15 +55,16 @@ describe("customer payment-slip upload route", () => {
   });
 });
 
-describe("customer order detail page", () => {
-  it("uploads via the sale payment-slip endpoint with FormData", () => {
-    expect(PAGE).toContain("/payment-slip");
-    expect(PAGE).toContain("FormData");
-    expect(PAGE).toContain('method: "POST"');
+describe("customer order detail page (links to central payment request)", () => {
+  it("links to the related payment request instead of hosting the upload form", () => {
+    expect(PAGE).toContain("PaymentRequestRelatedCard");
+    expect(PAGE).toContain('target-type="sale_order"');
+    // primary upload moved to /user/payments/[id]
+    expect(PAGE).not.toContain("/payment-slip");
   });
-  it("uses i18n keys and shows no online payment wording", () => {
-    expect(PAGE).toContain("ordersPage.paymentSlip.title");
-    expect(PAGE).toContain("ordersPage.paymentSlip.note");
+  it("keeps the order summary + slip history and shows no online payment wording", () => {
+    expect(PAGE).toContain("ordersPage.paymentSlip.grandTotal");
+    expect(PAGE).toContain("PaymentSlipHistory");
     expect(PAGE).not.toContain("useOmise");
     expect(PAGE).not.toContain("promptpay");
     expect(PAGE).not.toContain("QrcodeVue");
