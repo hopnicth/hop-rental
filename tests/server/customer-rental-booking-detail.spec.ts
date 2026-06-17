@@ -954,7 +954,7 @@ describe("customer rental booking detail and documents", () => {
       'updateBookingStatus(target.bookingId, "cancelled")',
     );
     const ordersPage = readFileSync(
-      resolve(process.cwd(), "app/pages/user/orders.vue"),
+      resolve(process.cwd(), "app/pages/user/orders/index.vue"),
       "utf8",
     );
     expect(ordersPage).toContain(
