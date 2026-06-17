@@ -1,5 +1,28 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-17 (Cart → manual bank-transfer + slip for rentals AND sale orders — branch cart-manual-transfer-all-items, NOT pushed)
+
+Task: Convert the unified cart to manual bank-transfer + slip upload for BOTH rental bookings and B2C sale items (launch: no online payment).
+
+Branch: `cart-manual-transfer-all-items` (base origin/staging `cc7c772`). 5 commits: `ae8484c` (migration 114 + sale slip util), `3bcdc92` (customer order detail + upload), `0524210` (admin review + Mark Payment Received), `53476a5` (cart manual UX), + docs (this commit). NOT pushed.
+
+Key facts / invariants:
+- Online cart payment hidden via local flag `ONLINE_CART_PAYMENT_ENABLED=false` in `app/pages/user/cart.vue` (online selector + card/PromptPay/unified CTAs gated; old code retained, not deleted, for easy re-enable). Flip to true / wire env when online payment is ready.
+- SALE slips are SEPARATE from rental slips: bucket `sale-order-payment-slips` + table `sale_order_payment_slips` (migration 114). NEVER reuse rental_booking_deposit_slips / rental-deposit-slips / rental_held_balance_events / confirmRentalBooking for sale.
+- Sale order states: created `awaiting_payment` (no online pay) → customer slip upload moves to `pending_review` (never paid) → admin "Mark Payment Received" → `paid`+`confirmed`, idempotent `f_apply_order_inventory`, cart clear. No VAT/revenue (none exists; none invented).
+- Rental flow unchanged (held liability + confirmRentalBooking); cart rental CTA now routes to `/user/rentals/[bookingId]` for slip upload.
+- Customer order detail page `app/pages/user/orders/[orderId].vue` is NEW (none existed) + new `GET /api/user/orders/[id]`.
+- Migration 114 is LOCAL only (db reset --local clean). Remote `db push --linked` + `--linked` types regen needed before deploy.
+
+Verification: db reset --local clean; npx tsc --noEmit = 0; sale-order-payment-slip-evidence (17), user-sale-order-payment-slip-api (9), admin-sale-order-payment-api (10), cart-manual-checkout-ui (9), + rental suites all green.
+
+OPEN ITEMS:
+1. i18n PENDING TRANSLATION (th/cn/jp): `ordersPage.paymentSlip.*` + `cart.manual*` placeholders. Grep `NEEDS_TRANSLATION`.
+2. Admin sale slip UI (`AdminOrderPaymentSlips.vue`) uses hardcoded English (matches non-i18n'd admin pages).
+3. Migration 114 not pushed to remote; branch not pushed.
+4. Browser/staging end-to-end smoke not run (CLI env) — verify on deploy.
+5. Rental booking-deposit agreement checkbox + mixed-checkout amount preview still render in cart (informational; no actionable online CTA — all gated). Trim later if desired.
+
 ## Claude Code → Claude Code / 2026-06-17 (Manual bank-transfer booking-deposit flow — Steps 1–7 DONE, committed on staging, NOT pushed)
 
 Task: Implement a lightweight manual bank-transfer booking-deposit flow. KYC stays PAUSED (untouched).

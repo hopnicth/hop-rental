@@ -1,5 +1,16 @@
 # Design Decisions
 
+## 2026-06-17 (cart manual transfer — sale orders)
+Decision: For launch, hide all online cart payment (Omise card / PromptPay / unified mixed checkout) behind a local flag `ONLINE_CART_PAYMENT_ENABLED=false` and route BOTH rental bookings and B2C sale orders into a manual bank-transfer + slip-upload flow. Sale orders get their OWN slip subsystem, separate from rentals.
+Reason: Launch without a finished online payment integration. A unified "no online payment" cart keeps the customer flow coherent; keeping sale slips separate from rental slips preserves correct accounting (sale payment is an order payment, not a rental held-balance liability).
+Impact:
+- New private bucket `sale-order-payment-slips` + table `sale_order_payment_slips` (migration 114), modeled on rental migration 113. NEVER catalog-media; never public URLs; signed-URL access only.
+- Sale order lifecycle reuses the EXISTING model: created `awaiting_payment` → customer slip upload → `pending_review` (never paid by upload) → admin "Mark Payment Received" → `paid`+`confirmed` via the existing paid-write convention, idempotent `f_apply_order_inventory` RPC, and cart clear. No VAT/revenue logic was invented (the audit found none for sale orders).
+- Inventory is deducted ONLY at admin confirmation (decision A1), matching the Omise success path, via the existing idempotent RPC — not a hand-rolled deduction.
+- Sale payment NEVER touches rental ledgers (`rental_held_balance_events`), `confirmRentalBooking`, or Omise/`payment_attempts`. `payments.ts` (critical) was not modified.
+- New customer order detail page `app/pages/user/orders/[orderId].vue` + ownership-checked `GET /api/user/orders/[id]` (none existed).
+- Online payment code is HIDDEN (flag-gated), not deleted, for easy re-enable. Customer i18n uses `[NEEDS_TRANSLATION]` placeholders for th/cn/jp pending translation; admin slip UI uses hardcoded English (matches existing non-i18n'd admin pages).
+
 ## 2026-06-17
 Decision: Implement the manual bank-transfer booking-deposit flow as slip EVIDENCE + admin manual confirmation, reusing existing infrastructure rather than building a new payment subsystem.
 Reason: Avoids a 3rd-party payment provider while keeping money handling correct and auditable. Slip upload is decoupled from confirmation so a customer upload can never confirm a booking or move money.

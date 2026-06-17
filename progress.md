@@ -1,5 +1,19 @@
 # PROGRESS
-Last updated: 2026-06-17 (Manual bank-transfer booking-deposit flow IMPLEMENTED — Steps 1–7 committed on staging, not pushed)
+Last updated: 2026-06-17 (Cart → manual bank-transfer + slip flow for BOTH rentals and sale orders; branch cart-manual-transfer-all-items, NOT pushed)
+
+## 2026-06-17 — Cart manual bank-transfer + slip flow (rentals + sale orders) ✅
+
+Branch `cart-manual-transfer-all-items` (base origin/staging `cc7c772`). Online cart payment (Omise card/PromptPay/unified mixed checkout) hidden behind a launch flag `ONLINE_CART_PAYMENT_ENABLED=false`. Both rental bookings and B2C sale orders now use manual bank transfer + slip upload.
+
+- **Migration 114** (`ae8484c`): private bucket `sale-order-payment-slips` (public=false, 10MB, jpeg/png/pdf) + table `sale_order_payment_slips` (FK→orders, RLS service_role-only). SEPARATE from rental slips. + `server/utils/sale-order-payment-slip-evidence.ts`.
+- **Customer sale** (`3bcdc92`): `GET /api/user/orders/[id]` (ownership), `POST /api/user/orders/[id]/payment-slip` (awaiting_payment→pending_review, never paid), `app/pages/user/orders/[orderId].vue` (NEW), i18n `ordersPage.paymentSlip.*`.
+- **Admin sale** (`0524210`): `sale-order-manual-payment.ts` (mark paid+confirmed, idempotent `f_apply_order_inventory`, cart clear), admin slip list + signed-url routes, `record-payment` route, `AdminOrderPaymentSlips.vue` on admin order detail.
+- **Cart** (`53476a5`): online selector + online CTAs hidden; rental CTA → `/user/rentals/[bookingId]`; sale CTA creates a `bank_transfer` order (awaiting_payment) → `/user/orders/[orderId]`; manual guidance for both sections; cart i18n `cart.manual*`.
+- **Docs** (this commit): server-utils-index rows for both new utils; progress/handoff/decisions.
+
+**Accounting safety:** rental deposit unchanged (held liability via rental_held_balance_events + confirmRentalBooking). Sale payment uses the existing order paid path (no VAT/revenue exists; none invented); sale payment never touches rental ledgers. Inventory deducted ONLY on admin confirm via the idempotent RPC.
+
+**Deferred / follow-up:** i18n th/cn/jp translations pending (`ordersPage.paymentSlip.*`, `cart.manual*`); browser/staging smoke not run (CLI env); the rental booking-deposit agreement checkbox + mixed-checkout amount preview remain visible but have no actionable online CTA (gated). Not pushed.
 
 ## 2026-06-17 — Manual bank-transfer booking deposit flow ✅ (Steps 1–7)
 
