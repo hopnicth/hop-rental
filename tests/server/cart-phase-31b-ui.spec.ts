@@ -1,10 +1,18 @@
+/**
+ * Phase 3.1B cart UX safeguards — current cart infrastructure (hydration,
+ * checkout readiness, addresses, draft-booking handling, DB sync).
+ *
+ * Tests that asserted the OLD online/mixed/unified/per-booking cart checkout UX
+ * were removed: that flow no longer exists — the cart now creates a central
+ * manual payment request (covered by cart-manual-checkout-ui /
+ * checkout-payment-detail-ui / manual-payment-request-* specs).
+ */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const cartVue = readFileSync("app/pages/user/cart.vue", "utf8");
 const useCartTs = readFileSync("app/composables/useCart.ts", "utf8");
 const useBookingTs = readFileSync("app/composables/useBooking.ts", "utf8");
-const useOrdersTs = readFileSync("app/composables/useOrders.ts", "utf8");
 const useAddressesTs = readFileSync("app/composables/useAddresses.ts", "utf8");
 const bookingTypesTs = readFileSync("app/types/booking.ts", "utf8");
 const cartTypesTs = readFileSync("app/types/cart.ts", "utf8");
@@ -31,24 +39,6 @@ describe("Phase 3.1B cart UX source safeguards", () => {
     expect(th.cart.payAtBranchDesc).toContain(
       "ค่าเช่าและเงินมัดจำประกันคงเหลือชำระในวันรับสินค้า",
     );
-  });
-
-  it("shows mixed-cart separate payment explanation", () => {
-    expect(en.cart.mixedPaymentDesc).toContain(
-      "Product order payment and rental Booking Deposit payment are processed separately",
-    );
-    expect(th.cart.mixedPaymentDesc).toContain(
-      "รายการสินค้าและรายการเช่าจะชำระแยกกัน",
-    );
-    expect(cartVue).toContain('v-if="hasMixedCart"');
-    expect(cartVue).toContain("cart.mixedPaymentDesc");
-  });
-
-  it("shows per-booking payment actions for multiple rental bookings", () => {
-    expect(cartVue).toContain("hasMultipleRentalBookings &&");
-    expect(cartVue).toContain("!canUseUnifiedCheckout &&");
-    expect(cartVue).toContain("canEditBookingDraft(booking)");
-    expect(cartVue).toContain("cart.payBookingDepositForBooking");
   });
 
   it("shows simplified customer rental payment summary whenever rental bookings exist", () => {
@@ -99,12 +89,6 @@ describe("Phase 3.1B cart UX source safeguards", () => {
     expect(cartVue).not.toContain("paymentLineLabel");
     expect(en.cart.bookingDepositSecurityDepositNote).not.toContain("WHT");
     expect(th.cart.bookingDepositSecurityDepositNote).not.toContain("WHT");
-  });
-
-  it("shows booking deposit agreement in checkout whenever rental bookings exist", () => {
-    expect(cartVue).toContain("cart.bookingDepositAgreementTitle");
-    expect(cartVue).toContain("cart.bookingDepositAgreementCheckbox");
-    expect(cartVue).toContain("bookingDepositAgreementAccepted");
   });
 
   it("keeps sale-only checkout summary gated by purchase items", () => {
@@ -177,72 +161,6 @@ describe("Phase 3.1B cart UX source safeguards", () => {
     expect(th.cart.cartChangedDesc).toContain("ข้อมูลไม่ตรงกับที่แสดงก่อนหน้า");
   });
 
-  it("keeps sale-only checkout on the existing order payment flow", () => {
-    expect(useOrdersTs).toContain('"/api/orders"');
-    expect(cartVue).toContain(
-      "await navigateTo(`/payment/${encodeURIComponent(newOrderId)}`)",
-    );
-    expect(cartVue).toContain("async function handlePay()");
-    expect(cartVue).toContain('await submitCurrentOrder("payment")');
-  });
-
-  it("enables booking-only unified checkout without routing sale-only through mixed checkout", () => {
-    expect(cartVue).toContain("const hasBookingOnlyCart = computed");
-    expect(cartVue).toContain("const canUseBookingOnlyUnifiedCheckout");
-    expect(cartVue).toContain("const canUseUnifiedCheckout");
-    expect(cartVue).toContain("const showPaymentMethodSelector = computed");
-    expect(cartVue).toContain(
-      "canUseMixedCheckout.value || canUseBookingOnlyUnifiedCheckout.value",
-    );
-    expect(cartVue).toContain(
-      "mixedCheckoutEnabled.value && hasBookingOnlyCart.value && !isB2BUser.value",
-    );
-    expect(cartVue).toContain(
-      "(hasPurchaseItems.value || canUseBookingOnlyUnifiedCheckout.value) &&",
-    );
-    expect(cartVue).toContain('v-if="showPaymentMethodSelector"');
-  });
-
-  it("uses one booking-only CTA and hides standalone rental CTAs when unified checkout is active", () => {
-    expect(en.cart.payAllBookingDeposits).toBe("Pay All Booking Deposits");
-    expect(th.cart.payAllBookingDeposits).toBe("ชำระเงินมัดจำจองทั้งหมด");
-    expect(cartVue).toContain("const unifiedCheckoutPayButtonLabel");
-    expect(cartVue).toContain('t("cart.payAllBookingDeposits")');
-    expect(cartVue).toContain('v-if="canUseUnifiedCheckout"');
-    expect(cartVue).toContain(':label="unifiedCheckoutPayButtonLabel"');
-    expect(cartVue).toContain("hasSingleRentalBooking &&");
-    expect(cartVue).toContain("!hasActiveBookingCheckout");
-  });
-
-  it("booking-only unified checkout calls mixed checkout flow, not standalone PromptPay-only flow", () => {
-    expect(cartVue).toContain("async function handleUnifiedCheckoutPay()");
-    expect(cartVue).toContain("if (!canUseUnifiedCheckout.value) return");
-    expect(cartVue).toContain("/api/mixed-checkout/prevalidate");
-    expect(cartVue).toContain("/api/mixed-checkout/create");
-    expect(cartVue).toContain(
-      "/mixed-checkout/${encodeURIComponent(createResponse.session.id)}",
-    );
-    expect(cartVue).toContain("saleItems: cartItems.value.map");
-    expect(cartVue).toContain("rentalBookings: activeBookings.value.map");
-    expect(cartVue).toContain(
-      "if (hasPurchaseItems.value && !selectedAddress.value)",
-    );
-    expect(cartVue).toContain("method: selectedMixedCheckoutMethod()");
-  });
-
-  it("keeps mixed checkout summary gated by mixed checkout availability", () => {
-    expect(cartVue).toContain('v-if="canUseUnifiedCheckout"');
-    expect(cartVue).toContain("cart.mixedCheckoutAllocationBreakdown");
-    expect(cartVue).toContain("cart.mixedCheckoutTotalPayableNow");
-  });
-
-  it("targets each per-booking payment action to the correct booking id", () => {
-    expect(cartVue).toContain(
-      '@click="() => void handleSubmitRental(booking.bookingId)"',
-    );
-    expect(cartVue).toContain("booking-deposit-payment/create");
-  });
-
   it("removes draft rental bookings through the server-coordinated delete endpoint", () => {
     expect(useBookingTs).toContain(
       "/api/rental-bookings/${encodeURIComponent(bookingId)}/draft",
@@ -301,23 +219,6 @@ describe("Phase 3.1B cart UX source safeguards", () => {
     expect(cartVue).toContain("activeBookings.value.map");
   });
 
-  it("shows mixed cart active/expired global checkout banners", () => {
-    expect(th.cart.mixedCheckoutPendingGlobalTitle).toBe(
-      "มีรายการชำระเงินที่กำลังดำเนินอยู่",
-    );
-    expect(th.cart.mixedCheckoutExpiredGlobalTitle).toBe(
-      "รายการชำระเงินก่อนหน้าหมดอายุแล้ว",
-    );
-    expect(cartVue).toContain("hasActiveCartCheckout");
-    expect(cartVue).toContain("hasExpiredCartCheckout");
-    expect(cartVue).toContain("mixedCheckoutPendingGlobalTitle");
-    expect(cartVue).toContain("mixedCheckoutExpiredGlobalTitle");
-    expect(cartVue).toContain("function handleResumeCartCheckout");
-    expect(cartVue).toContain(
-      "/mixed-checkout/${encodeURIComponent(sessionId)}",
-    );
-  });
-
   it("locks sale lines that are included in an active mixed checkout", () => {
     expect(th.cart.saleItemPendingCheckoutLabel).toBe(
       "รวมอยู่ในรายการชำระเงินที่รอดำเนินการ",
@@ -332,33 +233,6 @@ describe("Phase 3.1B cart UX source safeguards", () => {
       "isAtStockLimit(item) || isSaleItemLockedByCheckout(item)",
     );
     expect(cartVue).toContain(':disabled="isSaleItemLockedByCheckout(item)"');
-  });
-
-  it("locks mixed checkout configuration and duplicate checkout while active", () => {
-    expect(cartVue).toContain("const isCartConfigurationLockedByCheckout");
-    expect(cartVue).toContain(
-      ':disabled="isCartConfigurationLockedByCheckout"',
-    );
-    expect(cartVue).toContain("hasActiveCartCheckout ||");
-    expect(cartVue).toContain(
-      "hasActiveBookingCheckout || hasActiveCartCheckout",
-    );
-  });
-
-  it("shows active and expired checkout states in the rental cart card", () => {
-    expect(th.cart.bookingCheckoutPendingBadge).toBe("รอชำระเงิน");
-    expect(th.cart.resumeBookingCheckout).toBe("กลับไปหน้าชำระเงิน");
-    expect(th.cart.bookingCheckoutExpiredBadge).toBe("การชำระเงินหมดอายุ");
-    expect(cartVue).toContain("const activeCheckoutBookings = computed");
-    expect(cartVue).toContain('booking.checkout?.state === "active_unpaid"');
-    expect(cartVue).toContain("function handleResumeBookingCheckout");
-    expect(cartVue).toContain("bookingCheckoutPendingBadge");
-    expect(cartVue).toContain("resumeBookingCheckout");
-    expect(cartVue).toContain("bookingCheckoutExpiredBadge");
-    expect(cartVue).toContain('v-if="canEditBookingDraft(booking)"');
-    expect(cartVue).toContain(':disabled="!canEditBookingDraft(booking)"');
-    expect(cartVue).toContain("hasActiveBookingCheckout ||");
-    expect(cartVue).toContain("bookingCheckoutAggregateBlockedDesc");
   });
 
   it("refreshes booking store after successful rental payment", () => {
