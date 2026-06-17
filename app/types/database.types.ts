@@ -2930,6 +2930,175 @@ export type Database = {
         }
         Relationships: []
       }
+      manual_payment_request_items: {
+        Row: {
+          amount_due: number
+          created_at: string
+          description: string | null
+          id: string
+          label: string
+          metadata: Json
+          payment_request_id: string
+          target_id: string
+          target_type: string
+        }
+        Insert: {
+          amount_due: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          label: string
+          metadata?: Json
+          payment_request_id: string
+          target_id: string
+          target_type: string
+        }
+        Update: {
+          amount_due?: number
+          created_at?: string
+          description?: string | null
+          id?: string
+          label?: string
+          metadata?: Json
+          payment_request_id?: string
+          target_id?: string
+          target_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_payment_request_items_payment_request_id_fkey"
+            columns: ["payment_request_id"]
+            isOneToOne: false
+            referencedRelation: "manual_payment_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manual_payment_request_slips: {
+        Row: {
+          file_size_bytes: number
+          id: string
+          mime_type: string
+          original_filename: string | null
+          payment_request_id: string
+          rejected_at: string | null
+          rejected_by: string | null
+          rejected_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          sha256_hash: string | null
+          status: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_at: string
+          uploaded_by: string
+        }
+        Insert: {
+          file_size_bytes: number
+          id?: string
+          mime_type: string
+          original_filename?: string | null
+          payment_request_id: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sha256_hash?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path: string
+          uploaded_at?: string
+          uploaded_by: string
+        }
+        Update: {
+          file_size_bytes?: number
+          id?: string
+          mime_type?: string
+          original_filename?: string | null
+          payment_request_id?: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          sha256_hash?: string | null
+          status?: string
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_at?: string
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manual_payment_request_slips_payment_request_id_fkey"
+            columns: ["payment_request_id"]
+            isOneToOne: false
+            referencedRelation: "manual_payment_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      manual_payment_requests: {
+        Row: {
+          admin_note: string | null
+          created_at: string
+          currency: string
+          customer_id: string
+          customer_note: string | null
+          id: string
+          payment_method: string
+          rejected_at: string | null
+          rejected_by: string | null
+          rejected_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_type: string
+          status: string
+          submitted_at: string | null
+          total_amount_due: number
+          updated_at: string
+        }
+        Insert: {
+          admin_note?: string | null
+          created_at?: string
+          currency?: string
+          customer_id: string
+          customer_note?: string | null
+          id?: string
+          payment_method?: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_type: string
+          status?: string
+          submitted_at?: string | null
+          total_amount_due: number
+          updated_at?: string
+        }
+        Update: {
+          admin_note?: string | null
+          created_at?: string
+          currency?: string
+          customer_id?: string
+          customer_note?: string | null
+          id?: string
+          payment_method?: string
+          rejected_at?: string | null
+          rejected_by?: string | null
+          rejected_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_type?: string
+          status?: string
+          submitted_at?: string | null
+          total_amount_due?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       mixed_checkout_sessions: {
         Row: {
           allocation_plan_snapshot: Json
