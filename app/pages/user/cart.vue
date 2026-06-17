@@ -683,9 +683,9 @@ async function createManualSaleOrder(): Promise<string | null> {
   }
 }
 
-// Single Checkout action: create the sale order (if any sale items), collect
-// the per-record payment-detail targets (sale order + each rental booking),
-// then route to the single target or surface a selection state for multiple.
+// Single Checkout action: create the sale order (if any sale items), gather the
+// payment targets (sale order + each draft rental booking), create ONE central
+// manual payment request, then route to the durable /user/payments/[id] page.
 async function handleCheckout(): Promise<void> {
   if (!checkoutTermsAccepted.value || isCheckingOut.value) return;
   isCheckingOut.value = true;
@@ -709,20 +709,21 @@ async function handleCheckout(): Promise<void> {
       }
       return; // pure-sale failure already showed its error
     }
-    if (targetCount === 1) {
-      await navigateTo(
-        orderId
-          ? `/user/orders/${encodeURIComponent(orderId)}`
-          : `/user/rentals/${encodeURIComponent(bookingIds[0]!)}`,
+    // Create ONE central manual payment request (sale_only | booking_only |
+    // mixed). Amounts are computed authoritatively server-side; the request is
+    // evidence-only (order stays unpaid, bookings stay draft).
+    try {
+      const res = await $fetch<{ redirectTo: string }>(
+        "/api/user/manual-payment-requests",
+        { method: "POST", body: { orderId, bookingIds } },
       );
-      return;
+      await navigateTo(res.redirectTo);
+    } catch (e) {
+      showInlineOrderError(
+        t("cart.paymentRequestFailedTitle"),
+        e instanceof Error ? e.message : t("cart.paymentRequestFailedDesc"),
+      );
     }
-    // Combined (mixed sale + booking, or multiple bookings): one combined
-    // amount + one slip upload on the combined payment page.
-    const q = new URLSearchParams();
-    if (orderId) q.set("order", orderId);
-    if (bookingIds.length) q.set("bookings", bookingIds.join(","));
-    await navigateTo(`/user/checkout-payment?${q.toString()}`);
   } finally {
     isCheckingOut.value = false;
   }

@@ -616,6 +616,61 @@ export async function listManualPaymentRequests(
   };
 }
 
+// ── Related-request lookup (for order / rental detail pages) ─────────────────
+
+/**
+ * Find the most recent payment request (owner-scoped) that includes a given
+ * target (sale_order or rental_booking_deposit). Returns a minimal summary +
+ * link, or null. Used by order/rental detail pages to show a "related payment
+ * request" card without duplicating the central upload UX.
+ */
+export async function findCustomerRequestByTarget(
+  client: AnyClient,
+  ownerUserId: string,
+  targetType: "sale_order" | "rental_booking_deposit",
+  targetId: string,
+): Promise<{
+  id: string;
+  status: string;
+  sourceType: string;
+  totalAmountDue: number;
+  currency: string;
+  link: string;
+} | null> {
+  const tId = asUuidOrNull(targetId);
+  const uId = asUuidOrNull(ownerUserId);
+  if (!tId || !uId) return null;
+
+  const { data: items } = await client
+    .from("manual_payment_request_items")
+    .select("payment_request_id")
+    .eq("target_type", targetType)
+    .eq("target_id", tId);
+  const requestIds = Array.from(
+    new Set(((items ?? []) as Row[]).map((r) => String(r.payment_request_id ?? ""))),
+  ).filter(Boolean);
+  if (requestIds.length === 0) return null;
+
+  const { data: requests } = await client
+    .from("manual_payment_requests")
+    .select(MANUAL_PAYMENT_REQUEST_SELECT)
+    .in("id", requestIds)
+    .eq("customer_id", uId)
+    .order("created_at", { ascending: false });
+  const rows = (requests ?? []) as Row[];
+  if (rows.length === 0) return null;
+
+  const r = mapManualPaymentRequest(rows[0]!);
+  return {
+    id: r.id,
+    status: r.status,
+    sourceType: r.sourceType,
+    totalAmountDue: r.totalAmountDue,
+    currency: r.currency,
+    link: `/user/payments/${r.id}`,
+  };
+}
+
 // ── Admin evidence decisions (status only) ───────────────────────────────────
 
 /**

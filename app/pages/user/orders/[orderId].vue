@@ -2,10 +2,14 @@
 // Auth is enforced globally by @nuxtjs/supabase redirectOptions (this route is
 // not in the public `exclude` list), matching cart.vue / rentals detail — no
 // per-page route middleware (the repo has no `auth` middleware, only `role`).
+//
+// Order history role: this page shows the order summary + payment slip history
+// and LINKS to the central payment request (/user/payments/[id]) for the
+// pay/upload UX. The primary upload form lives on the central payment page, not
+// here, so we don't duplicate it.
 
 const { t } = useI18n();
 const route = useRoute();
-const toast = useToast();
 const orderId = computed(() => String(route.params.orderId || ""));
 
 interface Slip {
@@ -39,14 +43,7 @@ interface OrderDetail {
 const detail = ref<OrderDetail | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const slipFile = ref<File | null>(null);
-const slipUploading = ref(false);
 
-const canUploadSlip = computed(() =>
-  ["awaiting_payment", "pending_review"].includes(
-    detail.value?.order.paymentStatus ?? "",
-  ),
-);
 const isPaid = computed(() => detail.value?.order.paymentStatus === "paid");
 
 function money(amount: number, currency: string): string {
@@ -69,41 +66,6 @@ async function loadDetail(): Promise<void> {
       e instanceof Error ? e.message : t("ordersPage.paymentSlip.loadFailed");
   } finally {
     loading.value = false;
-  }
-}
-
-function onSlipChange(event: Event) {
-  const input = event.target as HTMLInputElement;
-  slipFile.value = input.files?.[0] ?? null;
-}
-
-async function uploadSlip(): Promise<void> {
-  if (!slipFile.value) {
-    toast.add({ title: t("ordersPage.paymentSlip.noFile"), color: "warning" });
-    return;
-  }
-  slipUploading.value = true;
-  try {
-    const fd = new FormData();
-    fd.append("file", slipFile.value);
-    await $fetch(
-      `/api/user/orders/${encodeURIComponent(orderId.value)}/payment-slip`,
-      { method: "POST", body: fd },
-    );
-    slipFile.value = null;
-    toast.add({
-      title: t("ordersPage.paymentSlip.uploadSuccess"),
-      color: "success",
-    });
-    await loadDetail();
-  } catch (e) {
-    toast.add({
-      title:
-        e instanceof Error ? e.message : t("ordersPage.paymentSlip.uploadError"),
-      color: "error",
-    });
-  } finally {
-    slipUploading.value = false;
   }
 }
 
@@ -153,8 +115,6 @@ watch(orderId, () => void loadDetail(), { immediate: true });
         </div>
       </UCard>
 
-      <PaymentBankTransferCard v-if="!isPaid" />
-
       <UCard v-if="isPaid">
         <UAlert
           color="success"
@@ -164,52 +124,12 @@ watch(orderId, () => void loadDetail(), { immediate: true });
         />
       </UCard>
 
-      <UCard v-else-if="canUploadSlip">
-        <template #header
-          ><h2 class="font-semibold">
-            {{ t("ordersPage.paymentSlip.title") }}
-          </h2></template
-        >
-        <div class="space-y-3">
-          <div class="flex justify-between text-sm">
-            <span class="text-muted">{{
-              t("ordersPage.paymentSlip.amountToTransfer")
-            }}</span>
-            <span class="font-semibold">{{
-              money(detail.order.grandTotal, detail.order.currencyCode)
-            }}</span>
-          </div>
-          <p class="text-sm text-muted">
-            {{ t("ordersPage.paymentSlip.instructions") }}
-          </p>
-          <UAlert
-            color="info"
-            icon="bx:info-circle"
-            :description="t('ordersPage.paymentSlip.note')"
-          />
-          <UAlert
-            v-if="detail.order.paymentStatus === 'pending_review' || detail.paymentSlips.length"
-            color="success"
-            icon="bx:check"
-            :title="t('ordersPage.paymentSlip.pendingTitle')"
-            :description="t('ordersPage.paymentSlip.pendingDesc')"
-          />
-          <input
-            type="file"
-            accept="image/jpeg,image/png,application/pdf"
-            class="block w-full text-sm"
-            @change="onSlipChange"
-          />
-          <UButton
-            icon="bx:upload"
-            :loading="slipUploading"
-            :disabled="!slipFile"
-            @click="uploadSlip"
-          >
-            {{ t("ordersPage.paymentSlip.uploadAction") }}
-          </UButton>
-        </div>
-      </UCard>
+      <!-- Pay / upload lives on the central payment request page. -->
+      <PaymentRequestRelatedCard
+        v-else
+        target-type="sale_order"
+        :target-id="detail.order.id"
+      />
 
       <PaymentSlipHistory :slips="detail.paymentSlips" />
     </template>
