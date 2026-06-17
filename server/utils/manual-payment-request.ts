@@ -26,6 +26,7 @@ import { createError } from "h3";
 import { calculateBookingDepositDueNow } from "~/utils/rental-payment-lines";
 import {
   HOPNIC_PAYMENT_ACCOUNT,
+  HOPNIC_COMPANY_INFO,
   HOPNIC_PAYMENT_ACCOUNT_IS_PLACEHOLDER,
 } from "~/utils/payment-account";
 import {
@@ -489,9 +490,11 @@ export async function assembleManualPaymentRequestDetail(
     saleOrders,
     bookings,
     bankAccount: {
-      accountName: HOPNIC_PAYMENT_ACCOUNT.accountName,
       bankName: HOPNIC_PAYMENT_ACCOUNT.bankName,
+      accountName: HOPNIC_PAYMENT_ACCOUNT.accountName,
       accountNumber: HOPNIC_PAYMENT_ACCOUNT.accountNumber,
+      branch: HOPNIC_PAYMENT_ACCOUNT.branch,
+      company: HOPNIC_COMPANY_INFO,
       isPlaceholder: HOPNIC_PAYMENT_ACCOUNT_IS_PLACEHOLDER,
     },
   };

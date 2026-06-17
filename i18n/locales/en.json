@@ -639,6 +639,12 @@
     "copy": "Copy account number",
     "copied": "Account number copied",
     "trustNote": "Transfer to the Hopnic company account above only. We never ask you to transfer to a personal account.",
+    "branch": "Branch",
+    "transferOnlyNote": "Please transfer only to Hopnic's company bank account. We never ask you to transfer to a personal account.",
+    "companyName": "Company",
+    "taxId": "Juristic ID / Tax ID",
+    "vatRegistered": "VAT registered",
+    "afterTransferNote": "After transfer, please upload your payment slip. Staff will review the payment evidence before confirming the order or booking.",
     "placeholderWarning": "Bank account details are not configured yet. Please contact staff before transferring."
   },
   "paymentHistory": {

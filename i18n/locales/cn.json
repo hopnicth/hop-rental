@@ -214,7 +214,6 @@
     "signOutAllDevicesDesc": "这将撤销此账户在所有设备上的会话，并返回登录页面。",
     "signOutAllSuccess": "已登出所有设备",
     "signOutAllError": "无法登出所有设备",
-
     "addressTitle": "地址名称",
     "contactName": "联系人",
     "contactPhone": "联系电话",
@@ -232,7 +231,6 @@
     "confirmDelete": "确认删除",
     "confirmDeleteAddress": "确定要删除此地址吗？",
     "noAddresses": "暂无地址",
-
     "uploadIdCard": "上传身份证",
     "uploadPdpa": "上传PDPA文件",
     "kycFileTypes": "支持文件：JPEG、PNG、PDF",
@@ -290,12 +288,10 @@
     "kycUploadSuccessDesc": "您的KYC状态已返回待审核。",
     "kycUploadError": "无法上传身份验证文件",
     "reupload": "重新上传",
-
     "pointsRewards": "积分与奖励",
     "totalPoints": "总积分",
     "redeemPoints": "兑换积分",
     "comingSoon": "即将推出",
-
     "membershipLevel": "会员等级",
     "memberBronze": "铜牌",
     "memberSilver": "银牌",
@@ -623,7 +619,13 @@
     "copy": "[NEEDS_TRANSLATION]: Copy account number",
     "copied": "[NEEDS_TRANSLATION]: Account number copied",
     "trustNote": "[NEEDS_TRANSLATION]: Transfer to the Hopnic company account above only. We never ask you to transfer to a personal account.",
-    "placeholderWarning": "[NEEDS_TRANSLATION]: Bank account details are not configured yet. Please contact staff before transferring."
+    "placeholderWarning": "[NEEDS_TRANSLATION]: Bank account details are not configured yet. Please contact staff before transferring.",
+    "branch": "[NEEDS_TRANSLATION]: Branch",
+    "transferOnlyNote": "[NEEDS_TRANSLATION]: Please transfer only to Hopnic's company bank account. We never ask you to transfer to a personal account.",
+    "companyName": "[NEEDS_TRANSLATION]: Company",
+    "taxId": "[NEEDS_TRANSLATION]: Juristic ID / Tax ID",
+    "vatRegistered": "[NEEDS_TRANSLATION]: VAT registered",
+    "afterTransferNote": "[NEEDS_TRANSLATION]: After transfer, please upload your payment slip. Staff will review the payment evidence before confirming the order or booking."
   },
   "paymentHistory": {
     "title": "[NEEDS_TRANSLATION]: Payment evidence",

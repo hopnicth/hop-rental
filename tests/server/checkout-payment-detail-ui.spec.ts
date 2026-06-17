@@ -65,10 +65,13 @@ describe("detail pages link to the related payment request (history kept, no pri
 });
 
 describe("central bank config", () => {
-  it("exists, is a placeholder, and exposes the placeholder flag", () => {
+  it("holds the configured Hopnic account (no [TODO]) + company info + flag", () => {
     expect(BANK_CFG).toContain("HOPNIC_PAYMENT_ACCOUNT");
     expect(BANK_CFG).toContain("HOPNIC_PAYMENT_ACCOUNT_IS_PLACEHOLDER");
-    expect(BANK_CFG).toContain("[TODO");
+    expect(BANK_CFG).toContain("HOPNIC_COMPANY_INFO");
+    expect(BANK_CFG).not.toContain("[TODO");
+    expect(BANK_CFG).toContain("127-8-56077-1");
+    expect(BANK_CFG).toContain("0105564155415");
   });
   it("bank component reads the config (no hardcoded account number) + copy", () => {
     expect(BANK_CMP).toContain("HOPNIC_PAYMENT_ACCOUNT");
@@ -77,6 +80,39 @@ describe("central bank config", () => {
     // no file links / download anchors (only account text + copy button)
     expect(BANK_CMP).not.toContain("<a ");
     expect(BANK_CMP).not.toContain("href=");
+  });
+  it("renders branch + company trust block, localized by locale (th/en)", () => {
+    expect(BANK_CMP).toContain("HOPNIC_COMPANY_INFO");
+    expect(BANK_CMP).toContain("localized(");
+    expect(BANK_CMP).toContain("locale.value === \"en\"");
+    expect(BANK_CMP).toContain("paymentBank.branch");
+    expect(BANK_CMP).toContain("paymentBank.companyName");
+    expect(BANK_CMP).toContain("paymentBank.taxId");
+    expect(BANK_CMP).toContain("paymentBank.transferOnlyNote");
+    // no hardcoded bank values in the component — all from the central config
+    expect(BANK_CMP).not.toContain("127-8-56077-1");
+    expect(BANK_CMP).not.toContain("กสิกร");
+  });
+  it("en + th paymentBank keys used by the card are real (no NEEDS_TRANSLATION)", () => {
+    const USED = [
+      "title",
+      "accountName",
+      "bankName",
+      "accountNumber",
+      "branch",
+      "transferOnlyNote",
+      "companyName",
+      "taxId",
+      "vatRegistered",
+      "afterTransferNote",
+    ];
+    for (const loc of ["en", "th"] as const) {
+      const pb = JSON.parse(read(`i18n/locales/${loc}.json`)).paymentBank;
+      for (const k of USED) {
+        expect(pb[k]).toBeTruthy();
+        expect(pb[k]).not.toContain("NEEDS_TRANSLATION");
+      }
+    }
   });
 });
 

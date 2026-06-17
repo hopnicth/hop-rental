@@ -636,14 +636,20 @@
     "bookerPhonePlaceholder": "เช่น 081-234-5678"
   },
   "paymentBank": {
-    "title": "[NEEDS_TRANSLATION]: Bank transfer details",
-    "accountName": "[NEEDS_TRANSLATION]: Account name",
-    "bankName": "[NEEDS_TRANSLATION]: Bank",
-    "accountNumber": "[NEEDS_TRANSLATION]: Account number",
-    "copy": "[NEEDS_TRANSLATION]: Copy account number",
-    "copied": "[NEEDS_TRANSLATION]: Account number copied",
-    "trustNote": "[NEEDS_TRANSLATION]: Transfer to the Hopnic company account above only. We never ask you to transfer to a personal account.",
-    "placeholderWarning": "[NEEDS_TRANSLATION]: Bank account details are not configured yet. Please contact staff before transferring."
+    "title": "รายละเอียดการโอนเงิน",
+    "accountName": "ชื่อบัญชี",
+    "bankName": "ธนาคาร",
+    "accountNumber": "เลขที่บัญชี",
+    "copy": "คัดลอกเลขที่บัญชี",
+    "copied": "คัดลอกเลขที่บัญชีแล้ว",
+    "trustNote": "กรุณาโอนเงินเข้าบัญชีบริษัทเท่านั้น เราไม่มีนโยบายให้โอนเข้าบัญชีส่วนบุคคล",
+    "branch": "สาขา",
+    "transferOnlyNote": "กรุณาโอนเงินเข้าบัญชีบริษัทเท่านั้น เราไม่มีนโยบายให้โอนเข้าบัญชีส่วนบุคคล",
+    "companyName": "บริษัท",
+    "taxId": "เลขทะเบียนนิติบุคคล / เลขประจำตัวผู้เสียภาษี",
+    "vatRegistered": "จดทะเบียนภาษีมูลค่าเพิ่มแล้ว",
+    "afterTransferNote": "หลังจากโอนเงินแล้ว กรุณาอัปโหลดหลักฐานการชำระเงิน ระบบจะรอเจ้าหน้าที่ตรวจสอบก่อนยืนยันรายการ",
+    "placeholderWarning": "ยังไม่ได้ตั้งค่าข้อมูลบัญชีธนาคาร กรุณาติดต่อเจ้าหน้าที่ก่อนโอนเงิน"
   },
   "paymentHistory": {
     "title": "[NEEDS_TRANSLATION]: Payment evidence",

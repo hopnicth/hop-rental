@@ -213,7 +213,6 @@
     "signOutAllDevicesDesc": "このアカウントのすべてのデバイスのセッションを取り消し、ログイン画面に戻ります。",
     "signOutAllSuccess": "すべてのデバイスからログアウトしました",
     "signOutAllError": "すべてのデバイスからログアウトできませんでした",
-
     "addressTitle": "住所ラベル",
     "contactName": "連絡先名",
     "contactPhone": "連絡先電話番号",
@@ -231,7 +230,6 @@
     "confirmDelete": "削除確認",
     "confirmDeleteAddress": "この住所を削除しますか？",
     "noAddresses": "住所はまだありません",
-
     "uploadIdCard": "身分証明書をアップロード",
     "uploadPdpa": "PDPA書類をアップロード",
     "kycFileTypes": "対応ファイル：JPEG、PNG、PDF",
@@ -289,12 +287,10 @@
     "kycUploadSuccessDesc": "KYCステータスは審査待ちに戻りました。",
     "kycUploadError": "本人確認書類をアップロードできませんでした",
     "reupload": "再アップロード",
-
     "pointsRewards": "ポイント＆特典",
     "totalPoints": "合計ポイント",
     "redeemPoints": "ポイント交換",
     "comingSoon": "近日公開",
-
     "membershipLevel": "会員ランク",
     "memberBronze": "ブロンズ",
     "memberSilver": "シルバー",
@@ -628,7 +624,13 @@
     "copy": "[NEEDS_TRANSLATION]: Copy account number",
     "copied": "[NEEDS_TRANSLATION]: Account number copied",
     "trustNote": "[NEEDS_TRANSLATION]: Transfer to the Hopnic company account above only. We never ask you to transfer to a personal account.",
-    "placeholderWarning": "[NEEDS_TRANSLATION]: Bank account details are not configured yet. Please contact staff before transferring."
+    "placeholderWarning": "[NEEDS_TRANSLATION]: Bank account details are not configured yet. Please contact staff before transferring.",
+    "branch": "[NEEDS_TRANSLATION]: Branch",
+    "transferOnlyNote": "[NEEDS_TRANSLATION]: Please transfer only to Hopnic's company bank account. We never ask you to transfer to a personal account.",
+    "companyName": "[NEEDS_TRANSLATION]: Company",
+    "taxId": "[NEEDS_TRANSLATION]: Juristic ID / Tax ID",
+    "vatRegistered": "[NEEDS_TRANSLATION]: VAT registered",
+    "afterTransferNote": "[NEEDS_TRANSLATION]: After transfer, please upload your payment slip. Staff will review the payment evidence before confirming the order or booking."
   },
   "paymentHistory": {
     "title": "[NEEDS_TRANSLATION]: Payment evidence",
