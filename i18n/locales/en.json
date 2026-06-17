@@ -630,7 +630,34 @@
     "bookerPhone": "Contact phone",
     "bookerPhonePlaceholder": "e.g. 081-234-5678"
   },
+  "paymentBank": {
+    "title": "Bank transfer details",
+    "accountName": "Account name",
+    "bankName": "Bank",
+    "accountNumber": "Account number",
+    "copy": "Copy account number",
+    "copied": "Account number copied",
+    "trustNote": "Transfer to the Hopnic company account above only. We never ask you to transfer to a personal account.",
+    "placeholderWarning": "Bank account details are not configured yet. Please contact staff before transferring."
+  },
+  "paymentHistory": {
+    "title": "Payment evidence",
+    "empty": "No payment slip uploaded yet.",
+    "status": {
+      "pending_review": "Pending review",
+      "reviewed": "Reviewed",
+      "rejected": "Rejected"
+    }
+  },
   "cart": {
+    "checkoutNote": "After you tap Checkout, we'll show the bank account to transfer to and let you upload your payment evidence.",
+    "checkoutTermsLabel": "I accept the terms and conditions",
+    "checkoutButton": "Checkout",
+    "selectNextStepTitle": "Choose what to pay for next:",
+    "rentalNextStep": "Rental booking — transfer deposit & upload slip",
+    "saleNextStep": "Order — transfer payment & upload slip",
+    "noCheckoutItemsTitle": "Nothing to checkout",
+    "noCheckoutItemsDesc": "Your cart has no items to check out.",
     "manualRentalCta": "Upload deposit slip / View booking",
     "manualRentalGuidanceTitle": "Pay the booking deposit by bank transfer",
     "manualRentalGuidanceDesc": "Transfer the booking deposit to our bank account, then open each booking to upload your transfer slip. Your booking is not confirmed until staff verify the slip. The booking deposit is a refundable security deposit (not the rental fee); the rental fee is paid later at pickup.",

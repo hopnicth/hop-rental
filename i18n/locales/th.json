@@ -634,7 +634,34 @@
     "bookerPhone": "เบอร์โทรติดต่อ",
     "bookerPhonePlaceholder": "เช่น 081-234-5678"
   },
+  "paymentBank": {
+    "title": "[NEEDS_TRANSLATION]: Bank transfer details",
+    "accountName": "[NEEDS_TRANSLATION]: Account name",
+    "bankName": "[NEEDS_TRANSLATION]: Bank",
+    "accountNumber": "[NEEDS_TRANSLATION]: Account number",
+    "copy": "[NEEDS_TRANSLATION]: Copy account number",
+    "copied": "[NEEDS_TRANSLATION]: Account number copied",
+    "trustNote": "[NEEDS_TRANSLATION]: Transfer to the Hopnic company account above only. We never ask you to transfer to a personal account.",
+    "placeholderWarning": "[NEEDS_TRANSLATION]: Bank account details are not configured yet. Please contact staff before transferring."
+  },
+  "paymentHistory": {
+    "title": "[NEEDS_TRANSLATION]: Payment evidence",
+    "empty": "[NEEDS_TRANSLATION]: No payment slip uploaded yet.",
+    "status": {
+      "pending_review": "[NEEDS_TRANSLATION]: Pending review",
+      "reviewed": "[NEEDS_TRANSLATION]: Reviewed",
+      "rejected": "[NEEDS_TRANSLATION]: Rejected"
+    }
+  },
   "cart": {
+    "checkoutNote": "หลังจากกดชำระเงิน ระบบจะแสดงรายละเอียดบัญชีสำหรับโอนเงิน และให้คุณอัปโหลดหลักฐานการชำระเงิน",
+    "checkoutTermsLabel": "[NEEDS_TRANSLATION]: I accept the terms and conditions",
+    "checkoutButton": "ชำระเงิน",
+    "selectNextStepTitle": "[NEEDS_TRANSLATION]: Choose what to pay for next:",
+    "rentalNextStep": "[NEEDS_TRANSLATION]: Rental booking — transfer deposit & upload slip",
+    "saleNextStep": "[NEEDS_TRANSLATION]: Order — transfer payment & upload slip",
+    "noCheckoutItemsTitle": "[NEEDS_TRANSLATION]: Nothing to checkout",
+    "noCheckoutItemsDesc": "[NEEDS_TRANSLATION]: Your cart has no items to check out.",
     "manualRentalCta": "[NEEDS_TRANSLATION]: Upload deposit slip / View booking",
     "manualRentalGuidanceTitle": "[NEEDS_TRANSLATION]: Pay the booking deposit by bank transfer",
     "manualRentalGuidanceDesc": "[NEEDS_TRANSLATION]: Transfer the booking deposit to our bank account, then open each booking to upload your transfer slip. Your booking is not confirmed until staff verify the slip. The booking deposit is a refundable security deposit (not the rental fee); the rental fee is paid later at pickup.",

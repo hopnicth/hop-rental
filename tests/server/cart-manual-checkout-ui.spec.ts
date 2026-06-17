@@ -28,17 +28,15 @@ describe("cart launch flag + gating", () => {
   });
 });
 
-describe("manual CTAs", () => {
-  it("rental CTA routes to the rental booking detail", () => {
-    expect(CART).toContain("goToBookingDetail");
+describe("unified manual checkout", () => {
+  it("single Checkout routes to the rental booking detail", () => {
+    expect(CART).toContain("handleCheckout");
     expect(CART).toContain("/user/rentals/");
-    expect(CART).toContain("cart.manualRentalCta");
   });
-  it("sale CTA creates a bank_transfer order and routes to order detail", () => {
-    expect(CART).toContain("handleManualSaleCheckout");
+  it("Checkout creates a bank_transfer order and routes to order detail", () => {
+    expect(CART).toContain("createManualSaleOrder");
     expect(CART).toContain('paymentMethod: "bank_transfer"');
     expect(CART).toContain("/user/orders/");
-    expect(CART).toContain("cart.manualSaleCta");
   });
 });
 

@@ -151,6 +151,8 @@ watch(orderId, () => void loadDetail(), { immediate: true });
         </div>
       </UCard>
 
+      <PaymentBankTransferCard v-if="!isPaid" />
+
       <UCard v-if="isPaid">
         <UAlert
           color="success"
@@ -206,6 +208,8 @@ watch(orderId, () => void loadDetail(), { immediate: true });
           </UButton>
         </div>
       </UCard>
+
+      <PaymentSlipHistory :slips="detail.paymentSlips" />
     </template>
   </div>
 </template>

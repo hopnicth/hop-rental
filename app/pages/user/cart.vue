@@ -390,9 +390,18 @@ const paymentMethod = ref<PaymentMethod>("credit_card");
 // TODO: flip to true (or wire an env flag) when online payment is ready.
 const ONLINE_CART_PAYMENT_ENABLED = false;
 
-async function goToBookingDetail(bookingId: string): Promise<void> {
-  await navigateTo(`/user/rentals/${encodeURIComponent(bookingId)}`);
+// Unified launch checkout: cart is a review/checkout page only. After Checkout,
+// customers are routed to the per-record payment detail page(s) to see bank
+// details and upload a slip. Mixed/multiple records → a selection state.
+interface CheckoutTarget {
+  type: "rental" | "sale";
+  id: string;
+  route: string;
+  label: string;
 }
+const checkoutTermsAccepted = ref(false);
+const isCheckingOut = ref(false);
+const checkoutTargets = ref<CheckoutTarget[]>([]);
 
 // ── B2B Quotation ──
 // Build a synthetic Address when the user opts to pick up at a branch,
@@ -1009,20 +1018,20 @@ async function handleUnifiedCheckoutPay() {
   }
 }
 
-// Manual bank-transfer sale checkout (launch): create an unpaid order
-// (payment_status awaiting_payment) and route to its detail page for slip
-// upload. No online payment; the order is NOT paid until admin verifies.
-async function handleManualSaleCheckout() {
+// Create an unpaid sale order (payment_status awaiting_payment) for manual
+// bank transfer. Returns the new order id, or null if validation/creation
+// failed (an inline error is shown). Does NOT navigate or clear the cart.
+async function createManualSaleOrder(): Promise<string | null> {
   if (!hasPurchaseItems.value) {
     showInlineOrderError(t("cart.noSaleItemsTitle"), t("cart.noSaleItemsDesc"));
-    return;
+    return null;
   }
   if (!isSaleCheckoutStateReady.value) {
     showInlineOrderError(
       t("cart.checkoutStateLoadingTitle"),
       t("cart.checkoutStateLoadingDesc"),
     );
-    return;
+    return null;
   }
   if (!selectedAddress.value) {
     showInlineOrderError(
@@ -1033,10 +1042,9 @@ async function handleManualSaleCheckout() {
         ? t("cart.pickupBranchRequiredDesc")
         : t("cart.deliveryAddressRequiredDesc"),
     );
-    return;
+    return null;
   }
 
-  isSubmittingOrder.value = true;
   try {
     const isCartValid = await validateCart();
     if (!isCartValid) {
@@ -1044,7 +1052,7 @@ async function handleManualSaleCheckout() {
         t("cart.cartChangedTitle"),
         t("cart.cartChangedDesc"),
       );
-      return;
+      return null;
     }
     const resolvedCompanyId = isB2B.value
       ? (currentCompany.value?.id ?? selectedAddress.value.companyId ?? null)
@@ -1090,7 +1098,7 @@ async function handleManualSaleCheckout() {
     }
     // Cart is intentionally NOT cleared — it is cleared only when admin marks
     // the order paid after verifying the transfer slip.
-    await navigateTo(`/user/orders/${encodeURIComponent(newOrderId)}`);
+    return newOrderId;
   } catch (submitError) {
     showInlineOrderError(
       "Order submit failed",
@@ -1098,8 +1106,51 @@ async function handleManualSaleCheckout() {
         ? submitError.message
         : "Please try again in a moment.",
     );
+    return null;
+  }
+}
+
+// Single Checkout action: create the sale order (if any sale items), collect
+// the per-record payment-detail targets (sale order + each rental booking),
+// then route to the single target or surface a selection state for multiple.
+async function handleCheckout(): Promise<void> {
+  if (!checkoutTermsAccepted.value || isCheckingOut.value) return;
+  isCheckingOut.value = true;
+  checkoutTargets.value = [];
+  try {
+    const targets: CheckoutTarget[] = [];
+    if (hasPurchaseItems.value) {
+      const orderId = await createManualSaleOrder();
+      if (!orderId) return; // inline error already shown
+      targets.push({
+        type: "sale",
+        id: orderId,
+        route: `/user/orders/${encodeURIComponent(orderId)}`,
+        label: t("cart.saleNextStep"),
+      });
+    }
+    for (const booking of activeBookings.value) {
+      targets.push({
+        type: "rental",
+        id: booking.bookingId,
+        route: `/user/rentals/${encodeURIComponent(booking.bookingId)}`,
+        label: t("cart.rentalNextStep"),
+      });
+    }
+    if (targets.length === 0) {
+      showInlineOrderError(
+        t("cart.noCheckoutItemsTitle"),
+        t("cart.noCheckoutItemsDesc"),
+      );
+      return;
+    }
+    if (targets.length === 1) {
+      await navigateTo(targets[0]!.route);
+      return;
+    }
+    checkoutTargets.value = targets;
   } finally {
-    isSubmittingOrder.value = false;
+    isCheckingOut.value = false;
   }
 }
 
@@ -1617,18 +1668,6 @@ async function handlePay() {
                   "
                 />
 
-                <div
-                  v-if="!ONLINE_CART_PAYMENT_ENABLED && canEditBookingDraft(booking)"
-                  class="pt-2"
-                >
-                  <UButton
-                    :label="t('cart.manualRentalCta')"
-                    icon="bx:upload"
-                    color="primary"
-                    size="sm"
-                    @click="() => void goToBookingDetail(booking.bookingId)"
-                  />
-                </div>
                 <div
                   v-if="
                     ONLINE_CART_PAYMENT_ENABLED &&
@@ -2715,29 +2754,49 @@ async function handlePay() {
                   @click="handleUnifiedCheckoutPay"
                 />
               </div>
-              <div v-else class="flex w-full flex-col gap-3">
-                <UAlert
-                  v-if="hasPurchaseItems"
-                  icon="bx:building-house"
-                  color="info"
-                  variant="soft"
-                  :title="t('cart.manualSaleGuidanceTitle')"
-                  :description="t('cart.manualSaleGuidanceDesc')"
-                />
-                <UButton
-                  v-if="hasPurchaseItems && !isB2BUser"
-                  :label="t('cart.manualSaleCta')"
-                  icon="bx:upload"
-                  size="lg"
-                  color="primary"
-                  :loading="isSubmittingOrder"
-                  :disabled="
-                    isSubmittingOrder ||
-                    !hasPurchaseItems ||
-                    !isSaleCheckoutStateReady
-                  "
-                  @click="handleManualSaleCheckout"
-                />
+              <div
+                v-else-if="!isB2BUser"
+                class="flex w-full flex-col gap-3"
+              >
+                <!-- Post-checkout selection (mixed / multiple records) -->
+                <template v-if="checkoutTargets.length > 1">
+                  <p class="text-sm font-medium">
+                    {{ t("cart.selectNextStepTitle") }}
+                  </p>
+                  <UButton
+                    v-for="target in checkoutTargets"
+                    :key="`${target.type}-${target.id}`"
+                    :label="target.label"
+                    icon="bx:right-arrow-alt"
+                    color="primary"
+                    variant="soft"
+                    block
+                    @click="() => navigateTo(target.route)"
+                  />
+                </template>
+                <!-- Review/checkout: note + terms + single Checkout button -->
+                <template v-else-if="hasPurchaseItems || activeBookings.length > 0">
+                  <UAlert
+                    icon="bx:info-circle"
+                    color="info"
+                    variant="soft"
+                    :description="t('cart.checkoutNote')"
+                  />
+                  <UCheckbox
+                    v-model="checkoutTermsAccepted"
+                    :label="t('cart.checkoutTermsLabel')"
+                  />
+                  <UButton
+                    :label="t('cart.checkoutButton')"
+                    icon="bx:check-circle"
+                    size="lg"
+                    color="primary"
+                    block
+                    :loading="isCheckingOut"
+                    :disabled="!checkoutTermsAccepted || isCheckingOut"
+                    @click="handleCheckout"
+                  />
+                </template>
               </div>
               <UAlert
                 v-if="hasActiveBookingCheckout || hasActiveCartCheckout"

@@ -51,6 +51,9 @@ const slipUploading = ref(false);
 const slipUploaded = ref<{ originalFilename: string; status: string } | null>(
   null,
 );
+const depositSlips = ref<
+  { id: string; originalFilename: string; status: string; uploadedAt: string }[]
+>([]);
 const canUploadDepositSlip = computed(
   () => detail.value?.booking.status === "draft",
 );
@@ -252,6 +255,24 @@ async function loadDetail() {
     loading.value = false;
   }
 }
+async function loadDepositSlips() {
+  if (!bookingId.value) return;
+  try {
+    const res = await $fetch<{
+      slips: {
+        id: string;
+        originalFilename: string;
+        status: string;
+        uploadedAt: string;
+      }[];
+    }>(
+      `/api/user/rental-bookings/${encodeURIComponent(bookingId.value)}/deposit-slips`,
+    );
+    depositSlips.value = res.slips ?? [];
+  } catch {
+    depositSlips.value = [];
+  }
+}
 function onSlipChange(event: Event) {
   const input = event.target as HTMLInputElement;
   slipFile.value = input.files?.[0] ?? null;
@@ -278,6 +299,7 @@ async function uploadDepositSlip() {
       color: "success",
     });
     await loadDetail();
+    await loadDepositSlips();
   } catch (e) {
     toast.add({
       title:
@@ -361,7 +383,14 @@ async function submitCancel() {
   }
 }
 
-watch(bookingId, () => void loadDetail(), { immediate: true });
+watch(
+  bookingId,
+  () => {
+    void loadDetail();
+    void loadDepositSlips();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -439,6 +468,8 @@ watch(bookingId, () => void loadDetail(), { immediate: true });
           </p>
         </div></UCard
       >
+      <PaymentBankTransferCard v-if="canUploadDepositSlip" />
+
       <UCard v-if="canUploadDepositSlip">
         <template #header
           ><h2 class="font-semibold">
@@ -477,6 +508,11 @@ watch(bookingId, () => void loadDetail(), { immediate: true });
           </UButton>
         </div></UCard
       >
+
+      <PaymentSlipHistory
+        v-if="depositSlips.length"
+        :slips="depositSlips"
+      />
       <div class="grid gap-6 lg:grid-cols-[1fr_320px]">
         <UCard
           ><template #header
