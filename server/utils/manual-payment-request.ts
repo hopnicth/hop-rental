@@ -149,6 +149,40 @@ interface PlannedItem {
 }
 
 /**
+ * Actionable, secret-free server log for a manual-payment-request create failure.
+ * Records the checkout mode, target counts, the failing step, and the SANITIZED
+ * Supabase error code/message (never keys/tokens/PII). A `42P01` (undefined_table)
+ * here almost always means the running app's DB is missing migration 115 — e.g.
+ * the dev server points at a Supabase instance where the migration isn't applied.
+ */
+function logManualPaymentCreateFailure(
+  step: "insert_header" | "insert_items",
+  error: { code?: string; message?: string } | null,
+  ctx: {
+    sourceType: string;
+    hasOrder: boolean;
+    bookingCount: number;
+    itemCount: number;
+  },
+): void {
+  const code = error?.code ?? null;
+  const hint =
+    code === "42P01"
+      ? "undefined_table — running DB is missing migration 115 (manual_payment_request* tables). Check which Supabase instance the app targets."
+      : undefined;
+  console.error("[payments] manual payment request create failed", {
+    step,
+    mode: ctx.sourceType,
+    hasOrder: ctx.hasOrder,
+    bookingCount: ctx.bookingCount,
+    itemCount: ctx.itemCount,
+    code,
+    message: error?.message ?? null,
+    ...(hint ? { hint } : {}),
+  });
+}
+
+/**
  * Build (or reuse) a manual payment request from targets the cart already created:
  * an unpaid sale order and/or draft rental booking(s). Amounts are authoritative
  * (read from the targets). Ownership + eligibility are enforced before any write.
@@ -330,7 +364,12 @@ export async function createManualPaymentRequestFromTargets(
     .select("id")
     .single();
   if (headerError || !header?.id) {
-    console.error("[payments] request insert failed", headerError?.message);
+    logManualPaymentCreateFailure("insert_header", headerError, {
+      sourceType,
+      hasOrder: Boolean(orderId),
+      bookingCount: bookingIds.length,
+      itemCount: planned.length,
+    });
     throw createError({
       statusCode: 500,
       statusMessage: "PAYMENT_REQUEST_CREATE_FAILED",
@@ -344,7 +383,12 @@ export async function createManualPaymentRequestFromTargets(
       planned.map((p) => ({ payment_request_id: paymentRequestId, ...p })),
     );
   if (itemsError) {
-    console.error("[payments] request items insert failed", itemsError.message);
+    logManualPaymentCreateFailure("insert_items", itemsError, {
+      sourceType,
+      hasOrder: Boolean(orderId),
+      bookingCount: bookingIds.length,
+      itemCount: planned.length,
+    });
     throw createError({
       statusCode: 500,
       statusMessage: "PAYMENT_REQUEST_ITEMS_FAILED",
