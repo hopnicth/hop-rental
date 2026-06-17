@@ -160,3 +160,94 @@ async function handleSubmit() {
 - ❌ ห้ามอ้างอิง "DESIGNED ONLY" doc เป็นเหตุผลว่ามี implementation แล้ว
 - ❌ ห้ามแก้ `schema-snapshots/` — เป็น read-only reference
 - ❌ ห้ามนำ design ใน "PARKED" section มา implement โดยไม่มีการ re-approve
+
+---
+
+## 7. Playwright MCP — Browser-Assisted Smoke / Debug
+
+> **Status: ACTIVE — assisted QA/debug tool only.** Playwright MCP คือ real-browser tool สำหรับ
+> local smoke/debug ที่ทำเฉพาะจุด — **ไม่ใช่** ตัวแทนของ repeatable Playwright E2E tests
+
+### 7.1 What it is for
+
+Playwright MCP ใช้ได้กับ **focused flow** ที่การเปิด browser จริงช่วยได้จริงเท่านั้น เช่น:
+
+- customer rental checkout smoke
+- cart / payment detail smoke
+- admin KYC page smoke
+- POS pickup readiness smoke
+- reproducing a UI bug ที่เห็นใน browser
+
+### 7.2 Hard rules — must follow
+
+- ❌ ห้ามใช้ crawl ทั้งแอปแบบไม่มีเป้าหมาย (no broad unfocused crawling)
+- ❌ ห้ามใช้เป็น primary regression strategy
+- ✅ Prefer committed Playwright E2E specs + terminal commands สำหรับ repeatable tests
+- ✅ ใช้ MCP **หลังจาก** รู้ชัดแล้วว่า: target URL, role, fixture, expected behavior
+- ✅ For mutating flows: ใช้ **local / seeded test data เท่านั้น**
+- ❌ ห้ามใช้ production data หรือ real customer data
+- ❌ ห้าม upload ไฟล์ sensitive จริง — KYC documents, payment slips, IDs, passports,
+  bank slips หรือ sensitive files อื่น ๆ ระหว่าง MCP smoke test
+- ❌ ห้าม store/commit MCP browser state, cookies, local profiles, screenshots, videos,
+  หรือ traces ที่มี sensitive data
+- ✅ ถ้ามี screenshot/trace ถูกสร้างขึ้น → เก็บไว้ local เท่านั้น และรายงาน path เฉพาะเมื่อปลอดภัย
+
+### 7.3 Before every MCP session — state these first
+
+ก่อนเปิด browser ด้วย MCP ต้องระบุให้ครบ:
+
+1. **purpose** — ทำเพื่ออะไร
+2. **target route** — URL เดียวที่จะเปิด
+3. **test role / account source** — role อะไร, account มาจากไหน (seeded/local)
+4. **read-only or mutating** — action อ่านอย่างเดียว หรือเขียน/แก้ data
+5. **expected result** — คาดว่าจะเห็นอะไร
+
+### 7.4 If MCP reveals a bug — capture
+
+- route
+- role
+- fixture / data used
+- exact action
+- expected behavior
+- actual behavior
+- console / network errors (ถ้าเกี่ยวข้อง)
+- screenshot / trace path (เฉพาะเมื่อปลอดภัย)
+
+### 7.5 Token budget rule
+
+Playwright MCP **token-expensive** กว่า terminal test output มาก ใช้เฉพาะ focused browser
+debugging เท่านั้น สำหรับ regression ปกติให้ **เขียน/รัน Playwright tests ผ่าน CLI ก่อน**
+ใช้ MCP เฉพาะเมื่อ terminal output ไม่พอที่จะเข้าใจ UI state เท่านั้น
+
+หลีกเลี่ยง: long exploratory sessions, repeated full-page snapshots, การ browse ทั้งแอป
+โดยไม่มีเป้าหมายชัด
+
+### 7.6 Preferred workflow
+
+**A. รัน normal checks ก่อนเสมอ:**
+
+```bash
+npm run lint        # ถ้ามี lint script
+npx tsc --noEmit
+npm test            # = vitest run
+```
+
+**B. สำหรับ browser regression — prefer Playwright CLI tests:**
+
+```bash
+npx playwright test
+npx playwright test --headed
+npx playwright test --debug
+```
+
+**C. ใช้ Playwright MCP เฉพาะ targeted browser investigation:**
+
+- one route
+- one role
+- one expected behavior
+- stop หลัง confirm pass/fail
+- รายงานผลแบบ concise
+
+> Note: ปัจจุบัน repo ยังไม่มี committed Playwright E2E specs หรือ lint script —
+> regression coverage หลักอยู่ที่ Vitest (`npm test`). คำสั่ง `npx playwright test`
+> ในข้อ B จะใช้ได้เมื่อมีการ add Playwright runner + specs ในอนาคต
