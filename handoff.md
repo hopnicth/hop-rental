@@ -1,5 +1,49 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-18 (Central manual payment requests — branch cart-checkout-to-payment-detail, NOT pushed)
+
+Task: Replace per-target/query-param manual payment pages with ONE central
+`manual_payment_requests` model. Cart → create/reuse sale order + draft bookings → ONE
+payment request (+ allocation items) → `/user/payments/[id]` (one amount, one slip,
+evidence-only). Admin reviews evidence; confirmation stays on existing admin actions.
+
+Commits (on top of `437cf61`; 6 new, NOT pushed): `e589a1d` (migration 115) · `18a2a1f`
+(types) · `1da59bb` (server APIs + utils + index) · `0891e7d` (customer UI + i18n) ·
+`3c8c5bc` (admin UI) · `cb4b07f` (tests).
+
+Locked invariants (verify before changing):
+- EVIDENCE ONLY: customer slip upload → request `pending_review`; never marks order paid,
+  confirms booking, deducts inventory, writes `rental_held_balance_events`, or touches
+  Omise/`payment_attempts`/KYC. Admin review/reject change only manual_payment_request*/
+  _slips status. Sale/booking confirmation = existing admin actions only.
+- Slips live in PRIVATE bucket `manual-payment-slips`; admin views via short-lived signed
+  URL through `GET /api/admin/.../slips/[slipId]/download`. Never public URL.
+- Create endpoint computes amounts server-side (order grand_total + booking deposit via
+  `calculateBookingDepositDueNow`); client amounts never trusted; enforces ownership +
+  order awaiting_payment + booking draft. Reuses an active request covering the same
+  target set (safe re-checkout).
+- ADDITIVE: existing `sale_order_payment_slips` / `rental_booking_deposit_slips` tables +
+  endpoints KEPT (legacy). Central slip table does NOT fan out to them.
+
+Verification: `supabase db reset --local` clean (migration 115 assertions pass); `npx tsc
+--noEmit` = 0; 4 new specs (45 tests) + 5 updated flow specs green; grep guards pass.
+
+OPEN ITEMS for next session:
+1. **Real bank account config** — `app/utils/payment-account.ts` still placeholder ([TODO]).
+2. **cn/jp translations** — `paymentRequests.*` cn/jp are `[NEEDS_TRANSLATION]` (en/th real).
+3. **Migration 115 + types are LOCAL only** — remote `db push --linked` + `--linked` regen
+   before deploy (same gate as 113/114).
+4. **Not pushed** — all 6 commits local.
+5. **Browser/staging smoke** not run (CLI env).
+6. Deferred: amount-paid / paid-at fields; `manual_payment_request_events` audit table;
+   accounting/receipt/VAT. `/user/checkout-payment` kept-but-deprecated (unlinked).
+7. **Pre-existing unrelated test failures** (8 files, fail at baseline `cbc69e4`):
+   cart-phase-31b-ui, mixed-checkout-ui (old online/mixed cart UI removed earlier),
+   admin-pos-v2-rental-bookings, pos-v2-pickup-completion, admin-pos-v3-qr-webhook,
+   admin-pos-v3-remaining-security-deposit-payments, admin-operational-documents,
+   admin-booking-handover-ui (date/amount/mock/stale-string). Out of scope here.
+8. Local task log: `docs/task-runs/manual-payment-requests.md` (gitignored, not committed).
+
 ## Claude Code → Claude Code / 2026-06-17 (Cart → manual bank-transfer + slip for rentals AND sale orders — branch cart-manual-transfer-all-items, NOT pushed)
 
 Task: Convert the unified cart to manual bank-transfer + slip upload for BOTH rental bookings and B2C sale items (launch: no online payment).

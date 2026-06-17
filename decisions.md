@@ -1,5 +1,31 @@
 # Design Decisions
 
+## 2026-06-18 (central manual payment requests)
+Decision: Replace the per-target order/rental payment pages and the query-param
+`/user/checkout-payment` prototype with ONE central `manual_payment_requests` model
+(+ `_items` allocation, + `_slips` evidence) as the primary customer payment surface,
+reached at `/user/payments/[id]`. Supports sale_only / booking_only / mixed.
+Reason: One coherent "one amount due now + one slip" flow across all 3 checkout modes;
+order/rental history keep their roles and only link to the related request; durable
+(customer can return later) vs the throwaway query-param page.
+Impact:
+- New migration 115 (3 tables + private bucket `manual-payment-slips` + service_role-only
+  RLS + indexes + assertions). ADDITIVE — existing `sale_order_payment_slips` /
+  `rental_booking_deposit_slips` tables/endpoints are KEPT (legacy), not replaced; the
+  central slip table is the single evidence store for the new flow and does NOT fan out.
+- Cart still creates the sale order via the existing `POST /api/orders` (bank_transfer)
+  and reuses existing draft bookings, then calls `POST /api/user/manual-payment-requests`
+  which computes authoritative amounts server-side (booking deposit via
+  `calculateBookingDepositDueNow`) and builds the request; navigates to `/user/payments/[id]`.
+- EVIDENCE ONLY: customer slip upload moves the request to `pending_review`; it never marks
+  an order paid, confirms a booking, deducts inventory, writes a held-balance event, or
+  touches Omise/KYC. Admin review/reject change only payment-request/slip status; admin still
+  confirms sale/booking via the EXISTING actions (Mark Payment Received / Mark Deposit Received).
+- `/user/checkout-payment` (query-param) KEPT but DEPRECATED/unlinked (avoids breaking its
+  2 committed specs); `/user/payments` list IS in MVP; `manual_payment_request_events` audit
+  table DEFERRED. Money columns NUMERIC(12,2). i18n en/th real, cn/jp `[NEEDS_TRANSLATION]`.
+- Admin pages use hardcoded English (existing non-i18n admin convention).
+
 ## 2026-06-17 (cart manual transfer — sale orders)
 Decision: For launch, hide all online cart payment (Omise card / PromptPay / unified mixed checkout) behind a local flag `ONLINE_CART_PAYMENT_ENABLED=false` and route BOTH rental bookings and B2C sale orders into a manual bank-transfer + slip-upload flow. Sale orders get their OWN slip subsystem, separate from rentals.
 Reason: Launch without a finished online payment integration. A unified "no online payment" cart keeps the customer flow coherent; keeping sale slips separate from rental slips preserves correct accounting (sale payment is an order payment, not a rental held-balance liability).

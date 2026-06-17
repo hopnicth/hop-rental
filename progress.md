@@ -1,5 +1,36 @@
 # PROGRESS
-Last updated: 2026-06-17 (Cart → manual bank-transfer + slip flow for BOTH rentals and sale orders; branch cart-manual-transfer-all-items, NOT pushed)
+Last updated: 2026-06-18 (Central manual payment requests; branch cart-checkout-to-payment-detail, NOT pushed)
+
+## 2026-06-18 — Central manual payment request model ✅
+
+Branch `cart-checkout-to-payment-detail` (base origin/staging `437cf61`). Replaced the
+per-target / query-param manual payment pages with ONE central `manual_payment_requests`
+model. Cart → create/reuse sale order + draft bookings → create ONE payment request (+
+allocation items) → `/user/payments/[id]` (one amount, one slip, evidence-only). Admin
+reviews evidence; sale/booking confirmation stays on the EXISTING admin actions. Supports
+sale_only / booking_only / mixed.
+
+- **Migration 115** (`e589a1d`): tables `manual_payment_requests`, `manual_payment_request_items`,
+  `manual_payment_request_slips`; private bucket `manual-payment-slips`; service_role-only RLS;
+  indexes; updated_at trigger; SQL assertions. Types regen `18a2a1f` (transplanted 3 blocks). Local only.
+- **Server APIs** (`1da59bb`): customer create/list/detail/slip-upload/cancel/by-target; admin
+  list/detail/signed-url-download/review/reject. Utils `manual-payment-request.ts` +
+  `manual-payment-request-slip-evidence.ts`. server-utils-index updated.
+- **Customer UI** (`0891e7d`): cart → `/user/payments/[id]`; `/user/payments` list + detail pages;
+  order/rental detail now link to the related request (history kept, no primary upload here).
+  i18n `paymentRequests.*` en/th real, cn/jp placeholders.
+- **Admin UI** (`3c8c5bc`): `/admin/manual-payment-requests` list + detail (review/reject, signed-url
+  slip view); `AdminPaymentRequestCard` on admin order + rental booking pages.
+- **Tests** (`cb4b07f`): 4 new specs (45 tests) + updated 5 flow specs. tsc=0; targeted suites green.
+
+**Safety:** customer upload = evidence only (request → pending_review); never marks order paid,
+confirms booking, deducts inventory, writes held balance, or touches Omise/KYC. Admin review/reject
+changes only payment-request/slip status. NOT pushed.
+
+**Open/blockers:** real bank account config (placeholder); cn/jp translations; staging browser smoke
+(CLI env); future amount-paid/paid-at fields (deferred); migration 115 + types not pushed remote.
+Pre-existing unrelated test failures (8 files: POS/admin date+logic, cart-phase-31b-ui, mixed-checkout-ui)
+fail at baseline `cbc69e4` — out of scope.
 
 ## 2026-06-17 — Cart manual bank-transfer + slip flow (rentals + sale orders) ✅
 
