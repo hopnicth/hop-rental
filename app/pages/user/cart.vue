@@ -62,6 +62,7 @@ const {
   refreshBookings,
   updateHub,
   removeBooking,
+  refreshSubmittedToPaymentIds,
 } = useBooking();
 
 // ── Address state ──
@@ -116,6 +117,7 @@ async function refreshCartBookingCheckoutState(
   try {
     await refreshCartFromDb();
     await refreshBookings();
+    await refreshSubmittedToPaymentIds();
     await refreshCartCheckoutState({
       bookingIds: activeBookings.value.map((booking) => booking.bookingId),
     });
@@ -718,6 +720,18 @@ async function handleCheckout(): Promise<void> {
         { method: "POST", body: { orderId, bookingIds } },
       );
       await navigateTo(res.redirectTo);
+      // ── Cart cleanup after successful payment-request handoff ──────────────
+      // Runs best-effort after navigation so errors here never block the user.
+      // 1. Clear product cart from DB — prevents re-submission of sale items.
+      // 2. Refresh the payment-request booking filter — excludes submitted draft
+      //    bookings from activeBookings without deleting them from DB (admin needs
+      //    them to confirm the booking after verifying the slip).
+      try {
+        if (orderId) await clearCartPersisted();
+        await refreshSubmittedToPaymentIds();
+      } catch {
+        // Non-fatal — cleanup runs best-effort; user is already on /user/payments/[id].
+      }
     } catch (e) {
       showInlineOrderError(
         t("cart.paymentRequestFailedTitle"),

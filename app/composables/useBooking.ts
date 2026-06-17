@@ -429,6 +429,13 @@ const bookingHydrating = ref(false);
 const currentBookingUserId = ref<string | null>(null);
 /** Prevent duplicate hydration when the same user is already loaded */
 const lastHydratedBookingUserId = ref<string | null | undefined>(undefined);
+/**
+ * Booking IDs that are covered by an active payment request (awaiting_payment |
+ * pending_review). These are excluded from activeBookings so the cart does not
+ * re-show bookings that have already been handed off to a payment request.
+ * Refreshed by the cart page on load and after successful checkout.
+ */
+const submittedToPaymentBookingIds = ref<string[]>([]);
 
 /**
  * Composable for managing rental bookings.
@@ -733,8 +740,12 @@ export function useBooking() {
   /** Total number of confirmed bookings */
   const bookingCount = computed(() => confirmedBookings.value.length);
 
-  /** Draft bookings currently shown in cart/checkout */
-  const activeBookings = computed(() => draftBookings.value);
+  /** Draft bookings currently shown in cart/checkout (excludes bookings already covered by an active payment request) */
+  const activeBookings = computed(() =>
+    draftBookings.value.filter(
+      (b) => !submittedToPaymentBookingIds.value.includes(b.bookingId),
+    ),
+  );
 
   /** Total deposit amount across all confirmed bookings */
   const bookingTotalDeposit = computed(() =>
@@ -1138,6 +1149,24 @@ export function useBooking() {
     })();
   }
 
+  /**
+   * Fetch booking IDs that are already covered by an active payment request
+   * (awaiting_payment | pending_review) and store them so activeBookings can
+   * exclude them from the cart. Call this from the cart page on load and after
+   * a successful payment-request handoff. Fails open: on error, clears the
+   * filter so all draft bookings remain visible.
+   */
+  async function refreshSubmittedToPaymentIds(): Promise<void> {
+    try {
+      const res = await $fetch<{ bookingIds: string[] }>(
+        "/api/user/manual-payment-requests/active-booking-ids",
+      );
+      submittedToPaymentBookingIds.value = res.bookingIds ?? [];
+    } catch {
+      submittedToPaymentBookingIds.value = [];
+    }
+  }
+
   function getConfirmedBookingCountBySku(skuId: string): number {
     return blockingBookings.value.filter((b) => b.skuId === skuId).length;
   }
@@ -1209,6 +1238,7 @@ export function useBooking() {
     updateHub,
     removeBooking,
     clearBookings,
+    refreshSubmittedToPaymentIds,
     resetBookingSession,
   };
 }
