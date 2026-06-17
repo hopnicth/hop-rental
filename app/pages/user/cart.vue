@@ -317,17 +317,11 @@ watchEffect(() => {
 });
 
 // Unified launch checkout: cart is a review/checkout page only. After Checkout,
-// customers are routed to the per-record payment detail page(s) to see bank
-// details and upload a slip. Mixed/multiple records → a selection state.
-interface CheckoutTarget {
-  type: "rental" | "sale";
-  id: string;
-  route: string;
-  label: string;
-}
+// a single target routes to its detail page; multiple targets (mixed sale +
+// booking, or several bookings) route to the combined manual-payment page where
+// the customer sees one combined amount and uploads one slip.
 const checkoutTermsAccepted = ref(false);
 const isCheckingOut = ref(false);
-const checkoutTargets = ref<CheckoutTarget[]>([]);
 
 // ── B2B Quotation ──
 // Build a synthetic Address when the user opts to pick up at a branch,
@@ -420,6 +414,11 @@ const checkoutTermsKey = computed(() =>
     : hasRentalBookings.value
       ? "cart.checkoutTermsRental"
       : "cart.checkoutTermsSale",
+);
+// Combined amount due now for a mixed cart = sale order total (products +
+// shipping) + Booking Deposit due now. Authoritative cart-side figures.
+const combinedDueNow = computed(
+  () => orderGrandTotal.value + rentalPaymentSummary.value.bookingDepositDueNow,
 );
 const isMixedCartCheckoutState = computed(
   () => cartCheckoutState.value.checkoutKind === "mixed",
@@ -690,39 +689,40 @@ async function createManualSaleOrder(): Promise<string | null> {
 async function handleCheckout(): Promise<void> {
   if (!checkoutTermsAccepted.value || isCheckingOut.value) return;
   isCheckingOut.value = true;
-  checkoutTargets.value = [];
   try {
-    const targets: CheckoutTarget[] = [];
+    const bookingIds = activeBookings.value.map((b) => b.bookingId);
+    let orderId: string | null = null;
     if (hasPurchaseItems.value) {
-      const orderId = await createManualSaleOrder();
-      if (!orderId) return; // inline error already shown
-      targets.push({
-        type: "sale",
-        id: orderId,
-        route: `/user/orders/${encodeURIComponent(orderId)}`,
-        label: t("cart.saleNextStep"),
-      });
+      orderId = await createManualSaleOrder();
+      // If sale-order creation failed, its inline error is already shown.
+      // We still surface any existing rental targets below so the customer
+      // can proceed to their booking deposit (rentals are never blocked by a
+      // sale-order failure); the sale items remain in the cart for retry.
     }
-    for (const booking of activeBookings.value) {
-      targets.push({
-        type: "rental",
-        id: booking.bookingId,
-        route: `/user/rentals/${encodeURIComponent(booking.bookingId)}`,
-        label: t("cart.rentalNextStep"),
-      });
+    const targetCount = (orderId ? 1 : 0) + bookingIds.length;
+    if (targetCount === 0) {
+      if (!hasPurchaseItems.value) {
+        showInlineOrderError(
+          t("cart.noCheckoutItemsTitle"),
+          t("cart.noCheckoutItemsDesc"),
+        );
+      }
+      return; // pure-sale failure already showed its error
     }
-    if (targets.length === 0) {
-      showInlineOrderError(
-        t("cart.noCheckoutItemsTitle"),
-        t("cart.noCheckoutItemsDesc"),
+    if (targetCount === 1) {
+      await navigateTo(
+        orderId
+          ? `/user/orders/${encodeURIComponent(orderId)}`
+          : `/user/rentals/${encodeURIComponent(bookingIds[0]!)}`,
       );
       return;
     }
-    if (targets.length === 1) {
-      await navigateTo(targets[0]!.route);
-      return;
-    }
-    checkoutTargets.value = targets;
+    // Combined (mixed sale + booking, or multiple bookings): one combined
+    // amount + one slip upload on the combined payment page.
+    const q = new URLSearchParams();
+    if (orderId) q.set("order", orderId);
+    if (bookingIds.length) q.set("bookings", bookingIds.join(","));
+    await navigateTo(`/user/checkout-payment?${q.toString()}`);
   } finally {
     isCheckingOut.value = false;
   }
@@ -1729,24 +1729,15 @@ async function requestQuotation() {
                 v-if="!isB2BUser"
                 class="flex w-full flex-col gap-3"
               >
-                <!-- Post-checkout selection (mixed / multiple records) -->
-                <template v-if="checkoutTargets.length > 1">
-                  <p class="text-sm font-medium">
-                    {{ t("cart.selectNextStepTitle") }}
-                  </p>
-                  <UButton
-                    v-for="target in checkoutTargets"
-                    :key="`${target.type}-${target.id}`"
-                    :label="target.label"
-                    icon="bx:right-arrow-alt"
-                    color="primary"
-                    variant="soft"
-                    block
-                    @click="() => navigateTo(target.route)"
-                  />
-                </template>
                 <!-- Review/checkout: note + terms + single Checkout button -->
-                <template v-else-if="hasPurchaseItems || activeBookings.length > 0">
+                <template v-if="hasPurchaseItems || activeBookings.length > 0">
+                  <div
+                    v-if="hasPurchaseItems && hasRentalBookings"
+                    class="flex justify-between rounded-lg bg-primary/5 p-3 text-base font-bold"
+                  >
+                    <span>{{ t("cart.combinedDueNowLabel") }}</span>
+                    <span class="text-primary">{{ moneyLabel(combinedDueNow) }}</span>
+                  </div>
                   <UAlert
                     icon="bx:info-circle"
                     color="info"

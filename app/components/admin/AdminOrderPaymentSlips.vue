@@ -157,6 +157,16 @@ onMounted(loadSlips);
       </li>
     </ul>
 
+    <UAlert
+      v-if="slips.length"
+      class="mt-3"
+      color="neutral"
+      variant="soft"
+      icon="i-heroicons-information-circle"
+      title="Mixed payment note"
+      description="This payment evidence may cover both product/shipping payment and a Booking Deposit. Verify the total amount and confirm the related sale and booking targets through the existing admin actions — do not assume it covers only this order. หลักฐานนี้อาจครอบคลุมทั้งค่าสินค้า/ค่าส่ง และเงินมัดจำจอง กรุณาตรวจสอบยอดรวมและยืนยันรายการที่เกี่ยวข้องด้วยขั้นตอนของผู้ดูแลระบบ"
+    />
+
     <template #footer>
       <div v-if="isPaid" class="text-sm font-medium text-green-600">
         Payment received — order paid.

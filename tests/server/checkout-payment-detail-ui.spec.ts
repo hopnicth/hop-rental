@@ -29,10 +29,10 @@ describe("cart is review/checkout only", () => {
     expect(CART).toContain("cart.checkoutButton");
     expect(CART).toContain("cart.checkoutNote");
   });
-  it("routes to rental and order detail pages (split for multiple)", () => {
+  it("routes to detail pages (single) or the combined page (multiple)", () => {
     expect(CART).toContain("/user/rentals/");
     expect(CART).toContain("/user/orders/");
-    expect(CART).toContain("checkoutTargets");
+    expect(CART).toContain("/user/checkout-payment?");
   });
   it("does NOT contain bank details, upload input, history, or QR", () => {
     expect(CART).not.toContain("PaymentBankTransferCard");

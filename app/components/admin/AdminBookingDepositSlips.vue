@@ -153,5 +153,15 @@ onMounted(loadSlips);
         </UButton>
       </li>
     </ul>
+
+    <UAlert
+      v-if="slips.length"
+      class="mt-3"
+      color="neutral"
+      variant="soft"
+      icon="i-heroicons-information-circle"
+      title="Mixed payment note"
+      description="This payment evidence may cover both a Booking Deposit and product/shipping payment. Verify the total amount and confirm the related booking and sale targets through the existing admin actions — do not assume it covers only this booking. หลักฐานนี้อาจครอบคลุมทั้งเงินมัดจำจอง และค่าสินค้า/ค่าส่ง กรุณาตรวจสอบยอดรวมและยืนยันรายการที่เกี่ยวข้องด้วยขั้นตอนของผู้ดูแลระบบ"
+    />
   </UCard>
 </template>

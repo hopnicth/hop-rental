@@ -633,7 +633,23 @@
       "rejected": "[NEEDS_TRANSLATION]: Rejected"
     }
   },
+  "checkoutPayment": {
+    "title": "[NEEDS_TRANSLATION]: Payment",
+    "loading": "[NEEDS_TRANSLATION]: Loading…",
+    "loadFailed": "[NEEDS_TRANSLATION]: Failed to load payment details",
+    "amountTitle": "[NEEDS_TRANSLATION]: Amount due now",
+    "saleAllocation": "[NEEDS_TRANSLATION]: Products / shipping",
+    "depositAllocation": "[NEEDS_TRANSLATION]: Booking Deposit",
+    "combinedTotal": "[NEEDS_TRANSLATION]: Total to transfer",
+    "customerNote": "[NEEDS_TRANSLATION]: The amount due now includes product total, shipping if any, and the Booking Deposit. After transfer, please upload the payment slip. Your payment evidence will be reviewed by staff before the order or booking is confirmed.",
+    "uploadTitle": "[NEEDS_TRANSLATION]: Upload payment slip",
+    "uploadAction": "[NEEDS_TRANSLATION]: Upload slip",
+    "uploadSuccess": "[NEEDS_TRANSLATION]: Slip uploaded — pending staff review",
+    "uploadError": "[NEEDS_TRANSLATION]: Failed to upload slip",
+    "noFile": "[NEEDS_TRANSLATION]: Please choose a slip image or PDF first."
+  },
   "cart": {
+    "combinedDueNowLabel": "[NEEDS_TRANSLATION]: Amount due now",
     "checkoutNote": "[NEEDS_TRANSLATION]: After you tap Checkout, we'll show the bank account to transfer to and let you upload your payment evidence.",
     "checkoutTermsLabel": "[NEEDS_TRANSLATION]: I accept the terms and conditions",
     "checkoutButton": "[NEEDS_TRANSLATION]: Proceed to payment",

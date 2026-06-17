@@ -653,7 +653,23 @@
       "rejected": "[NEEDS_TRANSLATION]: Rejected"
     }
   },
+  "checkoutPayment": {
+    "title": "ชำระเงิน",
+    "loading": "กำลังโหลด…",
+    "loadFailed": "โหลดข้อมูลการชำระเงินไม่สำเร็จ",
+    "amountTitle": "ยอดที่ต้องโอนตอนนี้",
+    "saleAllocation": "ค่าสินค้า / ค่าส่ง",
+    "depositAllocation": "เงินมัดจำจอง",
+    "combinedTotal": "ยอดรวมที่ต้องโอน",
+    "customerNote": "ยอดที่ต้องโอนตอนนี้รวมค่าสินค้า ค่าส่ง และเงินมัดจำจองแล้ว หลังจากโอนเงิน กรุณาอัปโหลดหลักฐานการชำระเงิน ระบบจะรอเจ้าหน้าที่ตรวจสอบก่อนยืนยันรายการ",
+    "uploadTitle": "อัปโหลดหลักฐานการชำระเงิน",
+    "uploadAction": "อัปโหลดหลักฐาน",
+    "uploadSuccess": "อัปโหลดหลักฐานสำเร็จ รอเจ้าหน้าที่ตรวจสอบ",
+    "uploadError": "อัปโหลดหลักฐานไม่สำเร็จ",
+    "noFile": "กรุณาเลือกไฟล์สลิปหรือ PDF ก่อน"
+  },
   "cart": {
+    "combinedDueNowLabel": "ยอดที่ต้องโอนตอนนี้",
     "checkoutNote": "หลังจากกดชำระเงิน ระบบจะแสดงรายละเอียดบัญชีสำหรับโอนเงิน และให้คุณอัปโหลดหลักฐานการชำระเงิน",
     "checkoutTermsLabel": "[NEEDS_TRANSLATION]: I accept the terms and conditions",
     "checkoutButton": "ดำเนินการชำระเงิน",

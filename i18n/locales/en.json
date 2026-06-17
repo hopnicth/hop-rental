@@ -649,7 +649,23 @@
       "rejected": "Rejected"
     }
   },
+  "checkoutPayment": {
+    "title": "Payment",
+    "loading": "Loading…",
+    "loadFailed": "Failed to load payment details",
+    "amountTitle": "Amount due now",
+    "saleAllocation": "Products / shipping",
+    "depositAllocation": "Booking Deposit",
+    "combinedTotal": "Total to transfer",
+    "customerNote": "The amount due now includes product total, shipping if any, and the Booking Deposit. After transfer, please upload the payment slip. Your payment evidence will be reviewed by staff before the order or booking is confirmed.",
+    "uploadTitle": "Upload payment slip",
+    "uploadAction": "Upload slip",
+    "uploadSuccess": "Slip uploaded — pending staff review",
+    "uploadError": "Failed to upload slip",
+    "noFile": "Please choose a slip image or PDF first."
+  },
   "cart": {
+    "combinedDueNowLabel": "Amount due now",
     "checkoutNote": "After you tap Checkout, we'll show the bank account to transfer to and let you upload your payment evidence.",
     "checkoutTermsLabel": "I accept the terms and conditions",
     "checkoutButton": "Proceed to payment",
