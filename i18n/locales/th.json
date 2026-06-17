@@ -85,6 +85,7 @@
     "account": "บัญชีของฉัน",
     "activeRentals": "สินทรัพย์ที่เช่าอยู่",
     "orders": "ประวัติคำสั่งซื้อ",
+    "payments": "การชำระเงินของฉัน",
     "wishlist": "สินค้าที่สนใจ",
     "saveList": "รายการที่บันทึก",
     "settings": "ตั้งค่า",
@@ -1126,6 +1127,20 @@
       "carrier": "ผู้ให้บริการขนส่ง",
       "number": "หมายเลขติดตาม",
       "shippedAt": "จัดส่งเมื่อ"
+    },
+    "items": {
+      "showDetails": "ดูรายละเอียดสินค้า",
+      "hideDetails": "ซ่อนรายละเอียด",
+      "loading": "กำลังโหลดรายการสินค้า...",
+      "loadError": "โหลดข้อมูลสินค้าไม่สำเร็จ",
+      "qty": "จำนวน",
+      "unitPrice": "ราคาต่อหน่วย",
+      "lineTotal": "รวม",
+      "subtotal": "ยอดรวมสินค้า",
+      "discount": "ส่วนลด",
+      "shipping": "ค่าจัดส่ง",
+      "grandTotal": "ยอดรวมทั้งสิ้น",
+      "viewDetail": "ดูรายละเอียดเต็ม"
     }
   },
   "rentalsPage": {
@@ -1160,6 +1175,12 @@
     "sortByPickup": "จัดเรียงรายการตามวันรับสินค้า",
     "sortPickupEarliest": "วันรับใกล้สุดก่อน",
     "sortPickupLatest": "วันรับไกลสุดก่อน",
+    "currentSection": "รายการเช่าปัจจุบัน",
+    "currentSectionDesc": "รายการที่กำลังดำเนินการ รอรับ หรือรับสินค้าแล้ว",
+    "historicalSection": "ประวัติการเช่าและรายการที่สิ้นสุดแล้ว",
+    "historicalSectionDesc": "รายการที่ถูกยกเลิก คืนแล้ว หรือไม่มารับสินค้า",
+    "noCurrentRentals": "ยังไม่มีรายการเช่าปัจจุบัน",
+    "noHistoricalRentals": "ยังไม่มีประวัติการเช่า",
     "pickupDayEyebrow": "วันรับ",
     "pickupTomorrowBadge": "ถึงวันรับพรุ่งนี้",
     "submittedTitle": "ส่งคำขอเช่าแล้ว",

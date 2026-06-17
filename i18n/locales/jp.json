@@ -85,6 +85,7 @@
     "account": "マイアカウント",
     "activeRentals": "レンタル中",
     "orders": "注文履歴",
+    "payments": "[NEEDS_TRANSLATION]: My Payments",
     "wishlist": "ウィッシュリスト",
     "settings": "設定",
     "accountMenu": "アカウントメニュー",
@@ -1071,6 +1072,20 @@
       "carrier": "配送業者",
       "number": "追跡番号",
       "shippedAt": "発送日時"
+    },
+    "items": {
+      "showDetails": "[NEEDS_TRANSLATION]: Show items",
+      "hideDetails": "[NEEDS_TRANSLATION]: Hide items",
+      "loading": "[NEEDS_TRANSLATION]: Loading items…",
+      "loadError": "[NEEDS_TRANSLATION]: Failed to load items",
+      "qty": "[NEEDS_TRANSLATION]: Qty",
+      "unitPrice": "[NEEDS_TRANSLATION]: Unit price",
+      "lineTotal": "[NEEDS_TRANSLATION]: Total",
+      "subtotal": "[NEEDS_TRANSLATION]: Subtotal",
+      "discount": "[NEEDS_TRANSLATION]: Discount",
+      "shipping": "[NEEDS_TRANSLATION]: Shipping",
+      "grandTotal": "[NEEDS_TRANSLATION]: Grand total",
+      "viewDetail": "[NEEDS_TRANSLATION]: View full detail"
     }
   },
   "rentalsPage": {
@@ -1105,6 +1120,12 @@
     "sortByPickup": "受取日で予約を並び替え",
     "sortPickupEarliest": "受取日が近い順",
     "sortPickupLatest": "受取日が遠い順",
+    "currentSection": "[NEEDS_TRANSLATION]: Current rentals",
+    "currentSectionDesc": "[NEEDS_TRANSLATION]: Rentals that are active, upcoming, or currently picked up.",
+    "historicalSection": "[NEEDS_TRANSLATION]: Past and completed rentals",
+    "historicalSectionDesc": "[NEEDS_TRANSLATION]: Rentals that were cancelled, returned, or marked no-show.",
+    "noCurrentRentals": "[NEEDS_TRANSLATION]: No current rentals",
+    "noHistoricalRentals": "[NEEDS_TRANSLATION]: No past rentals",
     "pickupDayEyebrow": "受取",
     "pickupTomorrowBadge": "明日受取日です",
     "submittedTitle": "レンタル予約を送信しました",

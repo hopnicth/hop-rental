@@ -1,5 +1,15 @@
 # Design Decisions
 
+## 2026-06-18 (My Rentals section split — display grouping only)
+Decision: Split `/user/rentals` into "Current rentals" (active status + non-past pickup) and "Past and completed rentals" (terminal status OR past pickup date). Historical items show `opacity-80`. Items with active status but a past pickup date show a "Pickup date passed" badge and live in the historical section. Historical section sorted most-recent first; current section sorted by user-controlled pickup toggle.
+Reason: Users need a quick visual separation between actionable upcoming rentals and historical records. Display-only grouping — no business logic changes, no status mutations, no summary card changes.
+Impact: `app/pages/user/rentals/index.vue` (new computeds, helpers, two-section template); 3 new i18n keys in all 4 locales; `tests/server/rental-section-split-ui.spec.ts` regression-guards all pre-existing patterns.
+
+## 2026-06-18 (order history expandable items — lazy-load, not pre-loaded)
+Decision: Order items on `/user/orders` are NOT pre-loaded in the list response. They are lazy-loaded per order from the existing `/api/user/orders/[id]` endpoint on first expand, then cached in component state (`detailItems.value[orderId]`).
+Reason: `useOrders` list query (`select("*")`) does not join `order_items`; adding a join would make all order data heavier for a feature most users won't need on every page load.
+Impact: `app/pages/user/orders/index.vue`; `detailItems`, `loadingDetails`, `detailError` per-order reactive records; new `OrderDetailItem` local type.
+
 ## 2026-06-18 (central manual payment requests)
 Decision: Replace the per-target order/rental payment pages and the query-param
 `/user/checkout-payment` prototype with ONE central `manual_payment_requests` model

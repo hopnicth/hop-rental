@@ -81,6 +81,7 @@
     "account": "My Account",
     "activeRentals": "Active Rentals",
     "orders": "Order History",
+    "payments": "My Payments",
     "wishlist": "Wishlist",
     "saveList": "Save List",
     "settings": "Settings",
@@ -1122,6 +1123,20 @@
       "carrier": "Carrier",
       "number": "Tracking number",
       "shippedAt": "Shipped at"
+    },
+    "items": {
+      "showDetails": "Show items",
+      "hideDetails": "Hide items",
+      "loading": "Loading items…",
+      "loadError": "Failed to load items",
+      "qty": "Qty",
+      "unitPrice": "Unit price",
+      "lineTotal": "Total",
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "shipping": "Shipping",
+      "grandTotal": "Grand total",
+      "viewDetail": "View full detail"
     }
   },
   "rentalsPage": {
@@ -1156,6 +1171,12 @@
     "sortByPickup": "Sort bookings by pickup date",
     "sortPickupEarliest": "Earliest pickup first",
     "sortPickupLatest": "Latest pickup first",
+    "currentSection": "Current rentals",
+    "currentSectionDesc": "Rentals that are active, upcoming, or currently picked up.",
+    "historicalSection": "Past and completed rentals",
+    "historicalSectionDesc": "Rentals that were cancelled, returned, or marked no-show.",
+    "noCurrentRentals": "No current rentals",
+    "noHistoricalRentals": "No past rentals",
     "pickupDayEyebrow": "Pickup",
     "pickupTomorrowBadge": "Pickup is tomorrow",
     "submittedTitle": "Rental booking submitted",

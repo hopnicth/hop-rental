@@ -1,5 +1,24 @@
 # PROGRESS
-Last updated: 2026-06-18 (Central manual payment requests + remote migration 115 applied; branch cart-checkout-to-payment-detail, code NOT pushed)
+Last updated: 2026-06-18 (Order history expandable items + My Rentals section split — branch cart-checkout-to-payment-detail, code NOT pushed)
+
+## 2026-06-18 — Order History UI: expandable item details + My Payments nav ✅
+
+- `app/pages/user/orders/index.vue` — expandable item details per order; lazy-load from `/api/user/orders/[id]` on first expand; cache prevents re-fetch; per-order loading/error states; NuxtImg thumbnail (fallback icon); financial summary (subtotal/discount/shipping/grandTotal) from existing order fields.
+- `app/components/header/UserDropdown.vue` — added "My Payments" (`bx:receipt`) item → `/user/payments` between Orders and Wishlist.
+- i18n: `ordersPage.items.*` (11 keys) in all 4 locales; `user.payments` in all 4 locales (th real, cn/jp `[NEEDS_TRANSLATION]`).
+- Tests: `tests/server/customer-order-history-ui.spec.ts` (11 source-inspection tests); `tests/server/user-qr-ui.spec.ts` +3 My Payments tests. tsc=0; specs green.
+
+## 2026-06-18 — My Rentals: current / historical section split ✅
+
+- `app/pages/user/rentals/index.vue` — split single list into two sections:
+  - **Current rentals**: `ACTIVE_STATUSES` (`draft`/`confirmed`/`picked_up`) + pickup date is today or future; sorted by user-controlled pickup sort toggle.
+  - **Historical rentals**: `TERMINAL_STATUSES` (`cancelled`/`returned`/`no_show`) OR past pickup date; sorted most-recent first (`compareBookingsByPickupDateDesc`).
+  - "Pickup date passed" badge on active-status items with past pickup date (`isPickupPastWithActiveStatus`).
+  - Summary cards untouched (come from `confirmedBookings` in `useBooking`).
+  - `refundProofByBookingId` watcher updated to `allDisplayedBookings`.
+  - Sort toggle shown only when `currentRentals.length > 0`.
+- i18n: `rentalsPage.currentSection`, `rentalsPage.historicalSection`, `rentalsPage.pickupDatePassed` in all 4 locales (th real, cn/jp `[NEEDS_TRANSLATION]`).
+- Tests: `tests/server/rental-section-split-ui.spec.ts` (31 tests covering constants, helpers, computeds, watcher, template patterns, locale keys, regression guard). tsc=0; 61 targeted tests pass.
 
 ## 2026-06-18 — Browser smoke test: manual payment request flow ✅
 

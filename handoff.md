@@ -1,5 +1,26 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-18 (Order history items + My Rentals split — NOT pushed)
+
+Task: (A) Expandable order item details on `/user/orders`; (B) My Payments nav in UserDropdown; (C) Split My Rentals into current/historical sections.
+
+**Files touched:**
+- `app/pages/user/orders/index.vue` — expandable items, lazy-load `/api/user/orders/[id]`, cache, loading/error states, financial summary, aria attrs
+- `app/components/header/UserDropdown.vue` — My Payments nav item (`bx:receipt`, `/user/payments`)
+- `app/pages/user/rentals/index.vue` — section split: `currentRentals`/`historicalRentals`/`allDisplayedBookings`; helpers `isPickupDatePast`, `isHistoricalSection`, `isPickupPastWithActiveStatus`; `compareBookingsByPickupDateDesc`; watcher updated; template two-section layout
+- `i18n/locales/en.json`, `th.json`, `cn.json`, `jp.json` — `ordersPage.items.*` (11 keys), `user.payments`, `rentalsPage.currentSection`, `rentalsPage.historicalSection`, `rentalsPage.pickupDatePassed`
+- `tests/server/customer-order-history-ui.spec.ts` — 11 new source-inspection tests (NEW FILE)
+- `tests/server/user-qr-ui.spec.ts` — 3 My Payments tests appended
+- `tests/server/rental-section-split-ui.spec.ts` — 31 source-inspection tests (NEW FILE)
+
+**Status: DONE** — tsc=0; 61 targeted specs pass; no regressions.
+
+**Not pushed.** Branch is `cart-checkout-to-payment-detail`. The earlier open items from the manual payment request handoff (bank account config, cn/jp translations for paymentRequests.*, remote db push, browser smoke) are unchanged.
+
+**Next:** Run browser smoke of the updated order detail expand and rentals sections, then push when ready.
+
+---
+
 ## Claude Code → Claude Code / 2026-06-18 (Browser smoke test complete — 5/5 smokes run)
 
 Task: Manual bank-transfer payment flow browser smoke test against localhost:3000 + remote Supabase.
