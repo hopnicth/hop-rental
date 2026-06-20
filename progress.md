@@ -204,6 +204,17 @@ KYC remains PAUSED (unchanged). Implemented a lightweight manual bank-transfer b
 - DB types regenerated post-migration 106, committed `bf32905`, pushed to `origin/staging`
 - `origin/staging` HEAD: `bf32905 chore(types): regenerate database types for KYC snapshot schema`
 
+## 2026-06-21 — Partner Taxonomy Architecture Audits (Phase A + Phase B-0.2) ✅
+
+Read-only audits only. No files changed. No migrations. No commits.
+
+- Phase A: Mapped current home page section order, partner API, 20 existing category keys, i18n structure, reusable components.
+- Phase B-0.2: Deep audit of `main_categories` shared-table design, all API/utility category code paths, admin UI category forms, existing search_keywords pattern, product/asset tsvector search precedent.
+- **4 locked implementation constraints recorded** in decisions.md (B1-1 through B1-4): upsert seed, RLS function grants, fail-closed writes, transactional test rows.
+- **Phase B-1 full implementation spec recorded** in HANDOFF.md 2026-06-21 entry — ready to implement.
+
+**5 open product decisions required from CHiP before B-1 can be authored** (see HANDOFF.md 2026-06-21 — Open product decisions).
+
 ## In Progress 🔄
 - `HomeCategoryShortcutRail.vue` — uncommitted changes (home category shortcuts, pre-existing)
 - `app/pages/index.vue` — uncommitted changes (homepage, pre-existing)
@@ -213,6 +224,7 @@ KYC remains PAUSED (unchanged). Implemented a lightweight manual bank-transfer b
   - `pos-v2-pickup-completion.spec.ts`, `admin-pos-v3-*` specs
 
 ## Next 📋
+- **IMMEDIATE (Partner Taxonomy): Answer 5 open product decisions in HANDOFF.md 2026-06-21, then author Phase B-1 migration** — `partner_categories` + `partner_category_assignments` + 8 seed rows + indexes + RLS (see HANDOFF.md for full spec and 4 locked constraints)
 - **IMMEDIATE: TASK 4.1b implementation** — walk-in KYC gate + snapshot write (plan is in HANDOFF.md 2026-06-02):
   - `server/utils/rental-pickup-readiness.ts`: add `kyc_profile_id` to booking SELECT; walk-in branch queries by `rental_bookings.kyc_profile_id` not phone
   - `server/utils/rental-fulfillment.ts`: same booking SELECT fix; add `id` to KycProfileRow + override SELECT; `assertPickupCustomerEvidence` returns `KycPickupSnapshot`; write snapshot to fulfillment INSERT
