@@ -1,5 +1,5 @@
 # PROGRESS
-Last updated: 2026-06-18 (Order history expandable items + My Rentals section split — branch cart-checkout-to-payment-detail, code NOT pushed)
+Last updated: 2026-06-22 (Partner Taxonomy foundation migration committed and pushed — branch partner-taxonomy-foundation)
 
 ## 2026-06-18 — Order History UI: expandable item details + My Payments nav ✅
 
@@ -204,6 +204,22 @@ KYC remains PAUSED (unchanged). Implemented a lightweight manual bank-transfer b
 - DB types regenerated post-migration 106, committed `bf32905`, pushed to `origin/staging`
 - `origin/staging` HEAD: `bf32905 chore(types): regenerate database types for KYC snapshot schema`
 
+## 2026-06-22 — Partner Taxonomy foundation migration committed and pushed ✅
+
+Branch `partner-taxonomy-foundation` (commit `c623eac`). Pushed to `origin/partner-taxonomy-foundation`. PR open for review against `staging`.
+
+- **`supabase/migrations/116_partner_taxonomy.sql`** — 2 new tables (`partner_categories`, `partner_category_assignments`) + 8 seed rows + SECURITY DEFINER RLS helper + search_path-hardened `update_updated_at()` + indexes + transactional validation (zero persistent test rows).
+- `supabase db reset --local` passed — all 116 migrations clean; migration 116 validation NOTICEs confirmed.
+- anon RLS validation passed (`SET LOCAL ROLE anon` inside validation block).
+- `npx tsc --noEmit` exit 0 (before `database.types.ts` was reverted to exclude unrelated local drift).
+- `app/types/database.types.ts` NOT committed — types will be regenerated from `--linked` remote schema after remote migration apply.
+
+**Pending before Phase B-2 can start:**
+- Merge PR `partner-taxonomy-foundation → staging` (review in progress)
+- Apply migration 116 to remote via `supabase db push --linked`
+- Regenerate `database.types.ts` from linked schema post-apply
+- Resolve open product decision: who can manage `partner_categories` — super_admin only, or staff too? (affects Phase B-2 write-route auth guard)
+
 ## 2026-06-21 — Partner Taxonomy Architecture Audits (Phase A + Phase B-0.2) ✅
 
 Read-only audits only. No files changed. No migrations. No commits.
@@ -211,9 +227,7 @@ Read-only audits only. No files changed. No migrations. No commits.
 - Phase A: Mapped current home page section order, partner API, 20 existing category keys, i18n structure, reusable components.
 - Phase B-0.2: Deep audit of `main_categories` shared-table design, all API/utility category code paths, admin UI category forms, existing search_keywords pattern, product/asset tsvector search precedent.
 - **4 locked implementation constraints recorded** in decisions.md (B1-1 through B1-4): upsert seed, RLS function grants, fail-closed writes, transactional test rows.
-- **Phase B-1 full implementation spec recorded** in HANDOFF.md 2026-06-21 entry — ready to implement.
-
-**5 open product decisions required from CHiP before B-1 can be authored** (see HANDOFF.md 2026-06-21 — Open product decisions).
+- **Phase B-1 full implementation spec recorded** in HANDOFF.md 2026-06-21 entry — implemented in same session (see 2026-06-22 entry above).
 
 ## In Progress 🔄
 - `HomeCategoryShortcutRail.vue` — uncommitted changes (home category shortcuts, pre-existing)
@@ -224,7 +238,7 @@ Read-only audits only. No files changed. No migrations. No commits.
   - `pos-v2-pickup-completion.spec.ts`, `admin-pos-v3-*` specs
 
 ## Next 📋
-- **IMMEDIATE (Partner Taxonomy): Answer 5 open product decisions in HANDOFF.md 2026-06-21, then author Phase B-1 migration** — `partner_categories` + `partner_category_assignments` + 8 seed rows + indexes + RLS (see HANDOFF.md for full spec and 4 locked constraints)
+- **IMMEDIATE (Partner Taxonomy Phase B-2):** After PR `partner-taxonomy-foundation` is merged and migration 116 applied remotely — update admin forms, add `/api/admin/partner-categories` route, update public `/api/partners` filter, update `partners/index.vue` + `PartnerCard.vue`. Resolve open auth-guard decision (super_admin vs staff) first.
 - **IMMEDIATE: TASK 4.1b implementation** — walk-in KYC gate + snapshot write (plan is in HANDOFF.md 2026-06-02):
   - `server/utils/rental-pickup-readiness.ts`: add `kyc_profile_id` to booking SELECT; walk-in branch queries by `rental_bookings.kyc_profile_id` not phone
   - `server/utils/rental-fulfillment.ts`: same booking SELECT fix; add `id` to KycProfileRow + override SELECT; `assertPickupCustomerEvidence` returns `KycPickupSnapshot`; write snapshot to fulfillment INSERT

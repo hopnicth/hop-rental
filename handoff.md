@@ -31,7 +31,6 @@ CREATE TABLE public.partner_categories (
   sort_order  integer NOT NULL DEFAULT 0,
   is_active   boolean NOT NULL DEFAULT true,
   is_public   boolean NOT NULL DEFAULT true,
-  i18n_key    text,
   created_at  timestamptz NOT NULL DEFAULT now(),
   updated_at  timestamptz NOT NULL DEFAULT now(),
   CHECK (level >= 0 AND level <= 3),
