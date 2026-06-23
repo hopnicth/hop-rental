@@ -3840,6 +3840,95 @@ export type Database = {
           },
         ]
       }
+      partner_categories: {
+        Row: {
+          created_at: string
+          icon: string | null
+          id: string
+          is_active: boolean
+          is_public: boolean
+          level: number
+          parent_id: string | null
+          slug: string
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          is_public?: boolean
+          level?: number
+          parent_id?: string | null
+          slug: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          icon?: string | null
+          id?: string
+          is_active?: boolean
+          is_public?: boolean
+          level?: number
+          parent_id?: string | null
+          slug?: string
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_categories_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "partner_categories"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      partner_category_assignments: {
+        Row: {
+          category_id: string
+          confidence: number | null
+          created_at: string
+          is_primary: boolean
+          partner_profile_id: string
+          source: string
+        }
+        Insert: {
+          category_id: string
+          confidence?: number | null
+          created_at?: string
+          is_primary?: boolean
+          partner_profile_id: string
+          source?: string
+        }
+        Update: {
+          category_id?: string
+          confidence?: number | null
+          created_at?: string
+          is_primary?: boolean
+          partner_profile_id?: string
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "partner_category_assignments_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "partner_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "partner_category_assignments_partner_profile_id_fkey"
+            columns: ["partner_profile_id"]
+            isOneToOne: false
+            referencedRelation: "partner_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_profiles: {
         Row: {
           business_hours_preset_key: string | null
@@ -7689,6 +7778,7 @@ export type Database = {
         Args: { target_company_id: string }
         Returns: boolean
       }
+      is_public_partner_profile: { Args: { p_id: string }; Returns: boolean }
       normalize_catalog_search_keyword_term: {
         Args: { raw_value: string }
         Returns: string

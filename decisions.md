@@ -1,5 +1,44 @@
 # Design Decisions
 
+## 2026-06-21 — Phase B-1 Partner Taxonomy Migration: 4 locked implementation constraints
+
+These four decisions are LOCKED for the Phase B-1 migration (`partner_categories` + `partner_category_assignments`). They must be enforced in the migration SQL before any code review.
+
+### Decision B1-1 — Seed upsert strategy: `DO UPDATE SET` not `DO NOTHING`
+Decision: Category seed rows must use `ON CONFLICT (slug) DO UPDATE SET icon = excluded.icon, sort_order = excluded.sort_order, is_active = excluded.is_active, is_public = excluded.is_public, updated_at = now()` instead of `ON CONFLICT DO NOTHING`.
+Reason: `DO NOTHING` silently drops re-seed changes during local reset or re-run. If icon, sort_order, or public flags are corrected before launch, `DO NOTHING` would leave stale values on any environment that had already run the migration. `DO UPDATE SET` ensures local reset always reflects the approved spec. i18n_key and parent_id are intentionally excluded from the update set — those are identity fields that should not silently change.
+Impact: Migration is safe to re-run or reset-replay. Any pre-launch taxonomy corrections only require updating the seed SQL, not a new migration.
+
+### Decision B1-2 — RLS helper function permissions: explicit REVOKE + targeted GRANT
+Decision: After creating any `public.is_public_partner_profile(uuid)` helper function used in RLS policies, the migration must immediately run `REVOKE ALL ON FUNCTION public.is_public_partner_profile(uuid) FROM PUBLIC;` followed by `GRANT EXECUTE ON FUNCTION public.is_public_partner_profile(uuid) TO anon, authenticated;`.
+Reason: Postgres grants EXECUTE to PUBLIC by default on new functions. Without the explicit REVOKE, any database role can execute the helper — including roles that should not be aware of partner visibility logic. The targeted GRANT restores exactly what RLS evaluation requires (anon + authenticated must be able to evaluate the predicate in their SELECT policies) without over-granting.
+Impact: Any RLS helper function created in this or future partner-taxonomy migrations must follow this REVOKE → GRANT pattern. This mirrors the column-level grant discipline already used on partner_profiles.
+
+### Decision B1-3 — Write access fail-closed: no INSERT/UPDATE/DELETE grants in B-1
+Decision: Phase B-1 must NOT grant INSERT, UPDATE, or DELETE on `partner_categories` or `partner_category_assignments` to `anon` or `authenticated`. No staff or admin write RLS policies are created in this migration. All writes flow exclusively through `service_role`-backed admin API routes (to be built in Phase B-2). The only policies in B-1 are the public SELECT policy and the `service_role FOR ALL` policy.
+Reason: Admin write routes do not exist yet. Granting write access before the routes exist creates an open write surface with no application-layer validation or auth guard. The existing partner_profiles pattern (REVOKE ALL → GRANT SELECT specific columns → service_role ALL) is the correct model. Fail-closed is mandatory for any new table that will hold partner taxonomy data.
+Impact: Phase B-2 admin form update must route all category assignment writes through service_role (requireSuperAdmin or requirePlatformAdmin guards), same as all other admin partner routes.
+
+### Decision B1-4 — Validation test rows: transactional, rolled back, zero persistence
+Decision: Any SQL validation tests performed inside the migration (proving RLS, proving assignment constraints, proving the one-primary partial unique index) must use a `BEGIN` / `ROLLBACK` or `DO $$ BEGIN ... END $$` block that leaves zero rows in the database after the migration completes. If a public test partner is needed to prove anon can see public assignments, it must be cleaned up before the migration ends. If the non-public partner test proves anon cannot see non-public assignments, it must also be cleaned up.
+Reason: The KYC post-smoke cleanup (2026-06-06) demonstrated that synthetic/test rows in append-only or audit tables outlive their usefulness and become noise for future auditors. Category and assignment tables are not append-only, so cleanup is mechanically possible — but leaving test rows is still incorrect because future data counts, admin listings, and analytics would include them.
+Impact: The migration runbook must include explicit cleanup verification. The local `supabase db reset --local` clean run is the authoritative test environment — the migration must pass a full reset chain cleanly with no orphaned test rows.
+
+---
+
+## 2026-06-21 — Phase B-0 audit findings locked (read-only)
+
+Decision: Two read-only audits (Phase A and Phase B-0.2) establish the following facts as locked design inputs for Phase B-1. No code was changed.
+- `main_categories` is a shared multi-entity table (products + assets + partners + content pages). A new `partner_categories` table does NOT conflict with it and does NOT require changing it.
+- The 20 existing partner category keys in `main_categories` (seeded in migration 097) remain in place during and after Phase B-1. `partner_profiles.main_category_key` and `secondary_category_keys[]` are NOT removed in Phase B-1 — they are deprecated and cleaned up in a later migration after admin assignments are populated.
+- The 8 new top-level partner categories (`construction_materials`, `contractor_services`, `freelance_technicians`, `freelance_foremen`, `freelance_engineers`, `freelance_safety_officers`, `drafting_design`, `plc_programmers`) do not exist in any current table. They are new.
+- Automatic backfill from old 20 keys to new 8 categories is NOT done in Phase B-1 — mapping is too ambiguous (11/20 old keys have no clean single mapping). Admin manual assignment via the updated Phase B-2 form is the correct approach.
+- `partner_capabilities` and `partner_search_terms` tables are DEFERRED — no write path, no AI infrastructure exists. Existing `search_keywords TEXT[]` on `partner_profiles` is sufficient for V1.
+Reason: These findings come from direct source inspection of 20+ files across migrations, API routes, admin components, and composables. Locking them prevents future sessions from re-deriving or contradicting them.
+Impact: Phase B-1 migration scope is additive only: 2 new tables + 8 seed rows + RLS/grants/indexes. No existing tables, APIs, or UI files are changed in Phase B-1.
+
+---
+
 ## 2026-06-18 (My Rentals section split — display grouping only)
 Decision: Split `/user/rentals` into "Current rentals" (active status + non-past pickup) and "Past and completed rentals" (terminal status OR past pickup date). Historical items show `opacity-80`. Items with active status but a past pickup date show a "Pickup date passed" badge and live in the historical section. Historical section sorted most-recent first; current section sorted by user-controlled pickup toggle.
 Reason: Users need a quick visual separation between actionable upcoming rentals and historical records. Display-only grouping — no business logic changes, no status mutations, no summary card changes.

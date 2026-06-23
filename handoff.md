@@ -1,5 +1,129 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-06-21 (Phase A + B-0.2 audits complete — Phase B-1 ready to implement)
+
+Task: Read-only architecture audit of Partner Ecosystem UI + Category/Subcategory Readiness (Phase A) followed by Partner Taxonomy + Search Foundation deep audit (Phase B-0.2). No files changed. No migrations. No commits.
+
+**Status: AUDIT COMPLETE — Phase B-1 implementation ready**
+
+### What the audits established (locked, do not re-derive)
+
+- `main_categories` is a SHARED table (products + assets + partners + content pages). Safe to leave untouched.
+- 20 existing partner category keys (`store_*`, `service_*`, `contractor_*`) live in `main_categories` via migration 097. They stay in place during Phase B-1.
+- `partner_profiles.main_category_key` (FK) + `secondary_category_keys[]` (GIN array) are the current category mechanism. They are NOT removed in B-1.
+- 4 files hardcode the 20 category keys: `partners/index.vue`, `AdminPartnerCreateContainer.vue`, `AdminPartnerDetailContainer.vue`, `PartnerCard.vue`.
+- The current public `/api/partners` category filter uses `buildPublicCategoryOrFilter()` → PostgREST OR on `main_category_key.eq.X,secondary_category_keys.cs.{X}`. This keeps working during B-1.
+- 5/8 proposed new categories have ZERO mapping to existing keys (`freelance_foremen`, `freelance_engineers`, `plc_programmers` entirely new; `freelance_technicians` and `freelance_safety_officers` are partially ambiguous). Automatic backfill is not safe.
+- `partner_capabilities` and `partner_search_terms` tables are DEFERRED (no write path, no AI infrastructure).
+
+### Phase B-1 migration scope (LOCKED)
+
+**One migration commit: `partner_categories` + `partner_category_assignments` + 8 seed rows**
+
+```sql
+-- Table 1: partner_categories
+CREATE TABLE public.partner_categories (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug        text UNIQUE NOT NULL,
+  parent_id   uuid REFERENCES public.partner_categories(id) ON DELETE RESTRICT,
+  level       integer NOT NULL DEFAULT 0,
+  icon        text,
+  sort_order  integer NOT NULL DEFAULT 0,
+  is_active   boolean NOT NULL DEFAULT true,
+  is_public   boolean NOT NULL DEFAULT true,
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  CHECK (level >= 0 AND level <= 3),
+  CHECK ((parent_id IS NULL AND level = 0) OR (parent_id IS NOT NULL AND level > 0))
+);
+
+-- Table 2: partner_category_assignments
+CREATE TABLE public.partner_category_assignments (
+  partner_profile_id  uuid REFERENCES public.partner_profiles(id) ON DELETE CASCADE,
+  category_id         uuid REFERENCES public.partner_categories(id) ON DELETE RESTRICT,
+  is_primary          boolean NOT NULL DEFAULT false,
+  source              text NOT NULL DEFAULT 'admin',
+  confidence          numeric(4,3),
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (partner_profile_id, category_id),
+  CHECK (source IN ('admin', 'ai_extracted', 'backfill', 'partner_self'))
+);
+```
+
+**Seed: 8 top-level categories (with DO UPDATE, not DO NOTHING — see decisions.md B1-1)**
+| slug | icon | sort_order |
+|---|---|---|
+| construction_materials | i-lucide-brick-wall | 10 |
+| contractor_services | i-lucide-handshake | 20 |
+| freelance_technicians | i-lucide-wrench | 30 |
+| freelance_foremen | i-lucide-clipboard-check | 40 |
+| freelance_engineers | i-lucide-ruler | 50 |
+| freelance_safety_officers | i-lucide-shield-check | 60 |
+| drafting_design | i-lucide-drafting-compass | 70 |
+| plc_programmers | i-lucide-cpu | 80 |
+
+**i18n_keys:** `partners.categories.construction_materials`, `partners.categories.contractor_services`, etc.
+
+**Thai labels (for the i18n seed reference):**
+- construction_materials → ร้านวัสดุก่อสร้าง
+- contractor_services → บริการสำหรับผู้รับเหมา
+- freelance_technicians → ช่างอิสระ
+- freelance_foremen → Foreman อิสระ
+- freelance_engineers → วิศวกรอิสระ
+- freelance_safety_officers → จป.อิสระ
+- drafting_design → งานเขียนแบบ
+- plc_programmers → PLC โปรแกรมเมอร์
+
+**Indexes:**
+```sql
+CREATE UNIQUE INDEX idx_partner_category_assignments_one_primary
+  ON public.partner_category_assignments(partner_profile_id) WHERE is_primary = true;
+CREATE INDEX idx_partner_category_assignments_category
+  ON public.partner_category_assignments(category_id, partner_profile_id);
+CREATE INDEX idx_partner_categories_parent_active
+  ON public.partner_categories(parent_id, is_active, sort_order);
+CREATE INDEX idx_partner_categories_public_sort
+  ON public.partner_categories(is_public, is_active, level, sort_order);
+```
+
+### 4 implementation constraints (LOCKED — see decisions.md B1-1 through B1-4)
+
+1. **Seed uses `DO UPDATE SET`** (icon, sort_order, is_active, is_public, updated_at) — NOT `DO NOTHING`
+2. **RLS helper function:** `REVOKE ALL ON FUNCTION public.is_public_partner_profile(uuid) FROM PUBLIC` then `GRANT EXECUTE TO anon, authenticated` — immediately after function creation
+3. **Fail-closed writes:** NO INSERT/UPDATE/DELETE grants to anon or authenticated. Only `service_role FOR ALL` + public SELECT policies in B-1.
+4. **Validation test rows:** Must be transactional (`BEGIN`/`ROLLBACK`). Zero persistent test rows after migration completes.
+
+### What B-1 does NOT change
+
+- `partner_profiles` — no new columns, no column removals, no constraint changes
+- `main_categories` — untouched
+- `main_category_key` + `secondary_category_keys[]` on `partner_profiles` — remain in place
+- Any API routes — public `/api/partners` filter continues working via old fields
+- Any UI files — hardcoded category arrays unchanged until Phase B-2
+
+### After B-1 — Phase B-2 scope (NOT this session)
+
+1. Update `AdminPartnerCreateContainer.vue` + `AdminPartnerDetailContainer.vue` to write to `partner_category_assignments` instead of `main_category_key` / `secondary_category_keys` — new multi-select UX
+2. Update `GET /api/admin/partners` to expose a `GET /api/admin/partner-categories` route returning the new taxonomy
+3. Update `GET /api/partners` filter to JOIN on `partner_category_assignments` — replace `buildPublicCategoryOrFilter()`
+4. Update `partners/index.vue` `ALL_PARTNER_CATEGORIES` array → fetch from public API
+5. Update `PartnerCard.vue` `CATEGORY_LABELS` map
+6. Admin assignment task: super_admin assigns existing partners to new 8 categories before public rail launches
+
+### Files touched this session
+
+None — read-only audit only.
+
+### Open product decisions (unresolved — needs CHiP answer before B-1)
+
+1. Are the 8 new categories a REPLACEMENT for the 3 directoryTypes, or additive?
+2. Are the 8 taxonomy slugs and Thai labels final as listed above?
+3. Should subcategories for `freelance_technicians` (electrical, plumbing, welding, hvac) be seeded in B-1 or deferred?
+4. Who can manage `partner_categories` — super_admin only, or staff too?
+5. Is `is_primary` enforced (exactly-one DB constraint) or advisory?
+
+---
+
 ## Claude Code → Claude Code / 2026-06-18 (Order history items + My Rentals split — NOT pushed)
 
 Task: (A) Expandable order item details on `/user/orders`; (B) My Payments nav in UserDropdown; (C) Split My Rentals into current/historical sections.
