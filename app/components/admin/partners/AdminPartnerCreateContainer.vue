@@ -5,11 +5,13 @@ import type {
   PartnerEntityType,
   PartnerBusinessHoursPresetKey,
 } from "~/types/partner";
+import type { AdminPartnerCategoryItem } from "~/types/admin-partner";
 import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
-// ── Router / toast ──────────────────────────────────────────────────────────
+// ── Router / toast / i18n ───────────────────────────────────────────────────
 const route = useRoute();
 const toast = useToast();
+const { t, te } = useI18n();
 
 const backTo = computed(() => {
   const q = route.query.returnTo;
@@ -185,6 +187,41 @@ const slugTouched = ref(false);
 const submitting = ref(false);
 const submitError = ref<string | null>(null);
 const fieldErrors = reactive<Record<string, string | null>>({});
+
+// ── Taxonomy (migration 116) ────────────────────────────────────────────────
+const taxonomyCategories = ref<AdminPartnerCategoryItem[]>([]);
+const taxonomyLoading = ref(false);
+const taxonomyPrimaryId = ref("");
+const taxonomySecondaryIds = ref<string[]>([]);
+
+const taxonomyCategoryOptions = computed(() =>
+  taxonomyCategories.value.map((c) => ({
+    value: c.id,
+    label: te(`partners.categories.${c.slug}`)
+      ? t(`partners.categories.${c.slug}`)
+      : c.slug.replace(/_/g, " "),
+  })),
+);
+
+const taxonomySecondaryOptions = computed(() =>
+  taxonomyCategoryOptions.value.filter((o) => o.value !== taxonomyPrimaryId.value),
+);
+
+async function loadTaxonomyCategories() {
+  taxonomyLoading.value = true;
+  try {
+    const res = await $fetch<{ items: AdminPartnerCategoryItem[] }>(
+      "/api/admin/partner-categories",
+    );
+    taxonomyCategories.value = res.items;
+  } catch {
+    // Non-blocking — taxonomy section remains empty if load fails
+  } finally {
+    taxonomyLoading.value = false;
+  }
+}
+
+onMounted(loadTaxonomyCategories);
 
 // ── Computed ──────────────────────────────────────────────────────────────
 const filteredCategoryOptions = computed((): SelectOption[] => {
@@ -376,13 +413,38 @@ async function handleSubmit() {
     if (form.lineUrl.trim()) body.lineUrl = form.lineUrl.trim();
     if (form.mapsUrl.trim()) body.mapsUrl = form.mapsUrl.trim();
 
-    const data = await $fetch<{ item: { slug: string } }>(
+    const data = await $fetch<{ item: { id: string; slug: string } }>(
       "/api/admin/partners",
       {
         method: "POST",
         body,
       },
     );
+
+    // Save taxonomy assignments if any were selected (non-blocking)
+    if (
+      data.item.id &&
+      (taxonomyPrimaryId.value || taxonomySecondaryIds.value.length > 0)
+    ) {
+      try {
+        await $fetch(
+          `/api/admin/partners/${data.item.id}/category-assignments`,
+          {
+            method: "PUT",
+            body: {
+              primaryCategoryId: taxonomyPrimaryId.value || null,
+              secondaryCategoryIds: taxonomySecondaryIds.value,
+            },
+          },
+        );
+      } catch {
+        toast.add({
+          title: t("adminPartners.taxonomy.saveFailed"),
+          color: "warning",
+          icon: "bx:error-circle",
+        });
+      }
+    }
 
     toast.add({
       title: "Partner created",
@@ -722,6 +784,51 @@ async function handleSubmit() {
             Create Partner
           </UButton>
         </div>
+      </template>
+    </UCard>
+
+    <!-- ── Taxonomy Categories (migration 116) ──────────────────────────── -->
+    <UCard>
+      <template #header>
+        <div class="flex items-center gap-2">
+          <UIcon name="bx:category" class="text-lg text-primary" />
+          <p class="font-semibold">{{ t("adminPartners.taxonomy.sectionTitle") }}</p>
+        </div>
+      </template>
+
+      <div v-if="taxonomyLoading" class="py-2 text-sm text-muted">
+        {{ t("adminPartners.taxonomy.loading") }}
+      </div>
+
+      <div v-else class="space-y-4">
+        <UFormField :label="t('adminPartners.taxonomy.primaryLabel')">
+          <USelectMenu
+            v-model="taxonomyPrimaryId"
+            :items="taxonomyCategoryOptions"
+            value-key="value"
+            :placeholder="t('adminPartners.taxonomy.primaryPlaceholder')"
+            class="w-full"
+            :disabled="submitting"
+          />
+          <template #hint>{{ t("adminPartners.taxonomy.primaryHint") }}</template>
+        </UFormField>
+
+        <UFormField :label="t('adminPartners.taxonomy.secondaryLabel')">
+          <AdminChipInput
+            :model-value="taxonomySecondaryIds"
+            :options="taxonomySecondaryOptions"
+            :disabled="submitting"
+            :placeholder="t('adminPartners.taxonomy.secondaryPlaceholder')"
+            @update:model-value="(v) => (taxonomySecondaryIds = v)"
+          />
+          <template #hint>{{ t("adminPartners.taxonomy.secondaryHint") }}</template>
+        </UFormField>
+      </div>
+
+      <template #footer>
+        <p class="text-xs text-muted">
+          {{ t("adminPartners.taxonomy.createNote") }}
+        </p>
       </template>
     </UCard>
 

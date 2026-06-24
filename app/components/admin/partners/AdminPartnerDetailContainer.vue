@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { getAdminApiErrorMessage } from "~/utils/admin-api";
-import type { AdminPartnerRow } from "~/types/admin-partner";
+import type { AdminPartnerRow, AdminPartnerCategoryItem } from "~/types/admin-partner";
 import type {
   PartnerDirectoryType,
   PartnerEntityType,
@@ -9,9 +9,10 @@ import type {
 } from "~/types/partner";
 import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
-// ── Router / toast ───────────────────────────────────────────────────────────
+// ── Router / toast / i18n ────────────────────────────────────────────────────
 const route = useRoute();
 const toast = useToast();
+const { t, te } = useI18n();
 const partnerId = computed(() => route.params.id as string);
 
 // ── Category constants ────────────────────────────────────────────────────────
@@ -225,6 +226,8 @@ function initFormFromPartner(row: AdminPartnerRow) {
   form.contactEmail = row.contactEmail ?? "";
   form.lineUrl = row.lineUrl ?? "";
   form.mapsUrl = row.mapsUrl ?? "";
+  // Initialize taxonomy from partner response
+  initTaxonomyFromPartner(row);
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
@@ -355,7 +358,77 @@ function formatDate(value: string | null) {
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
   void fetchPartner();
+  void loadTaxonomyCategories();
 });
+
+// ── Taxonomy (migration 116) ──────────────────────────────────────────────────
+const taxonomyCategories = ref<AdminPartnerCategoryItem[]>([]);
+const taxonomyLoading = ref(false);
+const taxonomySaving = ref(false);
+const taxonomyPrimaryId = ref("");
+const taxonomySecondaryIds = ref<string[]>([]);
+
+const taxonomyCategoryOptions = computed(() =>
+  taxonomyCategories.value.map((c) => ({
+    value: c.id,
+    label: te(`partners.categories.${c.slug}`)
+      ? t(`partners.categories.${c.slug}`)
+      : c.slug.replace(/_/g, " "),
+  })),
+);
+
+const taxonomySecondaryOptions = computed(() =>
+  taxonomyCategoryOptions.value.filter((o) => o.value !== taxonomyPrimaryId.value),
+);
+
+function initTaxonomyFromPartner(row: AdminPartnerRow) {
+  const primary = row.taxonomyAssignments?.find((a) => a.isPrimary);
+  const secondaries = row.taxonomyAssignments?.filter((a) => !a.isPrimary) ?? [];
+  taxonomyPrimaryId.value = primary?.categoryId ?? "";
+  taxonomySecondaryIds.value = secondaries.map((a) => a.categoryId);
+}
+
+async function loadTaxonomyCategories() {
+  taxonomyLoading.value = true;
+  try {
+    const res = await $fetch<{ items: AdminPartnerCategoryItem[] }>(
+      "/api/admin/partner-categories",
+    );
+    taxonomyCategories.value = res.items;
+  } catch {
+    // Non-blocking — taxonomy section remains empty if load fails
+  } finally {
+    taxonomyLoading.value = false;
+  }
+}
+
+async function saveTaxonomy() {
+  if (taxonomySaving.value) return;
+  taxonomySaving.value = true;
+  try {
+    await $fetch(`/api/admin/partners/${partnerId.value}/category-assignments`, {
+      method: "PUT",
+      body: {
+        primaryCategoryId: taxonomyPrimaryId.value || null,
+        secondaryCategoryIds: taxonomySecondaryIds.value,
+      },
+    });
+    toast.add({
+      title: t("adminPartners.taxonomy.saveSuccess"),
+      color: "success",
+      icon: "bx:check-circle",
+    });
+  } catch (err) {
+    toast.add({
+      title: t("adminPartners.taxonomy.saveFailed"),
+      description: getAdminApiErrorMessage(err, ""),
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    taxonomySaving.value = false;
+  }
+}
 
 // ── Partner Media ─────────────────────────────────────────────────────────────
 const uploadingThumbnail = ref(false);
@@ -1802,6 +1875,59 @@ async function handleVerifyCancel() {
             </div>
           </div>
         </div>
+      </UCard>
+
+      <!-- ── Taxonomy Categories (migration 116) ──────────────────────── -->
+      <UCard>
+        <template #header>
+          <div class="flex items-center gap-2">
+            <UIcon name="bx:category" class="text-lg text-primary" />
+            <p class="font-semibold">{{ t("adminPartners.taxonomy.sectionTitle") }}</p>
+          </div>
+        </template>
+
+        <div v-if="taxonomyLoading" class="py-2 text-sm text-muted">
+          {{ t("adminPartners.taxonomy.loading") }}
+        </div>
+
+        <div v-else class="space-y-4">
+          <UFormField :label="t('adminPartners.taxonomy.primaryLabel')">
+            <USelectMenu
+              v-model="taxonomyPrimaryId"
+              :items="taxonomyCategoryOptions"
+              value-key="value"
+              :placeholder="t('adminPartners.taxonomy.primaryPlaceholder')"
+              class="w-full"
+              :disabled="taxonomySaving"
+            />
+            <template #hint>{{ t("adminPartners.taxonomy.primaryHint") }}</template>
+          </UFormField>
+
+          <UFormField :label="t('adminPartners.taxonomy.secondaryLabel')">
+            <AdminChipInput
+              :model-value="taxonomySecondaryIds"
+              :options="taxonomySecondaryOptions"
+              :disabled="taxonomySaving"
+              :placeholder="t('adminPartners.taxonomy.secondaryPlaceholder')"
+              @update:model-value="(v) => (taxonomySecondaryIds = v)"
+            />
+            <template #hint>{{ t("adminPartners.taxonomy.secondaryHint") }}</template>
+          </UFormField>
+        </div>
+
+        <template #footer>
+          <div class="flex justify-end">
+            <UButton
+              color="primary"
+              icon="bx:save"
+              :loading="taxonomySaving"
+              :disabled="taxonomySaving || taxonomyLoading"
+              @click="void saveTaxonomy()"
+            >
+              {{ t("adminPartners.taxonomy.saveButton") }}
+            </UButton>
+          </div>
+        </template>
       </UCard>
 
       <!-- ── Search & Discovery (admin-only internal metadata) ──────── -->
