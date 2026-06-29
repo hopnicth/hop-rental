@@ -57,10 +57,15 @@ export function mapAdminPartnerCategoryAssignment(row: Record<string, unknown>) 
  * will temporarily have no assignments. The operation is idempotent and the admin
  * can retry. No data corruption occurs — only a recoverable empty state.
  *
+ * Taxonomy level rules (Phase B-2.1):
+ *   * primary category must exist, be active, and be level 0 (top-level bucket)
+ *   * secondary categories must exist, be active, be level 1, and be a direct
+ *     child of the primary (parent_id === primaryCategoryId)
+ *
  * @param adminClient       service_role Supabase client (bypasses RLS)
  * @param partnerId         UUID of the partner_profile
- * @param primaryCategoryId UUID of the primary category, or null to clear all
- * @param secondaryCategoryIds UUIDs of secondary categories (must not overlap primary)
+ * @param primaryCategoryId UUID of the primary level-0 category, or null to clear all
+ * @param secondaryCategoryIds UUIDs of level-1 children of the primary (must not overlap primary)
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyClient = any;
@@ -76,34 +81,67 @@ export async function replacePartnerCategoryAssignments(
     ...secondaryCategoryIds,
   ];
 
-  // Validate all IDs exist and are active before making any writes
+  // Validate all IDs exist, are active, and satisfy the level/parent rules
+  // before making any writes.
   if (allIds.length > 0) {
     const { data: cats, error: catErr } = await adminClient
       .from("partner_categories")
-      .select("id, is_active")
+      .select("id, is_active, level, parent_id")
       .in("id", allIds);
 
     if (catErr) {
       throw createError({ statusCode: 500, statusMessage: catErr.message });
     }
 
-    const rows = (cats ?? []) as { id: string; is_active: boolean }[];
-    const foundIds = new Set(rows.map((r) => r.id));
-    const inactiveIds = new Set(
-      rows.filter((r) => !r.is_active).map((r) => r.id),
-    );
+    const rows = (cats ?? []) as {
+      id: string;
+      is_active: boolean;
+      level: number;
+      parent_id: string | null;
+    }[];
+    const byId = new Map(rows.map((r) => [r.id, r]));
 
+    // Existence + active checks for every referenced id
     for (const id of allIds) {
-      if (!foundIds.has(id)) {
+      const row = byId.get(id);
+      if (!row) {
         throw createError({
           statusCode: 422,
           statusMessage: `Category not found: ${id}`,
         });
       }
-      if (inactiveIds.has(id)) {
+      if (!row.is_active) {
         throw createError({
           statusCode: 422,
           statusMessage: `Category is not active: ${id}`,
+        });
+      }
+    }
+
+    // Primary must be level 0
+    if (primaryCategoryId) {
+      const primary = byId.get(primaryCategoryId)!;
+      if (primary.level !== 0) {
+        throw createError({
+          statusCode: 422,
+          statusMessage: "primaryCategoryId must be a level-0 category",
+        });
+      }
+    }
+
+    // Secondaries must be level 1 and direct children of the primary
+    for (const secId of secondaryCategoryIds) {
+      const secondary = byId.get(secId)!;
+      if (secondary.level !== 1) {
+        throw createError({
+          statusCode: 422,
+          statusMessage: `Secondary category must be level 1: ${secId}`,
+        });
+      }
+      if (secondary.parent_id !== primaryCategoryId) {
+        throw createError({
+          statusCode: 422,
+          statusMessage: `Secondary category ${secId} is not a child of the primary category`,
         });
       }
     }

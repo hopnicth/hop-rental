@@ -15,6 +15,8 @@ const props = withDefaults(
     maxItems?: number;
     disabled?: boolean;
     emptyText?: string;
+    /** Max options rendered in the dropdown at once. Search narrows beyond this. */
+    maxVisibleOptions?: number;
   }>(),
   {
     options: () => [],
@@ -23,6 +25,7 @@ const props = withDefaults(
     allowCustom: false,
     disabled: false,
     emptyText: "No matching options",
+    maxVisibleOptions: 8,
   },
 );
 
@@ -149,7 +152,7 @@ function handleBlur() {
         class="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border border-default bg-default p-2 shadow-lg"
       >
         <button
-          v-for="option in filteredOptions.slice(0, 8)"
+          v-for="option in filteredOptions.slice(0, props.maxVisibleOptions)"
           :key="option.value"
           type="button"
           class="flex w-full flex-col rounded-lg px-3 py-2 text-left transition hover:bg-elevated"

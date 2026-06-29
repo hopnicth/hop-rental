@@ -188,24 +188,41 @@ const submitting = ref(false);
 const submitError = ref<string | null>(null);
 const fieldErrors = reactive<Record<string, string | null>>({});
 
-// ── Taxonomy (migration 116) ────────────────────────────────────────────────
+// ── Taxonomy (migration 116 + subcategories 117) ─────────────────────────────
 const taxonomyCategories = ref<AdminPartnerCategoryItem[]>([]);
 const taxonomyLoading = ref(false);
 const taxonomyPrimaryId = ref("");
 const taxonomySecondaryIds = ref<string[]>([]);
 
-const taxonomyCategoryOptions = computed(() =>
-  taxonomyCategories.value.map((c) => ({
-    value: c.id,
-    label: te(`partners.categories.${c.slug}`)
-      ? t(`partners.categories.${c.slug}`)
-      : c.slug.replace(/_/g, " "),
-  })),
+function taxonomyLabel(slug: string): string {
+  return te(`partners.categories.${slug}`)
+    ? t(`partners.categories.${slug}`)
+    : slug.replace(/_/g, " ");
+}
+
+// Primary options: level-0 categories only (the 8 top-level buckets)
+const taxonomyPrimaryOptions = computed(() =>
+  taxonomyCategories.value
+    .filter((c) => c.level === 0)
+    .map((c) => ({ value: c.id, label: taxonomyLabel(c.slug) })),
 );
 
-const taxonomySecondaryOptions = computed(() =>
-  taxonomyCategoryOptions.value.filter((o) => o.value !== taxonomyPrimaryId.value),
-);
+// Secondary options: level-1 categories that are children of the selected primary
+const taxonomySecondaryOptions = computed(() => {
+  if (!taxonomyPrimaryId.value) return [];
+  return taxonomyCategories.value
+    .filter((c) => c.level === 1 && c.parentId === taxonomyPrimaryId.value)
+    .map((c) => ({ value: c.id, label: taxonomyLabel(c.slug) }));
+});
+
+// When primary changes, drop secondaries that are no longer children of it
+watch(taxonomyPrimaryId, () => {
+  if (taxonomyCategories.value.length === 0) return;
+  const validIds = new Set(taxonomySecondaryOptions.value.map((o) => o.value));
+  taxonomySecondaryIds.value = taxonomySecondaryIds.value.filter((id) =>
+    validIds.has(id),
+  );
+});
 
 async function loadTaxonomyCategories() {
   taxonomyLoading.value = true;
@@ -804,7 +821,7 @@ async function handleSubmit() {
         <UFormField :label="t('adminPartners.taxonomy.primaryLabel')">
           <USelectMenu
             v-model="taxonomyPrimaryId"
-            :items="taxonomyCategoryOptions"
+            :items="taxonomyPrimaryOptions"
             value-key="value"
             :placeholder="t('adminPartners.taxonomy.primaryPlaceholder')"
             class="w-full"
@@ -817,8 +834,13 @@ async function handleSubmit() {
           <AdminChipInput
             :model-value="taxonomySecondaryIds"
             :options="taxonomySecondaryOptions"
-            :disabled="submitting"
-            :placeholder="t('adminPartners.taxonomy.secondaryPlaceholder')"
+            :disabled="submitting || !taxonomyPrimaryId"
+            :max-visible-options="20"
+            :placeholder="
+              taxonomyPrimaryId
+                ? t('adminPartners.taxonomy.secondaryPlaceholder')
+                : t('adminPartners.taxonomy.secondaryNeedsPrimary')
+            "
             @update:model-value="(v) => (taxonomySecondaryIds = v)"
           />
           <template #hint>{{ t("adminPartners.taxonomy.secondaryHint") }}</template>
