@@ -1489,6 +1489,7 @@
       "contact": "Contact Information",
       "serviceAreas": "Service Areas",
       "categories": "Categories",
+      "taxonomyCategories": "Taxonomy Categories",
       "businessHours": "Business Hours",
       "notFound": "Partner Not Found",
       "notFoundDescription": "This partner may have been unpublished or does not exist.",

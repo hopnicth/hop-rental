@@ -1442,6 +1442,7 @@
       "contact": "連絡先情報",
       "serviceAreas": "サービスエリア",
       "categories": "カテゴリー",
+      "taxonomyCategories": "[NEEDS_TRANSLATION]: Taxonomy Categories",
       "businessHours": "営業時間",
       "notFound": "パートナーが見つかりません",
       "notFoundDescription": "このパートナーは非公開になっているか、存在しない可能性があります。",

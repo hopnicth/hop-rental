@@ -774,6 +774,9 @@ export function mapPublicPartnerCard(row: Record<string, unknown>) {
     secondaryCategoryKeys: Array.isArray(row.secondary_category_keys)
       ? (row.secondary_category_keys as string[])
       : [],
+    // Display-only taxonomy — populated by the route via fetchPublicTaxonomyForPartners.
+    // Default empty here so the public payload shape always conforms.
+    taxonomy: [] as { slug: string; level: 0 | 1; isPrimary: boolean }[],
     serviceAreas: Array.isArray(row.service_areas)
       ? (row.service_areas as string[])
       : [],

@@ -3,7 +3,7 @@ import type { PartnerDetail } from "~/types/partner";
 import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
 const route = useRoute();
-const { t, locale } = useI18n();
+const { t, te, locale } = useI18n();
 const toast = useToast();
 const user = useSupabaseUser();
 const slug = computed(() => String(route.params.slug ?? ""));
@@ -86,6 +86,14 @@ const allCategoryKeys = computed(() => [
   ...(partner.value?.mainCategoryKey ? [partner.value.mainCategoryKey] : []),
   ...(partner.value?.secondaryCategoryKeys ?? []),
 ]);
+
+// Display-only taxonomy (migrations 116/117) — primary first, then secondaries.
+const taxonomyItems = computed(() => partner.value?.taxonomy ?? []);
+function taxonomyLabel(slug: string): string {
+  return te(`partners.categories.${slug}`)
+    ? t(`partners.categories.${slug}`)
+    : slug.replace(/_/g, " ");
+}
 
 const hasContact = computed(() =>
   Boolean(
@@ -315,6 +323,27 @@ async function handleSaveToggle() {
               size="sm"
             >
               {{ categoryLabel(key) }}
+            </UBadge>
+          </div>
+        </UCard>
+
+        <!-- Taxonomy categories (display-only, migrations 116/117) -->
+        <UCard v-if="taxonomyItems.length">
+          <template #header>
+            <h2 class="text-base font-semibold">
+              {{ t("partners.detail.taxonomyCategories") }}
+            </h2>
+          </template>
+          <div class="flex flex-wrap gap-2">
+            <UBadge
+              v-for="item in taxonomyItems"
+              :key="item.slug"
+              :color="item.isPrimary ? 'primary' : 'neutral'"
+              :variant="item.isPrimary ? 'soft' : 'outline'"
+              size="sm"
+              icon="i-lucide-tag"
+            >
+              {{ taxonomyLabel(item.slug) }}
             </UBadge>
           </div>
         </UCard>

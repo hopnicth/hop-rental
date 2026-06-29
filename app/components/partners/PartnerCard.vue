@@ -3,7 +3,7 @@ import type { PartnerCard } from "~/types/partner";
 import { SERVICE_AREA_OPTIONS } from "~/data/thaiServiceAreas";
 
 const props = defineProps<{ partner: PartnerCard }>();
-const { locale, t } = useI18n();
+const { locale, t, te } = useI18n();
 const toast = useToast();
 const {
   isPartnerSaved,
@@ -102,6 +102,16 @@ const directoryTypeColor = computed<BadgeColor>(() => {
   return "warning";
 });
 
+// Display-only primary taxonomy (migrations 116/117). Localized via slug key.
+const primaryTaxonomy = computed(
+  () => props.partner.taxonomy?.find((item) => item.isPrimary) ?? null,
+);
+function taxonomyLabel(slug: string): string {
+  return te(`partners.categories.${slug}`)
+    ? t(`partners.categories.${slug}`)
+    : slug.replace(/_/g, " ");
+}
+
 // Main + secondary category keys in display order — no searchKeywords
 const allCategoryKeys = computed(() => [
   ...(props.partner.mainCategoryKey ? [props.partner.mainCategoryKey] : []),
@@ -161,6 +171,16 @@ const cardImageUrl = computed(
             size="xs"
           >
             ★ แนะนำ
+          </UBadge>
+          <!-- Display-only primary taxonomy badge (migrations 116/117) -->
+          <UBadge
+            v-if="primaryTaxonomy"
+            color="neutral"
+            variant="soft"
+            size="xs"
+            icon="i-lucide-tag"
+          >
+            {{ taxonomyLabel(primaryTaxonomy.slug) }}
           </UBadge>
         </div>
         <h3 class="line-clamp-2 text-sm font-semibold">

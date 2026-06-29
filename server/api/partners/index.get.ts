@@ -30,6 +30,7 @@ import {
   buildPublicCategoryOrFilter,
   buildPublicTextSearchOrFilter,
 } from "~~/server/utils/admin-partners";
+import { fetchPublicTaxonomyForPartners } from "~~/server/utils/admin-partner-categories";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -96,9 +97,20 @@ export default defineEventHandler(async (event) => {
   );
   const total = all.length;
   const start = page * pageSize;
+  const items = all.slice(start, start + pageSize);
+
+  // Attach display-only taxonomy to the paginated page items only (bounded cost).
+  // All items are already is_public partners; helper filters to active/public categories.
+  const taxonomyByPartner = await fetchPublicTaxonomyForPartners(
+    client,
+    items.map((item) => item.id),
+  );
+  for (const item of items) {
+    item.taxonomy = taxonomyByPartner.get(item.id) ?? [];
+  }
 
   return {
-    items: all.slice(start, start + pageSize),
+    items,
     total,
     page,
     pageSize,

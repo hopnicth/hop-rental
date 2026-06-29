@@ -16,6 +16,7 @@ import {
   PUBLIC_PARTNER_DETAIL_SELECT,
   mapPublicPartnerDetail,
 } from "~~/server/utils/admin-partners";
+import { fetchPublicTaxonomyForPartners } from "~~/server/utils/admin-partner-categories";
 
 export default defineEventHandler(async (event) => {
   const slug = getRouterParam(event, "slug");
@@ -49,7 +50,12 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  return {
-    item: mapPublicPartnerDetail(data as Record<string, unknown>),
-  };
+  const item = mapPublicPartnerDetail(data as Record<string, unknown>);
+
+  // Attach display-only taxonomy. The partner is already is_public (filtered above);
+  // helper enforces active/public category visibility.
+  const taxonomyByPartner = await fetchPublicTaxonomyForPartners(client, [item.id]);
+  item.taxonomy = taxonomyByPartner.get(item.id) ?? [];
+
+  return { item };
 });
