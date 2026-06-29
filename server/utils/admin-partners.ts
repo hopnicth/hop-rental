@@ -748,6 +748,8 @@ export function mapAdminPartnerDetail(row: Record<string, unknown>) {
     verificationCancelledByUserId: str(row.verification_cancelled_by_user_id),
     // All content blocks — admin sees hidden blocks too
     contentBlocks: safeParseContentBlocks(row.content_blocks),
+    // Taxonomy assignments — populated by [id].get.ts via separate query; default empty here
+    taxonomyAssignments: [],
   };
 }
 

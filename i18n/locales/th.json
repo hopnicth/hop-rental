@@ -215,7 +215,6 @@
     "signOutAllDevicesDesc": "ระบบจะเพิกถอนเซสชันของบัญชีนี้บนทุกอุปกรณ์ และพาคุณกลับไปหน้าเข้าสู่ระบบ",
     "signOutAllSuccess": "ออกจากระบบทุกอุปกรณ์แล้ว",
     "signOutAllError": "ออกจากระบบทุกอุปกรณ์ไม่สำเร็จ",
-
     "addressTitle": "ชื่อที่อยู่",
     "contactName": "ชื่อผู้ติดต่อ",
     "contactPhone": "เบอร์ผู้ติดต่อ",
@@ -233,7 +232,6 @@
     "confirmDelete": "ยืนยันการลบ",
     "confirmDeleteAddress": "คุณต้องการลบที่อยู่นี้หรือไม่?",
     "noAddresses": "ยังไม่มีที่อยู่",
-
     "uploadIdCard": "อัปโหลดบัตรประชาชน",
     "uploadPdpa": "อัปโหลดเอกสาร PDPA",
     "kycFileTypes": "รองรับไฟล์: JPEG, PNG, PDF",
@@ -291,12 +289,10 @@
     "kycUploadSuccessDesc": "สถานะ KYC ของคุณถูกส่งกลับไปยังรอตรวจสอบ",
     "kycUploadError": "ไม่สามารถอัปโหลดเอกสารยืนยันตัวตนได้",
     "reupload": "อัปโหลดใหม่",
-
     "pointsRewards": "แต้มสะสมและสิทธิพิเศษ",
     "totalPoints": "แต้มสะสมทั้งหมด",
     "redeemPoints": "แลกแต้ม",
     "comingSoon": "เร็วๆ นี้",
-
     "membershipLevel": "ระดับสมาชิก",
     "memberBronze": "บรอนซ์",
     "memberSilver": "ซิลเวอร์",
@@ -1294,6 +1290,22 @@
       "no_show": "ไม่มารับสินค้า"
     }
   },
+  "adminPartners": {
+    "taxonomy": {
+      "sectionTitle": "หมวดหมู่ Taxonomy",
+      "loading": "กำลังโหลดหมวดหมู่…",
+      "primaryLabel": "หมวดหมู่หลัก",
+      "primaryPlaceholder": "เลือกหมวดหมู่หลัก…",
+      "primaryHint": "หมวดหมู่ Taxonomy หลักของ Partner นี้ ใช้สำหรับการกรองใน Directory",
+      "secondaryLabel": "หมวดหมู่เพิ่มเติม",
+      "secondaryPlaceholder": "ค้นหาและเลือกหมวดหมู่เพิ่มเติม",
+      "secondaryHint": "ไม่บังคับ เลือกหมวดหมู่เพิ่มเติมที่ Partner นี้อยู่ด้วย",
+      "saveButton": "บันทึก Taxonomy",
+      "saveSuccess": "บันทึก Taxonomy สำเร็จ",
+      "saveFailed": "บันทึก Taxonomy ไม่สำเร็จ",
+      "createNote": "สามารถกำหนด Taxonomy หลังสร้าง Partner ได้ การเลือกด้านบนจะถูกบันทึกพร้อมกับ Partner"
+    }
+  },
   "adminRefunds": {
     "title": "คิวคืนเงินสำหรับผู้ดูแล",
     "subtitle": "ติดตามและดำเนินการคำขอคืนเงิน Booking Deposit",
@@ -1495,6 +1507,16 @@
     "card": {
       "verified": "ยืนยันตัวตนแล้ว",
       "unverified": "ยังไม่ได้ยืนยันตัวตน"
+    },
+    "categories": {
+      "construction_materials": "วัสดุก่อสร้าง",
+      "contractor_services": "บริการผู้รับเหมา",
+      "freelance_technicians": "ช่างอิสระ",
+      "freelance_foremen": "โฟร์แมนอิสระ",
+      "freelance_engineers": "วิศวกรอิสระ",
+      "freelance_safety_officers": "เจ้าหน้าที่ความปลอดภัยอิสระ",
+      "drafting_design": "เขียนแบบและออกแบบ",
+      "plc_programmers": "โปรแกรมเมอร์ PLC"
     }
   }
 }

@@ -98,6 +98,12 @@ export interface AdminPartnerRow {
    * Not included in AdminPartnerListItem.
    */
   contentBlocks: PartnerContentBlock[];
+  /**
+   * Taxonomy category assignments from partner_category_assignments (migration 116).
+   * Primary first (is_primary = true), then secondaries.
+   * Empty array = no assignments yet.
+   */
+  taxonomyAssignments: AdminPartnerCategoryAssignment[];
 }
 
 /** Lightweight list item — omits expensive/private detail fields. */
@@ -142,4 +148,36 @@ export interface AdminPartnerFilterParams {
   search?: string | null;
   page?: number;
   pageSize?: number;
+}
+
+// ── Partner Taxonomy (migration 116) ──────────────────────────────────────────
+
+/**
+ * A partner_categories row as returned by the admin API.
+ * Level 0 = top-level; levels 1–3 = progressively finer sub-categories.
+ */
+export interface AdminPartnerCategoryItem {
+  id: string;
+  slug: string;
+  parentId: string | null;
+  level: number;
+  icon: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  isPublic: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A partner_category_assignments row as returned by the admin API.
+ * isPrimary = true → this is the single primary category for the partner.
+ */
+export interface AdminPartnerCategoryAssignment {
+  categoryId: string;
+  partnerProfileId: string;
+  isPrimary: boolean;
+  source: string;
+  confidence: number | null;
+  createdAt: string;
 }

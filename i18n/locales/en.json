@@ -211,7 +211,6 @@
     "signOutAllDevicesDesc": "This will revoke this account's sessions on all devices and return you to sign-in.",
     "signOutAllSuccess": "Signed out all devices",
     "signOutAllError": "Could not sign out all devices",
-
     "addressTitle": "Address Label",
     "contactName": "Contact Name",
     "contactPhone": "Contact Phone",
@@ -229,7 +228,6 @@
     "confirmDelete": "Confirm Delete",
     "confirmDeleteAddress": "Are you sure you want to delete this address?",
     "noAddresses": "No addresses yet",
-
     "uploadIdCard": "Upload ID Card",
     "uploadPdpa": "Upload PDPA Document",
     "kycFileTypes": "Supported files: JPEG, PNG, PDF",
@@ -287,12 +285,10 @@
     "kycUploadSuccessDesc": "Your KYC status has been returned to pending review.",
     "kycUploadError": "Could not upload identity document",
     "reupload": "Re-upload",
-
     "pointsRewards": "Points & Rewards",
     "totalPoints": "Total Points",
     "redeemPoints": "Redeem Points",
     "comingSoon": "Coming Soon",
-
     "membershipLevel": "Membership Level",
     "memberBronze": "Bronze",
     "memberSilver": "Silver",
@@ -1290,6 +1286,22 @@
       "no_show": "No-show"
     }
   },
+  "adminPartners": {
+    "taxonomy": {
+      "sectionTitle": "Taxonomy Categories",
+      "loading": "Loading categories…",
+      "primaryLabel": "Primary category",
+      "primaryPlaceholder": "Select primary category…",
+      "primaryHint": "The main taxonomy category for this partner. Used for directory filtering.",
+      "secondaryLabel": "Additional categories",
+      "secondaryPlaceholder": "Search and select additional categories",
+      "secondaryHint": "Optional. Select additional categories this partner belongs to.",
+      "saveButton": "Save taxonomy",
+      "saveSuccess": "Taxonomy saved",
+      "saveFailed": "Failed to save taxonomy",
+      "createNote": "Taxonomy can be assigned after creating the partner. Selections above are saved together with the partner."
+    }
+  },
   "adminRefunds": {
     "title": "Admin Refund Queue",
     "subtitle": "Track and process Booking Deposit refund requests",
@@ -1491,6 +1503,16 @@
     "card": {
       "verified": "Verified",
       "unverified": "Unverified"
+    },
+    "categories": {
+      "construction_materials": "Construction Materials",
+      "contractor_services": "Contractor Services",
+      "freelance_technicians": "Freelance Technicians",
+      "freelance_foremen": "Freelance Foremen",
+      "freelance_engineers": "Freelance Engineers",
+      "freelance_safety_officers": "Freelance Safety Officers",
+      "drafting_design": "Drafting & Design",
+      "plc_programmers": "PLC Programmers"
     }
   }
 }

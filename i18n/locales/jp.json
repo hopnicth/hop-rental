@@ -1239,6 +1239,22 @@
       "no_show": "No-show"
     }
   },
+  "adminPartners": {
+    "taxonomy": {
+      "sectionTitle": "[NEEDS_TRANSLATION]: Taxonomy Categories",
+      "loading": "[NEEDS_TRANSLATION]: Loading categories…",
+      "primaryLabel": "[NEEDS_TRANSLATION]: Primary category",
+      "primaryPlaceholder": "[NEEDS_TRANSLATION]: Select primary category…",
+      "primaryHint": "[NEEDS_TRANSLATION]: The main taxonomy category for this partner. Used for directory filtering.",
+      "secondaryLabel": "[NEEDS_TRANSLATION]: Additional categories",
+      "secondaryPlaceholder": "[NEEDS_TRANSLATION]: Search and select additional categories",
+      "secondaryHint": "[NEEDS_TRANSLATION]: Optional. Select additional categories this partner belongs to.",
+      "saveButton": "[NEEDS_TRANSLATION]: Save taxonomy",
+      "saveSuccess": "[NEEDS_TRANSLATION]: Taxonomy saved",
+      "saveFailed": "[NEEDS_TRANSLATION]: Failed to save taxonomy",
+      "createNote": "[NEEDS_TRANSLATION]: Taxonomy can be assigned after creating the partner. Selections above are saved together with the partner."
+    }
+  },
   "adminRefunds": {
     "title": "管理者返金キュー",
     "subtitle": "Booking Deposit の返金リクエストを確認・処理します",
@@ -1440,6 +1456,16 @@
     "card": {
       "verified": "認証済み",
       "unverified": "未認証"
+    },
+    "categories": {
+      "construction_materials": "[NEEDS_TRANSLATION]: Construction Materials",
+      "contractor_services": "[NEEDS_TRANSLATION]: Contractor Services",
+      "freelance_technicians": "[NEEDS_TRANSLATION]: Freelance Technicians",
+      "freelance_foremen": "[NEEDS_TRANSLATION]: Freelance Foremen",
+      "freelance_engineers": "[NEEDS_TRANSLATION]: Freelance Engineers",
+      "freelance_safety_officers": "[NEEDS_TRANSLATION]: Freelance Safety Officers",
+      "drafting_design": "[NEEDS_TRANSLATION]: Drafting & Design",
+      "plc_programmers": "[NEEDS_TRANSLATION]: PLC Programmers"
     }
   }
 }
