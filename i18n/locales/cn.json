@@ -1437,6 +1437,7 @@
       "contact": "联系方式",
       "serviceAreas": "服务区域",
       "categories": "类别",
+      "taxonomyCategories": "[NEEDS_TRANSLATION]: Taxonomy Categories",
       "businessHours": "营业时间",
       "notFound": "未找到该合作伙伴",
       "notFoundDescription": "该合作伙伴可能已下架或不存在。",

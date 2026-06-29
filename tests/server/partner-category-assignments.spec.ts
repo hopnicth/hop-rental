@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { replacePartnerCategoryAssignments } from "../../server/utils/admin-partner-categories";
+import {
+  replacePartnerCategoryAssignments,
+  fetchPublicTaxonomyForPartners,
+} from "../../server/utils/admin-partner-categories";
 
 /**
  * Catalog of categories used by the mock DB.
@@ -142,5 +145,130 @@ describe("replacePartnerCategoryAssignments — level/parent validation", () => 
         "00000000-0000-0000-0000-000000000000",
       ]),
     ).rejects.toMatchObject({ statusCode: 422 });
+  });
+});
+
+// ── fetchPublicTaxonomyForPartners (public display-only read) ───────────────────
+
+const PUBLIC_PARTNER = "p-public";
+const OTHER_PUBLIC_PARTNER = "p-public-2";
+const PRIVATE_PARTNER = "p-private"; // never passed by the route (route filters is_public)
+
+type AssignmentRow = {
+  partner_profile_id: string;
+  is_primary: boolean;
+  partner_categories: {
+    slug: string;
+    level: number;
+    sort_order: number;
+    is_active: boolean;
+    is_public: boolean;
+  } | null;
+};
+
+/**
+ * Dataset embeds the joined partner_categories row, mirroring the PostgREST
+ * embedded select the helper performs.
+ */
+const ASSIGNMENT_DATASET: AssignmentRow[] = [
+  // PUBLIC_PARTNER: a primary L0 + a secondary L1 (both active/public),
+  // plus an inactive and a non-public category that MUST be filtered out.
+  {
+    partner_profile_id: PUBLIC_PARTNER,
+    is_primary: false,
+    partner_categories: { slug: "construction_materials_roofing", level: 1, sort_order: 40, is_active: true, is_public: true },
+  },
+  {
+    partner_profile_id: PUBLIC_PARTNER,
+    is_primary: true,
+    partner_categories: { slug: "construction_materials", level: 0, sort_order: 10, is_active: true, is_public: true },
+  },
+  {
+    partner_profile_id: PUBLIC_PARTNER,
+    is_primary: false,
+    partner_categories: { slug: "construction_materials_inactive", level: 1, sort_order: 50, is_active: false, is_public: true },
+  },
+  {
+    partner_profile_id: PUBLIC_PARTNER,
+    is_primary: false,
+    partner_categories: { slug: "construction_materials_hidden", level: 1, sort_order: 60, is_active: true, is_public: false },
+  },
+  // OTHER_PUBLIC_PARTNER: a single primary.
+  {
+    partner_profile_id: OTHER_PUBLIC_PARTNER,
+    is_primary: true,
+    partner_categories: { slug: "contractor_services", level: 0, sort_order: 20, is_active: true, is_public: true },
+  },
+  // PRIVATE_PARTNER: has an assignment in the table, but the route never passes
+  // this id (it filters partners to is_public=true first).
+  {
+    partner_profile_id: PRIVATE_PARTNER,
+    is_primary: true,
+    partner_categories: { slug: "plc_programmers", level: 0, sort_order: 80, is_active: true, is_public: true },
+  },
+];
+
+function makeReadClient() {
+  return {
+    from() {
+      return {
+        select() {
+          return {
+            in(_col: string, ids: string[]) {
+              const set = new Set(ids);
+              const data = ASSIGNMENT_DATASET.filter((r) =>
+                set.has(r.partner_profile_id),
+              );
+              return Promise.resolve({ data, error: null });
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+describe("fetchPublicTaxonomyForPartners — public display read", () => {
+  it("returns an empty map (caller defaults to []) for an unassigned partner", async () => {
+    const grouped = await fetchPublicTaxonomyForPartners(makeReadClient(), [
+      "p-unassigned",
+    ]);
+    expect(grouped.get("p-unassigned")).toBeUndefined();
+    expect(grouped.get("p-unassigned") ?? []).toEqual([]);
+  });
+
+  it("returns the primary first, then secondaries", async () => {
+    const grouped = await fetchPublicTaxonomyForPartners(makeReadClient(), [
+      PUBLIC_PARTNER,
+    ]);
+    const items = grouped.get(PUBLIC_PARTNER)!;
+    expect(items[0]).toEqual({ slug: "construction_materials", level: 0, isPrimary: true });
+    expect(items.some((i) => i.slug === "construction_materials_roofing" && !i.isPrimary)).toBe(true);
+  });
+
+  it("excludes inactive and non-public categories", async () => {
+    const grouped = await fetchPublicTaxonomyForPartners(makeReadClient(), [
+      PUBLIC_PARTNER,
+    ]);
+    const slugs = grouped.get(PUBLIC_PARTNER)!.map((i) => i.slug);
+    expect(slugs).not.toContain("construction_materials_inactive");
+    expect(slugs).not.toContain("construction_materials_hidden");
+    expect(slugs).toEqual(["construction_materials", "construction_materials_roofing"]);
+  });
+
+  it("never returns taxonomy for a partner id not in the requested set (route passes only public ids)", async () => {
+    const grouped = await fetchPublicTaxonomyForPartners(makeReadClient(), [
+      PUBLIC_PARTNER,
+      OTHER_PUBLIC_PARTNER,
+    ]);
+    // PRIVATE_PARTNER was not requested → must not appear, even though it has an assignment.
+    expect(grouped.has(PRIVATE_PARTNER)).toBe(false);
+    expect(grouped.has(PUBLIC_PARTNER)).toBe(true);
+    expect(grouped.has(OTHER_PUBLIC_PARTNER)).toBe(true);
+  });
+
+  it("returns an empty map for an empty id list without querying", async () => {
+    const grouped = await fetchPublicTaxonomyForPartners(makeReadClient(), []);
+    expect(grouped.size).toBe(0);
   });
 });

@@ -75,6 +75,17 @@ export type PartnerContentBlock =
   | PartnerYoutubeBlock;
 
 /**
+ * Display-only partner taxonomy item (migrations 116/117).
+ * Mirrors the server `PublicPartnerTaxonomyItem`. No category id is exposed;
+ * the label is resolved from the `partners.categories.${slug}` i18n key.
+ */
+export interface PartnerTaxonomyItem {
+  slug: string;
+  level: 0 | 1;
+  isPrimary: boolean;
+}
+
+/**
  * Lightweight card shape — used in directory listing pages and the
  * Home Partner Network section.
  */
@@ -95,6 +106,12 @@ export interface PartnerCard {
   mainCategoryKey: string | null;
   /** Controlled secondary category keys — share the same directoryType prefix as mainCategoryKey. */
   secondaryCategoryKeys: string[];
+  /**
+   * Display-only partner taxonomy (migrations 116/117). Empty when the partner
+   * has no assignment. Primary first, then secondaries. No category ids exposed —
+   * labels derive from `partners.categories.${slug}` client-side.
+   */
+  taxonomy: PartnerTaxonomyItem[];
   serviceAreas: string[];
   /** Machine-readable preset key. Null = custom/unspecified. Exposed for future Open Now badge. */
   businessHoursPresetKey: PartnerBusinessHoursPresetKey | null;

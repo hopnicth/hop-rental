@@ -195,3 +195,103 @@ export async function replacePartnerCategoryAssignments(
     mapAdminPartnerCategoryAssignment(r),
   );
 }
+
+// ── Public taxonomy read (display-only) ─────────────────────────────────────────
+
+/**
+ * Lean, display-safe taxonomy item for public partner payloads.
+ * No category id is exposed — labels are derived client-side from the slug
+ * via the `partners.categories.${slug}` i18n key.
+ */
+export interface PublicPartnerTaxonomyItem {
+  slug: string;
+  level: 0 | 1;
+  isPrimary: boolean;
+}
+
+/**
+ * Fetches active + public taxonomy assignments for a set of partner profiles
+ * and returns them grouped by partner_profile_id, ordered primary-first then
+ * level / sort_order / slug.
+ *
+ * Intended for the public partner list/detail routes which use the service-role
+ * client (RLS bypassed). Because RLS is bypassed, this helper EXPLICITLY filters
+ * to `partner_categories.is_active = TRUE AND is_public = TRUE`. Assignment-to-
+ * partner visibility is the caller's responsibility: the public routes already
+ * constrain partners to `is_public = TRUE`, so only public partners' ids should
+ * be passed in.
+ *
+ * @param client      service-role Supabase client
+ * @param partnerIds  partner_profile ids (already filtered to public partners)
+ * @returns Map<partnerProfileId, PublicPartnerTaxonomyItem[]>
+ */
+export async function fetchPublicTaxonomyForPartners(
+  client: AnyClient,
+  partnerIds: string[],
+): Promise<Map<string, PublicPartnerTaxonomyItem[]>> {
+  const grouped = new Map<string, PublicPartnerTaxonomyItem[]>();
+
+  const ids = Array.from(new Set(partnerIds.filter(Boolean)));
+  if (ids.length === 0) return grouped;
+
+  // Embedded read of the joined category so active/public can be enforced here
+  // (service-role bypasses RLS, so the filter must be explicit).
+  const { data, error } = await client
+    .from("partner_category_assignments")
+    .select(
+      "partner_profile_id, is_primary, partner_categories(slug, level, sort_order, is_active, is_public)",
+    )
+    .in("partner_profile_id", ids);
+
+  if (error) {
+    throw createError({ statusCode: 500, statusMessage: error.message });
+  }
+
+  type Row = {
+    partner_profile_id: string;
+    is_primary: boolean;
+    partner_categories: {
+      slug: string;
+      level: number;
+      sort_order: number;
+      is_active: boolean;
+      is_public: boolean;
+    } | null;
+  };
+
+  for (const raw of (data ?? []) as Row[]) {
+    const cat = raw.partner_categories;
+    // Drop inactive / non-public categories (RLS-equivalent gate, enforced here).
+    if (!cat || cat.is_active !== true || cat.is_public !== true) continue;
+    const level = Number(cat.level) === 1 ? 1 : 0;
+    const item: PublicPartnerTaxonomyItem = {
+      slug: String(cat.slug ?? ""),
+      level: level as 0 | 1,
+      isPrimary: raw.is_primary === true,
+    };
+    if (!item.slug) continue;
+    const list = grouped.get(raw.partner_profile_id) ?? [];
+    list.push(item);
+    grouped.set(raw.partner_profile_id, list);
+  }
+
+  // Sort each partner's items: primary first, then level, then slug.
+  // sort_order is captured for stable ordering between same-level peers.
+  const sortOrderBySlug = new Map<string, number>();
+  for (const raw of (data ?? []) as Row[]) {
+    const cat = raw.partner_categories;
+    if (cat?.slug) sortOrderBySlug.set(String(cat.slug), Number(cat.sort_order ?? 0));
+  }
+  for (const list of grouped.values()) {
+    list.sort((a, b) => {
+      if (a.isPrimary !== b.isPrimary) return a.isPrimary ? -1 : 1;
+      if (a.level !== b.level) return a.level - b.level;
+      const soA = sortOrderBySlug.get(a.slug) ?? 0;
+      const soB = sortOrderBySlug.get(b.slug) ?? 0;
+      if (soA !== soB) return soA - soB;
+      return a.slug.localeCompare(b.slug);
+    });
+  }
+
+  return grouped;
+}

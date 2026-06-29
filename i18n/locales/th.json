@@ -1493,6 +1493,7 @@
       "contact": "ข้อมูลติดต่อ",
       "serviceAreas": "พื้นที่ให้บริการ",
       "categories": "หมวดหมู่",
+      "taxonomyCategories": "หมวดหมู่ Taxonomy",
       "businessHours": "เวลาทำการ",
       "notFound": "ไม่พบพาร์ทเนอร์นี้",
       "notFoundDescription": "พาร์ทเนอร์นี้อาจถูกปิดการแสดงผล หรือไม่มีอยู่ในระบบ",
