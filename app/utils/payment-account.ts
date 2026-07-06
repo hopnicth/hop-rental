@@ -33,10 +33,10 @@ export interface HopnicCompanyInfo {
 }
 
 export const HOPNIC_PAYMENT_ACCOUNT: HopnicPaymentAccount = {
-  bankName: { th: "ธนาคารกสิกรไทย", en: "Kasikornbank" },
-  accountName: { th: "บจก. ฮอปนิค", en: "Hopnic Co., Ltd." },
+  bankName: { th: "ธนาคารกสิกรไทย", en: "KASIKORNBANK" },
+  accountName: { th: "บจก. ฮอปนิค", en: "HOPNIC CO., LTD." },
   accountNumber: "127-8-56077-1",
-  branch: { th: "พนมสารคาม", en: "Phanom Sarakham" },
+  branch: { th: "สาขาพนมสารคาม", en: "Phanom Sarakham Branch" },
 };
 
 export const HOPNIC_COMPANY_INFO: HopnicCompanyInfo = {
