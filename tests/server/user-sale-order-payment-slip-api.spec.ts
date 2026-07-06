@@ -7,7 +7,7 @@
  *  2. POST .../payment-slip: auth + ownership + eligibility; moves to
  *     pending_review; NEVER marks paid / deducts inventory / touches rental
  *  3. customer order detail page uses the slip endpoint + i18n, no online pay
- *  4. ordersPage.paymentSlip i18n keys exist (en real; th/cn/jp placeholders)
+ *  4. ordersPage.paymentSlip i18n keys exist (th/en real; cn/jp placeholders)
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -90,15 +90,17 @@ describe("ordersPage.paymentSlip i18n keys", () => {
       string,
       string
     >;
-  it("en has real values", () => {
-    const en = load("en");
-    for (const k of KEYS) {
-      expect(en[k]).toBeTruthy();
-      expect(en[k]).not.toContain("NEEDS_TRANSLATION");
+  it("th + en have real values", () => {
+    for (const f of ["th", "en"]) {
+      const loc = load(f);
+      for (const k of KEYS) {
+        expect(loc[k]).toBeTruthy();
+        expect(loc[k]).not.toContain("NEEDS_TRANSLATION");
+      }
     }
   });
-  it("th/cn/jp have NEEDS_TRANSLATION placeholders", () => {
-    for (const f of ["th", "cn", "jp"]) {
+  it("cn/jp have NEEDS_TRANSLATION placeholders (disabled locales)", () => {
+    for (const f of ["cn", "jp"]) {
       const loc = load(f);
       for (const k of KEYS) expect(loc[k]).toContain("[NEEDS_TRANSLATION]");
     }

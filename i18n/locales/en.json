@@ -4,6 +4,10 @@
   },
   "search": {
     "placeholder": "Search products, services, articles...",
+    "browseTitle": "Browse all listings",
+    "browseDescription": "Type a search term or choose a filter to find products, rental equipment, services, reviews, articles, and promotions",
+    "browseCount": "Showing {n} items to browse",
+    "browseEmpty": "Type a search term or choose a filter to get started",
     "title": "Search Results",
     "filters": "Filters",
     "reset": "Reset",

@@ -72,15 +72,17 @@ describe("cart manual i18n keys", () => {
   ];
   const load = (f: string) =>
     JSON.parse(read(`i18n/locales/${f}.json`)).cart as Record<string, string>;
-  it("en has real values", () => {
-    const en = load("en");
-    for (const k of KEYS) {
-      expect(en[k]).toBeTruthy();
-      expect(en[k]).not.toContain("NEEDS_TRANSLATION");
+  it("th + en have real values", () => {
+    for (const f of ["th", "en"]) {
+      const loc = load(f);
+      for (const k of KEYS) {
+        expect(loc[k]).toBeTruthy();
+        expect(loc[k]).not.toContain("NEEDS_TRANSLATION");
+      }
     }
   });
-  it("th/cn/jp have NEEDS_TRANSLATION placeholders", () => {
-    for (const f of ["th", "cn", "jp"]) {
+  it("cn/jp have NEEDS_TRANSLATION placeholders (disabled locales)", () => {
+    for (const f of ["cn", "jp"]) {
       const loc = load(f);
       for (const k of KEYS) expect(loc[k]).toContain("[NEEDS_TRANSLATION]");
     }

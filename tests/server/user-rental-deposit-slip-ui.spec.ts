@@ -7,7 +7,7 @@
  *  2. Related card is gated to draft bookings; it does not confirm
  *  3. Uses i18n keys (no hardcoded strings) and adds no Omise/QR/payment-attempt
  *     coupling
- *  4. i18n keys exist in en.json with th/cn/jp [NEEDS_TRANSLATION] placeholders
+ *  4. i18n keys real in th/en; cn/jp carry [NEEDS_TRANSLATION] placeholders
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -59,16 +59,18 @@ describe("deposit-slip i18n keys", () => {
     JSON.parse(read(`i18n/locales/${f}.json`)).rentalsPage
       .depositSlip as Record<string, string>;
 
-  it("en.json has real English values for every key", () => {
-    const en = load("en");
-    for (const k of KEYS) {
-      expect(en[k]).toBeTruthy();
-      expect(en[k]).not.toContain("NEEDS_TRANSLATION");
+  it("th.json + en.json have real values for every key", () => {
+    for (const f of ["th", "en"]) {
+      const loc = load(f);
+      for (const k of KEYS) {
+        expect(loc[k]).toBeTruthy();
+        expect(loc[k]).not.toContain("NEEDS_TRANSLATION");
+      }
     }
   });
 
-  it("th/cn/jp carry NEEDS_TRANSLATION placeholders for every key", () => {
-    for (const f of ["th", "cn", "jp"]) {
+  it("cn/jp carry NEEDS_TRANSLATION placeholders (disabled locales)", () => {
+    for (const f of ["cn", "jp"]) {
       const loc = load(f);
       for (const k of KEYS) {
         expect(loc[k]).toContain("[NEEDS_TRANSLATION]");
