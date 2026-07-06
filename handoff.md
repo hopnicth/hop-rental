@@ -1281,3 +1281,22 @@ A permanent, non-PII verification probe row exists in remote/staging `public.kyc
 - action: `upload` · result: `allowed` · reason: `remote-verify-probe` · all PII/document fields NULL
 Filter it out (e.g. `WHERE reason <> 'remote-verify-probe'`) in any audit/log review.
 Process note: future remote verification of immutable logs must be **read-only / metadata-only** (no insert-based checks) so no further permanent probe rows are created.
+
+---
+
+## Claude Code → next session / 2026-07-07 — next agenda
+
+1. DECISION REQUIRED: ratify or reverse de facto payment flow. Live
+   system runs in-system slip upload (mig 115) for BOTH sale orders and
+   rental deposits. Approved Phase 0 architecture (LINE/WhatsApp + Mark
+   Deposit Received, no in-system slips) was never implemented. Code has
+   decided by default — needs explicit ratification or a migration plan
+   to Phase 0. Evidence: orphaned depositSlip keys,
+   PaymentRequestRelatedCard as live rental path.
+2. B-4 — public taxonomy filtering (spec + audit checklist to be
+   drafted; params taxCategory/taxSubcategory, never legacy category).
+3. Slice 2 Home partner section — BLOCKED on off-limits file decision
+   (index.vue, HomeCategoryShortcutRail.vue) + B-4 completion.
+4. Backlog: cn/jp structural drift; assigned_by column if self-assign/
+   AI extraction lands; 20 red tests (KYC/POS track);
+   HOPNIC_COMPANY_INFO casing polish.

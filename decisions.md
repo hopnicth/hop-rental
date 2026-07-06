@@ -432,3 +432,17 @@ Decision: `KYC_HASH_SECRET` (the HMAC-SHA256 key in `server/utils/kyc.ts hashIde
 Reason: The 2026-06-06 staging smoke found `KYC_HASH_SECRET` missing from the staging Vercel environment (and local `.env`) — `POST /api/admin/kyc/profiles/lookup` returned 500 `KYC_HASH_UNAVAILABLE`, blocking the entire /admin/kyc UI path. That was harmless on staging (zero real profiles; hashing hard-fails closed by design), but the same gap in production after real profiles exist would be an outage, and setting a DIFFERENT value later than the one used at first-profile-creation would silently orphan all earlier profiles. The keyed-hash/no-plaintext design that makes the store PDPA-lean is exactly what makes the key permanent.
 Confidentiality (not only availability): Thai national IDs, juristic IDs, and passport numbers are STRUCTURED/GUESSABLE identity spaces — `KYC_HASH_SECRET` is the only thing preventing an attacker who obtains `identity_hash` values from brute-forcing/enumerating candidate identities and confirming who is enrolled. If BOTH the hash table and the secret are compromised, that is **de-anonymization of enrolled identities and a PDPA personal-data exposure requiring breach assessment** — not merely an operational reset/re-verification project. Therefore: the secret and the `identity_hash` values must live in SEPARATE TRUST ZONES — the current architecture already has that strength (secret in the Vercel env, hashes in the Supabase DB) and must keep it; access to the secret AND its backup must be protected at least as strongly as database access; the secret is never printed, pasted, logged, or committed anywhere; records carry presence/evidence references only, never the value.
 Impact: Owner sets the secret once per environment (staging now; production at enablement) generated per `.env.example` (`openssl rand -hex 32`), backs it up outside git in a vault protected at least as strongly as DB access, and treats staging and production as INDEPENDENT secrets (they share no profiles). Checklist §4.0 gates production enablement on env completeness and carries the same confidentiality rules. Any future "rotate KYC_HASH_SECRET" request must be treated as a re-collection/re-verification project, not a config change — and a suspected secret-plus-hash-table compromise additionally triggers PDPA breach assessment. No code change required by this decision.
+
+## 2026-07-07 — i18n: cn/jp locale disable, deposit glossary rule, status-enum namespaces
+
+1) 2026-07-07 — i18n: cn/jp locales disabled from public UI (switcher +
+   normalizeLocale fold to th). Locale JSON files retained on disk;
+   nuxt.config locales untouched. Admin content editor keeps all 4 tabs.
+   Re-enable = revert commit d9e15ea.
+2) 2026-07-07 — Glossary rule (locked): never bare "มัดจำ" in money-path
+   copy — always เงินมัดจำจอง or เงินมัดจำประกัน. Refundable-not-rental-fee
+   distinction must survive in any deposit copy.
+3) 2026-07-07 — i18n status enums: paymentHistory.status.* maps 1:1 to
+   slip enum (manual_payment_request_slips.status, 3 values);
+   paymentRequests.* maps to request enum (5 values). Namespaces are
+   separate by design — do not conflate.

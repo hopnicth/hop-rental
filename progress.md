@@ -535,3 +535,23 @@ Read-only audits only. No files changed. No migrations. No commits.
 - **Remote DB:** 111 + 112 applied via `supabase db push --linked` (dry-run before showed exactly the two; dry-run after = "Remote database is up to date"). Metadata verification (read-only, no probe rows): REST count on `kyc_verification_decisions` → 0 rows / HTTP 200 (table + RLS live); `gen types --linked` read the REMOTE catalog and emitted the table, `kyc_vat_status` enum, and both RPC signatures. (`db diff --linked` not run — shadow-DB port conflicts with the running local stack; recorded as the one skipped check.)
 - **`database.types.ts` regenerated with `--linked --schema public`** — diff is PURELY ADDITIVE (5 hunks, 91 lines: table block + 2 RPC blocks + enum + constant; ZERO removals, zero non-KYC drift; `__InternalSupabase` header preserved). tsc clean · full suite 2252/20 POS baseline unchanged.
 - **OPERATIONAL NOTE (v1 walk-in reality):** grep confirmed there is NO runtime INSERT path for `kyc_pickup_overrides` yet — so in v1, unverified walk-ins can rely on neither `staff_on_site` (not implemented) NOR an app-created override (no creation UI/endpoint exists). **The ONLY v1 path is super_admin pre-verification via `/admin/kyc`** until override creation or staff_on_site ships.
+
+---
+
+## Session 2026-07-07 — Payment config + i18n completion
+
+### Done ✅
+2026-07-07 — Payment config + i18n completion
+- Bank account details finalized (9278055). Provenance: real account
+  number present since 0e12fb6; this commit is casing/label polish only.
+- th/en parity complete: 44 keys (df0211f). NT count th=0, en=0,
+  parity 1393=1393. cn/jp untouched (200 NT each + structural drift
+  −56/−49 — backlogged).
+- Orphaned keys documented: docs/i18n-orphaned-keys.md — cart (8, never
+  wired) + rentalsPage.depositSlip (9, superseded by
+  PaymentRequestRelatedCard/mig-115 flow).
+- cn/jp disabled from public UI (d9e15ea).
+- 3 i18n guard specs inverted to new contract (in df0211f).
+- Known issues logged: 20 pre-existing test failures (POS-v3/webhook/
+  handover specs, verified pre-existing on clean HEAD); admin route
+  auth race (fails closed — redirect to login on first nav).
