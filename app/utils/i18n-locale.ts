@@ -2,6 +2,14 @@ import type { LocaleCode } from "~/types/locale";
 
 export const DEFAULT_LOCALE: LocaleCode = "th";
 export const SUPPORTED_LOCALE_CODES = ["th", "en", "cn", "jp"] as const;
+
+/**
+ * Locales that are actually selectable in the UI right now. `cn`/`jp` remain
+ * registered in nuxt.config + have locale JSON, but are temporarily disabled:
+ * any stored/aliased cn/jp value is folded back to DEFAULT_LOCALE below.
+ */
+export const ENABLED_LOCALE_CODES: readonly LocaleCode[] = ["th", "en"];
+
 export const LOCALE_COOKIE_NAME = "hop_locale";
 
 /** Nuxt i18n's default cookie name; keep overwriting it so stale values stop winning. */
@@ -26,7 +34,13 @@ export function normalizeLocale(value: unknown): LocaleCode | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase().replace("_", "-");
   if (!normalized) return null;
-  if (normalized in LOCALE_ALIASES) return LOCALE_ALIASES[normalized];
   const base = normalized.split("-")[0] ?? "";
-  return LOCALE_ALIASES[base] ?? null;
+  const resolved =
+    normalized in LOCALE_ALIASES
+      ? LOCALE_ALIASES[normalized]
+      : (LOCALE_ALIASES[base] ?? null);
+  if (resolved === null) return null;
+  // Fold disabled locales (cn/jp) back to the default so stale cookies or
+  // Accept-Language hints can't select a hidden locale.
+  return ENABLED_LOCALE_CODES.includes(resolved) ? resolved : DEFAULT_LOCALE;
 }

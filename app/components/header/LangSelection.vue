@@ -49,16 +49,8 @@ const items = computed<DropdownMenuItem[][]>(() => [
       icon: "circle-flags:en",
       onSelect: () => chooseLocale("en"),
     },
-    {
-      label: "CN",
-      icon: "circle-flags:cn",
-      onSelect: () => chooseLocale("cn"),
-    },
-    {
-      label: "JP",
-      icon: "circle-flags:jp",
-      onSelect: () => chooseLocale("jp"),
-    },
+    // CN / JP are temporarily disabled — locale JSON kept but not selectable.
+    // See normalizeLocale() which folds cn/jp back to the default locale.
   ],
 ]);
 </script>
