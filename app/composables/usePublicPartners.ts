@@ -21,6 +21,10 @@ export interface PublicPartnerInitial {
   q?: string;
   directoryType?: PublicPartnerDirectoryTypeFilter;
   category?: string;
+  /** Taxonomy level-0 slug filter (independent of legacy `category`). */
+  taxCategory?: string;
+  /** Taxonomy level-1 slug; only effective with a matching parent taxCategory. */
+  taxSubcategory?: string;
   serviceArea?: string;
   page?: number;
   pageSize?: number;
@@ -32,6 +36,8 @@ export function usePublicPartners(initial?: PublicPartnerInitial) {
     initial?.directoryType ?? "",
   );
   const category = ref(initial?.category ?? "");
+  const taxCategory = ref(initial?.taxCategory ?? "");
+  const taxSubcategory = ref(initial?.taxSubcategory ?? "");
   const serviceArea = ref(initial?.serviceArea ?? "");
   const page = ref(initial?.page ?? 0);
   const pageSize = ref(initial?.pageSize ?? 20);
@@ -44,6 +50,10 @@ export function usePublicPartners(initial?: PublicPartnerInitial) {
     if (q.value.trim()) params.q = q.value.trim();
     if (directoryType.value) params.directoryType = directoryType.value;
     if (category.value) params.category = category.value;
+    if (taxCategory.value) params.taxCategory = taxCategory.value;
+    // taxSubcategory is only meaningful alongside a taxCategory.
+    if (taxCategory.value && taxSubcategory.value)
+      params.taxSubcategory = taxSubcategory.value;
     if (serviceArea.value) params.serviceArea = serviceArea.value;
     return params;
   });
@@ -53,7 +63,9 @@ export function usePublicPartners(initial?: PublicPartnerInitial) {
     () =>
       `public-partners:${directoryType.value || "all"}:${
         category.value || "all"
-      }:${serviceArea.value || "all"}:${page.value}:${q.value}`,
+      }:${taxCategory.value || "all"}:${taxSubcategory.value || "all"}:${
+        serviceArea.value || "all"
+      }:${page.value}:${q.value}`,
   );
 
   const { data, pending, error, refresh } = useFetch<PartnerListResponse>(
@@ -63,7 +75,7 @@ export function usePublicPartners(initial?: PublicPartnerInitial) {
       query,
       // Explicit watch list mirrors the fetchKey dependencies so useFetch
       // re-runs even if the computed key identity doesn't change in edge cases.
-      watch: [q, directoryType, category, serviceArea, page],
+      watch: [q, directoryType, category, taxCategory, taxSubcategory, serviceArea, page],
       default: () => ({
         items: [] as PartnerCard[],
         total: 0,
@@ -83,6 +95,8 @@ export function usePublicPartners(initial?: PublicPartnerInitial) {
     q,
     directoryType,
     category,
+    taxCategory,
+    taxSubcategory,
     serviceArea,
     page,
     // Response data

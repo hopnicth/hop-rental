@@ -41,7 +41,7 @@ const ALL_PARTNER_CATEGORIES: SelectOpt[] = [
 
 const route = useRoute();
 const router = useRouter();
-const { locale } = useI18n();
+const { locale, t } = useI18n();
 
 function readDirectoryTypeQuery(v: unknown): PublicPartnerDirectoryTypeFilter {
   const s = readQueryString(v);
@@ -57,6 +57,8 @@ const {
   q,
   directoryType,
   category,
+  taxCategory,
+  taxSubcategory,
   serviceArea,
   page,
   items,
@@ -68,6 +70,8 @@ const {
   q: readQueryString(route.query.q),
   directoryType: readDirectoryTypeQuery(route.query.directoryType),
   category: readQueryString(route.query.category),
+  taxCategory: readQueryString(route.query.taxCategory),
+  taxSubcategory: readQueryString(route.query.taxSubcategory),
   serviceArea: readQueryString(route.query.area),
 });
 
@@ -82,6 +86,7 @@ const activeFilterCount = computed(
     Number(!!q.value) +
     Number(!!directoryType.value) +
     Number(!!category.value) +
+    Number(!!taxCategory.value) +
     Number(!!serviceArea.value),
 );
 
@@ -134,21 +139,35 @@ function onDirectoryTypeChange(value: PublicPartnerDirectoryTypeFilter) {
   page.value = 0;
 }
 
+// Level-0 taxonomy rail select. null = "All" (clear the tax filter).
+// The rail is level-0 only this slice, so any category change clears the sub.
+function onSelectTaxCategory(slug: string | null) {
+  taxCategory.value = slug ?? "";
+  taxSubcategory.value = "";
+  page.value = 0;
+}
+
 function clearFilters() {
   q.value = "";
   directoryType.value = "";
   category.value = "";
+  taxCategory.value = "";
+  taxSubcategory.value = "";
   serviceArea.value = "";
   page.value = 0;
 }
 
 // Filter state → URL (client only)
-watch([q, directoryType, category, serviceArea], () => {
+watch([q, directoryType, category, taxCategory, taxSubcategory, serviceArea], () => {
   if (!import.meta.client) return;
   const next: Record<string, string> = {};
   if (q.value.trim()) next.q = q.value.trim();
   if (directoryType.value) next.directoryType = directoryType.value;
   if (category.value) next.category = category.value;
+  if (taxCategory.value) next.taxCategory = taxCategory.value;
+  // taxSubcategory only rides along when a taxCategory is set.
+  if (taxCategory.value && taxSubcategory.value)
+    next.taxSubcategory = taxSubcategory.value;
   if (serviceArea.value) next.area = serviceArea.value;
   if (!queryObjectsEqual(route.query, next))
     void router.replace({ query: next });
@@ -174,6 +193,18 @@ watch(
   },
 );
 watch(
+  () => route.query.taxCategory,
+  (v) => {
+    taxCategory.value = readQueryString(v);
+  },
+);
+watch(
+  () => route.query.taxSubcategory,
+  (v) => {
+    taxSubcategory.value = readQueryString(v);
+  },
+);
+watch(
   () => route.query.area,
   (v) => {
     serviceArea.value = readQueryString(v);
@@ -194,6 +225,12 @@ watch(
         </h1>
         <p class="text-base text-muted">Our Partner Network</p>
       </div>
+
+      <!-- Taxonomy category rail (level-0) -->
+      <PartnersPartnerCategoryRail
+        :active-category="taxCategory || null"
+        @select="onSelectTaxCategory"
+      />
 
       <!-- Filter card -->
       <UCard :ui="{ body: 'space-y-4' }">
@@ -340,12 +377,16 @@ watch(
         </div>
       </div>
 
-      <!-- Empty state -->
+      <!-- Empty state (category-specific copy when a taxonomy filter is active) -->
       <UAlert
         v-else
         color="neutral"
         variant="soft"
-        title="ยังไม่มีพาร์ทเนอร์ที่ตรงกับการค้นหา"
+        :title="
+          taxCategory
+            ? t('partners.rail.emptyCategory')
+            : 'ยังไม่มีพาร์ทเนอร์ที่ตรงกับการค้นหา'
+        "
         description="ลองเปลี่ยนตัวกรอง หรือตรวจสอบใหม่อีกครั้งในภายหลัง"
       />
     </div>

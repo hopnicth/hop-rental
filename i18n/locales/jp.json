@@ -1459,6 +1459,10 @@
       "verified": "認証済み",
       "unverified": "未認証"
     },
+    "rail": {
+      "all": "[NEEDS_TRANSLATION]: All",
+      "emptyCategory": "[NEEDS_TRANSLATION]: No partners in this category yet"
+    },
     "categories": {
       "construction_materials": "[NEEDS_TRANSLATION]: Construction Materials",
       "contractor_services": "[NEEDS_TRANSLATION]: Contractor Services",

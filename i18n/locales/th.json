@@ -1510,6 +1510,10 @@
       "verified": "ยืนยันตัวตนแล้ว",
       "unverified": "ยังไม่ได้ยืนยันตัวตน"
     },
+    "rail": {
+      "all": "ทั้งหมด",
+      "emptyCategory": "ยังไม่มีพาร์ทเนอร์ในหมวดนี้"
+    },
     "categories": {
       "construction_materials": "วัสดุก่อสร้าง",
       "contractor_services": "บริการผู้รับเหมา",
