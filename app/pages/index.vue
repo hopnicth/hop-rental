@@ -8,7 +8,6 @@ import HopPartnerSlide from "~/components/partners/HopPartnerSlide.vue";
 import type { Asset } from "~/types/asset";
 import type { HomeLinkCard as HomeLinkCardType } from "~/types/home";
 import type { Product } from "~/types/product";
-import type { PartnerCard } from "~/types/partner";
 
 const { t } = useI18n();
 const { getAssetShowPath, loading: assetsLoading } = useAssets();
@@ -19,8 +18,6 @@ const {
   featuredProducts,
   loading: homeContentLoading,
 } = useHomeContent();
-
-const { partners, pending: partnersPending } = useHomePartners();
 
 const linkCardsLoading = computed(() => homeContentLoading.value);
 const featuredAssetsLoading = computed(
@@ -40,10 +37,6 @@ function asAsset(item: unknown) {
 
 function asProduct(item: unknown) {
   return item as Product;
-}
-
-function asPartnerCard(item: unknown) {
-  return item as PartnerCard;
 }
 </script>
 
@@ -134,6 +127,22 @@ function asPartnerCard(item: unknown) {
             </HomeHorizontalRail>
           </HomeSectionShell>
 
+          <HomeSectionShell :title="t('home.partnersSection')" class="mt-10">
+            <template #action>
+              <UButton
+                to="/partners"
+                variant="soft"
+                color="primary"
+                size="sm"
+                trailing-icon="bx:chevron-right"
+              >
+                {{ t("home.viewAllPartners") }}
+              </UButton>
+            </template>
+
+            <PartnersPartnerCategoryCards />
+          </HomeSectionShell>
+
           <HomeSectionShell
             :title="t('home.productsTitle')"
             :description="t('home.productsDescription')"
@@ -158,36 +167,6 @@ function asPartnerCard(item: unknown) {
               <template #item="{ item }">
                 <LazyProductsProductCard
                   :product-id="asProduct(item).id"
-                  class="lg:mx-0.5"
-                />
-              </template>
-            </HomeHorizontalRail>
-          </HomeSectionShell>
-
-          <HomeSectionShell :title="t('home.partnersSection')" class="mt-10">
-            <template #action>
-              <UButton
-                to="/partners"
-                variant="soft"
-                color="primary"
-                size="sm"
-                trailing-icon="bx:chevron-right"
-              >
-                {{ t("home.viewAllPartners") }}
-              </UButton>
-            </template>
-
-            <HomeHorizontalRail
-              :items="partners"
-              :empty-label="t('home.emptyPartners')"
-              :loading="partnersPending"
-            >
-              <template #skeleton>
-                <PartnersPartnerCardSkeleton />
-              </template>
-              <template #item="{ item }">
-                <PartnersPartnerCard
-                  :partner="asPartnerCard(item)"
                   class="lg:mx-0.5"
                 />
               </template>
