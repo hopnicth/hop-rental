@@ -295,3 +295,113 @@ export async function fetchPublicTaxonomyForPartners(
 
   return grouped;
 }
+
+// ── Public taxonomy filter (B-4) ────────────────────────────────────────────────
+
+/**
+ * Sanitises a public taxonomy slug param (taxCategory / taxSubcategory).
+ * Matches the partner_categories slug CHECK: `^[a-z][a-z0-9_]*$`, max 64 chars.
+ * Returns null for missing/empty/malformed input (no PostgREST injection surface —
+ * `.eq`/`.in` are parameterised, but the format guard keeps unknown input cheap).
+ */
+export function sanitiseTaxonomySlugParam(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim();
+  if (!v || v.length > 64) return null;
+  if (!/^[a-z][a-z0-9_]*$/.test(v)) return null;
+  return v;
+}
+
+/**
+ * Resolves taxCategory / taxSubcategory slugs to the set of partner_profile_ids
+ * that should match the public /partners taxonomy filter.
+ *
+ * Return contract:
+ *   null  → no taxCategory requested (caller applies NO filter — full list)
+ *   []    → filter requested but resolves to nothing (unknown/inactive slug, or
+ *           no partners) → caller yields an empty result + empty state
+ *   [ids] → distinct partner_profile_ids assigned (primary OR secondary) to the
+ *           effective category set
+ *
+ * Semantics (locked):
+ *  - Match includes BOTH primary and secondary assignments (is_primary ignored).
+ *  - taxSubcategory only takes effect when taxCategory is present AND the sub is a
+ *    LIVE child (level 1, parent = the category, active + public); otherwise the
+ *    sub is silently ignored and the category is used alone.
+ *  - When a valid sub is present, a partner matches if assigned to the sub OR to
+ *    its parent category (a parent-only assignee appears in the child's filter).
+ *  - Unknown/inactive category slug → [] (never an error, never a validity leak).
+ *
+ * Uses the service-role client (RLS bypassed), so active/public is enforced in
+ * code here — mirroring fetchPublicTaxonomyForPartners. Non-public *partner*
+ * exclusion is the caller's job (the list route keeps `.eq("is_public", true)`),
+ * so a non-public partner cannot leak even if its assignment matches.
+ */
+export async function resolvePartnerIdsForTaxonomy(
+  client: AnyClient,
+  params: { taxCategory?: unknown; taxSubcategory?: unknown },
+): Promise<string[] | null> {
+  const taxCategory = sanitiseTaxonomySlugParam(params.taxCategory);
+  if (!taxCategory) {
+    // Distinguish "absent" (→ no filter) from "present-but-invalid" (→ empty).
+    const raw = params.taxCategory;
+    const present = typeof raw === "string" && raw.trim().length > 0;
+    return present ? [] : null;
+  }
+  const taxSubcategory = sanitiseTaxonomySlugParam(params.taxSubcategory);
+
+  const slugs = taxSubcategory ? [taxCategory, taxSubcategory] : [taxCategory];
+  const { data: catData, error: catError } = await client
+    .from("partner_categories")
+    .select("id, slug, level, parent_id, is_active, is_public")
+    .in("slug", slugs);
+  if (catError) {
+    throw createError({ statusCode: 500, statusMessage: catError.message });
+  }
+
+  type CatRow = {
+    id: string;
+    slug: string;
+    level: number;
+    parent_id: string | null;
+    is_active: boolean;
+    is_public: boolean;
+  };
+  // Explicit active/public gate (service-role bypasses RLS).
+  const rows = ((catData ?? []) as CatRow[]).filter(
+    (r) => r.is_active === true && r.is_public === true,
+  );
+
+  const l0 = rows.find(
+    (r) => r.slug === taxCategory && Number(r.level) === 0,
+  );
+  if (!l0) return []; // unknown / inactive / non-public category → empty result
+
+  const categoryIds = [l0.id];
+  if (taxSubcategory) {
+    const sub = rows.find(
+      (r) =>
+        r.slug === taxSubcategory &&
+        Number(r.level) === 1 &&
+        r.parent_id === l0.id,
+    );
+    if (sub) categoryIds.push(sub.id); // match sub OR parent
+    // sub unknown / inactive / not a child → silently ignored (category only)
+  }
+
+  const { data: asgData, error: asgError } = await client
+    .from("partner_category_assignments")
+    .select("partner_profile_id")
+    .in("category_id", categoryIds);
+  if (asgError) {
+    throw createError({ statusCode: 500, statusMessage: asgError.message });
+  }
+
+  return Array.from(
+    new Set(
+      ((asgData ?? []) as { partner_profile_id: string }[])
+        .map((r) => r.partner_profile_id)
+        .filter(Boolean),
+    ),
+  );
+}

@@ -1949,6 +1949,32 @@ describe("GET /api/partners — Phase 1C-2D.4 search/filter source checks", () =
   });
 });
 
+describe("GET /api/partners — B-4 taxonomy filter source checks", () => {
+  const src = read("server/api/partners/index.get.ts");
+
+  it("resolves partner ids via resolvePartnerIdsForTaxonomy", () => {
+    expect(src).toContain("resolvePartnerIdsForTaxonomy");
+    expect(src).toContain("taxCategory: q.taxCategory");
+    expect(src).toContain("taxSubcategory: q.taxSubcategory");
+  });
+
+  it("applies the taxonomy filter as an id restriction (null = no filter)", () => {
+    expect(src).toContain("if (taxonomyPartnerIds !== null)");
+    expect(src).toContain('request = request.in("id", taxonomyPartnerIds)');
+  });
+
+  it("leaves the LEGACY category filter byte-identical", () => {
+    // The legacy line must remain exactly as-is — taxonomy is a separate filter.
+    expect(src).toContain(
+      "if (category) request = request.or(buildPublicCategoryOrFilter(category));",
+    );
+  });
+
+  it("keeps the is_public gate so non-public partners cannot leak via assignments", () => {
+    expect(src).toContain('.eq("is_public", true)');
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 1C-2E.2 — SELECT strings: thumbnail_image_url + cover_image_url
 // ─────────────────────────────────────────────────────────────────────────────

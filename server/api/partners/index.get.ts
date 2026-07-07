@@ -12,13 +12,18 @@
  *
  * Query params:
  *   directoryType  — "store" | "service" | "contractor" (omit = all)
- *   category       — matches main_category_key OR secondary_category_keys (omit = all)
+ *   category       — LEGACY: matches main_category_key OR secondary_category_keys (omit = all)
+ *   taxCategory    — taxonomy level-0 slug filter (partner_category_assignments); omit = all
+ *   taxSubcategory — taxonomy level-1 slug; only effective with a matching parent taxCategory
  *   serviceArea    — service_areas array contains filter (omit = all)
  *   isVerified     — "true" to show verified only (omit = all)
  *   isFeatured     — "true" to show featured only (omit = all)
  *   q              — text search across name_th, name_en, tagline_th, search_keywords
  *   page           — 0-based page index (default 0)
  *   pageSize       — items per page (default 20, max 50)
+ *
+ * `category` (legacy) and `taxCategory`/`taxSubcategory` are independent filters:
+ * when both are present they compose with AND. Legacy behaviour is unchanged.
  */
 import { createError, defineEventHandler, getQuery } from "h3";
 import { serverSupabaseServiceRole } from "#supabase/server";
@@ -30,7 +35,10 @@ import {
   buildPublicCategoryOrFilter,
   buildPublicTextSearchOrFilter,
 } from "~~/server/utils/admin-partners";
-import { fetchPublicTaxonomyForPartners } from "~~/server/utils/admin-partner-categories";
+import {
+  fetchPublicTaxonomyForPartners,
+  resolvePartnerIdsForTaxonomy,
+} from "~~/server/utils/admin-partner-categories";
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
@@ -77,7 +85,7 @@ export default defineEventHandler(async (event) => {
     .order("created_at", { ascending: false });
 
   if (directoryType) request = request.eq("directory_type", directoryType);
-  // Category matches main_category_key OR secondary_category_keys contains the value.
+  // LEGACY category — matches main_category_key OR secondary_category_keys contains the value.
   if (category) request = request.or(buildPublicCategoryOrFilter(category));
   if (serviceArea) request = request.contains("service_areas", [serviceArea]);
   if (verifiedOnly) request = request.eq("is_verified", true);
@@ -85,6 +93,18 @@ export default defineEventHandler(async (event) => {
   // Text search across name fields + server-side search_keywords (not exposed in response).
   if (searchQuery)
     request = request.or(buildPublicTextSearchOrFilter(searchQuery));
+
+  // Taxonomy filter (independent of legacy category; composes with AND).
+  // null → no filter; [] → no match (empty result); [ids] → restrict to those partners.
+  // The `.eq("is_public", true)` above still applies, so non-public partners cannot
+  // leak even if a service-role assignment read matched their id.
+  const taxonomyPartnerIds = await resolvePartnerIdsForTaxonomy(client, {
+    taxCategory: q.taxCategory,
+    taxSubcategory: q.taxSubcategory,
+  });
+  if (taxonomyPartnerIds !== null) {
+    request = request.in("id", taxonomyPartnerIds);
+  }
 
   const { data, error } = await request;
 

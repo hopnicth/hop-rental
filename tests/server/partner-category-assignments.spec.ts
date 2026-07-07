@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   replacePartnerCategoryAssignments,
   fetchPublicTaxonomyForPartners,
+  resolvePartnerIdsForTaxonomy,
 } from "../../server/utils/admin-partner-categories";
 
 /**
@@ -270,5 +271,195 @@ describe("fetchPublicTaxonomyForPartners — public display read", () => {
   it("returns an empty map for an empty id list without querying", async () => {
     const grouped = await fetchPublicTaxonomyForPartners(makeReadClient(), []);
     expect(grouped.size).toBe(0);
+  });
+});
+
+// ── resolvePartnerIdsForTaxonomy (public taxCategory / taxSubcategory filter) ────
+/**
+ * Slug-keyed catalog for the resolver. Mirrors real seed shape:
+ *   construction_materials (L0)
+ *     ├ construction_materials_roofing     (L1, active/public)
+ *     ├ construction_materials_steel_rebar (L1, active/public)
+ *     └ construction_materials_inactive    (L1, is_active = false)
+ *   contractor_services (L0)
+ *     └ contractor_services_electrical     (L1, child of the OTHER parent)
+ */
+const CAT_BY_SLUG: Record<
+  string,
+  {
+    id: string;
+    slug: string;
+    level: number;
+    parent_id: string | null;
+    is_active: boolean;
+    is_public: boolean;
+  }
+> = {
+  construction_materials: {
+    id: "cat-cm",
+    slug: "construction_materials",
+    level: 0,
+    parent_id: null,
+    is_active: true,
+    is_public: true,
+  },
+  contractor_services: {
+    id: "cat-cs",
+    slug: "contractor_services",
+    level: 0,
+    parent_id: null,
+    is_active: true,
+    is_public: true,
+  },
+  construction_materials_roofing: {
+    id: "cat-roofing",
+    slug: "construction_materials_roofing",
+    level: 1,
+    parent_id: "cat-cm",
+    is_active: true,
+    is_public: true,
+  },
+  construction_materials_steel_rebar: {
+    id: "cat-steel",
+    slug: "construction_materials_steel_rebar",
+    level: 1,
+    parent_id: "cat-cm",
+    is_active: true,
+    is_public: true,
+  },
+  construction_materials_inactive: {
+    id: "cat-inactive",
+    slug: "construction_materials_inactive",
+    level: 1,
+    parent_id: "cat-cm",
+    is_active: false,
+    is_public: true,
+  },
+  contractor_services_electrical: {
+    id: "cat-cs-elec",
+    slug: "contractor_services_electrical",
+    level: 1,
+    parent_id: "cat-cs",
+    is_active: true,
+    is_public: true,
+  },
+};
+
+// Assignments keyed by category_id → partner_profile_ids assigned to it.
+//  P_PARENT : primary construction_materials (L0)  + secondary steel_rebar (L1)
+//  P_SUB    : secondary roofing (L1) only            (parent-less child assignee)
+//  P_OTHER  : primary contractor_services (L0)
+const ASG_BY_CATEGORY: Record<string, string[]> = {
+  "cat-cm": ["P_PARENT"],
+  "cat-steel": ["P_PARENT"],
+  "cat-roofing": ["P_SUB"],
+  "cat-cs": ["P_OTHER"],
+};
+
+/** Minimal chainable mock matching resolvePartnerIdsForTaxonomy's call shapes. */
+function makeResolverClient() {
+  return {
+    from(table: string) {
+      if (table === "partner_categories") {
+        return {
+          select() {
+            return {
+              in(_col: string, slugs: string[]) {
+                const data = slugs
+                  .map((s) => CAT_BY_SLUG[s])
+                  .filter(Boolean);
+                return Promise.resolve({ data, error: null });
+              },
+            };
+          },
+        };
+      }
+      // partner_category_assignments
+      return {
+        select() {
+          return {
+            in(_col: string, categoryIds: string[]) {
+              const data = categoryIds.flatMap((cid) =>
+                (ASG_BY_CATEGORY[cid] ?? []).map((pid) => ({
+                  partner_profile_id: pid,
+                })),
+              );
+              return Promise.resolve({ data, error: null });
+            },
+          };
+        },
+      };
+    },
+  };
+}
+
+describe("resolvePartnerIdsForTaxonomy — public taxonomy filter", () => {
+  it("returns null when no taxCategory is provided (no filter)", async () => {
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {});
+    expect(ids).toBeNull();
+  });
+
+  it("returns [] for an unknown category slug (unknown → empty result)", async () => {
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "does_not_exist",
+    });
+    expect(ids).toEqual([]);
+  });
+
+  it("returns [] for a present-but-malformed category slug", async () => {
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "Bad Slug!",
+    });
+    expect(ids).toEqual([]);
+  });
+
+  it("category only → matches partners assigned to that level-0 category", async () => {
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "construction_materials",
+    });
+    expect(ids).toEqual(["P_PARENT"]);
+  });
+
+  it("valid sub → matches partners on the sub OR its parent (parent-only assignee appears)", async () => {
+    // P_SUB is assigned only the roofing L1; P_PARENT is assigned only the parent L0.
+    // Filtering by the sub must return BOTH (D2: sub OR parent).
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "construction_materials",
+      taxSubcategory: "construction_materials_roofing",
+    });
+    expect([...ids!].sort()).toEqual(["P_PARENT", "P_SUB"]);
+  });
+
+  it("dedupes a partner matched by both parent and sub", async () => {
+    // P_PARENT is assigned BOTH construction_materials (L0) and steel_rebar (L1).
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "construction_materials",
+      taxSubcategory: "construction_materials_steel_rebar",
+    });
+    expect(ids).toEqual(["P_PARENT"]);
+  });
+
+  it("silently ignores a sub that is not a child of the category (category only)", async () => {
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "construction_materials",
+      taxSubcategory: "contractor_services_electrical", // child of the OTHER parent
+    });
+    expect(ids).toEqual(["P_PARENT"]); // sub ignored → not P_SUB
+  });
+
+  it("silently ignores an inactive sub (category only)", async () => {
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "construction_materials",
+      taxSubcategory: "construction_materials_inactive",
+    });
+    expect(ids).toEqual(["P_PARENT"]);
+  });
+
+  it("bare category does not roll down to child-only assignees", async () => {
+    // P_SUB is assigned only the roofing L1, never the parent L0.
+    const ids = await resolvePartnerIdsForTaxonomy(makeResolverClient(), {
+      taxCategory: "construction_materials",
+    });
+    expect(ids).not.toContain("P_SUB");
   });
 });
