@@ -34,17 +34,28 @@ describe("PartnerCategoryCards.vue — source contract", () => {
     expect(src).not.toContain("useRouter");
   });
 
-  it("mirrors the home card chrome (hover ring-primary + translate + icon badge)", () => {
+  it("reuses the product-section carousel wrapper (HomeHorizontalRail), driven by the 8-config", () => {
+    expect(src).toContain("HomeHorizontalRail");
+    expect(src).toContain(':items="categories"');
+    expect(src).toContain("#item"); // slides rendered per carousel item
+  });
+
+  it("card footprint uses an aspect-square icon zone (product image footprint)", () => {
+    expect(src).toContain("aspect-square");
+    expect(src).toContain("bg-primary/10"); // primary-soft icon zone
+  });
+
+  it("centers the label horizontally + vertically, line-clamp-2 for long labels", () => {
+    expect(src).toContain("line-clamp-2");
+    expect(src).toContain("text-center");
+    expect(src).toContain("items-center justify-center");
+  });
+
+  it("mirrors the home card chrome (UCard + hover ring-primary + translate)", () => {
+    expect(src).toContain("UCard");
     expect(src).toContain("hover:-translate-y-0.5");
     expect(src).toContain("hover:ring-2");
     expect(src).toContain("hover:ring-primary");
-    expect(src).toContain("bg-primary/10"); // icon badge
-    expect(src).toContain("UCard");
-  });
-
-  it("is a 4-col desktop grid / mobile horizontal scroll", () => {
-    expect(src).toContain("overflow-x-auto");
-    expect(src).toContain("sm:grid-cols-4");
   });
 });
 
