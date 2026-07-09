@@ -446,3 +446,57 @@ Impact: Owner sets the secret once per environment (staging now; production at e
    slip enum (manual_payment_request_slips.status, 3 values);
    paymentRequests.* maps to request enum (5 values). Namespaces are
    separate by design — do not conflate.
+
+## 2026-07-09 — Payment-flow ratification, G2 scope, POS V3 track, POS V3 language policy, KYC freeze status
+
+1) Payment flow RATIFIED: in-system slip upload (migration 115,
+   `manual_payment_requests` + items + slips) is the CANONICAL payment
+   flow. The Phase 0 architecture (LINE/WhatsApp slip + Mark Deposit
+   Received, no in-system slips) is FORMALLY ABANDONED — resolves the
+   2026-07-07 "ratify or reverse" agenda item (handoff.md 2026-07-07).
+   Launch BLOCKERs: G1 — append-only/UPDATE-guard triggers missing on
+   payment tables (planned migration 118); G2 — deposit confirm is 4
+   non-atomic writes (planned migration 119 RPC).
+   Pre-conditions for any future staff-upload-on-behalf feature:
+   G3 — reviewer must not equal uploader; G4 — void correction path;
+   A1 — slip access logging.
+
+2) G2 RPC scope note: the 2026-07-09 POS V3 deep audit
+   (docs/audit/2026-07-09-pos-v3-deep-audit.md §P2.5) VERIFIED a
+   cash-path W1→W2 crash gap — money collected, booking stuck in
+   `draft`, unrecoverable by retry (same-key retry short-circuits
+   without finalizing at booking-deposit-payments.post.ts:150-168;
+   new-key retry blocked by the one-paid partial unique index,
+   migration 087:41-43). Migration 119 MUST close this: atomic W1–W4
+   AND idempotent finalizer re-entry for cash same-key retries (the QR
+   path already recovers via the idempotent finalizer).
+   Status: HIGH, pending reproduction test (first task of V3-0).
+   Also folded into migration 119 scope: W3 booking-update result never
+   checked (finalizer :128-137) and doc-task insert error swallowed
+   (finalizer :241-243) — deep-audit findings 11–12.
+   Scope covers BOTH non-atomic confirm paths: the manual slip
+   confirm (rental-manual-deposit-confirmation.ts:168-250, per
+   docs/payment-flow-ratification-audit.md F4) and the POS V3
+   finalizer path.
+
+3) POS: V3 is the ONLY development track. v1 (currently the only
+   sale-capable POS) will be retired at V3-6, after V3 is
+   feature-complete (sale + fiscal documents + KYC + return) on a
+   single iPad for non-technical front-desk staff.
+   Slices: V3-0 integrity foundations → V3-1 sale → V3-2 fiscal docs →
+   V3-3 KYC → V3-4 return/settlement → V3-5 iPad UX → V3-6 retire v1/v2.
+
+4) POS V3 i18n/language policy: POS V3 is a STAFF-FACING surface, NOT
+   back-office under Decision J (2026-06-06). All copy that front-desk
+   staff must read to make decisions (primary action buttons, error
+   messages, money/status labels) must be Thai. Technical labels may
+   remain English. No mixed-language within one screen section.
+   Implementation scheduled in V3-5. Deep-audit finding 18 (zero i18n /
+   mixed Thai-English across V3) is accepted as valid (MED).
+
+5) KYC freeze (DECISIONS.md 2026-06-16, "KYC frozen" impact) REMAINS in
+   effect. It will be formally lifted when V3-3 begins, as a recorded
+   decision at that time — not now.
+   Reason: the KYC backend is test-green (14/14 spec files, 2026-07-09
+   deep audit) and V3-4 (return) depends on identity confirmation, so
+   KYC stays in the V3 track but behind the freeze gate.

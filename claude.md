@@ -22,11 +22,11 @@
 | Frontend      | Nuxt 4, Vue 3, TypeScript                                    |
 | UI Components | `@nuxt/ui` (UCard, UBadge, UButton, UModal, etc.)            |
 | Backend/API   | Nuxt server routes (`server/api/**`) via Nitro               |
-| Database      | Supabase Postgres (104+ migrations)                          |
+| Database      | Supabase Postgres (117+ migrations)                          |
 | Auth          | Supabase Auth (`@nuxtjs/supabase`, SSR cookies)              |
 | Storage       | Supabase Storage (public + private buckets)                  |
 | Realtime      | Supabase Realtime (chat)                                     |
-| i18n          | `@nuxtjs/i18n` — 4 locales: `th` (default), `en`, `cn`, `jp` |
+| i18n          | `@nuxtjs/i18n` — active locales: `th` (default), `en` (cn/jp disabled from public UI) |
 | Payments      | Omise (card + QR PromptPay)                                  |
 | Rich text     | TipTap                                                       |
 | Testing       | Vitest (`tests/server/**`)                                   |
@@ -55,10 +55,10 @@ server/api/       # Nitro server routes
   rental-bookings/ partners/ cart/ chat/ payments/ webhooks/ …
 
 supabase/
-  migrations/     # 104 SQL migration files (source of truth for schema)
+  migrations/     # 117 SQL migration files (source of truth for schema)
 
 tests/server/     # Vitest test suite (80+ spec files)
-i18n/locales/     # th.json  en.json  cn.json  jp.json
+i18n/locales/     # th.json  en.json (active) · cn.json  jp.json (disabled, retained on disk)
 ```
 
 ---
@@ -122,7 +122,8 @@ i18n/locales/     # th.json  en.json  cn.json  jp.json
 ### i18n
 
 - Default locale: `th` (Thai)
-- All new UI strings MUST be added to all 4 locale files: `th.json`, `en.json`, `cn.json`, `jp.json`
+- Active locales are `th` and `en` ONLY. cn/jp are disabled from the public UI (locale JSON files retained on disk; re-enable = revert commit `d9e15ea`). Do NOT add new keys to cn.json/jp.json.
+- All new UI strings MUST be added to both active locale files: `th.json`, `en.json`
 - Locale key pattern: `section.subsection.key` (e.g. `partners.card.verified`)
 
 ---
@@ -169,9 +170,10 @@ export function useSomething() {
 
 ## Database Notes
 
-- Schema source of truth: `supabase/migrations/` (001–104 and growing)
+- Schema source of truth: `supabase/migrations/` (001–117 and growing)
 - Generated types: `app/types/database.types.ts` — do NOT edit manually
-- Key tables: `public.users`, `catalog_products`, `rental_assets`, `rental_bookings`, `orders`, `cart_items`, `partners`, `content_pages`, `chat_conversations`, `payment_attempts`
+- Key tables: `public.users`, `catalog_products`, `assets`, `rental_bookings`, `orders`, `cart_items`, `partners`, `content_pages`, `chat_conversations`, `payment_attempts`
+  - NOTE: `rental_assets` is NOT a key table — it is an orphaned legacy table (superseded by `assets` via migration 025; zero code references)
 - `platform_role` column on `public.users` controls admin access
 - Storage buckets: `catalog-media` (public), `kyc-documents` (private), `avatars` (public), `rental-booking-docs` (private)
 
@@ -227,7 +229,7 @@ Tests live in `tests/server/` — they cover API routes, business rules, UI cont
 - Do NOT edit `app/types/database.types.ts` manually (auto-generated from Supabase)
 - Do NOT add new dependencies without checking with the user first
 - Do NOT commit or push without explicit instruction
-- Do NOT skip i18n — every user-visible string needs all 4 locale keys
+- Do NOT skip i18n — every user-visible string needs th + en keys (cn/jp disabled; re-enable = revert d9e15ea)
 - Do NOT add console.log in production code paths
 - Do NOT create new files unless strictly necessary — prefer editing existing ones
 
@@ -245,17 +247,20 @@ Tests live in `tests/server/` — they cover API routes, business rules, UI cont
 
 ## i18n Rules — STRICT
 
+> Active locales: th + en only. cn/jp are disabled from the public UI (files retained on disk; re-enable = revert commit `d9e15ea`) — do NOT add new keys to cn.json/jp.json.
+
 ### Never do
 
 - Never hardcode text in any language inside component code
-- Never invent or guess translations for th / cn / jp
+- Never invent or guess translations for th
 - Never assume a key exists without checking the locale files first
+- Never add new keys to the disabled cn.json / jp.json
 
 ### When new UI text is needed
 
 1. Use only the English key in code: t('partner.verified')
 2. Add the key to i18n/locales/en.json only
-3. Add a placeholder in th / cn / jp:
+3. Add a placeholder in th:
    "[NEEDS_TRANSLATION]: Verified"
 4. Stop — report to user which keys need translation
 
@@ -263,8 +268,7 @@ Tests live in `tests/server/` — they cover API routes, business rules, UI cont
 
 en.json: "verified": "Verified"
 th.json: "verified": "[NEEDS_TRANSLATION]: Verified"
-cn.json: "verified": "[NEEDS_TRANSLATION]: Verified"
-jp.json: "verified": "[NEEDS_TRANSLATION]: Verified"
+(cn.json / jp.json: no new keys — locales disabled)
 
 ### After adding keys, always report
 

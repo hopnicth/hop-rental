@@ -1300,3 +1300,49 @@ Process note: future remote verification of immutable logs must be **read-only /
 4. Backlog: cn/jp structural drift; assigned_by column if self-assign/
    AI extraction lands; 20 red tests (KYC/POS track);
    HOPNIC_COMPANY_INFO casing polish.
+
+---
+
+## Claude Code → next session / 2026-07-09 — ACTIVE WORK: POS V3 Completion Track
+
+Task: Two read-only audits complete; V3 slice plan + payment-flow
+ratification recorded (DECISIONS.md 2026-07-09). This entry points all
+active work at the POS V3 Completion Track.
+
+Audits (both committed with this entry):
+- docs/audit/2026-07-08-launch-readiness-audit.md — R1–R7 vs
+  first-branch requirements
+- docs/audit/2026-07-09-pos-v3-deep-audit.md — P1–P5 V3 deep audit
+  (8 HIGH / 12 MED / 6 LOW findings; surface inventory, deposit-flow
+  walkthrough, mode framework, slice gap map, iPad baseline)
+
+Status: audits DONE. Payment flow ratified (mig 115 canonical; Phase 0
+abandoned). V3 is the only POS track; slices V3-0 → V3-6.
+
+Next: **V3-0 integrity foundations** (in order):
+1. Reproduction test for the cash W1→W2 crash gap (deep audit §P2.5,
+   HIGH finding 4 — status "pending reproduction test"). FIRST task —
+   gates the migration 119 design.
+2. Migration 118 (G1): append-only/UPDATE-guard triggers on payment
+   tables.
+3. Migration 119 (G2 RPC): atomic W1–W4 deposit finalization +
+   idempotent cash same-key finalizer re-entry (QR already recovers).
+   Fold in deep-audit findings 11–12: W3 update result never checked
+   (finalizer :128-137); doc-task insert error swallowed (:241-243).
+   Scope locked in DECISIONS.md 2026-07-09 item 2.
+4. Fail-closed fixes + test fixture refresh:
+   - 4 qr-webhook fixtures missing `payment_purpose`
+     (admin-pos-v3-qr-webhook.spec.ts:188-199)
+   - 12 remaining-security-deposit mock-chain fixtures missing `.not()`
+     (admin-pos-v3-remaining-security-deposit-payments.spec.ts)
+   - pos-v2 date-rot fixture (startDate 2026-05-21) + pickup-completion
+     deposit-credit arithmetic drift (1 test each)
+
+P-slice mapping (per docs/payment-flow-ratification-audit.md §4):
+P-1 = item 2 above (mig 118 G1 triggers) · P-2 = item 3 (mig 119 G2
+RPC, both confirm paths) · P-3 = staff-upload pre-conditions G3/G4/A1
+(DECISIONS 2026-07-09 item 1; requires P-1/P-2 first).
+
+RESOLVED (2026-07-09, same commit): docs/payment-flow-ratification-audit.md
+and docs/VISION.md are now created from owner-provided content — the
+earlier missing-content blocker is closed.
