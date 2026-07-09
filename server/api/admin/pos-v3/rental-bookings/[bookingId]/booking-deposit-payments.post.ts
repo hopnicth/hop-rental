@@ -146,104 +146,130 @@ export default defineEventHandler(async (event) => {
       statusMessage: "BOOKING_DEPOSIT_PAYMENT_ALREADY_CAPTURED",
     });
 
-  // Idempotency guard — return existing attempt if key matches
+  const currencyCode = asText(booking.currency_code) || "THB";
+  // A terminal attempt is one that has already reached a final state; a
+  // non-terminal one ('finalizing'/'pending'/'requires_action') means a prior
+  // finalize started but did not complete (e.g. crashed mid-txn) — re-enter it.
+  const TERMINAL_ATTEMPT_STATUSES = [
+    "paid",
+    "paid_confirm_failed",
+    "failed",
+    "expired",
+    "cancelled",
+  ];
+
+  // Idempotency guard.
   const existingAttempt = await findExistingPosAttempt(
     adminClient,
     bookingId,
     idempotencyKey,
   );
+  let attemptId: string;
   if (existingAttempt) {
     if (Math.abs(asMoney(existingAttempt.amount) - amount) > 0.01)
       throw createError({
         statusCode: 409,
         statusMessage: "IDEMPOTENCY_KEY_AMOUNT_CONFLICT",
       });
-    return {
-      status: asText(existingAttempt.status),
-      paymentAttemptId: String(existingAttempt.id),
-      bookingDepositPaidAmount: asMoney(existingAttempt.amount),
-      currencyCode: asText(booking.currency_code) || "THB",
-      idempotent: true,
-    };
-  }
-
-  // Reject zero-due finalization
-  if (amount <= 0)
-    throw createError({
-      statusCode: 422,
-      statusMessage: ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED,
-    });
-
-  // Validate amount matches server-computed deposit
-  const expectedDepositAmount = calculateBookingDepositDueNow({
-    rentalDays: Number(booking.rental_days ?? 0),
-    requiredSecurityDepositAmount: Number(booking.deposit_amount ?? 0),
-  });
-  if (Math.abs(amount - expectedDepositAmount) > 0.01)
-    throw createError({
-      statusCode: 422,
-      statusMessage: "BOOKING_DEPOSIT_AMOUNT_MISMATCH",
-    });
-
-  // Re-validate inventory availability (drafts do not block inventory)
-  await assertRentalBookingAvailability(adminClient, {
-    assetId: booking.asset_id as string | null,
-    skuId: booking.sku_id as string | null,
-    startDate: booking.start_date,
-    endDate: booking.end_date,
-    excludeBookingId: bookingId,
-  });
-
-  const currencyCode = asText(booking.currency_code) || "THB";
-  const now = new Date().toISOString();
-
-  // Create POS payment attempt — durable cash collection record
-  const { data: attempt, error: attemptError } = await adminClient
-    .from("pos_rental_payment_attempts")
-    .insert({
-      rental_booking_id: bookingId,
-      payment_purpose: "booking_deposit",
-      payment_method: "cash",
-      amount,
-      currency_code: currencyCode,
-      status: "paid",
-      branch_id: posBranchId,
-      staff_user_id: staffUserId,
-      idempotency_key: idempotencyKey,
-      paid_at: now,
-      metadata: {
-        source: "pos_v3_booking_deposit_cash",
-        bookingChannel: "admin_pos_v3",
-      },
-    })
-    .select("id, amount, status")
-    .single();
-
-  if (attemptError) {
-    if (attemptError.code === "23505") {
-      // Race condition: another request with the same key won
-      const existing = await findExistingPosAttempt(
-        adminClient,
-        bookingId,
-        idempotencyKey,
-      );
-      if (existing && Math.abs(asMoney(existing.amount) - amount) <= 0.01)
-        return {
-          status: asText(existing.status),
-          paymentAttemptId: String(existing.id),
-          bookingDepositPaidAmount: asMoney(existing.amount),
-          currencyCode,
-          idempotent: true,
-        };
-      throw createError({
-        statusCode: 409,
-        statusMessage: "IDEMPOTENCY_KEY_AMOUNT_CONFLICT",
-      });
+    const existingStatus = asText(existingAttempt.status);
+    if (TERMINAL_ATTEMPT_STATUSES.includes(existingStatus)) {
+      // Already finalized (or dead) — replay the stored result.
+      return {
+        status: existingStatus,
+        paymentAttemptId: String(existingAttempt.id),
+        bookingDepositPaidAmount: asMoney(existingAttempt.amount),
+        currencyCode,
+        idempotent: true,
+      };
     }
-    throw createError({ statusCode: 500, statusMessage: attemptError.message });
-  }
+    // Non-terminal + booking still draft/unpaid (guards above) → a prior
+    // finalize crashed mid-way; re-enter finalization with this SAME attempt
+    // (migration-119 RPC is idempotent). Do NOT insert a second row.
+    attemptId = String(existingAttempt.id);
+  } else {
+    // Reject zero-due finalization
+    if (amount <= 0)
+      throw createError({
+        statusCode: 422,
+        statusMessage: ZERO_BOOKING_DEPOSIT_FINALIZATION_NOT_ENABLED,
+      });
 
-  const attemptId = String(attempt.id);
+    // Validate amount matches server-computed deposit
+    const expectedDepositAmount = calculateBookingDepositDueNow({
+      rentalDays: Number(booking.rental_days ?? 0),
+      requiredSecurityDepositAmount: Number(booking.deposit_amount ?? 0),
+    });
+    if (Math.abs(amount - expectedDepositAmount) > 0.01)
+      throw createError({
+        statusCode: 422,
+        statusMessage: "BOOKING_DEPOSIT_AMOUNT_MISMATCH",
+      });
+
+    // Re-validate inventory availability (drafts do not block inventory)
+    await assertRentalBookingAvailability(adminClient, {
+      assetId: booking.asset_id as string | null,
+      skuId: booking.sku_id as string | null,
+      startDate: booking.start_date,
+      endDate: booking.end_date,
+      excludeBookingId: bookingId,
+    });
+
+    // Create POS payment attempt as 'finalizing' — the migration-119 RPC flips
+    // it to 'paid' ATOMICALLY with the held-balance event, so an attempt is
+    // observable as 'paid' only once the money core is durably recorded.
+    const { data: attempt, error: attemptError } = await adminClient
+      .from("pos_rental_payment_attempts")
+      .insert({
+        rental_booking_id: bookingId,
+        payment_purpose: "booking_deposit",
+        payment_method: "cash",
+        amount,
+        currency_code: currencyCode,
+        status: "finalizing",
+        branch_id: posBranchId,
+        staff_user_id: staffUserId,
+        idempotency_key: idempotencyKey,
+        metadata: {
+          source: "pos_v3_booking_deposit_cash",
+          bookingChannel: "admin_pos_v3",
+        },
+      })
+      .select("id, amount, status")
+      .single();
+
+    if (attemptError) {
+      if (attemptError.code === "23505") {
+        // Race: a concurrent same-key request inserted first. Reload it.
+        const existing = await findExistingPosAttempt(
+          adminClient,
+          bookingId,
+          idempotencyKey,
+        );
+        if (!existing || Math.abs(asMoney(existing.amount) - amount) > 0.01)
+          throw createError({
+            statusCode: 409,
+            statusMessage: "IDEMPOTENCY_KEY_AMOUNT_CONFLICT",
+          });
+        const raceStatus = asText(existing.status);
+        if (TERMINAL_ATTEMPT_STATUSES.includes(raceStatus))
+          return {
+            status: raceStatus,
+            paymentAttemptId: String(existing.id),
+            bookingDepositPaidAmount: asMoney(existing.amount),
+            currencyCode,
+            idempotent: true,
+          };
+        attemptId = String(existing.id); // re-enter the raced non-terminal attempt
+      } else {
+        throw createError({
+          statusCode: 500,
+          statusMessage: attemptError.message,
+        });
+      }
+    } else {
+      attemptId = String(attempt.id);
+    }
+  }
 
   // Delegate shared finalization (held-balance event + booking update + confirmation)
   // to the payment-method-agnostic finalizer. Cash-specific attempt creation above

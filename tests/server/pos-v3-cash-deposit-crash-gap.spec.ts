@@ -1,72 +1,38 @@
 /**
- * Tests: POS V3 cash Booking-Deposit — W1 → W2 crash gap (REPRODUCTION)
+ * Tests: POS V3 cash Booking-Deposit — W1→W2 crash gap (REGRESSION, fixed by mig-119)
  *
- * Reproduces the HIGH finding tagged "pending reproduction test" in
- * docs/audit/2026-07-09-pos-v3-deep-audit.md §P2.5 / finding 4, against the
- * REAL endpoint + REAL finalizer:
- *   server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-payments.post.ts
- *   server/utils/pos-rental-booking-deposit-finalizer.ts
+ * History: this spec first REPRODUCED the crash gap from
+ * docs/audit/2026-07-09-pos-v3-deep-audit.md §P2.5 / finding 4 (test B was
+ * `it.fails`). Migration 119 (f_confirm_rental_booking_deposit) made the money
+ * core + confirm ATOMIC and the flow idempotent/re-entrant, and the cash
+ * endpoint now inserts the attempt as 'finalizing' (not 'paid') and re-enters
+ * the finalizer on a same-key retry. This spec was FLIPPED accordingly:
+ *   - Block A now documents the FIXED mechanism (crash → attempt stays
+ *     finalizing + booking draft; same-key retry RE-ENTERS and confirms).
+ *   - Block B (recovery) is now a normal `it(...)` that passes.
+ * The former A3 "one-paid index 23505 dead-end" is gone: the attempt is never
+ * inserted as 'paid', so no second paid insert is ever attempted.
  *
- * Scenario: the cash deposit flow crashes AFTER W1 (attempt INSERT as
- * "paid", endpoint :201-220) but BEFORE W2 completes (held-balance event,
- * finalizer :112-123 — NOT wrapped in try/catch, so a throw propagates out
- * → 500). Cash is physically captured, but the booking is left draft/unpaid
- * with zero held-balance events, and BOTH recovery routes fail:
- *   - same-key retry: the idempotency pre-check (:150-168) returns the stored
- *     "paid" attempt WITHOUT re-running the finalizer → booking stays draft.
- *   - new-key retry: the booking is still `unpaid` (W3 never ran) so it passes
- *     the guards, but a second "paid" booking_deposit insert hits the partial
- *     unique index `idx_pos_rental_payment_attempts_one_paid_deposit`
- *     (migration 087:41-43) → 23505 → the endpoint's 23505 handler (:222-243)
- *     finds no attempt for the NEW key → 409 IDEMPOTENCY_KEY_AMOUNT_CONFLICT.
- *     (Audit said "→ 500"; the real code path returns 409 — the stuck-state
- *     conclusion is unchanged; noted for accuracy.)
- *
- * FAITHFULNESS / TRADEOFF (per task item 2): the two DB uniqueness rules are
- * SIMULATED in the mock client — the partial unique index (one paid deposit
- * per booking) and the (rental_booking_id, idempotency_key) unique. The code
- * actually under test is the REAL endpoint + REAL finalizer control flow and
- * its 23505 / idempotency handlers; the simulated 23505 is anchored to a real
- * schema fact asserted below (migration 087). A live-local-DB integration test
- * would exercise the physical index directly, but the existing tests/server
- * harness is mock-only (no DB connection in `vitest run`) and the endpoint's
- * recovery logic — the thing the audit's claim hinges on — is fully exercised
- * here.
- *
- * Covers:
- *  A. Characterization (GREEN today) — documents the exact broken mechanism
- *     with TODO(mig-119) notes: crash leaves attempt paid + booking draft +
- *     zero events; same-key retry no-finalizes; new-key retry 23505-conflicts.
- *  B. Reproduction (RED today, flips GREEN with mig-119) — after the money is
- *     captured, a retry MUST recover the booking to a consistent state without
- *     manual DB surgery. Fails today; proves the stuck state.
- *  C. Schema anchor — migration 087 really defines the one-paid partial unique
- *     index that backs the simulated 23505.
- *
- * MIG-119 FLIP: test B is marked `it.fails(...)` so the suite is GREEN today
- * (B is genuinely red) and turns RED the moment mig-119 fixes recovery —
- * whoever lands mig-119 MUST change B from `it.fails` to a normal `it(...)`
- * (and revisit block A's characterization assertions) in that same commit.
+ * Harness: drives the REAL cash endpoint + REAL finalizer; the atomic RPC is
+ * stubbed on the mock client (`.rpc('f_confirm_rental_booking_deposit')`) in
+ * three modes — confirm / crash / conflict — mutating an in-memory store so the
+ * endpoint's insert('finalizing') + same-key re-entry logic is fully exercised.
+ * The RPC's own atomicity/idempotency is proven separately at the DB level
+ * (migration 119 PART-1 verification + migration-119-atomic-deposit-confirm.spec.ts).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 
 const mockState = vi.hoisted(() => ({
   body: {} as Record<string, unknown>,
-  platformRole: "staff" as string,
-  branchAccess: true,
-  // W2 fault injection: when true, the held-balance write crashes (non-idempotent).
-  heldBalanceCrash: false,
-  heldBalanceCallCount: 0,
-  heldBalanceSuccessCount: 0,
-  // In-memory store modelling the two real unique constraints on
-  // pos_rental_payment_attempts (migration 087).
+  platformRole: "super_admin" as string,
+  // RPC behaviour: 'confirm' (atomic success), 'crash' (infra error → full
+  // rollback), 'conflict' (genuine overlap → paid_confirm_failed).
+  rpcMode: "confirm" as "confirm" | "crash" | "conflict",
+  rpcCalls: [] as Record<string, unknown>[],
   store: {
     booking: null as Record<string, unknown> | null,
     attempts: [] as Record<string, unknown>[],
-    bookingUpdates: [] as Record<string, unknown>[],
-    attemptUpdates: [] as Record<string, unknown>[],
+    heldEvents: [] as Record<string, unknown>[],
   },
 }));
 
@@ -78,209 +44,30 @@ vi.mock("h3", () => ({
 }));
 
 vi.mock("~~/server/utils/rental-booking-availability", () => ({
-  assertRentalBookingAvailability: vi.fn(async () => {
-    /* drafts never conflict in this scenario */
-  }),
+  assertRentalBookingAvailability: vi.fn(async () => {}),
 }));
 
-// W2 boundary — the fault-injection point.
-vi.mock("~~/server/utils/rental-held-balance-events", () => ({
-  recordBookingDepositHeldBalanceCollection: vi.fn(
-    async (input: Record<string, unknown>) => {
-      mockState.heldBalanceCallCount += 1;
-      if (mockState.heldBalanceCrash) {
-        // A non-idempotent mid-write failure (e.g. connection reset). The
-        // finalizer does NOT catch this, so it propagates out of the endpoint.
-        throw new Error("HELD_BALANCE_WRITE_CRASH");
-      }
-      mockState.heldBalanceSuccessCount += 1;
-      return {
-        id: "event-1",
-        event_type: "booking_deposit_collection",
-        amount: input.amount,
-        currency_code: "THB",
-        source_type: input.sourceType,
-        source_id: input.sourceId,
-        payment_method: input.paymentMethod ?? "cash",
-        occurred_at: new Date().toISOString(),
-      };
-    },
-  ),
+vi.mock("~~/app/utils/rental-payment-lines", () => ({
+  calculateBookingDepositDueNow: vi.fn(() => 200),
 }));
 
-// Reached only if W2 succeeds (it never does in the crash scenario).
-vi.mock("~~/server/utils/rental-booking-confirmation", () => ({
-  confirmRentalBooking: vi.fn(async () => ({
-    id: "booking-1",
-    status: "confirmed",
-  })),
-}));
-
+// W5 document issuance (isolated, after confirm) — succeed.
 vi.mock(
   "~~/server/utils/admin-rental-booking-deposit-confirmation-document",
   () => ({
     issueBookingDepositConfirmationDocument: vi.fn(async () => ({
-      document: { id: "doc-1", status: "issued" },
+      document: {
+        id: "doc-1",
+        documentNo: "BDC-1",
+        status: "issued",
+        issuedAt: "2026-05-21T10:00:00.000Z",
+      },
       alreadyIssued: false,
     })),
     BOOKING_DEPOSIT_CONFIRMATION_DOCUMENT_TYPE:
       "rental_booking_deposit_confirmation",
   }),
 );
-
-vi.mock("~~/app/utils/rental-payment-lines", () => ({
-  calculateBookingDepositDueNow: vi.fn(() => 200),
-}));
-
-/** Simple resolved chain (select/eq/single/maybeSingle/await). */
-function qr(result: { data: unknown; error: unknown }) {
-  const chain: Record<string, unknown> = {
-    select: () => chain,
-    eq: () => chain,
-    in: () => chain,
-    single: async () => result,
-    maybeSingle: async () => result,
-    then: (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(result).then(resolve),
-  };
-  return chain;
-}
-
-/**
- * Stateful admin client that faithfully models the endpoint's reads/writes
- * plus the two real unique constraints on pos_rental_payment_attempts.
- */
-vi.mock("~~/server/utils/admin", () => ({
-  requirePlatformAdmin: async () => ({
-    userId: "staff-1",
-    platformRole: mockState.platformRole,
-    adminClient: {
-      from: (table: string) => {
-        if (table === "admin_user_branch_access")
-          return qr({
-            data: mockState.branchAccess ? { branch_id: "branch-hq" } : null,
-            error: null,
-          });
-
-        if (table === "rental_bookings") {
-          return {
-            select: () => qr({ data: mockState.store.booking, error: null }),
-            update: (payload: Record<string, unknown>) => {
-              mockState.store.bookingUpdates.push({ ...payload });
-              if (mockState.store.booking)
-                Object.assign(mockState.store.booking, payload);
-              return qr({ data: null, error: null });
-            },
-          };
-        }
-
-        if (table === "pos_rental_payment_attempts") {
-          return {
-            // findExistingPosAttempt — filter by (rental_booking_id, idempotency_key)
-            select: () => {
-              const filters: Record<string, unknown> = {};
-              const chain: Record<string, unknown> = {
-                eq: (col: string, val: unknown) => {
-                  filters[col] = val;
-                  return chain;
-                },
-                maybeSingle: async () => {
-                  const found = mockState.store.attempts.find(
-                    (a) =>
-                      a.rental_booking_id === filters.rental_booking_id &&
-                      a.idempotency_key === filters.idempotency_key,
-                  );
-                  return {
-                    data: found
-                      ? {
-                          id: found.id,
-                          amount: found.amount,
-                          status: found.status,
-                          paid_at: found.paid_at ?? null,
-                          confirm_failed_at: found.confirm_failed_at ?? null,
-                          confirm_failure_reason:
-                            found.confirm_failure_reason ?? null,
-                        }
-                      : null,
-                    error: null,
-                  };
-                },
-              };
-              return chain;
-            },
-            // W1 — INSERT attempt, enforcing the two real unique constraints.
-            insert: (payload: Record<string, unknown>) => {
-              const bookingId = payload.rental_booking_id;
-              const dupKey = mockState.store.attempts.some(
-                (a) =>
-                  a.rental_booking_id === bookingId &&
-                  a.idempotency_key === payload.idempotency_key,
-              );
-              const isPaidDeposit =
-                payload.status === "paid" &&
-                payload.payment_purpose === "booking_deposit";
-              // idx_pos_rental_payment_attempts_one_paid_deposit (mig 087:41-43)
-              const dupPaidDeposit =
-                isPaidDeposit &&
-                mockState.store.attempts.some(
-                  (a) =>
-                    a.rental_booking_id === bookingId &&
-                    a.status === "paid" &&
-                    a.payment_purpose === "booking_deposit",
-                );
-              if (dupKey || dupPaidDeposit) {
-                return {
-                  select: () => ({
-                    single: async () => ({
-                      data: null,
-                      error: {
-                        code: "23505",
-                        message: dupPaidDeposit
-                          ? "idx_pos_rental_payment_attempts_one_paid_deposit"
-                          : "pos_rental_payment_attempts_rental_booking_id_idempotency_key_key",
-                      },
-                    }),
-                  }),
-                };
-              }
-              const row = {
-                id: `attempt-${mockState.store.attempts.length + 1}`,
-                ...payload,
-              };
-              mockState.store.attempts.push(row);
-              return {
-                select: () => ({
-                  single: async () => ({
-                    data: {
-                      id: row.id,
-                      amount: row.amount,
-                      status: row.status,
-                    },
-                    error: null,
-                  }),
-                }),
-              };
-            },
-            update: (payload: Record<string, unknown>) => {
-              mockState.store.attemptUpdates.push({ ...payload });
-              return qr({ data: null, error: null });
-            },
-          };
-        }
-
-        throw new Error(`Unexpected table: ${table}`);
-      },
-    },
-  }),
-}));
-
-const endpoint = (
-  await import(
-    "../../server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-payments.post"
-  )
-).default;
-
-const event = { context: { params: { bookingId: "booking-1" } } };
 
 function baseBooking() {
   return {
@@ -303,139 +90,267 @@ function baseBooking() {
   };
 }
 
-/** Invoke the real endpoint; return {result} on success or {error} on throw. */
-async function callCashDeposit(idempotencyKey: string) {
-  mockState.body = { idempotencyKey, amount: 200, paymentMethod: "cash" };
+function qr(result: { data: unknown; error: unknown }) {
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    eq: () => chain,
+    single: async () => result,
+    maybeSingle: async () => result,
+    then: (r: (v: unknown) => unknown) => Promise.resolve(result).then(r),
+  };
+  return chain;
+}
+
+// The atomic RPC, stubbed. Mutates the store to mirror migration-119 effects.
+function rpcConfirmDeposit(params: Record<string, unknown>) {
+  mockState.rpcCalls.push(params);
+  const b = mockState.store.booking!;
+  const attemptId = params.p_attempt_id as string | null;
+  const attempt = mockState.store.attempts.find((a) => a.id === attemptId);
+  if (mockState.rpcMode === "crash") {
+    // Infra failure — nothing changes (full rollback).
+    return {
+      data: null,
+      error: { message: "HELD_BALANCE_EVENT_WRITE_FAILED", code: "P0001" },
+    };
+  }
+  // Money core (atomic): held event + deposit fields + attempt→paid.
+  const eventId = `evt-${mockState.store.heldEvents.length + 1}`;
+  mockState.store.heldEvents.push({
+    id: eventId,
+    source_type: params.p_source_type,
+    source_id: params.p_source_id,
+    event_type: "booking_deposit_collection",
+  });
+  b.booking_deposit_payment_status = "paid";
+  b.booking_deposit_paid_amount = params.p_amount;
+  if (attempt) attempt.status = "paid";
+  if (mockState.rpcMode === "conflict") {
+    b.booking_deposit_payment_status = "paid_confirm_failed";
+    if (attempt) attempt.status = "paid_confirm_failed";
+    return {
+      data: {
+        status: "paid_confirm_failed",
+        idempotent: false,
+        held_balance_event_id: eventId,
+        currency_code: "THB",
+        booking_deposit_paid_amount: params.p_amount,
+        confirm_failure_reason: "RENTAL_BOOKING_CONFLICT",
+      },
+      error: null,
+    };
+  }
+  b.status = "confirmed";
+  return {
+    data: {
+      status: "confirmed",
+      idempotent: false,
+      held_balance_event_id: eventId,
+      currency_code: "THB",
+      booking_deposit_paid_amount: params.p_amount,
+      confirm_failure_reason: null,
+    },
+    error: null,
+  };
+}
+
+vi.mock("~~/server/utils/admin", () => ({
+  requirePlatformAdmin: async () => ({
+    userId: "staff-1",
+    platformRole: mockState.platformRole,
+    adminClient: {
+      rpc: async (_fn: string, params: Record<string, unknown>) =>
+        rpcConfirmDeposit(params),
+      from: (table: string) => {
+        if (table === "rental_bookings") {
+          return {
+            select: () => qr({ data: mockState.store.booking, error: null }),
+            update: () => qr({ data: null, error: null }),
+          };
+        }
+        if (table === "pos_rental_payment_attempts") {
+          return {
+            select: () => {
+              const filters: Record<string, unknown> = {};
+              const chain: Record<string, unknown> = {
+                eq: (c: string, v: unknown) => {
+                  filters[c] = v;
+                  return chain;
+                },
+                maybeSingle: async () => {
+                  const a = mockState.store.attempts.find(
+                    (x) => x.idempotency_key === filters.idempotency_key,
+                  );
+                  return {
+                    data: a
+                      ? { id: a.id, amount: a.amount, status: a.status }
+                      : null,
+                    error: null,
+                  };
+                },
+              };
+              return chain;
+            },
+            insert: (payload: Record<string, unknown>) => {
+              const row = {
+                id: `attempt-${mockState.store.attempts.length + 1}`,
+                ...payload,
+              };
+              mockState.store.attempts.push(row);
+              return {
+                select: () => ({
+                  single: async () => ({
+                    data: { id: row.id, amount: row.amount, status: row.status },
+                    error: null,
+                  }),
+                }),
+              };
+            },
+            update: () => qr({ data: null, error: null }),
+          };
+        }
+        if (table === "rental_held_balance_events") {
+          return {
+            select: () => {
+              const filters: Record<string, unknown> = {};
+              const chain: Record<string, unknown> = {
+                eq: (c: string, v: unknown) => {
+                  filters[c] = v;
+                  return chain;
+                },
+                single: async () => ({
+                  data:
+                    mockState.store.heldEvents.find(
+                      (e) => e.id === filters.id,
+                    ) ?? null,
+                  error: null,
+                }),
+              };
+              return chain;
+            },
+          };
+        }
+        if (table === "pos_document_issuance_tasks") {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: async () => ({
+                  data: { id: "task-1", status: "pending", attempt_count: 0 },
+                  error: null,
+                }),
+              }),
+            }),
+            update: () => qr({ data: null, error: null }),
+            select: () => {
+              const chain: Record<string, unknown> = {
+                eq: () => chain,
+                maybeSingle: async () => ({ data: null, error: null }),
+              };
+              return chain;
+            },
+          };
+        }
+        throw new Error(`Unexpected table: ${table}`);
+      },
+    },
+  }),
+}));
+
+const endpoint = (
+  await import(
+    "../../server/api/admin/pos-v3/rental-bookings/[bookingId]/booking-deposit-payments.post"
+  )
+).default;
+
+const event = { context: { params: { bookingId: "booking-1" } } };
+
+async function callCash(key: string) {
+  mockState.body = { idempotencyKey: key, amount: 200, paymentMethod: "cash" };
   try {
-    const result = await endpoint(event);
-    return { result: result as Record<string, unknown>, error: null };
+    return { result: (await endpoint(event)) as Record<string, unknown>, error: null };
   } catch (error) {
     return { result: null, error: error as { statusCode?: number } & Error };
   }
 }
 
-describe("POS V3 cash Booking-Deposit — W1→W2 crash gap", () => {
+describe("POS V3 cash Booking-Deposit — W1→W2 crash gap (fixed by mig-119)", () => {
   beforeEach(() => {
-    mockState.platformRole = "super_admin"; // skip branch-access lookup noise
-    mockState.branchAccess = true;
-    mockState.heldBalanceCrash = false;
-    mockState.heldBalanceCallCount = 0;
-    mockState.heldBalanceSuccessCount = 0;
-    mockState.store = {
-      booking: baseBooking(),
-      attempts: [],
-      bookingUpdates: [],
-      attemptUpdates: [],
-    };
+    mockState.body = {};
+    mockState.platformRole = "super_admin";
+    mockState.rpcMode = "confirm";
+    mockState.rpcCalls = [];
+    mockState.store = { booking: baseBooking(), attempts: [], heldEvents: [] };
   });
 
-  // ── A. CHARACTERIZATION (green today) — documents the broken mechanism ──────
-  // TODO(mig-119): once the finalizer is atomic (single RPC) AND a same-key cash
-  // retry re-enters finalization, these assertions describe behaviour that must
-  // change; this block is expected to be revisited alongside the fix.
+  // ── A. Mechanism (now FIXED) ────────────────────────────────────────────────
 
-  it("A1 — crash after W1 leaves attempt 'paid', booking draft/unpaid, zero held-balance events", async () => {
-    mockState.heldBalanceCrash = true; // W2 throws
-    const { result, error } = await callCashDeposit("pay-key-1");
+  it("A1 — a crash rolls back atomically: attempt stays 'finalizing', booking draft/unpaid, zero held events", async () => {
+    mockState.rpcMode = "crash";
+    const { result, error } = await callCash("pay-key-1");
 
-    // The endpoint rejects (finalizer does not catch the W2 crash).
     expect(result).toBeNull();
-    expect(error).toBeTruthy();
-
-    // W1 committed: exactly one attempt, recorded as 'paid' (money captured).
+    expect(error?.statusCode).toBe(500); // HELD_BALANCE_EVENT_WRITE_FAILED
+    // Attempt was inserted as 'finalizing' (NOT 'paid') and the RPC rolled back.
     expect(mockState.store.attempts).toHaveLength(1);
-    expect(mockState.store.attempts[0]).toMatchObject({
-      rental_booking_id: "booking-1",
-      payment_purpose: "booking_deposit",
-      payment_method: "cash",
-      status: "paid",
-    });
-    // W2 never succeeded → zero held-balance events.
-    expect(mockState.heldBalanceSuccessCount).toBe(0);
-    // W3/W4 never ran → booking still draft & unpaid.
+    expect(mockState.store.attempts[0].status).toBe("finalizing");
+    expect(mockState.store.heldEvents).toHaveLength(0);
     expect(mockState.store.booking?.status).toBe("draft");
-    expect(mockState.store.booking?.booking_deposit_payment_status).toBe(
-      "unpaid",
-    );
-    expect(mockState.store.bookingUpdates).toHaveLength(0);
+    expect(mockState.store.booking?.booking_deposit_payment_status).toBe("unpaid");
   });
 
-  it("A2 — same-key retry returns the stored 'paid' attempt WITHOUT finalizing; booking stays draft", async () => {
-    mockState.heldBalanceCrash = true;
-    await callCashDeposit("pay-key-1"); // crash
-    const callsAfterCrash = mockState.heldBalanceCallCount;
+  it("A2 — same-key retry RE-ENTERS finalization (no second attempt) and confirms the booking", async () => {
+    mockState.rpcMode = "crash";
+    await callCash("pay-key-1"); // crash → finalizing attempt
 
-    // Retry with the SAME idempotency key after the transient fault clears.
-    mockState.heldBalanceCrash = false;
-    const { result, error } = await callCashDeposit("pay-key-1");
+    mockState.rpcMode = "confirm";
+    const { result, error } = await callCash("pay-key-1"); // same key
 
     expect(error).toBeNull();
-    // Idempotency pre-check short-circuits: returns the stored attempt as-is.
-    expect(result).toMatchObject({ status: "paid", idempotent: true });
-    // Finalizer was NOT re-invoked (held-balance mock call count unchanged).
-    expect(mockState.heldBalanceCallCount).toBe(callsAfterCrash);
-    // Booking is still stuck in draft — no recovery.
-    expect(mockState.store.booking?.status).toBe("draft");
+    expect(result?.status).toBe("confirmed");
+    // No second attempt row — the same finalizing attempt was re-entered.
     expect(mockState.store.attempts).toHaveLength(1);
+    expect(mockState.store.attempts[0].status).toBe("paid");
+    expect(mockState.store.booking?.status).toBe("confirmed");
+    // The finalizer/RPC was invoked on BOTH calls (crash + recovery).
+    expect(mockState.rpcCalls).toHaveLength(2);
   });
 
-  it("A3 — new-key retry hits the one-paid partial unique index (23505) → 409 conflict; booking stays draft", async () => {
-    mockState.heldBalanceCrash = true;
-    await callCashDeposit("pay-key-1"); // crash, attempt#1 paid
+  // ── B. Recovery regression (was it.fails; now green) ────────────────────────
 
-    // Retry with a NEW key: booking is still unpaid so it passes the guards,
-    // but the second 'paid' booking_deposit insert violates the one-paid index.
-    mockState.heldBalanceCrash = false;
-    const { result, error } = await callCashDeposit("pay-key-2");
+  it("B — after cash is captured and the money core crashes, a retry recovers the booking to confirmed", async () => {
+    mockState.rpcMode = "crash";
+    const first = await callCash("pay-key-1");
+    expect(first.error).toBeTruthy();
+    expect(mockState.store.attempts[0].status).toBe("finalizing");
 
-    expect(result).toBeNull();
-    expect(error).toBeTruthy();
-    // Real endpoint 23505 handler → 409 IDEMPOTENCY_KEY_AMOUNT_CONFLICT.
-    // (Audit said 500; the code returns 409 — recorded for accuracy.)
-    expect(error?.statusCode).toBe(409);
-    // Only the original attempt is committed; booking still stuck draft.
-    expect(mockState.store.attempts).toHaveLength(1);
-    expect(mockState.store.booking?.status).toBe("draft");
-  });
+    mockState.rpcMode = "confirm";
+    await callCash("pay-key-1");
 
-  // ── B. REPRODUCTION (RED today; flips GREEN with mig-119) ────────────────────
-
-  it.fails("B — REPRO: after cash is captured (W1) and W2 crashes, a retry MUST recover the booking (FAILS until mig-119)", async () => {
-    // 1) First attempt crashes at W2 — cash captured, booking stuck.
-    mockState.heldBalanceCrash = true;
-    const first = await callCashDeposit("pay-key-1");
-    expect(first.error).toBeTruthy(); // crashed
-    expect(mockState.store.attempts[0]?.status).toBe("paid"); // money captured
-
-    // 2) Fault clears; staff retries with the SAME key (the natural recovery).
-    mockState.heldBalanceCrash = false;
-    await callCashDeposit("pay-key-1");
-
-    // INVARIANT (mig-119 target): captured money must not leave the booking
-    // permanently stuck. A retry must reconcile it to `confirmed` (or an
-    // equivalent recovered state) via the API alone — no manual DB surgery.
-    //
-    // TODO(mig-119): the atomic finalization RPC + idempotent same-key
-    // re-entry make this pass. Today the same-key retry short-circuits without
-    // finalizing, so the booking is still `draft` and this assertion FAILS —
-    // which is the proof of the stuck state.
+    // The invariant that FAILED before mig-119: the booking is recoverable via
+    // the API alone — no manual DB surgery.
     expect(mockState.store.booking?.status).toBe("confirmed");
   });
 
-  // ── C. SCHEMA ANCHOR — the real index backing the simulated 23505 ────────────
+  // ── Happy path + conflict, for completeness ─────────────────────────────────
 
-  it("C — migration 087 defines the one-paid partial unique index + idempotency-key unique", () => {
-    const sql = readFileSync(
-      resolve(
-        process.cwd(),
-        "supabase/migrations/087_pos_rental_payment_attempts.sql",
-      ),
-      "utf8",
-    );
-    expect(sql).toContain("idx_pos_rental_payment_attempts_one_paid_deposit");
-    expect(sql).toMatch(
-      /WHERE status = 'paid' AND payment_purpose = 'booking_deposit'/,
-    );
-    expect(sql).toContain("UNIQUE (rental_booking_id, idempotency_key)");
+  it("happy path — fresh finalize inserts 'finalizing', RPC confirms → status confirmed", async () => {
+    const { result, error } = await callCash("pay-key-1");
+    expect(error).toBeNull();
+    expect(result?.status).toBe("confirmed");
+    expect(mockState.store.attempts[0].status).toBe("paid");
+    expect(mockState.store.heldEvents).toHaveLength(1);
+    // The endpoint sent the correct source discriminator to the RPC.
+    expect(mockState.rpcCalls[0]).toMatchObject({
+      p_source_type: "pos_rental_payment_attempt",
+      p_amount: 200,
+    });
+  });
+
+  it("conflict — genuine overlap → paid_confirm_failed, money core kept", async () => {
+    mockState.rpcMode = "conflict";
+    const { result } = await callCash("pay-key-1");
+    expect(result?.status).toBe("paid_confirm_failed");
+    expect(mockState.store.heldEvents).toHaveLength(1); // liability recorded
+    expect(mockState.store.booking?.status).toBe("draft"); // not confirmed
   });
 });

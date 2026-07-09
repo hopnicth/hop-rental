@@ -1,5 +1,4 @@
-import { recordBookingDepositHeldBalanceCollection } from "~~/server/utils/rental-held-balance-events";
-import { confirmRentalBooking } from "~~/server/utils/rental-booking-confirmation";
+import { createError } from "h3";
 import type { BookingDepositSourceType } from "~~/server/utils/rental-held-balance-events";
 import {
   issueBookingDepositConfirmationDocument,
@@ -12,7 +11,25 @@ export const POS_BOOKING_DEPOSIT_SOURCE_TYPE =
   "pos_rental_payment_attempt" as const satisfies BookingDepositSourceType;
 
 type AnyRecord = Record<string, unknown>;
-type AnyClient = { from(table: string): any };
+type AnyClient = {
+  from(table: string): any;
+  rpc(fn: string, params: Record<string, unknown>): Promise<{ data: any; error: any }>;
+};
+
+/**
+ * Map an f_confirm_rental_booking_deposit (migration 119) RAISE message to an
+ * HTTP status. Shared by the POS finalizer and the manual-deposit path.
+ * HELD_BALANCE_EVENT_WRITE_FAILED / BOOKING_CONFIRM_NO_ROW / unknown → 500 (retryable).
+ */
+export function mapDepositRpcErrorStatus(message: string): number {
+  if (message.includes("RENTAL_BOOKING_NOT_FOUND")) return 404;
+  if (message.includes("BOOKING_NOT_DRAFT")) return 409;
+  if (message.includes("BOOKING_DEPOSIT_UNEXPECTED_STATUS")) return 409;
+  if (message.includes("BOOKING_DEPOSIT_AMOUNT_MISMATCH")) return 422;
+  if (message.includes("BOOKING_DEPOSIT_AMOUNT_INVALID")) return 422;
+  if (message.includes("BOOKING_DEPOSIT_SOURCE_TYPE_INVALID")) return 422;
+  return 500;
+}
 
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -70,12 +87,16 @@ export interface PosBookingDepositFinalizationResult {
  * Shared POS Booking Deposit post-payment finalization core.
  *
  * Owns (payment-method-agnostic business finalization):
- *   1. Record booking_deposit_collection held-balance event via
- *      recordBookingDepositHeldBalanceCollection() — idempotent/replay safe
- *   2. Update rental_bookings deposit paid fields
- *   3. Transition booking draft → confirmed via strict event-backed confirmRentalBooking()
- *   4. On confirmation failure: flag both pos_rental_payment_attempts and rental_bookings
- *      as paid_confirm_failed and return that status (does NOT throw)
+ *   1. Delegate the ATOMIC money core + confirm to the migration-119 RPC
+ *      f_confirm_rental_booking_deposit (source_type 'pos_rental_payment_attempt'):
+ *      held-balance event + deposit-paid fields + attempt→paid + draft→confirmed,
+ *      all in a SINGLE transaction. Idempotent / crash-recovery re-entrant.
+ *   2. Map RPC RAISE codes → thrown HTTP errors (see mapDepositRpcErrorStatus).
+ *   3. On a genuine overlap conflict the RPC returns paid_confirm_failed (money
+ *      core kept); this function surfaces that status and does NOT throw.
+ *   4. W5 (OUTSIDE the money txn): best-effort issuance of the Booking Deposit
+ *      Confirmation document. A non-23505 task-insert error is surfaced as
+ *      document.status='failed' (never silently swallowed — finding-12 fix).
  *
  * Does NOT own (must be handled by the caller):
  *   - Payment attempt creation (pos_rental_payment_attempts INSERT) — payment-method-specific
@@ -83,7 +104,6 @@ export interface PosBookingDepositFinalizationResult {
  *   - Cash-only / QR-only request guards
  *   - Idempotency pre-check and insert race-condition handling
  *   - HTTP response mapping / status codes
- *   - Document issuance (Phase 2C-A3, to be added in the future)
  */
 export async function finalizePosRentalBookingDeposit(
   input: PosBookingDepositFinalizerInput,
@@ -101,89 +121,40 @@ export async function finalizePosRentalBookingDeposit(
 
   const bookingId = text(booking.id);
   const currencyCode = text(booking.currency_code) || "THB";
-  const now = new Date().toISOString();
 
-  // ── Step 1: Record canonical held-balance event ───────────────────────────
-  // Model B: Booking Deposit is a held liability until Return Settlement.
-  // recordBookingDepositHeldBalanceCollection is idempotent — a unique-violation
-  // replay resolves to the existing matching event without error.
-  // Capture the returned event row — its .id is the canonical FK used by
-  // pos_document_issuance_tasks and official_documents (source_id).
-  const heldBalanceEvent = await recordBookingDepositHeldBalanceCollection({
-    client: adminClient,
-    booking,
-    amount,
-    sourceType: POS_BOOKING_DEPOSIT_SOURCE_TYPE,
-    sourceId: attemptId,
-    paymentMethod,
-    branchId,
-    staffUserId,
-    idempotencyKey,
-    metadata: { bookingChannel: "admin_pos_v3", staffUserId },
-  });
-
-  // ── Step 2: Update booking deposit paid fields ────────────────────────────
-  // Guarded by booking_deposit_payment_status = 'unpaid' to be idempotent on
-  // repeated calls (already-paid row is a no-op update, not an error here).
-  await adminClient
-    .from("rental_bookings")
-    .update({
-      booking_deposit_payment_status: "paid",
-      booking_deposit_paid_amount: amount,
-      booking_deposit_paid_at: now,
-      booking_deposit_pos_attempt_id: attemptId,
-    })
-    .eq("id", bookingId)
-    .eq("booking_deposit_payment_status", "unpaid");
-
-  // ── Step 3: Strict event-backed booking confirmation ─────────────────────
-  // confirmRentalBooking loads a fresh booking snapshot, validates deposit paid
-  // and verifies the held-balance event exists before transitioning to confirmed.
-  let confirmError: unknown = null;
-  try {
-    await confirmRentalBooking({
-      adminClient,
-      bookingId,
-      userId: text(booking.user_id),
-      skipUserOwnershipCheck: true,
-      requireBookingDepositPaid: true,
-      requireBookingDepositHeldBalanceEvent: {
-        sourceType: POS_BOOKING_DEPOSIT_SOURCE_TYPE,
-        sourceId: attemptId,
-      },
+  // ── Steps 1–4: ATOMIC money core + confirm via the migration-119 RPC ───────
+  // f_confirm_rental_booking_deposit runs held-balance event + deposit-paid
+  // fields + attempt→paid + draft→confirmed in a SINGLE transaction. Fixes the
+  // W1→W2 crash gap (deep audit P2.5) and finding 11 (unchecked W3). The RPC
+  // is idempotent/re-entrant, so a same-key retry after a crash completes here.
+  const { data: rpcData, error: rpcError } = await adminClient.rpc(
+    "f_confirm_rental_booking_deposit",
+    {
+      p_booking_id: bookingId,
+      p_source_type: POS_BOOKING_DEPOSIT_SOURCE_TYPE,
+      p_source_id: attemptId,
+      p_attempt_id: attemptId,
+      p_amount: amount,
+      p_currency_code: currencyCode,
+      p_payment_method: paymentMethod,
+      p_branch_id: branchId,
+      p_staff_user_id: staffUserId,
+      p_idempotency_key: idempotencyKey,
+      p_event_metadata: { bookingChannel: "admin_pos_v3", staffUserId },
+    },
+  );
+  if (rpcError) {
+    const msg = text(rpcError.message) || "DEPOSIT_CONFIRM_FAILED";
+    throw createError({
+      statusCode: mapDepositRpcErrorStatus(msg),
+      statusMessage: msg,
     });
-  } catch (err) {
-    confirmError = err;
   }
+  const rpc = (rpcData ?? {}) as AnyRecord;
 
-  // ── Step 4: Handle confirmation failure (paid_confirm_failed) ─────────────
-  // Cash is physically collected but booking confirmation failed — flag both
-  // the attempt and the booking for manual review. Does NOT undo collection.
-  if (confirmError) {
-    const reason =
-      confirmError instanceof Error
-        ? confirmError.message
-        : String(confirmError);
-    const failedAt = new Date().toISOString();
-
-    await adminClient
-      .from("pos_rental_payment_attempts")
-      .update({
-        status: "paid_confirm_failed",
-        confirm_failed_at: failedAt,
-        confirm_failure_reason: reason,
-      })
-      .eq("id", attemptId);
-
-    await adminClient
-      .from("rental_bookings")
-      .update({
-        booking_deposit_payment_status: "paid_confirm_failed",
-        booking_deposit_confirm_failed_at: failedAt,
-        booking_deposit_confirm_failure_reason: reason,
-      })
-      .eq("id", bookingId);
-
+  // paid_confirm_failed: the RPC kept the money core (held event + deposit paid
+  // + attempt flagged); a genuine overlap conflict needs manual review.
+  if (text(rpc.status) === "paid_confirm_failed") {
     return {
       status: "paid_confirm_failed",
       bookingDepositPaidAmount: amount,
@@ -191,6 +162,14 @@ export async function finalizePosRentalBookingDeposit(
       warnings: ["BOOKING_CONFIRMATION_FAILED_MANUAL_REVIEW_REQUIRED"],
     };
   }
+
+  // Load the held-balance event row (created atomically by the RPC) for the
+  // isolated best-effort document step below (W5). Its .id is the doc source_id.
+  const { data: heldBalanceEvent } = await adminClient
+    .from("rental_held_balance_events")
+    .select("*")
+    .eq("id", text(rpc.held_balance_event_id))
+    .single();
 
   // ── Step 5: Best-effort document issuance ─────────────────────────────────
   // Phase B — ISOLATED from Phase A. Document failure MUST NOT revert booking
@@ -237,10 +216,16 @@ export async function finalizePosRentalBookingDeposit(
           .eq("document_type", docType)
           .maybeSingle();
         task = (existing as AnyRecord | null) ?? null;
+      } else {
+        // FINDING 12 FIX: do NOT swallow a non-23505 task-insert error. Throw
+        // into the isolated W5 catch below so the document result surfaces as
+        // status:'failed' with the error code/message — the booking stays
+        // confirmed and the retry endpoint can recreate the task later.
+        throw createError({
+          statusCode: 500,
+          statusMessage: text(insertTaskErr.message) || "DOC_TASK_INSERT_FAILED",
+        });
       }
-      // Any other error (e.g. table not yet migrated, schema cache miss) —
-      // task tracking is unavailable. Best-effort: proceed to document issuance
-      // with task = null. official_documents remains the canonical record.
     } else {
       task = insertedTask as AnyRecord;
     }

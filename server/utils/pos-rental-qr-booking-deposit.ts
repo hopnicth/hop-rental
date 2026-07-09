@@ -187,17 +187,15 @@ export async function applyPosRentalQrGatewayResult(input: {
 
   // ── 4c/d. Apply finalizer outcome ─────────────────────────────────────────
   if (finalizerResult.status === "paid_confirm_failed") {
-    // finalizer already updated the attempt to paid_confirm_failed internally
+    // The migration-119 RPC (inside the finalizer) already flagged the attempt
+    // and the booking as paid_confirm_failed.
     return {
       attemptStatus: "paid_confirm_failed",
       finalizerStatus: "paid_confirm_failed",
     };
   }
 
-  await client
-    .from("pos_rental_payment_attempts")
-    .update({ status: "paid", paid_at: new Date().toISOString() })
-    .eq("id", attemptId);
-
+  // Confirmed: the RPC (inside the finalizer) already flipped the attempt
+  // finalizing→paid ATOMICALLY with the held-balance event — no separate write.
   return { attemptStatus: "paid", finalizerStatus: "confirmed" };
 }

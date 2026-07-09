@@ -106,6 +106,9 @@ vi.mock("~~/server/utils/payments", () => ({
 
 // ── Shared finalizer mock (for helper unit tests) ────────────────────────────
 vi.mock("~~/server/utils/pos-rental-booking-deposit-finalizer", () => ({
+  // Migration 119: the finalizer's RPC now owns the attempt status transition
+  // (finalizing → paid / paid_confirm_failed) ATOMICALLY inside the RPC — it is
+  // NOT a separate client .update(), so the QR applier no longer writes 'paid'.
   finalizePosRentalBookingDeposit: vi.fn(async () => {
     if (mockState.finalizerShouldFail) {
       return {
@@ -426,12 +429,10 @@ describe("admin POS V3 QR booking deposit creation", () => {
       statusMessage: "PAYMENT_ALREADY_PROCESSED",
     });
     expect(mockState.insertedAttempts).toHaveLength(0);
-    // Finalization path entered: finalizing transition + paid DB update
+    // Finalization path entered: the applier writes the 'finalizing' transition;
+    // the finalizing→paid flip is inside the RPC (migration 119).
     expect(
       mockState.updatedAttempts.find((u) => u.status === "finalizing"),
-    ).toBeDefined();
-    expect(
-      mockState.updatedAttempts.find((u) => u.status === "paid"),
     ).toBeDefined();
   });
 
@@ -832,12 +833,9 @@ describe("admin POS V3 QR booking deposit poll", () => {
     const finalizingUpdate = mockState.updatedAttempts.find(
       (u) => u.status === "finalizing",
     );
-    const paidUpdate = mockState.updatedAttempts.find(
-      (u) => u.status === "paid",
-    );
     expect(finalizingUpdate).toBeDefined();
-    expect(paidUpdate).toBeDefined();
-    expect(paidUpdate?.paid_at).toBeTruthy();
+    // Migration 119: finalizing→paid now happens atomically inside the RPC
+    // (mocked finalizer), not as a client .update() by the applier.
   });
 
   it("stale reconciliation: live Omise charge = expired → attempt updated to expired", async () => {
@@ -919,12 +917,9 @@ describe("admin POS V3 QR booking deposit poll", () => {
     const finalizingUpdate = mockState.updatedAttempts.find(
       (u) => u.status === "finalizing",
     );
-    const paidUpdate = mockState.updatedAttempts.find(
-      (u) => u.status === "paid",
-    );
     expect(finalizingUpdate).toBeDefined();
-    expect(paidUpdate).toBeDefined();
-    expect(paidUpdate?.paid_at).toBeTruthy();
+    // Migration 119: finalizing→paid now happens atomically inside the RPC
+    // (mocked finalizer), not as a client .update() by the applier.
   });
 
   it("active-window: retrieveOmiseCharge throws → status preserved, no DB writes", async () => {
@@ -964,17 +959,12 @@ describe("admin POS V3 QR booking deposit poll", () => {
     expect(result.status).toBe("paid");
     expect(mockState.retrieveChargeCalls).toHaveLength(1);
     expect(mockState.retrieveChargeCalls[0]).toBe("chrg_test_001");
-    // Only ONE DB write: paid confirmation (no finalizing transition — already in finalizing)
-    expect(mockState.updatedAttempts).toHaveLength(1);
-    const paidUpdate = mockState.updatedAttempts.find(
-      (u) => u.status === "paid",
-    );
-    expect(paidUpdate).toBeDefined();
-    expect(paidUpdate?.paid_at).toBeTruthy();
-    // No spurious finalizing write
-    expect(
-      mockState.updatedAttempts.find((u) => u.status === "finalizing"),
-    ).toBeUndefined();
+    // Migration 119: recovery re-enters via the RPC (mocked finalizer). The
+    // applier skips the finalizing write (attempt already 'finalizing') and the
+    // finalizing→paid flip is inside the RPC → the applier makes NO client
+    // .update() here.
+    expect(mockState.updatedAttempts).toHaveLength(0);
+    expect(result.status).toBe("paid");
   });
 
   it("stale reconciliation: finalizing attempt + live paid charge → crash-recovery → returns paid", async () => {
@@ -994,18 +984,12 @@ describe("admin POS V3 QR booking deposit poll", () => {
     // retrieveOmiseCharge was called
     expect(mockState.retrieveChargeCalls).toHaveLength(1);
     expect(mockState.retrieveChargeCalls[0]).toBe("chrg_test_001");
-    // Only ONE DB write: paid confirmation (no finalizing transition — already in finalizing)
-    expect(mockState.updatedAttempts).toHaveLength(1);
-    const paidUpdate = mockState.updatedAttempts.find(
-      (u) => u.status === "paid",
-    );
-    expect(paidUpdate).toBeDefined();
-    expect(paidUpdate?.paid_at).toBeTruthy();
-    // No spurious finalizing write
-    const finalizingUpdate = mockState.updatedAttempts.find(
-      (u) => u.status === "finalizing",
-    );
-    expect(finalizingUpdate).toBeUndefined();
+    // Migration 119: recovery re-enters via the RPC (mocked finalizer). The
+    // applier skips the finalizing write (attempt already 'finalizing') and the
+    // finalizing→paid flip is inside the RPC → the applier makes NO client
+    // .update() here.
+    expect(mockState.updatedAttempts).toHaveLength(0);
+    expect(result.status).toBe("paid");
   });
 
   // ── requires_action recovery tests (Phase 2D-B2.2) ──────────────────────────
@@ -1053,12 +1037,9 @@ describe("admin POS V3 QR booking deposit poll", () => {
     const finalizingUpdate = mockState.updatedAttempts.find(
       (u) => u.status === "finalizing",
     );
-    const paidUpdate = mockState.updatedAttempts.find(
-      (u) => u.status === "paid",
-    );
     expect(finalizingUpdate).toBeDefined();
-    expect(paidUpdate).toBeDefined();
-    expect(paidUpdate?.paid_at).toBeTruthy();
+    // Migration 119: finalizing→paid now happens atomically inside the RPC
+    // (mocked finalizer), not as a client .update() by the applier.
   });
 
   it("requires_action recovery: past expiry + live charge still pending → retrieve called, status preserved pending", async () => {
@@ -1180,14 +1161,10 @@ describe("applyPosRentalQrGatewayResult helper", () => {
     });
     expect(result.attemptStatus).toBe("paid");
     expect(result.finalizerStatus).toBe("confirmed");
-    // Only ONE DB write: paid confirmation (no finalizing transition — already there)
-    expect(client.ops).toHaveLength(1);
-    expect(client.ops[0].payload).toMatchObject({ status: "paid" });
-    expect(client.ops[0].payload.paid_at).toBeTruthy();
-    // No spurious finalizing write
-    expect(
-      client.ops.find((o) => o.payload.status === "finalizing"),
-    ).toBeUndefined();
+    // Migration 119: the attempt is already 'finalizing' so the applier skips
+    // the finalizing write, and the finalizing→paid flip is inside the RPC →
+    // the applier makes ZERO client writes here.
+    expect(client.ops).toHaveLength(0);
     // Finalizer called idempotently with correct args
     expect(finalizePosRentalBookingDeposit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1271,10 +1248,10 @@ describe("applyPosRentalQrGatewayResult helper", () => {
     });
     expect(result.attemptStatus).toBe("paid");
     expect(result.finalizerStatus).toBe("confirmed");
-    // Two DB writes: finalizing transition + paid confirmation
+    // The applier writes only the 'finalizing' transition; the finalizing→paid
+    // flip is inside the RPC (migration 119), not a client op here.
     expect(client.ops[0].payload).toMatchObject({ status: "finalizing" });
-    expect(client.ops[1].payload).toMatchObject({ status: "paid" });
-    expect(client.ops[1].payload.paid_at).toBeTruthy();
+    expect(client.ops.find((o) => o.payload.status === "paid")).toBeUndefined();
     // Finalizer called with correct args
     expect(finalizePosRentalBookingDeposit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1334,14 +1311,13 @@ describe("applyPosRentalQrGatewayResult helper", () => {
       severity: "critical",
       audience: "admin",
     });
-    // DB writes: finalizing transition + paid confirmation
+    // DB writes: the applier does the 'finalizing' transition; the finalizing→
+    // paid flip is inside the RPC (migration 119), not a client op here.
     const finalizingOp = client.ops.find(
       (o) => o.payload.status === "finalizing",
     );
-    const paidOp = client.ops.find((o) => o.payload.status === "paid");
     expect(finalizingOp).toBeDefined();
-    expect(paidOp).toBeDefined();
-    expect(paidOp?.payload.paid_at).toBeTruthy();
+    expect(result.attemptStatus).toBe("paid");
   });
 
   it("late-payment recovery: locally expired + gateway NOT paid → terminal guard fires, no recovery", async () => {

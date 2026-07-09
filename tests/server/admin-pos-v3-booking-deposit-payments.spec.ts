@@ -13,6 +13,7 @@ const mockState = vi.hoisted(() => ({
   confirmShouldFail: false,
   availabilityConflict: false,
   heldBalanceEventCalls: [] as Record<string, unknown>[],
+  rpcCalls: [] as Record<string, unknown>[],
   // Document issuance tracking
   issueDocumentShouldFail: false,
   documentAlreadyIssued: false,
@@ -229,6 +230,10 @@ vi.mock("~~/server/utils/admin", () => ({
             },
           };
         }
+        // The finalizer re-loads the held-balance event (created by the RPC) for W5.
+        if (table === "rental_held_balance_events") {
+          return qr({ data: { id: "event-1" }, error: null });
+        }
         // Tables accessed only by the A3 issuance utility (mocked at module level)
         if (
           table === "official_documents" ||
@@ -239,6 +244,34 @@ vi.mock("~~/server/utils/admin", () => ({
           return qr({ data: null, error: null });
         }
         throw new Error(`Unexpected table: ${table}`);
+      },
+      // migration-119 atomic RPC (finalizer delegates the money core + confirm).
+      rpc: async (_fn: string, params: Record<string, unknown>) => {
+        mockState.rpcCalls.push(params);
+        if (mockState.confirmShouldFail) {
+          return {
+            data: {
+              status: "paid_confirm_failed",
+              idempotent: false,
+              held_balance_event_id: "event-1",
+              currency_code: "THB",
+              booking_deposit_paid_amount: params.p_amount,
+              confirm_failure_reason: "RENTAL_BOOKING_CONFLICT",
+            },
+            error: null,
+          };
+        }
+        return {
+          data: {
+            status: "confirmed",
+            idempotent: false,
+            held_balance_event_id: "event-1",
+            currency_code: "THB",
+            booking_deposit_paid_amount: params.p_amount,
+            confirm_failure_reason: null,
+          },
+          error: null,
+        };
       },
     },
     userId: "staff-1",
@@ -270,6 +303,7 @@ describe("admin POS V3 booking deposit payments", () => {
     mockState.confirmShouldFail = false;
     mockState.availabilityConflict = false;
     mockState.heldBalanceEventCalls = [];
+    mockState.rpcCalls = [];
     mockState.issueDocumentShouldFail = false;
     mockState.documentAlreadyIssued = false;
     mockState.existingDocumentTask = null;
@@ -289,30 +323,28 @@ describe("admin POS V3 booking deposit payments", () => {
       bookingDepositPaidAmount: 200,
       currencyCode: "THB",
     });
+    // The attempt is inserted as 'finalizing' (migration-119 RPC flips it to
+    // 'paid' atomically with the held-balance event).
     expect(mockState.insertedAttempts).toHaveLength(1);
     expect(mockState.insertedAttempts[0]).toMatchObject({
       rental_booking_id: "booking-1",
       payment_purpose: "booking_deposit",
       payment_method: "cash",
       amount: 200,
-      status: "paid",
+      status: "finalizing",
       branch_id: "branch-hq",
       staff_user_id: "staff-1",
       idempotency_key: "pay-key-1",
     });
-    expect(mockState.heldBalanceEventCalls).toHaveLength(1);
-    expect(mockState.heldBalanceEventCalls[0]).toMatchObject({
-      amount: 200,
-      sourceType: "pos_rental_payment_attempt",
-      sourceId: "attempt-1",
-      paymentMethod: "cash",
-      branchId: "branch-hq",
-    });
-    expect(mockState.updatedBookings).toHaveLength(1);
-    expect(mockState.updatedBookings[0]).toMatchObject({
-      booking_deposit_payment_status: "paid",
-      booking_deposit_paid_amount: 200,
-      booking_deposit_pos_attempt_id: "attempt-1",
+    // Money core + confirm are delegated atomically to the RPC.
+    expect(mockState.rpcCalls).toHaveLength(1);
+    expect(mockState.rpcCalls[0]).toMatchObject({
+      p_source_type: "pos_rental_payment_attempt",
+      p_source_id: "attempt-1",
+      p_attempt_id: "attempt-1",
+      p_amount: 200,
+      p_payment_method: "cash",
+      p_branch_id: "branch-hq",
     });
   });
 
@@ -328,7 +360,7 @@ describe("admin POS V3 booking deposit payments", () => {
     expect(result.idempotent).toBe(true);
     expect(result.paymentAttemptId).toBe("attempt-existing");
     expect(mockState.insertedAttempts).toHaveLength(0);
-    expect(mockState.heldBalanceEventCalls).toHaveLength(0);
+    expect(mockState.rpcCalls).toHaveLength(0);
   });
 
   it("idempotency: throws 409 if same key has conflicting amount", async () => {
@@ -354,19 +386,9 @@ describe("admin POS V3 booking deposit payments", () => {
     expect(result.warnings).toContain(
       "BOOKING_CONFIRMATION_FAILED_MANUAL_REVIEW_REQUIRED",
     );
-    // Attempt flagged
-    expect(mockState.updatedAttempts).toHaveLength(1);
-    expect(mockState.updatedAttempts[0]).toMatchObject({
-      status: "paid_confirm_failed",
-    });
-    // Booking first set to paid, then to paid_confirm_failed
-    expect(mockState.updatedBookings).toHaveLength(2);
-    expect(mockState.updatedBookings[0]).toMatchObject({
-      booking_deposit_payment_status: "paid",
-    });
-    expect(mockState.updatedBookings[1]).toMatchObject({
-      booking_deposit_payment_status: "paid_confirm_failed",
-    });
+    // The RPC (not the endpoint) owns the attempt/booking paid_confirm_failed
+    // flagging atomically; the endpoint simply surfaces the RPC's status.
+    expect(mockState.rpcCalls).toHaveLength(1);
   });
 
   it("rejects non-draft booking status", async () => {
@@ -621,7 +643,9 @@ describe("admin POS V3 booking deposit payments", () => {
   it("A4: task insert fails with non-23505 error (e.g. missing table) — booking confirmed, document still issued, taskId null", async () => {
     // Reproduces the real production failure: migration 091 not yet applied,
     // pos_document_issuance_tasks does not exist → PostgREST 42P01 error.
-    // Expected: best-effort task tracking is skipped; document issuance proceeds.
+    // FINDING 12 FIX: a non-23505 task-insert error is NO LONGER swallowed —
+    // the document result surfaces status:'failed' with the error (booking still
+    // confirmed; the retry endpoint can recreate the task later).
     mockState.insertTaskError = {
       code: "42P01",
       message: 'relation "public.pos_document_issuance_tasks" does not exist',
@@ -629,7 +653,7 @@ describe("admin POS V3 booking deposit payments", () => {
 
     const result = await endpoint(event);
 
-    // Booking confirmed, payment recorded — UNAFFECTED
+    // Booking confirmed, payment recorded — UNAFFECTED (W5 stays isolated).
     expect(result.status).toBe("confirmed");
     expect(result.paymentAttemptId).toBe("attempt-1");
     expect(result.booking).toMatchObject({
@@ -637,16 +661,17 @@ describe("admin POS V3 booking deposit payments", () => {
       status: "confirmed",
       bookingDepositPaymentStatus: "paid",
     });
-    // No task row inserted (table unavailable)
+    // No task row inserted (table unavailable).
     expect(mockState.documentTasksInserted).toHaveLength(0);
-    // Document was still issued (best-effort — no task tracking needed)
+    // Document result surfaces the failure (not silently 'issued').
     expect(result.document).toMatchObject({
-      status: "issued",
-      taskId: null, // no task row available
-      officialDocumentId: "doc-1",
-      documentNo: "BDC-202605-0001",
-      errorCode: null,
+      status: "failed",
+      taskId: null,
+      officialDocumentId: null,
     });
+    expect((result.document as Record<string, unknown>).errorMessage).toContain(
+      "does not exist",
+    );
   });
 
   it("A4: paid_confirm_failed path — no document issuance task created", async () => {

@@ -3,9 +3,10 @@
  *
  * Admin records a MANUALLY-VERIFIED bank-transfer booking deposit and confirms
  * the booking. The deposit is recorded as a held-balance liability (never
- * revenue, never VAT, never Omise/payment_attempts) and the booking is
- * confirmed ONLY through confirmRentalBooking() — this route never sets
- * rental_bookings.status directly.
+ * revenue, never VAT, never Omise/payment_attempts) and the money core +
+ * draft→confirmed transition happen ATOMICALLY inside the migration-119 RPC
+ * f_confirm_rental_booking_deposit — this route never sets rental_bookings.status
+ * directly.
  *
  * Auth:    requirePlatformAdmin (staff + super_admin).
  * Input:   JSON body

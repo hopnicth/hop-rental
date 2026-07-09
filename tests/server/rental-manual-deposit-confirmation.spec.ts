@@ -2,52 +2,45 @@
  * Tests: server/utils/rental-manual-deposit-confirmation.ts
  *        + POST /api/admin/rental-bookings/[id]/record-deposit
  *
- * Mocks at the util boundary (held-balance writer + confirmRentalBooking) and
- * uses a mock Supabase client for the direct table ops. Covers:
- *  1. amount > 0 and payment-channel validation (422)
- *  2. booking-not-found (404) and non-confirmable status (422)
- *  3. happy path: records held-balance liability (booking_deposit_collection,
- *     manual source), marks deposit paid, confirms via confirmRentalBooking
- *  4. confirmRentalBooking is called WITHOUT requireBookingDepositHeldBalanceEvent
- *     and WITH skipUserOwnershipCheck + requireBookingDepositPaid
- *  5. idempotent: already-confirmed booking does not re-confirm
- *  6. slip ownership guard + reviewed marking
- *  7. route contract: requirePlatformAdmin, no direct status write, no Omise
+ * Migration 119: the money core (held-balance liability + deposit-paid fields +
+ * draft→confirmed) is now a SINGLE atomic RPC call — f_confirm_rental_booking_deposit
+ * (source_type 'manual_admin_confirmation', p_source_id = bookingId, p_attempt_id
+ * null). This spec stubs that RPC on the mock client and asserts its args +
+ * return mapping. The slip-review UPDATE stays OUTSIDE the money txn (best-effort).
+ *
+ * Covers:
+ *  1. amount > 0 and payment-channel validation (422) — RPC not reached
+ *  2. booking-not-found (404) and non-confirmable status (422) — RPC not reached
+ *  3. happy path: RPC called with the manual source, bank_transfer method, null
+ *     attempt/branch, correct amount + metadata
+ *  4. RPC error message → mapped status code (e.g. BOOKING_NOT_DRAFT → 409)
+ *  5. paid_confirm_failed → 409 (money core kept, confirmation blocked)
+ *  6. idempotent replay: rpc.idempotent === true → alreadyConfirmed true
+ *  7. slip ownership guard (404, before RPC) + reviewed marking (after RPC)
+ *  8. route contract: requirePlatformAdmin, no direct status write, no Omise
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-vi.mock("~~/server/utils/rental-held-balance-events", () => ({
-  BOOKING_DEPOSIT_COLLECTION_EVENT: "booking_deposit_collection",
-  recordRentalHeldBalanceEvent: vi.fn(async () => ({ id: "evt-1" })),
-}));
-vi.mock("~~/server/utils/rental-booking-confirmation", () => ({
-  confirmRentalBooking: vi.fn(async () => ({ id: "b1", status: "confirmed" })),
-}));
-
-import { recordRentalHeldBalanceEvent } from "~~/server/utils/rental-held-balance-events";
-import { confirmRentalBooking } from "~~/server/utils/rental-booking-confirmation";
 import { recordManualBookingDeposit } from "../../server/utils/rental-manual-deposit-confirmation";
-
-const recordEvent = recordRentalHeldBalanceEvent as unknown as ReturnType<
-  typeof vi.fn
->;
-const confirm = confirmRentalBooking as unknown as ReturnType<typeof vi.fn>;
 
 const BOOKING_ID = "11111111-1111-4111-8111-111111111111";
 const ADMIN_ID = "22222222-2222-4222-8222-222222222222";
 const SLIP_ID = "33333333-3333-4333-8333-333333333333";
 
+type RpcResult = { data: unknown; error: { message: string } | null };
+
 function makeClient(cfg: {
   booking?: Record<string, unknown> | null;
   slip?: Record<string, unknown> | null;
-  depositUpdateError?: { message: string } | null;
   slipUpdateError?: { message: string } | null;
+  rpcResult?: RpcResult;
 }) {
   const calls: {
     updates: { table: string; payload: Record<string, unknown> }[];
-  } = { updates: [] };
+    rpc: { fn: string; params: Record<string, unknown> }[];
+  } = { updates: [], rpc: [] };
   function from(table: string) {
     const q: Record<string, unknown> = {};
     Object.assign(q, {
@@ -66,16 +59,35 @@ function makeClient(cfg: {
         return Promise.resolve({ data: null, error: null });
       },
       then: (onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) => {
-        const err =
-          table === "rental_bookings"
-            ? (cfg.depositUpdateError ?? null)
-            : (cfg.slipUpdateError ?? null);
-        return Promise.resolve({ error: err }).then(onF, onR);
+        // Only the slip-review UPDATE resolves this way now.
+        return Promise.resolve({ error: cfg.slipUpdateError ?? null }).then(
+          onF,
+          onR,
+        );
       },
     });
     return q;
   }
-  return { client: { from } as { from: (t: string) => unknown }, calls };
+  const rpc = (fn: string, params: Record<string, unknown>) => {
+    calls.rpc.push({ fn, params });
+    return Promise.resolve(
+      cfg.rpcResult ?? {
+        data: {
+          status: "confirmed",
+          held_balance_event_id: "evt-1",
+          idempotent: false,
+        },
+        error: null,
+      },
+    );
+  };
+  return {
+    client: { from, rpc } as {
+      from: (t: string) => unknown;
+      rpc: (fn: string, params: Record<string, unknown>) => Promise<RpcResult>;
+    },
+    calls,
+  };
 }
 
 const draftBooking = {
@@ -85,15 +97,9 @@ const draftBooking = {
   currency_code: "THB",
 };
 
-beforeEach(() => {
-  vi.clearAllMocks();
-  confirm.mockResolvedValue({ id: BOOKING_ID, status: "confirmed" });
-  recordEvent.mockResolvedValue({ id: "evt-1" });
-});
-
 describe("recordManualBookingDeposit — validation", () => {
-  it("rejects amount <= 0 (422)", async () => {
-    const { client } = makeClient({ booking: draftBooking });
+  it("rejects amount <= 0 (422) — RPC not reached", async () => {
+    const { client, calls } = makeClient({ booking: draftBooking });
     await expect(
       recordManualBookingDeposit({
         adminClient: client,
@@ -103,12 +109,11 @@ describe("recordManualBookingDeposit — validation", () => {
         paymentChannel: "uploaded_slip",
       }),
     ).rejects.toMatchObject({ statusCode: 422 });
-    expect(recordEvent).not.toHaveBeenCalled();
-    expect(confirm).not.toHaveBeenCalled();
+    expect(calls.rpc).toHaveLength(0);
   });
 
   it("rejects an invalid payment channel (422)", async () => {
-    const { client } = makeClient({ booking: draftBooking });
+    const { client, calls } = makeClient({ booking: draftBooking });
     await expect(
       recordManualBookingDeposit({
         adminClient: client,
@@ -119,10 +124,11 @@ describe("recordManualBookingDeposit — validation", () => {
         paymentChannel: "credit_card",
       }),
     ).rejects.toMatchObject({ statusCode: 422 });
+    expect(calls.rpc).toHaveLength(0);
   });
 
-  it("404 when the booking does not exist", async () => {
-    const { client } = makeClient({ booking: null });
+  it("404 when the booking does not exist — RPC not reached", async () => {
+    const { client, calls } = makeClient({ booking: null });
     await expect(
       recordManualBookingDeposit({
         adminClient: client,
@@ -132,11 +138,12 @@ describe("recordManualBookingDeposit — validation", () => {
         paymentChannel: "manual",
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
+    expect(calls.rpc).toHaveLength(0);
   });
 
   it("422 for a non-confirmable booking (cancelled/picked_up/returned/no_show)", async () => {
     for (const status of ["cancelled", "picked_up", "returned", "no_show"]) {
-      const { client } = makeClient({
+      const { client, calls } = makeClient({
         booking: { ...draftBooking, status },
       });
       await expect(
@@ -148,14 +155,14 @@ describe("recordManualBookingDeposit — validation", () => {
           paymentChannel: "manual",
         }),
       ).rejects.toMatchObject({ statusCode: 422 });
+      expect(calls.rpc).toHaveLength(0);
     }
-    expect(confirm).not.toHaveBeenCalled();
   });
 });
 
-describe("recordManualBookingDeposit — happy path", () => {
-  it("records a held-balance liability with the manual source and booking_deposit_collection event", async () => {
-    const { client } = makeClient({ booking: draftBooking });
+describe("recordManualBookingDeposit — atomic RPC happy path", () => {
+  it("calls f_confirm_rental_booking_deposit with the manual source + bank_transfer", async () => {
+    const { client, calls } = makeClient({ booking: draftBooking });
     await recordManualBookingDeposit({
       adminClient: client,
       bookingId: BOOKING_ID,
@@ -165,21 +172,26 @@ describe("recordManualBookingDeposit — happy path", () => {
       externalReference: "REF-9",
       adminNote: "checked",
     });
-    expect(recordEvent).toHaveBeenCalledTimes(1);
-    const arg = recordEvent.mock.calls[0]![0] as Record<string, unknown>;
-    expect(arg.eventType).toBe("booking_deposit_collection");
-    expect(arg.sourceType).toBe("manual_admin_confirmation");
-    expect(arg.sourceId).toBe(BOOKING_ID);
-    expect(arg.amount).toBe(1500);
-    expect(arg.paymentMethod).toBe("bank_transfer");
-    expect(arg.staffUserId).toBe(ADMIN_ID);
-    const meta = arg.metadata as Record<string, unknown>;
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0]!.fn).toBe("f_confirm_rental_booking_deposit");
+    const p = calls.rpc[0]!.params;
+    expect(p.p_booking_id).toBe(BOOKING_ID);
+    expect(p.p_source_type).toBe("manual_admin_confirmation");
+    expect(p.p_source_id).toBe(BOOKING_ID);
+    expect(p.p_attempt_id).toBeNull();
+    expect(p.p_amount).toBe(1500);
+    expect(p.p_currency_code).toBe("THB");
+    expect(p.p_payment_method).toBe("bank_transfer");
+    expect(p.p_branch_id).toBeNull();
+    expect(p.p_staff_user_id).toBe(ADMIN_ID);
+    const meta = p.p_event_metadata as Record<string, unknown>;
     expect(meta.source).toBe("manual_admin_confirmation");
     expect(meta.payment_channel).toBe("line_slip");
     expect(meta.external_reference).toBe("REF-9");
+    expect(meta.admin_note).toBe("checked");
   });
 
-  it("marks the booking deposit paid then confirms via confirmRentalBooking", async () => {
+  it("confirms atomically: no direct rental_bookings status write from the util", async () => {
     const { client, calls } = makeClient({ booking: draftBooking });
     const result = await recordManualBookingDeposit({
       adminClient: client,
@@ -188,36 +200,89 @@ describe("recordManualBookingDeposit — happy path", () => {
       amount: 1500,
       paymentChannel: "manual",
     });
-    const depositUpdate = calls.updates.find(
-      (u) => u.table === "rental_bookings",
-    );
-    expect(depositUpdate?.payload.booking_deposit_payment_status).toBe("paid");
-    expect(depositUpdate?.payload.booking_deposit_paid_amount).toBe(1500);
-    expect(confirm).toHaveBeenCalledTimes(1);
+    // The deposit-paid fields + draft→confirmed are inside the RPC — the util
+    // makes NO direct rental_bookings write.
+    expect(
+      calls.updates.find((u) => u.table === "rental_bookings"),
+    ).toBeUndefined();
+    expect(result.booking.status).toBe("confirmed");
+    expect(result.heldBalanceEventId).toBe("evt-1");
     expect(result.alreadyConfirmed).toBe(false);
   });
+});
 
-  it("confirms WITHOUT requireBookingDepositHeldBalanceEvent and WITH skip-ownership + deposit-paid", async () => {
-    const { client } = makeClient({ booking: draftBooking });
-    await recordManualBookingDeposit({
-      adminClient: client,
-      bookingId: BOOKING_ID,
-      adminUserId: ADMIN_ID,
-      amount: 1500,
-      paymentChannel: "manual",
+describe("recordManualBookingDeposit — RPC error mapping", () => {
+  it("maps a RAISE message to its status code (BOOKING_NOT_DRAFT → 409)", async () => {
+    const { client } = makeClient({
+      booking: draftBooking,
+      rpcResult: { data: null, error: { message: "BOOKING_NOT_DRAFT" } },
     });
-    const confirmArg = confirm.mock.calls[0]![0] as Record<string, unknown>;
-    expect(confirmArg.skipUserOwnershipCheck).toBe(true);
-    expect(confirmArg.requireBookingDepositPaid).toBe(true);
-    expect(confirmArg.requireBookingDepositHeldBalanceEvent).toBeUndefined();
-    expect(confirmArg.userId).toBe(ADMIN_ID);
+    await expect(
+      recordManualBookingDeposit({
+        adminClient: client,
+        bookingId: BOOKING_ID,
+        adminUserId: ADMIN_ID,
+        amount: 1500,
+        paymentChannel: "manual",
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("maps an amount-mismatch RAISE to 422", async () => {
+    const { client } = makeClient({
+      booking: draftBooking,
+      rpcResult: {
+        data: null,
+        error: { message: "BOOKING_DEPOSIT_AMOUNT_MISMATCH" },
+      },
+    });
+    await expect(
+      recordManualBookingDeposit({
+        adminClient: client,
+        bookingId: BOOKING_ID,
+        adminUserId: ADMIN_ID,
+        amount: 1500,
+        paymentChannel: "manual",
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+  });
+
+  it("paid_confirm_failed → 409 (money core kept, confirmation blocked)", async () => {
+    const { client } = makeClient({
+      booking: draftBooking,
+      rpcResult: {
+        data: {
+          status: "paid_confirm_failed",
+          held_balance_event_id: "evt-1",
+          confirm_failure_reason: "RENTAL_BOOKING_CONFLICT",
+        },
+        error: null,
+      },
+    });
+    await expect(
+      recordManualBookingDeposit({
+        adminClient: client,
+        bookingId: BOOKING_ID,
+        adminUserId: ADMIN_ID,
+        amount: 1500,
+        paymentChannel: "manual",
+      }),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });
 
 describe("recordManualBookingDeposit — idempotency + slips", () => {
-  it("does not re-confirm an already-confirmed booking", async () => {
+  it("idempotent replay: rpc.idempotent true → alreadyConfirmed true", async () => {
     const { client } = makeClient({
       booking: { ...draftBooking, status: "confirmed" },
+      rpcResult: {
+        data: {
+          status: "confirmed",
+          held_balance_event_id: "evt-1",
+          idempotent: true,
+        },
+        error: null,
+      },
     });
     const result = await recordManualBookingDeposit({
       adminClient: client,
@@ -227,11 +292,10 @@ describe("recordManualBookingDeposit — idempotency + slips", () => {
       paymentChannel: "manual",
     });
     expect(result.alreadyConfirmed).toBe(true);
-    expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("404 when the linked slip belongs to a different booking", async () => {
-    const { client } = makeClient({
+  it("404 when the linked slip belongs to a different booking — RPC not reached", async () => {
+    const { client, calls } = makeClient({
       booking: draftBooking,
       slip: { id: SLIP_ID, rental_booking_id: "other-booking" },
     });
@@ -245,10 +309,10 @@ describe("recordManualBookingDeposit — idempotency + slips", () => {
         depositSlipId: SLIP_ID,
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
-    expect(recordEvent).not.toHaveBeenCalled();
+    expect(calls.rpc).toHaveLength(0);
   });
 
-  it("marks an owned slip reviewed", async () => {
+  it("marks an owned slip reviewed (after the RPC, outside the money txn)", async () => {
     const { client, calls } = makeClient({
       booking: draftBooking,
       slip: { id: SLIP_ID, rental_booking_id: BOOKING_ID },
@@ -262,6 +326,7 @@ describe("recordManualBookingDeposit — idempotency + slips", () => {
       depositSlipId: SLIP_ID,
       adminNote: "ok",
     });
+    expect(calls.rpc).toHaveLength(1);
     const slipUpdate = calls.updates.find(
       (u) => u.table === "rental_booking_deposit_slips",
     );

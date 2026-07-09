@@ -5,12 +5,13 @@
  * deposit and confirms the booking. This is the authoritative server path for
  * the manual flow and deliberately reuses the existing Model B infrastructure:
  *
- *  - The booking deposit is recorded as a HELD-BALANCE LIABILITY via
- *    recordRentalHeldBalanceEvent (event_type 'booking_deposit_collection').
- *    It is NEVER revenue and NEVER touches rental_booking_payment_lines / VAT.
- *  - The booking is confirmed ONLY through confirmRentalBooking() — the status
- *    transition + availability/overlap guard live there; this module never sets
- *    rental_bookings.status directly.
+ *  - The booking deposit (HELD-BALANCE LIABILITY, event_type
+ *    'booking_deposit_collection') + deposit-paid fields + draft→confirmed are
+ *    recorded ATOMICALLY by the migration-119 RPC f_confirm_rental_booking_deposit
+ *    (source_type 'manual_admin_confirmation', p_attempt_id null). The deposit is
+ *    NEVER revenue and NEVER touches rental_booking_payment_lines / VAT; the
+ *    availability/overlap guard (mig-058) runs inside the RPC's confirm step, so
+ *    this module never sets rental_bookings.status directly.
  *  - No Omise / QR / payment_attempts. The held-balance source_type is
  *    'manual_admin_confirmation' (free-text source; not a gateway attempt).
  *
@@ -20,14 +21,13 @@
  * returned as-is (alreadyConfirmed: true) instead of re-confirming.
  */
 import { createError } from "h3";
-import {
-  BOOKING_DEPOSIT_COLLECTION_EVENT,
-  recordRentalHeldBalanceEvent,
-} from "~~/server/utils/rental-held-balance-events";
-import { confirmRentalBooking } from "~~/server/utils/rental-booking-confirmation";
+import { mapDepositRpcErrorStatus } from "~~/server/utils/pos-rental-booking-deposit-finalizer";
 
 type AnyRecord = Record<string, unknown>;
-type AnyClient = { from(table: string): any };
+type AnyClient = {
+  from(table: string): any;
+  rpc(fn: string, params: Record<string, unknown>): Promise<{ data: any; error: any }>;
+};
 
 /** Held-balance source_type for an admin-verified manual bank transfer. */
 export const MANUAL_BOOKING_DEPOSIT_SOURCE_TYPE = "manual_admin_confirmation";
@@ -82,10 +82,11 @@ export interface RecordManualBookingDepositResult {
 /**
  * Record a manually-verified booking deposit and confirm the booking.
  *
- * Order: validate → record held-balance liability (idempotent) → mark booking
- * deposit paid (guarded) → mark the slip reviewed (optional) → confirm via
- * confirmRentalBooking (only when still draft). Throws on a non-confirmable
- * booking and propagates the availability/overlap 409 from confirmation.
+ * Order: validate → (optional) slip ownership guard → atomic money core + confirm
+ * via the migration-119 RPC (held-balance event + deposit-paid fields +
+ * draft→confirmed, idempotent) → mark the slip reviewed (optional, OUTSIDE the
+ * money txn). Throws on a non-confirmable booking, maps RPC RAISE codes to HTTP
+ * status, and surfaces a genuine availability/overlap conflict as 409.
  */
 export async function recordManualBookingDeposit(
   input: RecordManualBookingDepositInput,
@@ -165,49 +166,56 @@ export async function recordManualBookingDeposit(
       ? input.adminNote.trim()
       : null;
 
-  const heldBalanceEvent = await recordRentalHeldBalanceEvent({
-    client: adminClient,
-    rentalBookingId: String(bookingId),
-    eventType: BOOKING_DEPOSIT_COLLECTION_EVENT,
-    amount,
-    currencyCode: String((booking as AnyRecord).currency_code ?? "THB"),
-    sourceType: MANUAL_BOOKING_DEPOSIT_SOURCE_TYPE,
-    sourceId: String(bookingId),
-    paymentMethod: "bank_transfer",
-    staffUserId: adminUserId,
-    idempotencyKey: `manual_booking_deposit:${bookingId}`,
-    metadata: {
-      source: MANUAL_BOOKING_DEPOSIT_SOURCE_TYPE,
-      payment_channel: input.paymentChannel,
-      deposit_slip_id: depositSlipId,
-      external_reference: externalReference,
-      admin_note: adminNote,
+  // ── Atomic money core + confirm via the migration-119 RPC ─────────────────
+  // held-balance event (source_type 'manual_admin_confirmation', source_id =
+  // bookingId; idempotent) + deposit-paid fields + draft→confirmed, in a SINGLE
+  // transaction. Replaces the former non-atomic W2'→W3'→confirmRentalBooking
+  // sequence (ratification audit F4 / G2).
+  const { data: rpcData, error: rpcError } = await adminClient.rpc(
+    "f_confirm_rental_booking_deposit",
+    {
+      p_booking_id: String(bookingId),
+      p_source_type: MANUAL_BOOKING_DEPOSIT_SOURCE_TYPE,
+      p_source_id: String(bookingId),
+      p_attempt_id: null,
+      p_amount: amount,
+      p_currency_code: String((booking as AnyRecord).currency_code ?? "THB"),
+      p_payment_method: "bank_transfer",
+      p_branch_id: null,
+      p_staff_user_id: adminUserId,
+      p_idempotency_key: `manual_booking_deposit:${bookingId}`,
+      p_event_metadata: {
+        source: MANUAL_BOOKING_DEPOSIT_SOURCE_TYPE,
+        payment_channel: input.paymentChannel,
+        deposit_slip_id: depositSlipId,
+        external_reference: externalReference,
+        admin_note: adminNote,
+      },
     },
-  });
-
-  // ── Mark booking deposit paid (guarded → idempotent no-op when already paid) ─
-  const now = new Date().toISOString();
-  const { error: depositUpdateError } = await adminClient
-    .from("rental_bookings")
-    .update({
-      booking_deposit_payment_status: "paid",
-      booking_deposit_paid_amount: amount,
-      booking_deposit_paid_at: now,
-    })
-    .eq("id", bookingId)
-    .eq("booking_deposit_payment_status", "unpaid");
-  if (depositUpdateError) {
-    console.error(
-      "[rental] manual deposit field update failed",
-      depositUpdateError.message,
-    );
+  );
+  if (rpcError) {
+    const msg =
+      typeof rpcError.message === "string" && rpcError.message
+        ? rpcError.message
+        : "DEPOSIT_CONFIRM_FAILED";
     throw createError({
-      statusCode: 500,
-      statusMessage: "BOOKING_DEPOSIT_UPDATE_FAILED",
+      statusCode: mapDepositRpcErrorStatus(msg),
+      statusMessage: msg,
     });
   }
+  const rpc = (rpcData ?? {}) as AnyRecord;
+  if (String(rpc.status) === "paid_confirm_failed") {
+    // Money core recorded, but a genuine overlap conflict blocks confirmation.
+    throw createError({
+      statusCode: 409,
+      statusMessage: String(rpc.confirm_failure_reason ?? "RENTAL_BOOKING_CONFLICT"),
+    });
+  }
+  const heldBalanceEventId = String(rpc.held_balance_event_id ?? "");
 
-  // ── Optional: mark the reviewed slip ──────────────────────────────────────
+  // ── Optional: mark the reviewed slip (metadata only; OUTSIDE the money txn,
+  //     best-effort; guarded by migration 118) ───────────────────────────────
+  const now = new Date().toISOString();
   let depositSlipReviewed = false;
   if (depositSlipId) {
     const { error: reviewError } = await adminClient
@@ -231,28 +239,10 @@ export async function recordManualBookingDeposit(
     }
   }
 
-  // ── Confirm (draft only) via the authoritative writer ─────────────────────
-  if (status === "confirmed") {
-    return {
-      booking: booking as AnyRecord,
-      heldBalanceEventId: String((heldBalanceEvent as AnyRecord).id ?? ""),
-      depositSlipReviewed,
-      alreadyConfirmed: true,
-    };
-  }
-
-  const confirmed = await confirmRentalBooking({
-    adminClient,
-    bookingId,
-    userId: adminUserId,
-    skipUserOwnershipCheck: true,
-    requireBookingDepositPaid: true,
-  });
-
   return {
-    booking: confirmed,
-    heldBalanceEventId: String((heldBalanceEvent as AnyRecord).id ?? ""),
+    booking: { ...(booking as AnyRecord), status: "confirmed" },
+    heldBalanceEventId,
     depositSlipReviewed,
-    alreadyConfirmed: false,
+    alreadyConfirmed: rpc.idempotent === true,
   };
 }
