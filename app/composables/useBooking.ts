@@ -952,10 +952,70 @@ export function useBooking() {
   }
 
   /**
-   * Add a new booking (status = "draft").
+   * Add a new booking draft (status = "draft").
+   *
+   * Creation is performed by the server endpoint
+   * `POST /api/user/rental-bookings/drafts` (validation + authoritative
+   * pricing + service-role insert with `asset_id` set). The client no longer
+   * writes to `rental_bookings` directly for this flow, so a failed insert
+   * rejects here (the caller shows an error toast) instead of silently
+   * succeeding.
    */
-  function addBooking(params: CreateBookingParams): Promise<BookingItem> {
-    return createBooking(params, "draft");
+  async function addBooking(
+    params: CreateBookingParams,
+  ): Promise<BookingItem> {
+    let userId =
+      params.userId ?? currentBookingUserId.value ?? user.value?.id ?? null;
+
+    if (!userId) {
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError) {
+        console.warn("[useBooking] getUser before addBooking failed:", {
+          message: authError.message,
+          status: authError.status,
+        });
+      }
+      userId = authUser?.id ?? null;
+    }
+
+    if (!userId) {
+      throw new Error("Authentication required to create a booking.");
+    }
+
+    currentBookingUserId.value = userId;
+
+    const response = await $fetch<{ booking: Record<string, unknown> }>(
+      "/api/user/rental-bookings/drafts",
+      {
+        method: "POST",
+        body: {
+          assetId: params.assetId ?? null,
+          startDate: params.startDate,
+          returnDate: params.returnDate,
+          bookerName: params.bookerName ?? null,
+          bookerPhone: params.bookerPhone ?? null,
+          productId: params.productId ?? null,
+          skuId: params.skuId ?? null,
+          matchedProductId: params.matchedProductId ?? null,
+          matchedProductName: params.matchedProductName ?? null,
+        },
+      },
+    );
+
+    const fallback = normalizeBookingItem({
+      bookingId: String(response.booking.id ?? generateBookingId()),
+      ...params,
+      hubId: params.hubId ?? null,
+      hubName: params.hubName ?? null,
+      status: "draft",
+      createdAt: new Date().toISOString(),
+    });
+    const booking = mapRowToBooking(response.booking, fallback);
+    replaceStoreBooking(booking);
+    return booking;
   }
 
   /**
