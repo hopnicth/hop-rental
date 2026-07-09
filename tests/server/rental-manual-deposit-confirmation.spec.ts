@@ -336,6 +336,27 @@ describe("recordManualBookingDeposit — idempotency + slips", () => {
   });
 });
 
+describe("AdminBookingDepositConfirm panel contract — SelectItem empty-string regression", () => {
+  // Reka <SelectItem> (under @nuxt/ui USelect) throws when an option's value is
+  // an empty string — this 500'd the whole booking-detail page for any booking
+  // with a deposit slip. The "— None —" option must use a non-empty sentinel,
+  // mapped back to null at the submit boundary (wire contract unchanged).
+  const PANEL_SRC = readFileSync(
+    resolve(process.cwd(), "app/components/admin/AdminBookingDepositConfirm.vue"),
+    "utf8",
+  );
+  it("has no empty-string option value (the page-crashing pattern)", () => {
+    expect(PANEL_SRC).not.toMatch(/value:\s*(""|'')/);
+  });
+  it("uses a non-empty sentinel for the None option and maps it to null on submit", () => {
+    expect(PANEL_SRC).toContain('const NO_SLIP_VALUE = "__none__"');
+    expect(PANEL_SRC).toContain("{ value: NO_SLIP_VALUE, label:");
+    // Boundary map: the request body must never carry the sentinel.
+    expect(PANEL_SRC).toContain("depositSlipId.value !== NO_SLIP_VALUE");
+    expect(PANEL_SRC).not.toContain("depositSlipId: depositSlipId.value || null");
+  });
+});
+
 describe("record-deposit route contract", () => {
   const SRC = readFileSync(
     resolve(

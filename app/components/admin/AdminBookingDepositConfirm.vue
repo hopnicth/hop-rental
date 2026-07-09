@@ -4,7 +4,8 @@
  * booking deposit and confirms the booking.
  *
  * Posts to /api/admin/rental-bookings/:id/record-deposit, which records the
- * deposit as a held-balance liability and confirms via confirmRentalBooking().
+ * deposit as a held-balance liability and confirms atomically via the
+ * migration-119 RPC (f_confirm_rental_booking_deposit).
  * This panel NEVER confirms the booking by itself and NEVER touches Omise/QR.
  * Shown only while the booking is draft + deposit unpaid.
  */
@@ -29,16 +30,22 @@ const CHANNEL_OPTIONS = [
   { value: "manual", label: "Manual" },
 ];
 
+// Sentinel for the "— None —" option: Reka <SelectItem> forbids an empty-string
+// value (reserved for the cleared/placeholder state) — an empty string here
+// crashes the whole page. Mapped back to null at the submit boundary; the
+// record-deposit endpoint's wire contract (null = no slip) is unchanged.
+const NO_SLIP_VALUE = "__none__";
+
 const amount = ref<number>(props.defaultAmount ?? 0);
 const paymentChannel = ref<string>("uploaded_slip");
-const depositSlipId = ref<string>("");
+const depositSlipId = ref<string>(NO_SLIP_VALUE);
 const externalReference = ref<string>("");
 const adminNote = ref<string>("");
 const submitting = ref(false);
 const slips = ref<DepositSlipOption[]>([]);
 
 const slipOptions = computed(() => [
-  { value: "", label: "— None —" },
+  { value: NO_SLIP_VALUE, label: "— None —" },
   ...slips.value.map((s) => ({
     value: s.id,
     label: `${s.originalFilename} (${s.status})`,
@@ -73,7 +80,11 @@ async function submit(): Promise<void> {
       body: {
         amount: amount.value,
         paymentChannel: paymentChannel.value,
-        depositSlipId: depositSlipId.value || null,
+        // Boundary map: sentinel → null (the exact wire value for "no slip").
+        depositSlipId:
+          depositSlipId.value && depositSlipId.value !== NO_SLIP_VALUE
+            ? depositSlipId.value
+            : null,
         externalReference: externalReference.value || null,
         adminNote: adminNote.value || null,
       },
