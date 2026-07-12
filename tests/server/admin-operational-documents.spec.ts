@@ -551,8 +551,12 @@ describe("operational rental document issuance", () => {
     expect(detailPage).toContain("Operational Documents");
     expect(detailPage).toContain("Issue & Print");
     expect(detailPage).toContain("Reprint");
-    expect(detailPage).toContain("previewDocument(docType)");
-    expect(detailPage).toContain("canPreviewDocument(docType)");
+    // Phase 2E-B2 (commit e546a25) removed the Preview button from the
+    // operational-documents card — the current contract is Issue & Print /
+    // Reprint only. Assert the preview wiring stays removed.
+    expect(detailPage).not.toContain("previewDocument(docType)");
+    expect(detailPage).not.toContain("Preview Pickup Form");
+    expect(detailPage).not.toContain("Preview Return Form");
     expect(detailPage).toContain(
       "fulfillmentStatus: ops.value?.fulfillmentStatus",
     );

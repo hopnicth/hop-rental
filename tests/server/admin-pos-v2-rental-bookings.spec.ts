@@ -110,6 +110,12 @@ const endpoint = (
   await import("../../server/api/admin/pos-v2/rental-bookings.post")
 ).default;
 
+// Relative dates — the route rejects startDate < today (rental-bookings.post.ts
+// "startDate cannot be in the past"), so hardcoded dates rot. Same 2-day span
+// as the original fixture (3 rental days).
+const dateOnly = (daysFromNow: number) =>
+  new Date(Date.now() + daysFromNow * 86_400_000).toISOString().slice(0, 10);
+
 describe("admin POS V2 future rental booking API", () => {
   beforeEach(() => {
     mockState.body = {
@@ -117,8 +123,8 @@ describe("admin POS V2 future rental booking API", () => {
       bookerName: "Walk In",
       assetId: "asset-1",
       branchId: "branch-hq",
-      startDate: "2026-05-21",
-      endDate: "2026-05-23",
+      startDate: dateOnly(7),
+      endDate: dateOnly(9),
     };
     mockState.platformRole = "staff";
     mockState.insertedBookings = [];

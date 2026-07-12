@@ -324,12 +324,15 @@ describe("admin POS V2 pickup completion backend", () => {
   });
 
   it("completes pickup for online booking with real paid Booking Deposit credit", async () => {
+    // Real online BD-paid state: the deposit-confirm path (mig-119 RPC) sets
+    // ONLY the booking_deposit_* fields; the legacy deposit_paid_amount stays
+    // unpaid until pickup. Mirroring the BD into deposit_paid_amount here
+    // double-credits it under Phase 2E-B1.5 (rental-money-summary.ts:357-367)
+    // and shrinks the pickup due to 5600.
     mockState.booking = booking({
       booking_deposit_payment_status: "paid",
       booking_deposit_paid_amount: 200,
       booking_deposit_paid_at: "2026-05-15T00:00:00.000Z",
-      deposit_paid_amount: 200,
-      deposit_payment_status: "paid",
       checkout_total_amount: 5800,
     });
     mockState.body = {

@@ -7,6 +7,10 @@ const mockState = vi.hoisted(() => ({
   bookingRow: null as Record<string, unknown> | null,
   paymentLines: [] as Record<string, unknown>[],
   existingPosAttempt: null as Record<string, unknown> | null,
+  // Result of the gateway-paid-failed double-collect guard query — the route
+  // (remaining-security-deposit-payments.post.ts:220-226) distinguishes it from
+  // the idempotency lookup by chaining .not("gateway_charge_id","is",null).
+  gatewayPaidFailedAttempt: null as Record<string, unknown> | null,
   insertAttemptError: null as { code?: string; message?: string } | null,
   insertedAttempts: [] as Record<string, unknown>[],
   updatedBookings: [] as Record<string, unknown>[],
@@ -44,6 +48,12 @@ function qr(result: { data: unknown; error: unknown }) {
   const chain: any = {
     select: () => chain,
     eq: () => chain,
+    limit: () => chain,
+    // .not("gateway_charge_id","is",null) marks the double-collect guard query
+    // (remaining-security-deposit-payments.post.ts:226) — switch the chain to
+    // the guard's dedicated result instead of the idempotency-lookup result.
+    not: () =>
+      qr({ data: mockState.gatewayPaidFailedAttempt, error: null }),
     single: async () => result,
     maybeSingle: async () => result,
     then: (resolve: (v: any) => unknown) =>
@@ -160,6 +170,7 @@ describe("admin POS V3 remaining security deposit payments", () => {
     mockState.bookingRow = { ...baseBooking };
     mockState.paymentLines = [...futureBookingPaymentLines];
     mockState.existingPosAttempt = null;
+    mockState.gatewayPaidFailedAttempt = null;
     mockState.insertAttemptError = null;
     mockState.insertedAttempts = [];
     mockState.updatedBookings = [];
@@ -261,9 +272,15 @@ describe("admin POS V3 remaining security deposit payments", () => {
     await expect(endpoint(event)).rejects.toMatchObject({ statusCode: 422 });
   });
 
-  it("rejects when booking is not a POS V3 booking (no pos_branch_id)", async () => {
+  it("accepts an online booking with no pos_branch_id (storage-branch fallback)", async () => {
+    // Contract change: the route now serves non-POS (online) bookings too —
+    // pos_branch_id may be null, falling back to the asset's storage_branch_id,
+    // and branch access is unrestricted when both are null
+    // (remaining-security-deposit-payments.post.ts:15, 49-60).
     mockState.bookingRow = { ...baseBooking, pos_branch_id: null };
-    await expect(endpoint(event)).rejects.toMatchObject({ statusCode: 422 });
+    const result: any = await endpoint(event);
+    expect(result.status).toBe("paid");
+    expect(result.remainingSecurityDepositPaidAmount).toBe(4800);
   });
 
   it("rejects when branch access is denied", async () => {

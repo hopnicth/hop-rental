@@ -188,6 +188,10 @@ function makeWebhookClient() {
 const basePosAttempt = {
   id: "attempt-qr-1",
   rental_booking_id: "booking-1",
+  // mig-093: the webhook fan-out dispatches on payment_purpose
+  // (server/api/webhooks/omise.post.ts) — without it the attempt routes to
+  // the unknown-purpose branch and never reaches the finalizer.
+  payment_purpose: "booking_deposit",
   status: "pending",
   amount: 200,
   currency_code: "THB",

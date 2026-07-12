@@ -16,7 +16,9 @@ describe("admin booking handover item UI wiring", () => {
     const component = read(
       "app/components/admin/AdminBookingHandoverItems.vue",
     );
-    expect(component).toContain("รายการเตรียมส่งมอบและรับคืน");
+    // Current panel heading (AdminBookingHandoverItems.vue:168) — renamed from
+    // the original "รายการเตรียมส่งมอบและรับคืน".
+    expect(component).toContain("รายการสินค้า / อุปกรณ์ที่ส่งมอบ");
     expect(component).toContain("/handover-items/generate");
     expect(component).toContain('method: "POST"');
     expect(component).toContain('"PATCH"');
