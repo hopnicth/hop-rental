@@ -1346,3 +1346,44 @@ RPC, both confirm paths) · P-3 = staff-upload pre-conditions G3/G4/A1
 RESOLVED (2026-07-09, same commit): docs/payment-flow-ratification-audit.md
 and docs/VISION.md are now created from owner-provided content — the
 earlier missing-content blocker is closed.
+
+---
+
+## Claude Code → next session / 2026-07-10 — V3-0 COMPLETE (launch gates G1+G2 CLOSED)
+
+V3-0 integrity foundations COMPLETE — all on origin/staging @ 85edf58:
+- 03b0fd9 — crash-gap repro (cash W1→W2, audit HIGH-4 confirmed)
+- d99ebb0 — mig 118 G1 (append-only guards on manual-payment tables)
+- 53bcd8f — mig 119 G2 (atomic deposit-confirm RPC, BOTH paths: POS
+  cash/QR + manual slip confirm; findings 11–12 folded in; verified by
+  DB-level crash-recovery tests + live POS cash UI + manual slip
+  regression)
+- 33a2fed — SelectItem booking-detail 500 unblock (deposit-slip
+  bookings renderable again; B6 unblocked)
+- 85edf58 — fixture refresh (all 20 pre-existing failures cleared;
+  tests-only)
+
+Suite: 2611 passed / 0 failed — FIRST fully green run.
+Launch gates G1+G2: CLOSED.
+
+NEXT ACTIVE WORK: Flow B continuation from B6 (staff deposit confirm
+via both entry points: POS V3 + /admin/rental-bookings), then B3
+booking document+QR, per the flow-based approach
+(docs/audit/2026-07-09-flow-walkthrough.md §6).
+
+BACKLOG (carry forward, consolidated):
+- stale-'finalizing' attempts sweep/alert (orphans from a crash
+  between attempt insert and RPC)
+- RLS hardening bundle: mig-070 draft-insert policy + confirmBooking
+  dead path + legacy upsert migration
+- baht-vs-satang decision audit (auditor-owned)
+- dev default targets remote DB (invert to local-default)
+- empty-string Select values latent on USelectMenu→USelect migration
+  (4 sites: admin/alerts:34, admin/assets:337,
+  admin/rental-bookings/index:34 [button tabs — safe],
+  partners/index:12 [already sentinel-mapped])
+- A2 PDPA retention — must design formal purge vs mig-118 delete
+  blocks
+- glossary sweep (bare ค่ามัดจำ on customer pages)
+- A7 tracking missing on order detail page
+- B1 branch picker

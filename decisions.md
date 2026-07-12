@@ -500,3 +500,17 @@ Impact: Owner sets the secret once per environment (staging now; production at e
    Reason: the KYC backend is test-green (14/14 spec files, 2026-07-09
    deep audit) and V3-4 (return) depends on identity confirmation, so
    KYC stays in the V3 track but behind the freeze gate.
+
+## 2026-07-10 — V3-0 integrity foundations complete; suite-green enforced
+
+Decision: V3-0 integrity foundations complete. G1/G2 launch blockers
+CLOSED (mig 118/119, verified by reproduction + live regression).
+Fixture-rot baseline eliminated — suite green is now the enforced
+norm: any future red test is a stop-and-report event, not accepted
+debt.
+Reason: the 20-failure baseline masked real regressions and made
+"tests pass" meaningless as a gate; V3-0 closes both money-integrity
+blockers and the observability debt in one slice.
+Impact: all future work runs against a 2611/0 baseline; POS V3 track
+proceeds to Flow B continuation (B6) with G1+G2 no longer blocking
+launch readiness.
