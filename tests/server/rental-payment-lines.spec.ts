@@ -25,6 +25,27 @@ describe("rental payment lines", () => {
     },
   );
 
+  // Owner policy 2026-07-10 (3-tier): <15 → 200, 15–29 → 500, ≥30 → 1000.
+  it.each([
+    { rentalDays: 1, expected: 200 },
+    { rentalDays: 14, expected: 200 },
+    { rentalDays: 15, expected: 500 },
+    { rentalDays: 29, expected: 500 },
+    { rentalDays: 30, expected: 1000 },
+    { rentalDays: 31, expected: 1000 },
+    { rentalDays: 45, expected: 1000 },
+  ])(
+    "3-tier booking deposit: $rentalDays days → $expected",
+    ({ rentalDays, expected }) => {
+      expect(
+        calculateBookingDepositDueNow({
+          rentalDays,
+          requiredSecurityDepositAmount: 5000, // high cap so the tier amount wins
+        }),
+      ).toBe(expected);
+    },
+  );
+
   it("does not apply WHT to an individual rental fee or deposit", () => {
     const lines = calculateRentalPaymentLines({
       customerKind: "individual",
@@ -99,10 +120,10 @@ describe("rental payment lines", () => {
     });
   });
 
-  it("adds a 200 THB booking deposit for rentals up to 30 days", () => {
+  it("adds a 200 THB booking deposit for rentals under 15 days", () => {
     const lines = calculateRentalPaymentLines({
       customerKind: "individual",
-      rentalDays: 30,
+      rentalDays: 14,
       rentalFeeAmount: 3500,
       depositAmount: 5000,
     });
@@ -130,7 +151,7 @@ describe("rental payment lines", () => {
     });
   });
 
-  it("adds a 1000 THB booking deposit for rentals over 30 days", () => {
+  it("adds a 1000 THB booking deposit for rentals of 30+ days", () => {
     const lines = calculateRentalPaymentLines({
       customerKind: "individual",
       rentalDays: 31,

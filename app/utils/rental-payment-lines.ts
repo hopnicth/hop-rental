@@ -143,7 +143,8 @@ export function calculateBookingDepositDueNow(input: {
 }): number {
   const rentalDays = Math.max(0, Math.ceil(Number(input.rentalDays ?? 0)) || 0);
   if (rentalDays <= 0) return 0;
-  const fixedAmount = rentalDays > 30 ? 1000 : 200;
+  // Owner policy 2026-07-10 (3-tier): <15 → 200, 15–29 → 500, ≥30 → 1000.
+  const fixedAmount = rentalDays >= 30 ? 1000 : rentalDays >= 15 ? 500 : 200;
   const policyCalculatedAmount = Math.max(
     fixedAmount,
     money(input.overrideAmount),

@@ -238,10 +238,10 @@ describe("rental booking deposit payment", () => {
     });
   });
 
-  it("calculates 200 THB Booking Deposit for rentals up to 30 days", () => {
+  it("calculates 200 THB Booking Deposit for rentals under 15 days", () => {
     const { bookingDeposit, summary } = computeBookingDepositLinesFromBooking({
       booking: booking({
-        rental_days: 30,
+        rental_days: 14,
         rental_total: 1000,
         deposit_amount: 5000,
       }),
