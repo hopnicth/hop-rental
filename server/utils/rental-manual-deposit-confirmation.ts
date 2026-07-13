@@ -21,6 +21,7 @@
  * returned as-is (alreadyConfirmed: true) instead of re-confirming.
  */
 import { createError } from "h3";
+import { calculateBookingDepositDueNow } from "~~/app/utils/rental-payment-lines";
 import { mapDepositRpcErrorStatus } from "~~/server/utils/pos-rental-booking-deposit-finalizer";
 
 type AnyRecord = Record<string, unknown>;
@@ -110,7 +111,7 @@ export async function recordManualBookingDeposit(
   // ── Load booking (status + currency for the event) ────────────────────────
   const { data: booking, error: bookingError } = await adminClient
     .from("rental_bookings")
-    .select("id, user_id, status, currency_code")
+    .select("id, user_id, status, currency_code, rental_days, deposit_amount")
     .eq("id", bookingId)
     .maybeSingle();
   if (bookingError) {
@@ -130,6 +131,24 @@ export async function recordManualBookingDeposit(
     throw createError({
       statusCode: 422,
       statusMessage: "BOOKING_NOT_CONFIRMABLE",
+    });
+  }
+
+  // ── Guard: amount must equal the server-computed booking deposit ──────────
+  // Same derivation + tolerance as POS V3 (booking-deposit-payments.post.ts).
+  // The client-sent amount stays in the payload for auditability but is
+  // validated, never trusted (owner decision 2026-07-10: advance-only surface,
+  // 3-tier formula, no free-form staff amount).
+  const expectedDepositAmount = calculateBookingDepositDueNow({
+    rentalDays: Number((booking as AnyRecord).rental_days ?? 0),
+    requiredSecurityDepositAmount: Number(
+      (booking as AnyRecord).deposit_amount ?? 0,
+    ),
+  });
+  if (Math.abs(amount - expectedDepositAmount) > 0.01) {
+    throw createError({
+      statusCode: 422,
+      statusMessage: "BOOKING_DEPOSIT_AMOUNT_MISMATCH",
     });
   }
 

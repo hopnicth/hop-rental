@@ -1072,7 +1072,9 @@ async function issueMissingNoShowDocuments(): Promise<void> {
       <AdminBookingDepositConfirm
         v-if="canResumeDepositCollection"
         :booking-id="bookingId"
-        :default-amount="booking?.depositAmount"
+        :rental-days="booking?.rentalDays"
+        :security-deposit-amount="booking?.depositAmount"
+        :start-date="booking?.startDate"
         :currency-code="booking?.currencyCode"
         @confirmed="onDepositConfirmed"
       />

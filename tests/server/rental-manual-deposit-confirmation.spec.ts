@@ -95,6 +95,8 @@ const draftBooking = {
   user_id: "cust-1",
   status: "draft",
   currency_code: "THB",
+  rental_days: 5, // 3-tier formula → 200 THB booking deposit
+  deposit_amount: 5000,
 };
 
 describe("recordManualBookingDeposit — validation", () => {
@@ -119,7 +121,7 @@ describe("recordManualBookingDeposit — validation", () => {
         adminClient: client,
         bookingId: BOOKING_ID,
         adminUserId: ADMIN_ID,
-        amount: 1000,
+        amount: 200,
         // @ts-expect-error invalid channel on purpose
         paymentChannel: "credit_card",
       }),
@@ -134,7 +136,7 @@ describe("recordManualBookingDeposit — validation", () => {
         adminClient: client,
         bookingId: BOOKING_ID,
         adminUserId: ADMIN_ID,
-        amount: 1000,
+        amount: 200,
         paymentChannel: "manual",
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
@@ -151,7 +153,7 @@ describe("recordManualBookingDeposit — validation", () => {
           adminClient: client,
           bookingId: BOOKING_ID,
           adminUserId: ADMIN_ID,
-          amount: 1000,
+          amount: 200,
           paymentChannel: "manual",
         }),
       ).rejects.toMatchObject({ statusCode: 422 });
@@ -167,7 +169,7 @@ describe("recordManualBookingDeposit — atomic RPC happy path", () => {
       adminClient: client,
       bookingId: BOOKING_ID,
       adminUserId: ADMIN_ID,
-      amount: 1500,
+      amount: 200,
       paymentChannel: "line_slip",
       externalReference: "REF-9",
       adminNote: "checked",
@@ -179,7 +181,7 @@ describe("recordManualBookingDeposit — atomic RPC happy path", () => {
     expect(p.p_source_type).toBe("manual_admin_confirmation");
     expect(p.p_source_id).toBe(BOOKING_ID);
     expect(p.p_attempt_id).toBeNull();
-    expect(p.p_amount).toBe(1500);
+    expect(p.p_amount).toBe(200);
     expect(p.p_currency_code).toBe("THB");
     expect(p.p_payment_method).toBe("bank_transfer");
     expect(p.p_branch_id).toBeNull();
@@ -197,7 +199,7 @@ describe("recordManualBookingDeposit — atomic RPC happy path", () => {
       adminClient: client,
       bookingId: BOOKING_ID,
       adminUserId: ADMIN_ID,
-      amount: 1500,
+      amount: 200,
       paymentChannel: "manual",
     });
     // The deposit-paid fields + draft→confirmed are inside the RPC — the util
@@ -222,7 +224,7 @@ describe("recordManualBookingDeposit — RPC error mapping", () => {
         adminClient: client,
         bookingId: BOOKING_ID,
         adminUserId: ADMIN_ID,
-        amount: 1500,
+        amount: 200,
         paymentChannel: "manual",
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
@@ -241,7 +243,7 @@ describe("recordManualBookingDeposit — RPC error mapping", () => {
         adminClient: client,
         bookingId: BOOKING_ID,
         adminUserId: ADMIN_ID,
-        amount: 1500,
+        amount: 200,
         paymentChannel: "manual",
       }),
     ).rejects.toMatchObject({ statusCode: 422 });
@@ -264,7 +266,7 @@ describe("recordManualBookingDeposit — RPC error mapping", () => {
         adminClient: client,
         bookingId: BOOKING_ID,
         adminUserId: ADMIN_ID,
-        amount: 1500,
+        amount: 200,
         paymentChannel: "manual",
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
@@ -288,7 +290,7 @@ describe("recordManualBookingDeposit — idempotency + slips", () => {
       adminClient: client,
       bookingId: BOOKING_ID,
       adminUserId: ADMIN_ID,
-      amount: 1500,
+      amount: 200,
       paymentChannel: "manual",
     });
     expect(result.alreadyConfirmed).toBe(true);
@@ -304,7 +306,7 @@ describe("recordManualBookingDeposit — idempotency + slips", () => {
         adminClient: client,
         bookingId: BOOKING_ID,
         adminUserId: ADMIN_ID,
-        amount: 1500,
+        amount: 200,
         paymentChannel: "uploaded_slip",
         depositSlipId: SLIP_ID,
       }),
@@ -321,7 +323,7 @@ describe("recordManualBookingDeposit — idempotency + slips", () => {
       adminClient: client,
       bookingId: BOOKING_ID,
       adminUserId: ADMIN_ID,
-      amount: 1500,
+      amount: 200,
       paymentChannel: "uploaded_slip",
       depositSlipId: SLIP_ID,
       adminNote: "ok",
@@ -375,5 +377,95 @@ describe("record-deposit route contract", () => {
     expect(SRC).not.toContain("rental_booking_payment_lines");
     expect(SRC).not.toContain("getPublicUrl");
     expect(SRC).not.toContain("deposit.patch");
+  });
+});
+
+describe("booking-deposit amount guard (owner decision 2026-07-10)", () => {
+  it("rejects an amount that mismatches the 3-tier formula (422, RPC not reached)", async () => {
+    const { client, calls } = makeClient({ booking: draftBooking });
+    await expect(
+      recordManualBookingDeposit({
+        adminClient: client,
+        bookingId: BOOKING_ID,
+        adminUserId: ADMIN_ID,
+        amount: 2000, // the security deposit — the old prefill bug
+        paymentChannel: "manual",
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: "BOOKING_DEPOSIT_AMOUNT_MISMATCH",
+    });
+    expect(calls.rpc).toHaveLength(0);
+  });
+
+  it("accepts the exact formula amount (200 for a 5-day booking)", async () => {
+    const { client, calls } = makeClient({ booking: draftBooking });
+    await recordManualBookingDeposit({
+      adminClient: client,
+      bookingId: BOOKING_ID,
+      adminUserId: ADMIN_ID,
+      amount: 200,
+      paymentChannel: "manual",
+    });
+    expect(calls.rpc).toHaveLength(1);
+    expect(calls.rpc[0]!.params.p_amount).toBe(200);
+  });
+
+  it.each([
+    { rental_days: 3, expected: 200 },
+    { rental_days: 20, expected: 500 },
+    { rental_days: 30, expected: 1000 },
+  ])(
+    "guards at the tier amount for $rental_days days",
+    async ({ rental_days, expected }) => {
+      const { client, calls } = makeClient({
+        booking: { ...draftBooking, rental_days, deposit_amount: 5000 },
+      });
+      await recordManualBookingDeposit({
+        adminClient: client,
+        bookingId: BOOKING_ID,
+        adminUserId: ADMIN_ID,
+        amount: expected,
+        paymentChannel: "manual",
+      });
+      expect(calls.rpc[0]!.params.p_amount).toBe(expected);
+    },
+  );
+});
+
+describe("AdminBookingDepositConfirm — formula prefill contract (advance-only)", () => {
+  const SRC = readFileSync(
+    resolve(
+      process.cwd(),
+      "app/components/admin/AdminBookingDepositConfirm.vue",
+    ),
+    "utf8",
+  );
+  const PAGE = readFileSync(
+    resolve(process.cwd(), "app/pages/admin/rental-bookings/[id].vue"),
+    "utf8",
+  );
+  it("computes the amount from the shared 3-tier formula, not deposit_amount", () => {
+    expect(SRC).toContain("calculateBookingDepositDueNow");
+    expect(SRC).not.toContain("defaultAmount");
+  });
+  it("has no free-form amount input — amount is read-only display", () => {
+    expect(SRC).not.toContain('type="number"');
+    expect(SRC).toContain("cannot be edited here");
+  });
+  it("labels both deposits with canonical glossary", () => {
+    expect(SRC).toContain("เงินมัดจำจอง");
+    expect(SRC).toContain("เงินมัดจำประกันเก็บตอนรับของ");
+  });
+  it("shows a POS V3 notice when the booking starts today (no hard block)", () => {
+    expect(SRC).toContain("startsToday");
+    expect(SRC).toContain("/admin/pos-v3");
+    expect(SRC).toContain('v-if="startsToday"');
+  });
+  it("the page passes rental-days/security-deposit/start-date, not default-amount", () => {
+    expect(PAGE).toContain(':rental-days="booking?.rentalDays"');
+    expect(PAGE).toContain(':security-deposit-amount="booking?.depositAmount"');
+    expect(PAGE).toContain(':start-date="booking?.startDate"');
+    expect(PAGE).not.toContain(':default-amount="booking?.depositAmount"');
   });
 });
