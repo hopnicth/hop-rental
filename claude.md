@@ -292,6 +292,8 @@ grep -r "NEEDS_TRANSLATION" i18n/locales/
 4. Confirm current state to user
 5. Wait for instruction
 
+Deferred work MUST be recorded in docs/BACKLOG.md in the same commit; read BACKLOG.md at session start.
+
 ### During work
 
 - Break tasks into subtasks yourself
