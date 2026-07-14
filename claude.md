@@ -294,6 +294,8 @@ grep -r "NEEDS_TRANSLATION" i18n/locales/
 
 Deferred work MUST be recorded in docs/BACKLOG.md in the same commit; read BACKLOG.md at session start.
 
+Read docs/OPERATING-MODEL.md and docs/MASTER-GAP-MAP.md at session start; on any conflict between older notes and the 2026-07-14 decision set, the 2026-07-14 set wins.
+
 ### During work
 
 - Break tasks into subtasks yourself

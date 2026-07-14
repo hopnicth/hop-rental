@@ -98,6 +98,7 @@ Impact:
 - Admin slip UI strings are intentionally hardcoded English to match the existing non-i18n'd admin booking detail page; customer-facing strings use i18n with th/cn/jp `[NEEDS_TRANSLATION]` placeholders pending translation.
 
 ## 2026-06-16
+> **SUPERSEDED 2026-07-14** (see "2026-07-14 — Post-journey-audit decision set (owner)" §a). KYC is **UNFROZEN as of 2026-07-14** — the freeze recorded below is no longer in effect. The historical record is kept for provenance; the "KYC frozen until resume" impact is dead.
 Decision: Pause all KYC implementation after Slice ② (verify/revoke/verification-history) and pivot the next slice to a manual bank-transfer payment flow (customer uploads proof-of-transfer image; admin manually reviews/approves; no 3rd-party payment provider for now).
 Reason: 3rd-party payment integration is taking too long; a simpler manual flow unblocks the business sooner. Slice ② was first reviewed at-source and confirmed correct (all six locked KYC auth constraints pass, 72 tests green), so the pause leaves no half-written auth surface.
 Impact: KYC frozen — reject/renewal/purge/delete lifecycle, POS V3, staff_on_site, and user-account linking remain out of scope until resume. The previously-bypassed Slice ② auth-boundary review gate is now CLOSED (evidence in handoff.md 2026-06-16). Next build is Bank Transfer Slice ① = data/state model + one authoritative approve/reject transition only; it reuses KYC security patterns (private bucket + server-proxy, immutable decision log, true-identity-into-writer, access logging) but keeps a separate domain model from `kyc_documents`.
@@ -218,6 +219,7 @@ Reason: Phase-2d is the active guardrail source cited by 9 downstream docs ("do 
 Impact: Neither file is archived. Both remain at their current paths.
 
 ## 2026-05-31
+> **SUPERSEDED 2026-07-14** (see "2026-07-14 — Post-journey-audit decision set (owner)" §b). The open cancellation / no-show / late-cancellation policy questions this entry flagged are now **RESOLVED** by the 2026-07-14 cancellation-money policy. This defer note is closed.
 Decision: `docs/customer-cancellation-refund-handoff.md` — defer archive decision.
 Reason: Strongest ARCHIVE candidate (superseded handoff note), but contains open no-show policy questions (late-cancellation, undo-no-show, dashboard surfacing) not yet confirmed as captured elsewhere.
 Impact: File left in place pending human confirmation that those questions are recorded in decisions.md or the Thai policy file.
@@ -494,12 +496,12 @@ Impact: Owner sets the secret once per environment (staging now; production at e
    Implementation scheduled in V3-5. Deep-audit finding 18 (zero i18n /
    mixed Thai-English across V3) is accepted as valid (MED).
 
-5) KYC freeze (DECISIONS.md 2026-06-16, "KYC frozen" impact) REMAINS in
+5) **SUPERSEDED 2026-07-14** (see "2026-07-14 — Post-journey-audit decision set (owner)" §a): KYC freeze is **LIFTED NOW**, not at V3-3. The text below is dead. ~~KYC freeze (DECISIONS.md 2026-06-16, "KYC frozen" impact) REMAINS in
    effect. It will be formally lifted when V3-3 begins, as a recorded
    decision at that time — not now.
    Reason: the KYC backend is test-green (14/14 spec files, 2026-07-09
    deep audit) and V3-4 (return) depends on identity confirmation, so
-   KYC stays in the V3 track but behind the freeze gate.
+   KYC stays in the V3 track but behind the freeze gate.~~
 
 ## 2026-07-10 — V3-0 integrity foundations complete; suite-green enforced
 
@@ -514,3 +516,93 @@ blockers and the observability debt in one slice.
 Impact: all future work runs against a 2611/0 baseline; POS V3 track
 proceeds to Flow B continuation (B6) with G1+G2 no longer blocking
 launch readiness.
+
+## 2026-07-14 — Post-journey-audit decision set (owner)
+
+Context: after the 3-case customer-journey audit (purchase `8886ddb`,
+rental `2db625a`, mixed `84857de`), the owner (CHiP) ratified the
+following. Where these conflict with older entries, THESE WIN — the
+older entries above are marked SUPERSEDED with pointers here. The
+implementation routing table is `docs/MASTER-GAP-MAP.md`; the working
+rules are `docs/OPERATING-MODEL.md`.
+
+### §a — KYC UNFROZEN (supersedes 2026-06-16 freeze + 2026-07-09 item 5)
+Decision: KYC is **UNFROZEN as of 2026-07-14**. It is no longer gated
+behind V3-3; it is the first implementation track (T1).
+Minimum KYC (rental-only requirement; **sale flows never require KYC**):
+- **Individual:** a signed copy of the ID document (image/PDF, marked
+  "สำเนาถูกต้อง") + name-on-ID + phone.
+- **Juristic:** company affidavit (หนังสือรับรองบริษัท) dated ≤ 6 months
+  + Por.Por.20 (ภ.พ.20), BOTH signed + company-sealed by the
+  authorized signatory + company name + phone.
+- Bound to user ID; **once per user**.
+Two channels:
+1. **Customer online self-serve** → lands in a **SUPER ADMIN approve
+   queue**.
+2. **Staff upload on the customer's behalf**, linked via the existing
+   **User-ID QR**.
+Refusal to provide KYC → **staff cancels** the booking. KYC is required
+only for rentals; sale/checkout never triggers it.
+
+### §b — Cancellation money policy (supersedes 2026-05-31 open questions)
+- **Customer online self-cancel:** allowed **only ≥ 7 days before the
+  start date** → booking-deposit **REFUND**. Refund is **bank transfer
+  only**; the customer must supply a **reason + bank account**, and the
+  **admin uploads the refund slip** as evidence.
+- **< 7 days before start:** **staff-only** handling; deposit is
+  **FORFEITED** (no self-service).
+- **No-show:** system **auto-marks `no_show` at 00:00 the day after the
+  start date** → **auto forfeiture event** (system-attributed,
+  audit-trailed). This is the **first scheduled job in the system**.
+- **Company-side cancellation:** **SUPER ADMIN only**, reason required,
+  **full refund always**.
+- **Early return:** charged **in full as booked**; any discount is
+  **staff-entered in the settlement's discount/penalty section with a
+  note**, at **final settlement only** (never an ad-hoc reduction).
+- **Sale claims/returns:** via **Line Official → admin handles**; no
+  self-service.
+
+### §c — ERP foundation
+Owner framing: "ครบทุกอย่าง ทำตามมาตรฐาน ERP, ไม่รีบแต่เอาจบ, แยก branch."
+Three bound layers, each requiring the one before it:
+1. **Money events** (exists: `rental_held_balance_events`, order
+   payment).
+2. **Documents** (mig-068 engine): **every money movement MUST produce
+   a numbered document**. Corrections are **void + reissue chains,
+   never edits**.
+3. **Tax lines per document.**
+Central **`tax_treatment` config** — `(line type × customer type) →
+vat_rate / wht_rate / wht_type` — **no hardcoded rates anywhere**.
+- **VAT map (locked):** deposits = **no VAT** (liability);
+  sale / rental / service revenue = **7%**; forfeiture = **0%**.
+- **WHT (juristic payers only):** rental **5%**, service **3%** —
+  record the tax-withheld credit **and** track receipt of the
+  **50-bis (ใบ 50 ทวิ)** certificate.
+Three reconciliation loops **must be closeable**: (1) document sequence,
+(2) money-vs-documents, (3) deposit liability (collections − releases).
+All documents are **branch-aware AND customer-type-aware from day one**.
+The back-office accounting UI is **deferred**; the **DB + API must
+support it now**.
+
+### §d — customer_tax_profiles (three creation channels)
+1. **User self-entry.**
+2. **Staff-created for walk-ins with no account** — keyed on
+   **phone + tax ID**, `user_id` NULL.
+3. **Staff-created for an existing user without customer login** —
+   staff locate via **phone search / User-ID QR**.
+Rules: **same tax ID → same profile** (dedupe); a walk-in who later
+registers is **mergeable by tax ID / phone**; documents always
+**SNAPSHOT** tax-profile data **at issuance** (never live reference);
+`created_by` is recorded on staff-created profiles.
+
+### §e — Implementation ordering (owner delegated)
+`T1a staff-KYC + approve queue → T1b customer online KYC → T2
+pickup→return→settlement (ledger release side) → T3 + T4 designed
+together (unified void/cancel + document/ERP foundation) → T5–T7` per
+`docs/MASTER-GAP-MAP.md`.
+- **Flow-based delivery:** the unit of work is "this flow walks
+  end-to-end"; **acceptance = a re-walk shows the audit mark IDs
+  resolved**.
+- **Reusable-by-evidence rule:** anything proven duplicated across
+  **≥ 2 flows AND money/document-related** is built **centrally,
+  immediately**.

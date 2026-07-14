@@ -1387,3 +1387,30 @@ BACKLOG (carry forward, consolidated):
 - glossary sweep (bare ค่ามัดจำ on customer pages)
 - A7 tracking missing on order detail page
 - B1 branch picker
+
+## Claude Code → next session / 2026-07-14 — Journey-audit phase CLOSED; decision set recorded
+
+**Journey-audit phase COMPLETE.** The 3-case customer-journey audit set is on origin/staging:
+- purchase `8886ddb`, rental `2db625a`, mixed `84857de`
+  (`docs/audit/2026-07-11-journey-case1-purchase.md`,
+  `2026-07-14-journey-case2-rental.md`, `2026-07-14-journey-case3-mixed.md`).
+
+**Owner decision set recorded (2026-07-14)** in `decisions.md` "2026-07-14 — Post-journey-audit
+decision set (owner)": §a KYC UNFROZEN (min-KYC individual/juristic, two channels, rental-only);
+§b cancellation-money policy (≥7d self-cancel refund / <7d forfeit / no-show auto-forfeit at 00:00 =
+first scheduled job / company-cancel full refund / early-return-in-full / sale claims via Line);
+§c ERP foundation (money→documents→tax lines, central tax_treatment, VAT/WHT map, 3 reconciliation
+loops, branch- + customer-type-aware); §d customer_tax_profiles (3 creation channels, snapshot at
+issuance); §e implementation ordering.
+
+**New routing/rules files:** `docs/MASTER-GAP-MAP.md` (T1–T8 table) and `docs/OPERATING-MODEL.md`
+(three-party pipeline, flow-based units, SQL gate, suite-green, walkthrough rules). `docs/BACKLOG.md`
+restructured to T-tracks (every prior item preserved + reassigned). `claude.md` session-start rule
+updated to read the two new files and prefer the 2026-07-14 set on conflict.
+
+**SUPERSEDED (this note's V3-slice track included):** the V3-0→V3-6 slice description above and in the
+2026-07-09 entries is superseded by the `MASTER-GAP-MAP.md` **T1–T8** tracks; KYC freeze (2026-06-16 /
+2026-07-09 item 5) is superseded by §a. Do not follow the old V3-slice ordering.
+
+**Active work = T1a** (staff-KYC capture + SUPER ADMIN approve queue, linked via User-ID QR) per
+`docs/MASTER-GAP-MAP.md`. Next step is the T1a SQL draft → auditor review BEFORE any migration file.
