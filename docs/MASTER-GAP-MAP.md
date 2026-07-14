@@ -12,8 +12,8 @@ money/document-related is built centrally, immediately.
 
 | Track | Scope | Depends on | Finding refs (audit mark IDs) | Decision |
 |---|---|---|---|---|
-| **T1a** | Staff-KYC capture + **SUPER ADMIN approve queue**; link via User-ID QR | — | Case-2 **B6** (pickup 422 `no_profile`), Case-3 **Y5** | §a |
-| **T1b** | Customer online KYC self-serve → approve queue | T1a | Case-2 B6/L1 (0 bookings ever picked_up) | §a |
+| **T1a** | ✅ **RESOLVED** at `75084ed` — Case-2 B6 / Case-3 Y5 closed (first picked_up booking recorded). Was: Staff-KYC capture + SUPER ADMIN approve queue; link via User-ID QR | — | Case-2 **B6** (pickup 422 `no_profile`), Case-3 **Y5** | §a |
+| **T1b** | Customer online KYC self-serve → approve queue — individual id-card path shipped in `75084ed`; REMAINS OPEN: juristic self-serve + users.kyc_status mirror retirement + display unification (BACKLOG, T1a close-out) | T1a ✅ | Case-2 B6/L1 (0 bookings ever picked_up) | §a |
 | **T2** | Pickup → return → **settlement** = the rental ledger **release side** | T1 | Case-2 furthest-reachable dead-end, **L1** (`settlement_application`/`refund`/`forfeiture` = 0 events ever), B9 unreachable; B6 walk (BDC/held-balance) | §b (early-return-in-full, no-show auto-forfeit) |
 | **T3** | Unified **void / cancel / deposit-refund** path (sale + rental + mixed) | **T2** (deposit-refund completeness needs settlement to exist); designed **with T4** | Case-1 **D5/BUGS 1-3** (cancel-paid: no stock restore, stays `paid`, no refund), Case-2 **B7** (rental cancel raw flip, deposit stranded, `cancelled_at` NULL), Case-3 **B4** (mixed half-cancel), B-M1/G4, `66666666…` paid_confirm_failed recovery | §b (refund = bank transfer + reason + bank acct + admin slip) |
 | **T4** | **Document / ERP foundation** over mig-068: every money event → numbered document; central `tax_treatment` (line×customer→vat/wht); void = reissue chain; 3 reconciliation loops; branch- + customer-type-aware | designed **with T3** | Case-1 **A8/A9** (no sale receipt/tax invoice), Case-2 **B5/W8** (no online BDC, RBK ฿0), Case-3 no-docs, B6 walk (BDC issuance) | §c, §d |
@@ -23,7 +23,7 @@ money/document-related is built centrally, immediately.
 | **T8** | Accounting-office export pack — **end goal** (VAT register, WHT register, deposit-liability ledger, cash reconciliation) | T4 | §c reconciliation loops; BACKLOG "Accounting-office export pack" | §c |
 
 ## Dependency notes
-- **T2 after T1** — pickup/return can't run until KYC can be satisfied (the B6 422 gate).
+- **T2 after T1** — T1a satisfied at `75084ed` (B6 422 gate cleared): **T2 unblocked for scheduling**. T1b remains open (juristic self-serve + kyc_status mirror retirement + display unification, per BACKLOG).
 - **T3 deposit-refund completeness depends on T2** — refund releases a held deposit; the release/settlement machinery must exist first.
 - **T4 void chain designed together with T3** — cancel/void must emit the correcting document in the same design pass (void = reissue, never edit).
 - **T5/T8 depend on T4** (fiscal docs and export registers ride the document/tax foundation).
