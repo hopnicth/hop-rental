@@ -16,6 +16,9 @@ Status: **ACTIVE** (next up) · **QUEUED** (ordered) · **PARKED** (no date).
 
 ## QUEUED
 
+- Mixed accept = 3 manual actions on 3 pages; no single "accept payment" — forgetting step 3 strands the paid deposit (Case-3 B5)
+- Mixed cancel = half-cancel: order dies, booking + held deposit live on, shared request orphaned (Case-3 B4 — feeds the G4 unified void design: sale + rental + mixed)
+- No unified transaction view (customer or staff) for mixed — four surfaces, four numbers, join only via the request (Case-3 W3/W1)
 - Rental cancel raw flip: cancelled_at NULL, no reason, held deposit stranded, BDC not voided (Case-2 B7 — merge into the G4 void-path design with Case-1 cancel-paid)
 - Online bookings get no BDC document; RBK self-issue shows ฿0 (Case-2 B5/W8)
 - Booking Manager: all rows show "deposit unpaid", neither deposit visible (Case-2 B2); no work queues (Case-2 W5)
