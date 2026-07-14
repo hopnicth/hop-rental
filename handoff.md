@@ -1421,3 +1421,5 @@ Files touched: 31 (see git status) — 5 new endpoints under server/api/admin/ky
 Status: done, NOT committed — owner is running per-file staging review.
 Next: commit per audit; then T1b. Local DB state: migrations 120–124 applied; seeded staff@local.test (staff role); test KYC data present (1 verified profile for customer@local.test, 1 pending walk-in company, 1 pending self-serve, booking d4dbc706 picked_up).
 Note: local test-account passwords were reset this session (session-notes only, not recorded in docs).
+
+Remote state (2026-07-15, after owner-ruled cleanup): remote project yzjczvzwmbbeyoodrjwm is CLEAN of test data (856 rows / 41 tables / 13 storage objects deleted, audit: docs/audit/2026-07-15-remote-cleanup-and-migration-sync.md); schema at migration 124 = local parity, zero drift; both append-only guards (086 held-balance, 109 KYC access log) verified live via bite-probes after the gated lifts; DB password rotated by owner.

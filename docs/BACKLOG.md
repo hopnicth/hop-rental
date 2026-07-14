@@ -83,4 +83,4 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 - [BUG][LOW] `SectionKyc.isUuid` requires RFC-4122 version/variant nibbles — rejects non-RFC uuids (bit us with seeded `3333…` id); consider relaxing to the generic uuid regex used server-side (`asUuidOrNull`).
 - [I18N] cn.json / jp.json untouched by T1a (locales disabled — per locked rule, no new keys added).
 - [CHORE] Untracked Phase-0/session dirs to disposition: `.playwright-mcp/`, `.impeccable/`, `.claude/skills/`, `docs/superpowers/`, `DESIGN.md`, `PRODUCT.md` — not part of the T1a commit; decide keep/ignore/delete.
-- [REMOTE] Migrations 120–124 applied LOCALLY only — remote `db push --linked` pending owner go-ahead.
+- [DONE 2026-07-15] Remote apply: migrations 118–124 pushed to remote after owner-ruled test-data cleanup — see docs/audit/2026-07-15-remote-cleanup-and-migration-sync.md. Local = remote at 124, zero drift. DB password rotated by owner (post-exposure).
