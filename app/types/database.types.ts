@@ -7,10 +7,30 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.1"
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -542,17 +562,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_access_branch_inventory_inventory_id_fkey"
-            columns: ["inventory_id"]
-            isOneToOne: false
-            referencedRelation: "inventories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "rental_access_branch_inventory_rental_access_id_fkey"
+            foreignKeyName: "asset_branch_inventory_asset_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_branch_inventory_inventory_id_fkey"
+            columns: ["inventory_id"]
+            isOneToOne: false
+            referencedRelation: "inventories"
             referencedColumns: ["id"]
           },
         ]
@@ -596,7 +616,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_access_checklist_template_items_template_id_fkey"
+            foreignKeyName: "asset_checklist_template_items_template_id_fkey"
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "asset_checklist_templates"
@@ -643,7 +663,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_access_checklist_templates_rental_access_id_fkey"
+            foreignKeyName: "asset_checklist_templates_asset_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
@@ -717,14 +737,14 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_access_documents_rental_access_id_fkey"
+            foreignKeyName: "asset_documents_asset_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "rental_access_documents_service_event_id_fkey"
+            foreignKeyName: "asset_documents_service_event_id_fkey"
             columns: ["service_event_id"]
             isOneToOne: false
             referencedRelation: "asset_service_events"
@@ -798,17 +818,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_access_matches_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "products"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "rental_access_matches_rental_access_id_fkey"
+            foreignKeyName: "asset_matches_asset_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_matches_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
             referencedColumns: ["id"]
           },
         ]
@@ -864,17 +884,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_access_service_events_performed_by_user_id_fkey"
-            columns: ["performed_by_user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "rental_access_service_events_rental_access_id_fkey"
+            foreignKeyName: "asset_service_events_asset_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asset_service_events_performed_by_user_id_fkey"
+            columns: ["performed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -1051,14 +1071,14 @@ export type Database = {
             referencedColumns: ["key"]
           },
           {
-            foreignKeyName: "rental_accesses_storage_branch_id_fkey"
+            foreignKeyName: "assets_storage_branch_id_fkey"
             columns: ["storage_branch_id"]
             isOneToOne: false
             referencedRelation: "store_branches"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "rental_accesses_storage_inventory_id_fkey"
+            foreignKeyName: "assets_storage_inventory_id_fkey"
             columns: ["storage_inventory_id"]
             isOneToOne: false
             referencedRelation: "inventories"
@@ -2307,7 +2327,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "home_featured_rental_accesses_rental_access_id_fkey"
+            foreignKeyName: "home_featured_assets_asset_id_fkey"
             columns: ["asset_id"]
             isOneToOne: true
             referencedRelation: "assets"
@@ -2716,6 +2736,7 @@ export type Database = {
           branch_id: string | null
           created_at: string
           customer_type: Database["public"]["Enums"]["kyc_customer_type"]
+          holder_name: string | null
           id: string
           identity_hash: string
           identity_last4: string
@@ -2741,6 +2762,7 @@ export type Database = {
           branch_id?: string | null
           created_at?: string
           customer_type: Database["public"]["Enums"]["kyc_customer_type"]
+          holder_name?: string | null
           id?: string
           identity_hash: string
           identity_last4: string
@@ -2766,6 +2788,7 @@ export type Database = {
           branch_id?: string | null
           created_at?: string
           customer_type?: Database["public"]["Enums"]["kyc_customer_type"]
+          holder_name?: string | null
           id?: string
           identity_hash?: string
           identity_last4?: string
@@ -5622,6 +5645,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "rental_booking_checklists_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "rental_booking_checklists_booking_id_fkey"
             columns: ["booking_id"]
             isOneToOne: false
@@ -5640,13 +5670,6 @@ export type Database = {
             columns: ["performed_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "rental_booking_checklists_rental_access_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
@@ -6142,6 +6165,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "rental_booking_documents_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "rental_booking_documents_booking_checklist_id_fkey"
             columns: ["booking_checklist_id"]
             isOneToOne: false
@@ -6160,13 +6190,6 @@ export type Database = {
             columns: ["created_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "rental_booking_documents_rental_access_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
         ]
@@ -6865,6 +6888,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "rental_bookings_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "rental_bookings_booking_deposit_mixed_allocation_id_fkey"
             columns: ["booking_deposit_mixed_allocation_id"]
             isOneToOne: false
@@ -6954,13 +6984,6 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "product_skus"
             referencedColumns: ["product_id", "id"]
-          },
-          {
-            foreignKeyName: "rental_bookings_rental_access_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
-            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "rental_bookings_return_branch_id_fkey"
@@ -7223,6 +7246,13 @@ export type Database = {
             columns: ["inventory_id"]
             isOneToOne: false
             referencedRelation: "inventories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sku_branch_inventory_new_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "store_branches"
             referencedColumns: ["id"]
           },
           {
@@ -7743,6 +7773,22 @@ export type Database = {
         Returns: Json
       }
       f_cancel_pos_sale: { Args: { p_order_id: string }; Returns: Json }
+      f_confirm_rental_booking_deposit: {
+        Args: {
+          p_amount: number
+          p_attempt_id: string
+          p_booking_id: string
+          p_branch_id: string
+          p_currency_code: string
+          p_event_metadata?: Json
+          p_idempotency_key: string
+          p_payment_method: string
+          p_source_id: string
+          p_source_type: string
+          p_staff_user_id: string
+        }
+        Returns: Json
+      }
       f_get_active_agreement_version: {
         Args: { p_agreement_type: string; p_as_of?: string }
         Returns: {
@@ -7794,6 +7840,19 @@ export type Database = {
       products_sync_filter_keys: {
         Args: { p_product_id: string }
         Returns: undefined
+      }
+      reject_kyc_profile: {
+        Args: {
+          p_decided_by_name: string
+          p_decided_by_role: string
+          p_decided_by_user_id: string
+          p_ip_address?: unknown
+          p_note?: string
+          p_profile_id: string
+          p_reason_code: string
+          p_user_agent?: string
+        }
+        Returns: Json
       }
       revoke_kyc_profile: {
         Args: {
@@ -8148,6 +8207,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       asset_document_kind: [
@@ -8320,3 +8382,4 @@ export const Constants = {
     },
   },
 } as const
+

@@ -76,3 +76,11 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 - [INFRA] Baht-vs-satang decision audit (auditor-owned; DECISIONS conflict)
 - [INFRA] Empty-string Select values: 4 latent sites (USelectMenu→USelect)
 - [PARKED][INFRA] A2 PDPA retention/purge (must design formal trigger-drop path vs mig-118 delete blocks)
+
+### T1a Phase 1 close-out (2026-07-15)
+- [T1b] Company/juristic customer self-serve KYC — owner ruling: company/kyc/document.post.ts is B2B onboarding, NOT rental KYC; juristic self-serve intake builds on kyc_profiles rails in T1b (decisions.md §a addendum item 3 amendment).
+- [T1b] Retire `users.kyc_status` mirror — account badge should read kyc_profiles once T1b unifies display; id-card endpoint still writes the mirror for compatibility.
+- [BUG][LOW] `SectionKyc.isUuid` requires RFC-4122 version/variant nibbles — rejects non-RFC uuids (bit us with seeded `3333…` id); consider relaxing to the generic uuid regex used server-side (`asUuidOrNull`).
+- [I18N] cn.json / jp.json untouched by T1a (locales disabled — per locked rule, no new keys added).
+- [CHORE] Untracked Phase-0/session dirs to disposition: `.playwright-mcp/`, `.impeccable/`, `.claude/skills/`, `docs/superpowers/`, `DESIGN.md`, `PRODUCT.md` — not part of the T1a commit; decide keep/ignore/delete.
+- [REMOTE] Migrations 120–124 applied LOCALLY only — remote `db push --linked` pending owner go-ahead.

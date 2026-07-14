@@ -13,6 +13,7 @@
 
 export interface AdminKycProfile {
   id: string;
+  holderName?: string | null;
   customerType: string;
   identityType: string;
   identityLast4: string;

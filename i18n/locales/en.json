@@ -311,7 +311,13 @@
     "inviteStaff": "Invite Member",
     "noStaff": "No organization members yet",
     "role": "Role",
-    "joinedDate": "Joined Date"
+    "joinedDate": "Joined Date",
+    "kycHolderNameLabel": "Name on ID document",
+    "kycHolderNamePlaceholder": "Full name exactly as on the ID",
+    "kycIdNumberLabel": "National ID number",
+    "kycIdNumberHint": "Sent securely; never stored",
+    "kycIdNumberPlaceholder": "13-digit national ID",
+    "kycIdentityFieldsRequired": "Please fill in your name and ID number before uploading"
   },
   "auth": {
     "loginTitle": "Sign In",

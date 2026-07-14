@@ -28,6 +28,7 @@ import type { KycProfileRow } from "~~/server/utils/kyc";
  */
 export interface KycProfileSafeRow extends KycProfileRow {
   user_id: string | null;
+  holder_name: string | null;
   customer_type: string;
   identity_type: string;
   identity_last4: string;
@@ -42,11 +43,13 @@ export interface KycProfileSafeRow extends KycProfileRow {
  * identity_hash, storage paths, document data, and rejection/revoke notes.
  */
 export const KYC_PROFILE_SAFE_SELECT =
-  "id, user_id, customer_type, identity_type, identity_last4, status, valid_until, branch_id, created_at, verified_at, verified_branch_id";
+  "id, user_id, holder_name, customer_type, identity_type, identity_last4, status, valid_until, branch_id, created_at, verified_at, verified_branch_id";
 
 /** Client-safe KYC profile shape — the ONLY shape returned by KYC profile endpoints. */
 export interface SafeKycProfile {
   id: string;
+  /** §a name-on-ID / registered company name (nullable on legacy/user-bound rows). */
+  holderName: string | null;
   customerType: string;
   identityType: string;
   identityLast4: string;
@@ -68,6 +71,7 @@ export interface SafeKycProfile {
 export function toSafeKycProfile(row: KycProfileSafeRow): SafeKycProfile {
   return {
     id: row.id,
+    holderName: row.holder_name ?? null,
     customerType: row.customer_type,
     identityType: row.identity_type,
     identityLast4: row.identity_last4,

@@ -158,9 +158,12 @@ function makeClient(
     identityType?: string;
     documentInsertError?: { message: string } | null;
     logInsertError?: boolean;
+    profileStatus?: string;
+    profileUpdateError?: { message: string } | null;
   } = {},
 ) {
   const calls = {
+    profileUpdates: [] as Array<Record<string, unknown>>,
     storageUploads: [] as Array<{
       bucket: string;
       path: string;
@@ -177,6 +180,16 @@ function makeClient(
         const chain: any = {
           select: () => chain,
           eq: () => chain,
+          update: (p: Record<string, unknown>) => {
+            calls.profileUpdates.push(p);
+            return {
+              eq: () => ({
+                eq: async () => ({
+                  error: opts.profileUpdateError ?? null,
+                }),
+              }),
+            };
+          },
           maybeSingle: async () => ({
             data:
               opts.profileExists === false
@@ -191,6 +204,7 @@ function makeClient(
                       (opts.customerType === "company"
                         ? "juristic_id"
                         : "national_id"),
+                    status: opts.profileStatus ?? "pending",
                   },
             error: null,
           }),
@@ -898,5 +912,46 @@ describe("input validation", () => {
     expect(calls.storageUploads).toHaveLength(1);
     expect(calls.storageRemovals).toHaveLength(1);
     expect(calls.storageRemovals[0]).toEqual([calls.storageUploads[0]!.path]);
+  });
+});
+
+// ── 8. Rejected-profile resubmission flip (§a addendum item 4) ────────────────
+
+describe("rejected → pending resubmission flip", () => {
+  it("upload to a rejected profile flips status to pending and records the transition in the upload log reason", async () => {
+    const { calls } = setup({ profileStatus: "rejected" });
+    const res = await uploadPost(makeEvent(jpegBytes()));
+    expect(res.document.id).toBe("doc-1");
+    expect(calls.profileUpdates).toHaveLength(1);
+    expect(calls.profileUpdates[0]).toEqual({ status: "pending" });
+    expect(calls.logInserts).toHaveLength(1);
+    expect(calls.logInserts[0]!.reason).toBe(
+      "resubmission_status_rejected_to_pending",
+    );
+  });
+
+  it("upload to a pending profile does NOT touch status and logs reason null", async () => {
+    const { calls } = setup({ profileStatus: "pending" });
+    await uploadPost(makeEvent(jpegBytes()));
+    expect(calls.profileUpdates).toHaveLength(0);
+    expect(calls.logInserts[0]!.reason).toBeNull();
+  });
+
+  it("upload to a verified profile does NOT touch status (no silent transitions)", async () => {
+    const { calls } = setup({ profileStatus: "verified" });
+    await uploadPost(makeEvent(jpegBytes()));
+    expect(calls.profileUpdates).toHaveLength(0);
+  });
+
+  it("flip failure is fail-closed: 500 KYC_RESUBMISSION_FLIP_FAILED, no allowed log claiming the transition", async () => {
+    const { calls } = setup({
+      profileStatus: "rejected",
+      profileUpdateError: { message: "boom" },
+    });
+    await expect(uploadPost(makeEvent(jpegBytes()))).rejects.toMatchObject({
+      statusCode: 500,
+      statusMessage: "KYC_RESUBMISSION_FLIP_FAILED",
+    });
+    expect(calls.logInserts).toHaveLength(0);
   });
 });

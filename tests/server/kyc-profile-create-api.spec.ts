@@ -158,13 +158,13 @@ afterEach(() => {
 describe("POST /api/admin/kyc/profiles — auth", () => {
   it("propagates 401 when not authenticated", async () => {
     mockState.adminError = authError(401, "Authentication required");
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
     await expect(createPost({} as any)).rejects.toMatchObject({ statusCode: 401 });
   });
 
   it("propagates 403 when not an admin", async () => {
     mockState.adminError = authError(403, "Admin access required");
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
     await expect(createPost({} as any)).rejects.toMatchObject({ statusCode: 403 });
   });
 
@@ -180,17 +180,17 @@ describe("POST /api/admin/kyc/profiles — auth", () => {
 
 describe("POST /api/admin/kyc/profiles — validation", () => {
   it("rejects invalid customerType with 400", async () => {
-    mockState.body = { customerType: "robot", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "robot", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
     await expect(createPost({} as any)).rejects.toMatchObject({ statusCode: 400, statusMessage: "INVALID_CUSTOMER_TYPE" });
   });
 
   it("rejects invalid identityType with 400", async () => {
-    mockState.body = { customerType: "individual", identityType: "drivers_license", identityValue: "x" };
+    mockState.body = { customerType: "individual", identityType: "drivers_license", identityValue: "x", holderName: "Walk-in Name" };
     await expect(createPost({} as any)).rejects.toMatchObject({ statusCode: 400, statusMessage: "INVALID_IDENTITY_TYPE" });
   });
 
   it("rejects empty identityValue with 400", async () => {
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "  " };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "  ", holderName: "Walk-in Name" };
     await expect(createPost({} as any)).rejects.toMatchObject({ statusCode: 400, statusMessage: "IDENTITY_VALUE_REQUIRED" });
   });
 
@@ -198,7 +198,7 @@ describe("POST /api/admin/kyc/profiles — validation", () => {
     const raw = "bad-format-XYZ";
     const { client, calls } = makeClient();
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw, holderName: "Walk-in Name" };
     try {
       await createPost({} as any);
       expect.fail("should have thrown");
@@ -225,7 +225,7 @@ describe("POST /api/admin/kyc/profiles — coherence guard", () => {
     it(`rejects ${customerType} + ${identityType} with 400 INCOHERENT_IDENTITY_FOR_CUSTOMER_TYPE`, async () => {
       const { client, calls } = makeClient();
       mockState.client = client;
-      mockState.body = { customerType, identityType, identityValue: "1234567890123" };
+      mockState.body = { customerType, identityType, identityValue: "1234567890123", holderName: "Walk-in Name" };
       try {
         await createPost({} as any);
         expect.fail("should have thrown");
@@ -243,7 +243,7 @@ describe("POST /api/admin/kyc/profiles — coherence guard", () => {
     const raw = "1234567890123";
     const { client } = makeClient();
     mockState.client = client;
-    mockState.body = { customerType: "company", identityType: "passport", identityValue: raw };
+    mockState.body = { customerType: "company", identityType: "passport", identityValue: raw, holderName: "Walk-in Name" };
     try {
       await createPost({} as any);
       expect.fail("should have thrown");
@@ -262,7 +262,7 @@ describe("POST /api/admin/kyc/profiles — coherence guard", () => {
     ] as Array<[string, string, string]>) {
       const { client } = makeClient({ existing: [] });
       mockState.client = client;
-      mockState.body = { customerType, identityType, identityValue: value };
+      mockState.body = { customerType, identityType, identityValue: value, holderName: "Walk-in Name" };
       const result = await createPost({} as any);
       expect(result.created).toBe(true);
       expect(result.profile.status).toBe("pending");
@@ -277,7 +277,7 @@ describe("POST /api/admin/kyc/profiles — create pending", () => {
     const { client, calls } = makeClient({ existing: [] });
     mockState.client = client;
     const raw = "1234567890123";
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw, holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -300,7 +300,7 @@ describe("POST /api/admin/kyc/profiles — create pending", () => {
   it("valid passport creates a pending profile with normalized (uppercased) hash", async () => {
     const { client, calls } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "passport", identityValue: " ab-12 34567 " };
+    mockState.body = { customerType: "individual", identityType: "passport", identityValue: " ab-12 34567 ", holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -313,7 +313,7 @@ describe("POST /api/admin/kyc/profiles — create pending", () => {
   it("valid juristic_id creates a pending profile (company)", async () => {
     const { client, calls } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "company", identityType: "juristic_id", identityValue: "0105-536 016671" };
+    mockState.body = { customerType: "company", identityType: "juristic_id", identityValue: "0105-536 016671", holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -331,6 +331,7 @@ describe("POST /api/admin/kyc/profiles — create pending", () => {
       identityType: "national_id",
       identityValue: "1234567890123",
       walkInPhone: "0812345678",
+      holderName: "Walk-in Name",
     };
 
     await createPost({} as any);
@@ -347,7 +348,7 @@ describe("POST /api/admin/kyc/profiles — create pending", () => {
   it("NEVER sets verified/rejection/revocation fields in the insert payload", async () => {
     const { client, calls } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
 
     await createPost({} as any);
 
@@ -378,7 +379,7 @@ describe("POST /api/admin/kyc/profiles — dedupe", () => {
   it("reuses an existing walk-in profile (user_id NULL) with the same identity_hash", async () => {
     const { client, calls } = makeClient({ existing: [existingRow({ id: "walk-1", user_id: null })] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -394,7 +395,7 @@ describe("POST /api/admin/kyc/profiles — dedupe", () => {
       existing: [existingRow({ id: "registered-1", user_id: "user-9", status: "verified" })],
     });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -420,7 +421,7 @@ describe("POST /api/admin/kyc/profiles — dedupe", () => {
       ],
     });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -438,7 +439,7 @@ describe("POST /api/admin/kyc/profiles — dedupe", () => {
       ],
     });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -453,7 +454,7 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
   it("never touches rental_bookings and never attaches a profile to a booking", async () => {
     const { client, calls } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123" };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: "1234567890123", holderName: "Walk-in Name" };
 
     await createPost({} as any);
 
@@ -469,7 +470,7 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
     const raw = "1234567890123";
     const { client } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw, holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
 
@@ -486,7 +487,7 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
     const raw = "1234567890123";
     const { client } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw, holderName: "Walk-in Name" };
 
     const result = await createPost({} as any);
     const realHash = hashKycIdentity("national_id", raw);
@@ -502,6 +503,7 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
         "createdAt",
         "customerType",
         "hasUserId",
+        "holderName",
         "id",
         "identityLast4",
         "identityType",
@@ -521,6 +523,7 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
       identityType: "national_id",
       identityValue: "1234567890123",
       branchId: "branch-hq",
+      holderName: "Walk-in Name",
     };
 
     const result = await createPost({} as any);
@@ -537,6 +540,7 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
       verifiedAt: null,
       verifiedBranchId: null,
       hasUserId: false,
+      holderName: "Walk-in Name",
     });
   });
 
@@ -550,7 +554,7 @@ describe("POST /api/admin/kyc/profiles — safety", () => {
     ];
     const { client } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw, holderName: "Walk-in Name" };
 
     await createPost({} as any);
 
@@ -584,7 +588,7 @@ describe("POST /api/admin/kyc/profiles — KYC_HASH_SECRET missing", () => {
     const raw = "1234567890123";
     const { client, calls } = makeClient({ existing: [] });
     mockState.client = client;
-    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw };
+    mockState.body = { customerType: "individual", identityType: "national_id", identityValue: raw, holderName: "Walk-in Name" };
 
     try {
       await createPost({} as any);
@@ -609,5 +613,214 @@ describe("created pending profile vs pickup gate", () => {
     expect(resolution.canPickup).toBe(false);
     expect(resolution.via).toBe("blocked");
     expect(resolution.reason).toBe("pending");
+  });
+});
+
+// ── User-bound create (§a channel 2 — staff QR binding, migration 120) ────────
+
+function makeUserBoundClient(opts: {
+  userExists?: boolean;
+  existingBound?: Record<string, unknown> | null;
+  insertError?: { code?: string; message: string } | null;
+} = {}) {
+  const calls = {
+    inserts: [] as Array<{ table: string; payload: Record<string, unknown> }>,
+    eq: [] as Array<{ table: string; col: string; val: unknown }>,
+  };
+  const client = {
+    from(table: string) {
+      let pendingInsert: Record<string, unknown> | null = null;
+      const chain: any = {
+        select: () => chain,
+        eq: (col: string, val: unknown) => {
+          calls.eq.push({ table, col, val });
+          return chain;
+        },
+        order: () => chain,
+        limit: () => chain,
+        insert: (payload: Record<string, unknown>) => {
+          pendingInsert = payload;
+          calls.inserts.push({ table, payload });
+          return chain;
+        },
+        maybeSingle: async () => ({
+          data: table === "users" && opts.userExists !== false ? { id: "u" } : null,
+          error: null,
+        }),
+        single: async () => {
+          if (pendingInsert) {
+            if (opts.insertError) return { data: null, error: opts.insertError };
+            return {
+              data: {
+                id: "new-bound-id",
+                created_at: "2026-07-14T00:00:00.000Z",
+                valid_until: null,
+                verified_at: null,
+                verified_branch_id: null,
+                ...pendingInsert,
+              },
+              error: null,
+            };
+          }
+          return { data: null, error: null };
+        },
+        then: (resolve: (v: unknown) => unknown) =>
+          Promise.resolve({
+            data: opts.existingBound ? [opts.existingBound] : [],
+            error: null,
+          }).then(resolve),
+      };
+      return chain;
+    },
+  };
+  return { client, calls };
+}
+
+const BOUND_USER = "9f8e7d6c-5b4a-4321-8765-0123456789ab";
+
+function boundBody(over: Record<string, unknown> = {}) {
+  return {
+    customerType: "individual",
+    identityType: "national_id",
+    identityValue: "1101700230123",
+    userId: BOUND_USER,
+    ...over,
+  };
+}
+
+describe("POST /api/admin/kyc/profiles — user-bound create (userId)", () => {
+  it("rejects a non-UUID userId with 400 INVALID_USER_ID", async () => {
+    mockState.body = boundBody({ userId: "not-a-uuid" });
+    await expect(createPost({} as any)).rejects.toMatchObject({
+      statusCode: 400,
+      statusMessage: "INVALID_USER_ID",
+    });
+  });
+
+  it("returns 404 USER_NOT_FOUND when the user does not exist", async () => {
+    const { client } = makeUserBoundClient({ userExists: false });
+    mockState.client = client;
+    mockState.body = boundBody();
+    await expect(createPost({} as any)).rejects.toMatchObject({
+      statusCode: 404,
+      statusMessage: "USER_NOT_FOUND",
+    });
+  });
+
+  it("creates a pending profile bound to the user (user_id in insert payload)", async () => {
+    const { client, calls } = makeUserBoundClient();
+    mockState.client = client;
+    mockState.body = boundBody();
+    const res = await createPost({} as any);
+    expect(res.created).toBe(true);
+    expect(res.reused).toBe(false);
+    const insert = calls.inserts.find((i) => i.table === "kyc_profiles");
+    expect(insert?.payload.user_id).toBe(BOUND_USER);
+    expect(insert?.payload.status).toBe("pending");
+  });
+
+  it("dedupes on user_id — reuses the existing bound profile regardless of identity", async () => {
+    const { client, calls } = makeUserBoundClient({
+      existingBound: {
+        id: "bound-1",
+        user_id: BOUND_USER,
+        customer_type: "individual",
+        identity_type: "national_id",
+        identity_last4: "***9999",
+        status: "rejected",
+        valid_until: null,
+        branch_id: null,
+        created_at: "2026-01-01T00:00:00.000Z",
+        verified_at: null,
+        verified_branch_id: null,
+        identity_hash: "SENSITIVE_HASH_MUST_NOT_LEAK",
+      },
+    });
+    mockState.client = client;
+    mockState.body = boundBody();
+    const res = await createPost({} as any);
+    expect(res.created).toBe(false);
+    expect(res.reused).toBe(true);
+    expect(res.profile.id).toBe("bound-1");
+    expect(calls.inserts).toHaveLength(0);
+    expect(JSON.stringify(res)).not.toContain("SENSITIVE_HASH_MUST_NOT_LEAK");
+    // Dedupe ran on user_id, not the walk-in identity_hash branch.
+    expect(
+      calls.eq.some((c) => c.table === "kyc_profiles" && c.col === "user_id"),
+    ).toBe(true);
+  });
+
+  it("maps a 23505 unique-race to 409 KYC_PROFILE_ALREADY_EXISTS_FOR_USER", async () => {
+    const { client } = makeUserBoundClient({
+      insertError: { code: "23505", message: "duplicate key" },
+    });
+    mockState.client = client;
+    mockState.body = boundBody();
+    await expect(createPost({} as any)).rejects.toMatchObject({
+      statusCode: 409,
+      statusMessage: "KYC_PROFILE_ALREADY_EXISTS_FOR_USER",
+    });
+  });
+
+  it("without userId the walk-in path still inserts user_id-less (unchanged behavior)", async () => {
+    const { client, calls } = makeClient();
+    mockState.client = client;
+    mockState.body = {
+      customerType: "individual",
+      identityType: "national_id",
+      identityValue: "1101700230123",
+      holderName: "Walk-in Name",
+    };
+    const res = await createPost({} as any);
+    expect(res.created).toBe(true);
+    const insert = calls.inserts[0];
+    expect(insert.payload).not.toHaveProperty("user_id");
+  });
+});
+
+// ── §a holder name (migration 122) ────────────────────────────────────────────
+
+describe("POST /api/admin/kyc/profiles — holderName (§a)", () => {
+  it("walk-in create WITHOUT holderName is 422 HOLDER_NAME_REQUIRED and inserts nothing", async () => {
+    const { client, calls } = makeClient({ existing: [] });
+    mockState.client = client;
+    mockState.body = {
+      customerType: "individual",
+      identityType: "national_id",
+      identityValue: "1234567890123",
+    };
+    await expect(createPost({} as any)).rejects.toMatchObject({
+      statusCode: 422,
+      statusMessage: "HOLDER_NAME_REQUIRED",
+    });
+    expect(calls.inserts).toHaveLength(0);
+  });
+
+  it("walk-in create stores holder_name in the insert payload", async () => {
+    const { client, calls } = makeClient({ existing: [] });
+    mockState.client = client;
+    mockState.body = {
+      customerType: "individual",
+      identityType: "national_id",
+      identityValue: "1234567890123",
+      holderName: "สมชาย ใจดี",
+    };
+    await createPost({} as any);
+    expect(calls.inserts[0]!.payload.holder_name).toBe("สมชาย ใจดี");
+  });
+
+  it("user-bound create WITHOUT holderName is allowed (users.full_name is the source)", async () => {
+    const { client, calls } = makeUserBoundClient();
+    mockState.client = client;
+    mockState.body = {
+      customerType: "individual",
+      identityType: "national_id",
+      identityValue: "1101700230123",
+      userId: BOUND_USER,
+    };
+    const res = await createPost({} as any);
+    expect(res.created).toBe(true);
+    const insert = calls.inserts.find((i) => i.table === "kyc_profiles");
+    expect(insert?.payload.holder_name).toBeNull();
   });
 });

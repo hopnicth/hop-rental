@@ -606,3 +606,47 @@ together (unified void/cancel + document/ERP foundation) → T5–T7` per
 - **Reusable-by-evidence rule:** anything proven duplicated across
   **≥ 2 flows AND money/document-related** is built **centrally,
   immediately**.
+
+### §a addendum — 2026-07-14 (T1a Phase 1 ratification)
+
+1. **Pending-queue exception to lookup-first.** A list API for the Super Admin
+   approve queue is APPROVED as a narrow exception to the lookup-first rule
+   (app/pages/admin/kyc/index.vue:5-6). It is restricted to status='pending'
+   ONLY, super_admin ONLY, and returns MINIMAL fields (name, customer_type,
+   branch, submitted_at). It MUST NOT return identity_hash, identity_last4, or
+   phone. Lookup-first remains the rule for every other KYC read.
+
+2. **Auth inversion is MANDATORY for KYC endpoints.** Every endpoint touching
+   KYC data (queue list, verify caller, revoke caller, any document access) MUST
+   use requirePlatformAdmin + an EXPLICIT super_admin check, so denials are
+   audit-logged via logKycDocumentAccess BEFORE throwing — the pattern locked in
+   server/api/admin/kyc/documents/[id]/download.get.ts:9-12. requireSuperAdmin
+   is FORBIDDEN on these endpoints: it throws before the denial can be logged.
+   Each endpoint carries a test pinning this (style:
+   tests/server/kyc-document-download-api.spec.ts:553). Staff-level KYC
+   endpoints (upload/create) use requirePlatformAdmin as normal.
+
+3. **Customer upload rail-move pulled forward into T1a.** The customer KYC
+   upload path (server/api/user/kyc/id-card.post.ts,
+   server/api/company/kyc/document.post.ts) writes to the LEGACY kyc-documents
+   bucket and never touches kyc_profiles — so nothing it captures can reach
+   verification. Moving it onto the kyc_profiles + kyc-profile-documents rails
+   is IN SCOPE for T1a (site not live). The legacy bucket is retired as a WRITE
+   TARGET in this path but is NOT deleted.
+   **Amendment (2026-07-14, owner ruling at T1a Phase 1 close):** the rail-move
+   scope is the **id-card path only**. server/api/company/kyc/document.post.ts
+   is NOT rail-moved — it writes companies/company_members (B2B company
+   onboarding documents), a different domain from rental kyc_profiles.
+   Juristic customer self-serve KYC is T1b scope.
+
+4. **One KYC profile per user (§a "once per user") is DB-enforced** via a
+   partial unique index on kyc_profiles(user_id) WHERE user_id IS NOT NULL
+   (migration 120). Walk-in profiles (user_id NULL) remain unconstrained and
+   continue to dedupe on identity_hash. Re-verification updates the existing
+   row (verify_kyc_profile blocks only status='verified', migration 112) and
+   never requires a second row. Rejected-profile resubmission flips the same
+   row back to 'pending' on document upload, recorded via logKycDocumentAccess
+   (never a silent state change). Rejection of a PENDING profile is a
+   verification decision of the same class as verify/revoke and MUST go through
+   a reject_kyc_profile RPC (migration 121, gated separately) — never a direct
+   service-role UPDATE.

@@ -275,6 +275,7 @@ describe("POST /api/admin/kyc/profiles/lookup — results", () => {
       verifiedAt: "2026-01-01T00:00:00.000Z",
       verifiedBranchId: "branch-hq",
       hasUserId: false,
+      holderName: null,
     });
   });
 

@@ -152,9 +152,22 @@ const kycLabel = computed(() => {
   return t("user.kycPending");
 });
 
+// ── §a intake fields (rail-move: kyc_profiles + kyc-profile-documents) ──
+const kycIdentityValue = ref("");
+const kycHolderName = ref("");
+
 // ── File upload handler ──
 async function handleIdCardUpload(file: File | File[] | null | undefined) {
   if (!file || Array.isArray(file) || !user.value) return;
+
+  if (!kycIdentityValue.value.trim() || !kycHolderName.value.trim()) {
+    toast.add({
+      title: t("user.kycIdentityFieldsRequired"),
+      icon: "bx:error-circle",
+      color: "warning",
+    });
+    return;
+  }
 
   if (!hasPdpaConsent.value) {
     toast.add({
@@ -180,6 +193,8 @@ async function handleIdCardUpload(file: File | File[] | null | undefined) {
   try {
     const body = new FormData();
     body.append("file", file);
+    body.append("identityValue", kycIdentityValue.value.trim());
+    body.append("holderName", kycHolderName.value.trim());
 
     await $fetch("/api/user/kyc/id-card", {
       method: "POST",
@@ -202,6 +217,8 @@ async function handleIdCardUpload(file: File | File[] | null | undefined) {
       color: "error",
     });
   } finally {
+    // The raw identity value never stays in component state after a submit.
+    kycIdentityValue.value = "";
     uploading.value = false;
   }
 }
@@ -354,6 +371,27 @@ async function handlePdpaConsent() {
             <p class="text-xs font-medium text-warning">
               {{ t("user.kycIdCardPurposeNote") }}
             </p>
+
+            <!-- §a intake: name-on-ID + ID number (hashed server-side) -->
+            <div class="grid gap-3 sm:grid-cols-2">
+              <UFormField :label="t('user.kycHolderNameLabel')">
+                <UInput
+                  v-model="kycHolderName"
+                  :placeholder="t('user.kycHolderNamePlaceholder')"
+                  autocomplete="off"
+                />
+              </UFormField>
+              <UFormField
+                :label="t('user.kycIdNumberLabel')"
+                :hint="t('user.kycIdNumberHint')"
+              >
+                <UInput
+                  v-model="kycIdentityValue"
+                  :placeholder="t('user.kycIdNumberPlaceholder')"
+                  autocomplete="off"
+                />
+              </UFormField>
+            </div>
 
             <!-- Already uploaded — show re-upload -->
             <div v-if="profile?.idCardUrl" class="space-y-3">

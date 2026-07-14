@@ -555,3 +555,23 @@ Read-only audits only. No files changed. No migrations. No commits.
 - Known issues logged: 20 pre-existing test failures (POS-v3/webhook/
   handover specs, verified pre-existing on clean HEAD); admin route
   auth race (fails closed — redirect to login on first nav).
+
+---
+
+## Session 2026-07-14/15 — T1a Phase 1: KYC flows walked + repaired end-to-end
+
+### Done ✅
+- **Flow 1 (staff-assisted KYC):** User-ID QR scanner wired into `/admin/kyc` (`customer:<userId>` → lookup → user-bound create); create endpoint accepts `userId` (validated, dedupe on user_id, 23505→409); walk-in branch unchanged. §a name capture: `holder_name` (mig 122) required for walk-in intake (422), optional user-bound.
+- **Flow 2 (Super Admin queue + decisions):** new `GET /api/admin/kyc/queue` (pending-only, minimal fields, §a completeness flag) + `GET /profiles/:id`; FIRST callers of `verify_kyc_profile` / `revoke_kyc_profile` (mig 112) and new `reject_kyc_profile` (mig 121); §a document-completeness 422 (`computeKycDocumentCompleteness` in `server/utils/kyc.ts`); queue + decision UI on `/admin/kyc`. All KYC decision endpoints use the download.get.ts auth inversion (requirePlatformAdmin + explicit super_admin check, denial audit-logged BEFORE throw) with per-endpoint pin tests.
+- **Flow 3 (customer self-serve rail-move, id-card path only):** `POST /api/user/kyc/id-card` rewritten onto kyc_profiles + kyc-profile-documents rails (magic-byte sniffing, opaque keys, customer-actor audit rows, verified→409, identity-mismatch→409, rejected→pending resubmission flip recorded in log reason). Legacy `kyc-documents` bucket retired as write target on this path (not deleted). SectionKyc gained name + ID-number fields (6 i18n keys th+en complete).
+- **Flow 4 (acceptance):** B6/Y5 CLOSED — pickup on booking `d4dbc706…` returned 200 `picked_up` via `kyc_authorized_via=verified` (snapshot in `rental_booking_fulfillments`). First picked_up booking in system history.
+- **Migrations 120–124 applied locally** (once-per-user partial unique index · reject RPC + outcome CHECK · holder_name · access-log action widening · reason_chk rejected branch). All SQL-gated by owner; 124 fixed the reason_chk gap that 121 review missed.
+- decisions.md: §a addendum (4 items) + rail-move amendment (id-card only; company/kyc = B2B onboarding, NOT rental KYC — juristic self-serve is T1b).
+- Suite 2672/2672 green · tsc clean · server-utils index rows updated (kyc.ts, kyc-profile-view.ts) · database.types.ts regenerated.
+
+### Next 📋
+- Commit review (per-file staging plan, owner-audited) — NOTHING committed yet.
+- T1b: juristic customer self-serve; unify account badge on kyc_profiles (retire users.kyc_status mirror); remote apply of migrations 120–124.
+
+### Blocked 🚫
+- (none — B6 gate cleared)

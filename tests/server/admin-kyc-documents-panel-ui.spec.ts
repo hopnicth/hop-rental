@@ -234,9 +234,9 @@ describe("create pending profile flow", () => {
     expect(pageSrc).toMatch(/<UCard v-if="!profile">/);
   });
 
-  it("no verify/approve/reject/delete/purge affordance anywhere in the admin KYC UI", () => {
+  it("no delete/purge affordance anywhere in the admin KYC UI (verify/reject/revoke are the ratified §a decision actions — decisions.md 2026-07-14 §a addendum)", () => {
     for (const [, src] of kycUiSources) {
-      expect(src).not.toMatch(/label="(Verify|Approve|Reject|Delete|Purge)/i);
+      expect(src).not.toMatch(/label="(Delete|Purge)/i);
       expect(src).not.toMatch(/method:\s*"(DELETE|PATCH|PUT)"/);
     }
   });

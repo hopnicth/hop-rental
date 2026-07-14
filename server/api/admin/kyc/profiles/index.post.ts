@@ -32,6 +32,14 @@ import {
  *   identityValue — raw identity string (hashed server-side, never stored/logged)
  *   branchId?     — store branch id (text); validity enforced by FK
  *   walkInPhone?  — contact metadata ONLY; never the identity root
+ *   holderName    — §a name-on-ID / company name. REQUIRED for walk-in
+ *                   creation (422 HOLDER_NAME_REQUIRED); optional user-bound.
+ *   userId?       — registered user to bind (staff QR flow, §a channel 2).
+ *                   When present the profile is USER-BOUND, dedupe runs on
+ *                   user_id (never the walk-in IS NULL branch), and the
+ *                   once-per-user partial unique index (migration 120)
+ *                   backstops races. When absent, behavior is byte-for-byte
+ *                   the original walk-in path.
  *
  * Returns: { profile: SafeKycProfile, created: boolean, reused: boolean }
  * Errors:  400 (bad body / invalid identity format) | 401 | 403 | 422 | 500
@@ -89,6 +97,8 @@ export default defineEventHandler(
     const identityValue = body.identityValue;
     const branchId = optionalText(body.branchId);
     const walkInPhone = optionalText(body.walkInPhone);
+    const userId = optionalText(body.userId);
+    const holderName = optionalText(body.holderName);
 
     if (typeof customerType !== "string" || !CUSTOMER_TYPES.has(customerType)) {
       throw createError({ statusCode: 400, statusMessage: "INVALID_CUSTOMER_TYPE" });
@@ -101,6 +111,12 @@ export default defineEventHandler(
     }
     if (typeof identityValue !== "string" || identityValue.trim().length === 0) {
       throw createError({ statusCode: 400, statusMessage: "IDENTITY_VALUE_REQUIRED" });
+    }
+    // §a name capture (migration 122): holder_name is REQUIRED for walk-in
+    // intake — a walk-in has no users row to carry the name. Optional when
+    // user-bound (users.full_name is the display source).
+    if (!userId && !holderName) {
+      throw createError({ statusCode: 422, statusMessage: "HOLDER_NAME_REQUIRED" });
     }
     // Coherence guard: reject identityType that does not belong to the customerType.
     // Error carries NO raw identity value.
@@ -132,6 +148,84 @@ export default defineEventHandler(
       });
     }
 
+    // User-bound branch (§a channel 2): validate the user, dedupe on user_id,
+    // insert bound. The walk-in branch below is unchanged.
+    if (userId) {
+      const UUID_RE =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(userId)) {
+        throw createError({ statusCode: 400, statusMessage: "INVALID_USER_ID" });
+      }
+      const { data: userRow, error: userError } = await adminClient
+        .from("users")
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle();
+      if (userError) {
+        throw createError({ statusCode: 500, statusMessage: userError.message });
+      }
+      if (!userRow) {
+        throw createError({ statusCode: 404, statusMessage: "USER_NOT_FOUND" });
+      }
+
+      // Once-per-user: reuse the existing profile regardless of identity_hash
+      // (migration 120 guarantees at most one row).
+      const { data: boundRows, error: boundLookupError } = await adminClient
+        .from("kyc_profiles")
+        .select(KYC_PROFILE_SAFE_SELECT)
+        .eq("user_id", userId)
+        .limit(1);
+      if (boundLookupError) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: boundLookupError.message,
+        });
+      }
+      const existingBound = (boundRows ?? [])[0] as KycProfileSafeRow | undefined;
+      if (existingBound) {
+        return {
+          profile: toSafeKycProfile(existingBound),
+          created: false,
+          reused: true,
+        };
+      }
+
+      const { data: boundInserted, error: boundInsertError } = await adminClient
+        .from("kyc_profiles")
+        .insert({
+          user_id: userId,
+          holder_name: holderName,
+          customer_type: customerType,
+          identity_type: identityType,
+          identity_hash: identityHash,
+          identity_last4: identityLast4,
+          status: "pending",
+          branch_id: branchId,
+          walk_in_phone: walkInPhone,
+        })
+        .select(KYC_PROFILE_SAFE_SELECT)
+        .single();
+      if (boundInsertError || !boundInserted) {
+        const code = (boundInsertError as { code?: string } | null)?.code;
+        // 23505 here = lost a once-per-user race → 409, caller re-looks-up.
+        const statusCode = code === "23503" ? 422 : code === "23505" ? 409 : 500;
+        throw createError({
+          statusCode,
+          statusMessage:
+            code === "23503"
+              ? "INVALID_BRANCH"
+              : code === "23505"
+                ? "KYC_PROFILE_ALREADY_EXISTS_FOR_USER"
+                : (boundInsertError?.message ?? "KYC profile create failed"),
+        });
+      }
+      return {
+        profile: toSafeKycProfile(boundInserted as KycProfileSafeRow),
+        created: true,
+        reused: false,
+      };
+    }
+
     // Lookup-before-insert. Walk-in dedupe considers ONLY user_id IS NULL profiles.
     // A registered user's profile with the same identity_hash is NEVER reused here.
     const { data: existingRows, error: lookupError } = await adminClient
@@ -157,6 +251,7 @@ export default defineEventHandler(
     const { data: inserted, error: insertError } = await adminClient
       .from("kyc_profiles")
       .insert({
+        holder_name: holderName,
         customer_type: customerType,
         identity_type: identityType,
         identity_hash: identityHash,

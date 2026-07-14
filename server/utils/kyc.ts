@@ -218,6 +218,39 @@ export function computeKycReadiness(
   return { ready: false, reason: profile.status };
 }
 
+// ── 2b. Document-type Completeness (§a) ───────────────────────────────────────
+
+/**
+ * §a document-type completeness — the TS-side readiness check migration 112
+ * deferred ("full document-type readiness stays in TS"). Keyed on the same
+ * customer_type × identity_type pairs as the upload coherence guard:
+ *   individual × national_id → id_card
+ *   individual × passport    → passport
+ *   company    × juristic_id → company_cert AND vat_certificate (Por.Por.20)
+ * Unknown/incoherent pairs are NEVER complete (fail closed). `signature` is
+ * supplementary and never required. Enforced as 422 at verification time and
+ * surfaced as a flag in the pending queue.
+ */
+const REQUIRED_DOCUMENT_TYPES: Record<string, readonly string[]> = {
+  "individual:national_id": ["id_card"],
+  "individual:passport": ["passport"],
+  "company:juristic_id": ["company_cert", "vat_certificate"],
+};
+
+export function computeKycDocumentCompleteness(
+  customerType: string,
+  identityType: string,
+  documentTypes: readonly string[],
+): { complete: boolean; missing: string[] } {
+  const required = REQUIRED_DOCUMENT_TYPES[`${customerType}:${identityType}`];
+  if (!required) {
+    return { complete: false, missing: ["unsupported_profile_pair"] };
+  }
+  const present = new Set(documentTypes);
+  const missing = required.filter((t) => !present.has(t));
+  return { complete: missing.length === 0, missing };
+}
+
 // ── 3. Company Certificate Recency ────────────────────────────────────────────
 
 /**

@@ -47,8 +47,10 @@
  *    (action=upload, result=allowed) — a log failure never fails the upload.
  *    ip_address is a single validated IP via parseSingleForwardedIp, never a
  *    raw multi-hop x-forwarded-for chain.
- *  - This endpoint does NOT verify the profile, does NOT touch kyc_profiles
- *    status, and does NOT mutate rental_bookings.
+ *  - This endpoint does NOT verify the profile and does NOT mutate
+ *    rental_bookings. The ONLY kyc_profiles.status write is the
+ *    rejected→pending resubmission flip (§a addendum item 4), recorded in the
+ *    upload's audit log row via `reason` — never any other transition.
  */
 import {
   createError,
@@ -233,7 +235,7 @@ export default defineEventHandler(
     // ── Verify the target profile exists + documentType coherence ───────────
     const { data: profile, error: profileError } = await adminClient
       .from("kyc_profiles")
-      .select("id, customer_type, identity_type")
+      .select("id, customer_type, identity_type, status")
       .eq("id", kycProfileId)
       .maybeSingle();
     if (profileError) {
@@ -304,6 +306,30 @@ export default defineEventHandler(
     }
     const row = inserted as KycDocumentSafeRow;
 
+    // ── Rejected-profile resubmission (§a addendum item 4) ───────────────────
+    // A new document on a REJECTED profile flips it back to 'pending' on the
+    // SAME row (once-per-user, migration 120). The transition is recorded in
+    // the upload's audit log row via `reason` — never a silent state change.
+    // rejected_* mirror columns stay as history (consistent with the verify
+    // RPC, which clears only revoked_*). The flip is fail-closed: if it
+    // errors, the upload 500s so the log never claims a transition that
+    // did not happen.
+    let uploadLogReason: string | null = null;
+    if (profile.status === "rejected") {
+      const { error: flipError } = await adminClient
+        .from("kyc_profiles")
+        .update({ status: "pending" })
+        .eq("id", kycProfileId)
+        .eq("status", "rejected");
+      if (flipError) {
+        throw createError({
+          statusCode: 500,
+          statusMessage: "KYC_RESUBMISSION_FLIP_FAILED",
+        });
+      }
+      uploadLogReason = "resubmission_status_rejected_to_pending";
+    }
+
     // ── Best-effort upload audit log (never fails the upload) ───────────────
     // No cast: the service-role client satisfies KycDocumentAccessLogClient
     // structurally, and the payload is typed against the generated Insert type.
@@ -314,7 +340,7 @@ export default defineEventHandler(
       actorRole: platformRole,
       action: "upload",
       result: "allowed",
-      reason: null,
+      reason: uploadLogReason,
       documentType,
       storageBucket: KYC_PROFILE_DOCUMENTS_BUCKET,
       storagePath: storageKey,

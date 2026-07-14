@@ -17,6 +17,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   canVerifyCompanyCert,
+  computeKycDocumentCompleteness,
   computeKycReadiness,
   computeValidUntil,
   findPickupOverride,
@@ -634,5 +635,72 @@ describe("selectBestKycProfile", () => {
     expect(selectBestKycProfile(samples)?.id).toBe(reference(samples)?.id);
     expect(selectBestKycProfile([samples[2]!, samples[3]!])?.id).toBe(reference([samples[2], samples[3]])?.id);
     expect(selectBestKycProfile([])).toBe(reference([]));
+  });
+});
+
+// ── computeKycDocumentCompleteness (§a document-type completeness) ────────────
+
+describe("computeKycDocumentCompleteness", () => {
+  it("individual × national_id requires id_card", () => {
+    expect(
+      computeKycDocumentCompleteness("individual", "national_id", ["id_card"]),
+    ).toEqual({ complete: true, missing: [] });
+    expect(
+      computeKycDocumentCompleteness("individual", "national_id", ["signature"]),
+    ).toEqual({ complete: false, missing: ["id_card"] });
+  });
+
+  it("individual × passport requires passport", () => {
+    expect(
+      computeKycDocumentCompleteness("individual", "passport", ["passport"]),
+    ).toEqual({ complete: true, missing: [] });
+    expect(
+      computeKycDocumentCompleteness("individual", "passport", []),
+    ).toEqual({ complete: false, missing: ["passport"] });
+  });
+
+  it("company × juristic_id requires BOTH company_cert and vat_certificate", () => {
+    expect(
+      computeKycDocumentCompleteness("company", "juristic_id", [
+        "company_cert",
+        "vat_certificate",
+      ]),
+    ).toEqual({ complete: true, missing: [] });
+    expect(
+      computeKycDocumentCompleteness("company", "juristic_id", ["company_cert"]),
+    ).toEqual({ complete: false, missing: ["vat_certificate"] });
+    expect(
+      computeKycDocumentCompleteness("company", "juristic_id", []),
+    ).toEqual({
+      complete: false,
+      missing: ["company_cert", "vat_certificate"],
+    });
+  });
+
+  it("signature is supplementary — never satisfies a requirement", () => {
+    expect(
+      computeKycDocumentCompleteness("company", "juristic_id", [
+        "signature",
+        "signature",
+      ]).complete,
+    ).toBe(false);
+  });
+
+  it("unknown/incoherent pairs fail closed", () => {
+    expect(
+      computeKycDocumentCompleteness("individual", "juristic_id", ["id_card"]),
+    ).toEqual({ complete: false, missing: ["unsupported_profile_pair"] });
+    expect(
+      computeKycDocumentCompleteness("robot", "national_id", ["id_card"]),
+    ).toEqual({ complete: false, missing: ["unsupported_profile_pair"] });
+  });
+
+  it("duplicate document types count once", () => {
+    expect(
+      computeKycDocumentCompleteness("individual", "national_id", [
+        "id_card",
+        "id_card",
+      ]).complete,
+    ).toBe(true);
   });
 });

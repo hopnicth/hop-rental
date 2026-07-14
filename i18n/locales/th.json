@@ -311,7 +311,13 @@
     "inviteStaff": "เชิญสมาชิก",
     "noStaff": "ยังไม่มีสมาชิกในองค์กร",
     "role": "บทบาท",
-    "joinedDate": "วันที่เข้าร่วม"
+    "joinedDate": "วันที่เข้าร่วม",
+    "kycHolderNameLabel": "ชื่อ-นามสกุลตามบัตรประชาชน",
+    "kycHolderNamePlaceholder": "ชื่อ-นามสกุลตามที่ระบุบนบัตร",
+    "kycIdNumberLabel": "เลขบัตรประชาชน",
+    "kycIdNumberHint": "ส่งอย่างปลอดภัย ระบบไม่จัดเก็บเลขบัตรโดยตรง",
+    "kycIdNumberPlaceholder": "เลขบัตรประชาชน 13 หลัก",
+    "kycIdentityFieldsRequired": "กรุณากรอกชื่อ-นามสกุลและเลขบัตรประชาชนก่อนอัปโหลด"
   },
   "auth": {
     "loginTitle": "เข้าสู่ระบบ",

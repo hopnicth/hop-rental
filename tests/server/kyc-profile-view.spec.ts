@@ -31,6 +31,7 @@ const WHITELIST_KEYS = [
   "verifiedAt",
   "verifiedBranchId",
   "hasUserId",
+  "holderName",
 ].sort();
 
 // A DB row that ALSO carries sensitive columns the mapper must never surface.
@@ -63,7 +64,7 @@ function rawRow(over: Record<string, unknown> = {}) {
 }
 
 describe("toSafeKycProfile — whitelist", () => {
-  it("returns exactly the 11 whitelist keys (including id)", () => {
+  it("returns exactly the 12 whitelist keys (including id)", () => {
     const out = toSafeKycProfile(rawRow());
     expect(Object.keys(out).sort()).toEqual(WHITELIST_KEYS);
     expect(out).toHaveProperty("id", "kyc-1");

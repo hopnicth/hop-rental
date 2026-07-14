@@ -1414,3 +1414,10 @@ updated to read the two new files and prefer the 2026-07-14 set on conflict.
 
 **Active work = T1a** (staff-KYC capture + SUPER ADMIN approve queue, linked via User-ID QR) per
 `docs/MASTER-GAP-MAP.md`. Next step is the T1a SQL draft → auditor review BEFORE any migration file.
+
+## Claude Code → (next session) / 2026-07-15
+Task: T1a Phase 1 — KYC flow repair (staff QR intake, Super Admin queue + verify/reject/revoke callers, customer id-card rail-move, B6/Y5 acceptance re-walk)
+Files touched: 31 (see git status) — 5 new endpoints under server/api/admin/kyc/**, rewritten server/api/user/kyc/id-card.post.ts, migrations 120–124 (applied LOCALLY only), /admin/kyc queue+decision UI, SectionKyc intake fields, 7 test specs.
+Status: done, NOT committed — owner is running per-file staging review.
+Next: commit per audit; then T1b. Local DB state: migrations 120–124 applied; seeded staff@local.test (staff role); test KYC data present (1 verified profile for customer@local.test, 1 pending walk-in company, 1 pending self-serve, booking d4dbc706 picked_up).
+Note: local test-account passwords were reset this session (session-notes only, not recorded in docs).
