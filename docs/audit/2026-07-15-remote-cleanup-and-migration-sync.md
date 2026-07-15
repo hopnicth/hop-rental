@@ -161,3 +161,23 @@ profiles ***0831 individual pending walk-in, ***5415 juristic pending walk-in.
 manual-payment-slips: 4 -> 0 (4 deleted) · chat-attachments: 6 -> 0 (6 deleted)
 kyc-profile-documents: 3 -> 0 (3 deleted) · kyc-documents (legacy): already 0, untouched
 Orphan list: (empty — none found in any bucket)
+
+---
+
+## Post-cleanup smoke test (2026-07-16)
+
+6/6 probes passed against the remote project (app on :3001 pointed at
+`yzjczvzwmbbeyoodrjwm`): boot+login · /admin/kyc renders + queue endpoint
+(staff → 403 with remote-logged denial; super_admin → 200) · walk-in create
+with holder_name (200 pending) · verify-without-documents → 422
+KYC_DOCUMENTS_INCOMPLETE · reject → mig-121 RPC 200 rejected (no schema-cache
+404s anywhere) · smoke profile deleted (kyc_profiles back to 0).
+
+Intentional append-only residue: 1 rejected `kyc_verification_decisions` row +
+3 `kyc_document_access_log` rows — the smoke test's own audit trail. The
+guards correctly refused deletion (mig-112 decision guard raised and rolled
+back atomically); a third guard-lift was deliberately declined.
+
+Smoke account `smoke-staff@hopnic-test.local` exists remotely at role `staff`
+(created via Auth Admin API; temporary super_admin elevation for probes 4–5
+reverted).
