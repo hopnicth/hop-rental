@@ -1427,7 +1427,8 @@ Remote state (2026-07-15, after owner-ruled cleanup): remote project yzjczvzwmbb
 ## Claude Code → (next session) / 2026-07-19
 Task: T2 Phase 1 — return settlement (Flow 1) + no-show manual/auto (Flow 2). L1/B9 CLOSED.
 Status: done locally, NOT committed (package in audit). Suite 2698/2698.
-REMOTE-APPLY PRECONDITIONS (do NOT forget, gated separately after push):
+REMOTE STATE (2026-07-19, post-apply): parity through migration 126, zero drift. The nightly no-show job is LIVE ON PRODUCTION (cron 'rental-no-show-auto-mark', fires 17:00 UTC = 00:00 Bangkok, currently against an EMPTY bookings table). Remote system actor cb62c324-4aac-4392-a253-02294fb459f6 in system_configs.
+Original preconditions (now satisfied, kept as history):
   1. Create SYSTEM ACTOR on remote FIRST: Auth Admin API — system@hopnic.internal, email_confirm false, ban_duration 876000h, random discarded password; then system_configs key 'system_actor' = {"user_id": "<new uuid>"}; platform_role stays 'customer'.
   2. pg_cron must be enabled on the remote project (mig 126 does CREATE EXTENSION IF NOT EXISTS).
   3. Then db push --linked (125, 126) + the standard post-apply probes (function/cron-count/boundary/negative-actor).
