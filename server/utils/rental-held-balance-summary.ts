@@ -24,6 +24,7 @@ export interface RentalHeldBalanceSummary {
     bookingDepositCollectedAmount: number;
     pickupHeldBalanceCollectedAmount: number;
     sameDayHeldBalanceCollectedAmount: number;
+    settlementAdditionalCollectedAmount: number;
     totalHeldBalanceCollectedAmount: number;
   };
   reductions: {
@@ -45,6 +46,7 @@ const COLLECTION_EVENT_TYPES = new Set([
   "pickup_held_balance_collection",
   "same_day_held_balance_collection",
   "remaining_security_deposit_collection", // Phase 2E-B1.5: pickup-phase remaining security deposit
+  "settlement_additional_collection", // T2 mig-125: negative-settlement shortfall paid in by customer
 ]);
 
 const REDUCTION_EVENT_TYPES = new Set([
@@ -85,6 +87,7 @@ export function buildRentalHeldBalanceSummary(input: {
     bookingDepositCollectedAmount: 0,
     pickupHeldBalanceCollectedAmount: 0,
     sameDayHeldBalanceCollectedAmount: 0,
+    settlementAdditionalCollectedAmount: 0,
     totalHeldBalanceCollectedAmount: 0,
   };
   const reductions = {
@@ -144,6 +147,10 @@ export function buildRentalHeldBalanceSummary(input: {
       collections.pickupHeldBalanceCollectedAmount = money(
         collections.pickupHeldBalanceCollectedAmount + amount,
       );
+    } else if (eventType === "settlement_additional_collection") {
+      collections.settlementAdditionalCollectedAmount = money(
+        collections.settlementAdditionalCollectedAmount + amount,
+      );
     } else if (eventType === "settlement_application") {
       reductions.settlementAppliedAmount = money(
         reductions.settlementAppliedAmount + amount,
@@ -167,7 +174,8 @@ export function buildRentalHeldBalanceSummary(input: {
   collections.totalHeldBalanceCollectedAmount = money(
     collections.bookingDepositCollectedAmount +
       collections.pickupHeldBalanceCollectedAmount +
-      collections.sameDayHeldBalanceCollectedAmount,
+      collections.sameDayHeldBalanceCollectedAmount +
+      collections.settlementAdditionalCollectedAmount,
   );
   reductions.totalHeldBalanceReducedAmount = money(
     reductions.settlementAppliedAmount +

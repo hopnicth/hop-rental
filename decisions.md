@@ -650,3 +650,63 @@ together (unified void/cancel + document/ERP foundation) → T5–T7` per
    verification decision of the same class as verify/revoke and MUST go through
    a reject_kyc_profile RPC (migration 121, gated separately) — never a direct
    service-role UPDATE.
+
+### §b addendum — 2026-07-15 (T2 Phase 1 ratification, owner)
+
+1. **Settlement is a REAL TABLE** — one row per return settlement: booking ref,
+   held total, additional-collection total, penalty lines (amount + note each,
+   stored inline — no separate lines table), special discount (staff-entered,
+   note REQUIRED per §b early-return rule), net result, customer + staff
+   signatures, slip evidence ref, created_by, timestamps. The numbered DOCUMENT
+   for a settlement is T4 scope — the table must carry what T4 will need.
+
+2. **Money composition rule (LOCKED):**
+   - `settlement_application` = held funds applied to penalties/charges
+   - `refund` = held funds returned to the customer
+   - `forfeiture` = policy-driven TOTAL seizure (no-show) — never line-item
+     deductions
+   - NEGATIVE settlements (penalty > held): the shortfall is an ADDITIONAL
+     COLLECTION (customer pays in), slip-evidenced like any payment; requires
+     a collection-side event type on the held-balance ledger.
+   - DB/RPC-enforced invariant per settled booking:
+     held + additional collection = settlement_application + refund + forfeiture
+     (full release, no residue).
+
+3. **Staff UI must be simple:** the return screen COMPUTES everything and shows
+   ONE instruction — "REFUND ฿X to customer" / "COLLECT ฿Y from customer" /
+   EVEN. Staff enter only damage penalties (amount + note each), optional
+   special discount (+ mandatory note), signatures, slip. No manual arithmetic
+   anywhere.
+
+4. **One refund-evidence standard:** the existing assertRefundProof chain,
+   extended to §b's full requirements (bank account + slip). Slip capture
+   reuses the existing upload/capture surface — never a parallel new one.
+
+5. **No-show auto-mark:** pg_cron → SECURITY DEFINER RPC (sibling discipline:
+   self-guarded, row-locked, decision-recorded), 00:00 Asia/Bangkok
+   day-after-start per §b — the system's first scheduled job. SYSTEM ACTOR
+   (ratified 2026-07-15): dedicated auth user system@hopnic.internal created
+   per environment via Auth Admin API — platform_role='customer' (schema
+   forbids NULL; 'customer' grants zero admin surface), UNCONFIRMED and
+   BANNED (never-login proven: password grant returns user_banned), random
+   password discarded, id persisted in system_configs.system_actor. The
+   no-show RPC must FAIL LOUDLY if the config row is absent — never fall
+   back to a human id or NULL. Auto-forfeiture writes BOTH the held-balance forfeiture
+   event AND the disposition event via the same chain as manual no-show.
+
+6. **No backfill:** clean-slate go-forward. Local orphaned held-balance
+   fixtures are dev data; the remote ledger is empty (2026-07-15 cleanup).
+
+7. **Legacy deposit_refund_* columns are security-deposit-scoped.** As of T2
+   they are authoritative ONLY for bookings without a settlement row (pre-T2 /
+   POS v1); for settled bookings the settlement row + held-balance ledger are
+   the sole money truth, and all reports/exports must read settlement-first
+   (accounting-export fixed accordingly in this checkpoint).
+
+8. **Timezone (owner addendum, 2026-07-19):** business timezone is
+   Asia/Bangkok, HARD-CODED as the policy zone in the no-show RPC
+   (00:00 Bangkok = 17:00 UTC; Thailand has no DST so the offset is
+   constant). The "day after rental start" boundary derives explicitly via
+   AT TIME ZONE 'Asia/Bangkok' — never server/client local time, never
+   UTC-truncated now(). Boundary tests construct timestamps with explicit
+   zone arithmetic (dev machines are NOT in Bangkok; currently UTC+4).

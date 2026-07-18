@@ -1423,3 +1423,17 @@ Next: commit per audit; then T1b. Local DB state: migrations 120–124 applied; 
 Note: local test-account passwords were reset this session (session-notes only, not recorded in docs).
 
 Remote state (2026-07-15, after owner-ruled cleanup): remote project yzjczvzwmbbeyoodrjwm is CLEAN of test data (856 rows / 41 tables / 13 storage objects deleted, audit: docs/audit/2026-07-15-remote-cleanup-and-migration-sync.md); schema at migration 124 = local parity, zero drift; both append-only guards (086 held-balance, 109 KYC access log) verified live via bite-probes after the gated lifts; DB password rotated by owner.
+
+## Claude Code → (next session) / 2026-07-19
+Task: T2 Phase 1 — return settlement (Flow 1) + no-show manual/auto (Flow 2). L1/B9 CLOSED.
+Status: done locally, NOT committed (package in audit). Suite 2698/2698.
+REMOTE-APPLY PRECONDITIONS (do NOT forget, gated separately after push):
+  1. Create SYSTEM ACTOR on remote FIRST: Auth Admin API — system@hopnic.internal, email_confirm false, ban_duration 876000h, random discarded password; then system_configs key 'system_actor' = {"user_id": "<new uuid>"}; platform_role stays 'customer'.
+  2. pg_cron must be enabled on the remote project (mig 126 does CREATE EXTENSION IF NOT EXISTS).
+  3. Then db push --linked (125, 126) + the standard post-apply probes (function/cron-count/boundary/negative-actor).
+WARNING — local booking state is TIME-MUTABLE from now on: local pg_cron runs the no-show job nightly (17:00 UTC = 00:00 Bangkok); ANY confirmed booking whose start date passes will flip to no_show automatically. Future sessions must expect this.
+Local dev residue (append-only/FK-pinned, intentional):
+  - Flow-2 fixtures fa/fb/fc/fd…000000… — all terminal no_show, full chains, residue 0. Bookings pinned by non-deletable ledger rows (086 guard).
+  - d4dbc706 + b4aefb41 returned with settlements 81a5d86c (REFUND) / 77f2c6d7 (COLLECT); 1abb5868 no_show (manual pair walk).
+  - Pre-T2 legacy bookings with non-zero held residue (aaaa/bbbb/dddd-…119, 6666/7777-…500, e44b1fc4, 681f7610) — §b addendum item 6 no-backfill; NOTE: 681f7610 is status confirmed with a FUTURE start (Sep 4) and WILL be auto-marked by the local cron after that date passes.
+  - Local cron job 'rental-no-show-auto-mark' is LIVE locally (fires 17:00 UTC daily).

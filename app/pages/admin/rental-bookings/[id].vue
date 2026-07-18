@@ -37,6 +37,7 @@ const route = useRoute();
 const toast = useToast();
 const bookingId = computed(() => String(route.params.id ?? ""));
 
+
 const booking = ref<AdminRentalBookingDetail | null>(null);
 const ops = ref<AdminBookingOpsPayload | null>(null);
 const loading = ref(false);
@@ -69,6 +70,11 @@ async function loadOps(): Promise<void> {
       color: "error",
     });
   }
+}
+
+// T2: reload detail after a return settlement completes.
+async function onSettled() {
+  await load();
 }
 
 async function load(): Promise<void> {
@@ -759,6 +765,12 @@ async function issueMissingNoShowDocuments(): Promise<void> {
           />
         </div>
       </UCard>
+
+      <AdminRentalReturnSettlement
+        v-if="booking.status === 'picked_up'"
+        :booking-id="bookingId"
+        @settled="void onSettled()"
+      />
 
       <UCard v-if="booking.status === 'no_show'">
         <template #header>

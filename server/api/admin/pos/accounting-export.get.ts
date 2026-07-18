@@ -27,6 +27,8 @@ const CSV_HEADERS = [
   "Payment Method",
   "Refund Status",
   "Refund Amount",
+  "Additional Collection",
+  "Settlement Ref",
 ];
 
 function asText(value: unknown): string {
@@ -138,13 +140,53 @@ export default defineEventHandler(async (event) => {
         asText(order.pos_payment_method),
         "",
         "0.00",
+        "0.00",
+        "",
       ]);
     }
   }
 
-  for (const rental of (rentalsResult.data ?? []) as Row[]) {
+  // T2 settlement-first read (decisions.md §b addendum): for settled
+  // bookings the settlement row is the money truth; legacy deposit_refund_*
+  // stays authoritative ONLY for bookings without a settlement (pre-T2 /
+  // POS v1 flows, where those columns are accurate).
+  const rentalRows = (rentalsResult.data ?? []) as Row[];
+  const settlementsByBooking = new Map<string, Row>();
+  if (rentalRows.length > 0) {
+    const { data: settlementRows, error: settlementError } = await adminClient
+      .from("rental_booking_settlements")
+      .select(
+        "id, booking_id, refund_amount, additional_collection_amount, settlement_applied_amount",
+      )
+      .in(
+        "booking_id",
+        rentalRows.map((r) => asText(r.id)).filter(Boolean),
+      );
+    if (settlementError) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: settlementError.message,
+      });
+    }
+    for (const row of (settlementRows ?? []) as Row[]) {
+      settlementsByBooking.set(asText(row.booking_id), row);
+    }
+  }
+
+  for (const rental of rentalRows) {
     const total =
       money(rental.checkout_total_amount) || money(rental.rental_total);
+    const settlement = settlementsByBooking.get(asText(rental.id)) ?? null;
+    const refundStatus = settlement
+      ? money(settlement.refund_amount) > 0
+        ? "refunded"
+        : money(settlement.additional_collection_amount) > 0
+          ? "collected_additional"
+          : "settled_even"
+      : asText(rental.deposit_refund_status);
+    const refundAmount = settlement
+      ? money(settlement.refund_amount)
+      : money(rental.deposit_refund_amount);
     lines.push([
       asText(rental.created_at).slice(0, 10),
       asText(rental.pos_branch_name) || asText(rental.pos_branch_code),
@@ -162,8 +204,12 @@ export default defineEventHandler(async (event) => {
         2,
       ),
       asText(rental.checkout_payment_method || rental.deposit_payment_method),
-      asText(rental.deposit_refund_status),
-      money(rental.deposit_refund_amount).toFixed(2),
+      refundStatus,
+      refundAmount.toFixed(2),
+      settlement
+        ? money(settlement.additional_collection_amount).toFixed(2)
+        : "0.00",
+      settlement ? asText(settlement.id) : "",
     ]);
   }
 

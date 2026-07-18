@@ -575,3 +575,20 @@ Read-only audits only. No files changed. No migrations. No commits.
 
 ### Blocked 🚫
 - (none — B6 gate cleared)
+
+---
+
+## Session 2026-07-19 — T2 Phase 1 complete: return-settlement + no-show auto-mark
+
+### Done ✅
+- **Flow 1 (return + settlement, closes L1/B9):** migration 125 (rental_booking_settlements table — append-only, 18 constraints incl. locked composition/invariant CHECKs, GENERATED penalty_total via fail-loud f_penalty_lines_total; event_type widened with settlement_additional_collection; f_settle_rental_booking_return RPC = writer authority, ledger-derived held, invariant re-asserted). Wrapper rental-return-settlement.ts: prerequisites probe BEFORE money moves → RPC → legacy proof bridge → UNCHANGED completeRentalBookingFulfillment (scoped refund mapping capped at deposit_paid_amount, §b addendum item 7); crash-safe resume (intent-match, 409 on drift, audited). Return-settlement GET/POST endpoints, settlement panel on the booking page (single-instruction UI per §b item 3), accounting-export settlement-first with two-era + COLLECT tests. Live: REFUND branch (resume walk) + COLLECT branch (fresh e2e) both to `returned`, residues 0, T1a pickup re-proven twice.
+- **Flow 2 (no-show, manual + auto):** manual path now writes the held-balance forfeiture (full ledger release, idempotent). Migration 126: f_rental_no_show_boundary_passed (Asia/Bangkok boundary predicate) + f_auto_mark_rental_no_shows (SECURITY DEFINER, per-booking subtransactions, system-actor fail-loud, unique_violation → concurrent_manual_mark) + pg_cron `0 17 * * *` (= 00:00 Bangkok, no Thai DST). Probes: double-apply cron count 1, boundary ±1min both sides, negative system-actor. One run evidenced marked/poisoned/skipped simultaneously; system actor on every actor field.
+- **System actor (local):** system@hopnic.internal db513e7e… banned+unconfirmed (login fails user_banned), role customer (ratified), system_configs.system_actor.
+- decisions.md §b addendum items 1–8 ratified/recorded. Suite 2698/2698 · tsc clean · migrations 125–126 LOCAL ONLY.
+
+### Next 📋
+- Commit review (package submitted) → push → REMOTE APPLY (gated): migrations 125–126 + remote system actor + pg_cron precondition.
+- T3+T4 design pass (unified void/cancel + document foundation) — T2 unblocks T3's settlement dependency.
+
+### Blocked 🚫
+- (none)

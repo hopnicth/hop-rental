@@ -6645,6 +6645,91 @@ export type Database = {
           },
         ]
       }
+      rental_booking_settlements: {
+        Row: {
+          additional_collection_amount: number
+          booking_id: string
+          branch_id: string | null
+          created_at: string
+          created_by_user_id: string | null
+          currency_code: string
+          customer_signature_path: string
+          held_total: number
+          id: string
+          penalty_lines: Json
+          penalty_total: number | null
+          refund_amount: number
+          refund_bank_account_ref: string | null
+          settlement_applied_amount: number
+          slip_evidence_ref: string | null
+          special_discount_amount: number
+          special_discount_note: string | null
+          staff_signature_path: string
+        }
+        Insert: {
+          additional_collection_amount?: number
+          booking_id: string
+          branch_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          currency_code?: string
+          customer_signature_path: string
+          held_total: number
+          id?: string
+          penalty_lines?: Json
+          penalty_total?: number | null
+          refund_amount: number
+          refund_bank_account_ref?: string | null
+          settlement_applied_amount: number
+          slip_evidence_ref?: string | null
+          special_discount_amount?: number
+          special_discount_note?: string | null
+          staff_signature_path: string
+        }
+        Update: {
+          additional_collection_amount?: number
+          booking_id?: string
+          branch_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          currency_code?: string
+          customer_signature_path?: string
+          held_total?: number
+          id?: string
+          penalty_lines?: Json
+          penalty_total?: number | null
+          refund_amount?: number
+          refund_bank_account_ref?: string | null
+          settlement_applied_amount?: number
+          slip_evidence_ref?: string | null
+          special_discount_amount?: number
+          special_discount_note?: string | null
+          staff_signature_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_booking_settlements_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: true
+            referencedRelation: "rental_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_booking_settlements_branch_id_fkey"
+            columns: ["branch_id"]
+            isOneToOne: false
+            referencedRelation: "store_branches"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_booking_settlements_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rental_bookings: {
         Row: {
           asset_code: string | null
@@ -7743,6 +7828,7 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: boolean
       }
+      f_auto_mark_rental_no_shows: { Args: never; Returns: Json }
       f_cancel_customer_rental_booking_refund_request: {
         Args: {
           p_booking_id: string
@@ -7811,6 +7897,26 @@ export type Database = {
           p_prefix: string
         }
         Returns: string
+      }
+      f_penalty_lines_total: { Args: { p_lines: Json }; Returns: number }
+      f_rental_no_show_boundary_passed: {
+        Args: { p_at: string; p_start: string }
+        Returns: boolean
+      }
+      f_settle_rental_booking_return: {
+        Args: {
+          p_booking_id: string
+          p_branch_id?: string
+          p_customer_signature_path: string
+          p_penalty_lines: Json
+          p_refund_bank_account_ref: string
+          p_slip_evidence_ref: string
+          p_special_discount_amount: number
+          p_special_discount_note: string
+          p_staff_signature_path: string
+          p_staff_user_id: string
+        }
+        Returns: Json
       }
       filter_resync_main_category: {
         Args: { p_main_category: string }

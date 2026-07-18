@@ -1,4 +1,6 @@
 import { createError } from "h3";
+import { recordRentalHeldBalanceEvent } from "~~/server/utils/rental-held-balance-events";
+import { buildRentalHeldBalanceSummary } from "~~/server/utils/rental-held-balance-summary";
 import type { AdminRentalBookingDetail } from "~~/app/types/admin-order-detail";
 import {
   ADMIN_RENTAL_BOOKING_DETAIL_SELECT,
@@ -194,6 +196,46 @@ async function createNoShowForfeitureChain(input: {
     .insert(dispositionPayload)
     .select("*")
     .maybeSingle();
+
+  // T2 (§b addendum item 2): forfeiture = policy-driven TOTAL seizure. The
+  // held-balance ledger releases its FULL current balance (ledger-derived —
+  // never the legacy columns), closing the Phase-0 gap where manual no-show
+  // wrote the disposition event but left the ledger un-released. Idempotent
+  // on the no-show event id. Skipped when the ledger holds nothing (legacy
+  // bookings with no canonical events).
+  {
+    const { data: ledgerEvents, error: ledgerError } = await input.adminClient
+      .from("rental_held_balance_events")
+      .select("rental_booking_id, event_type, amount, currency_code, status")
+      .eq("rental_booking_id", input.bookingId);
+    if (ledgerError) {
+      throw createError({ statusCode: 500, statusMessage: ledgerError.message });
+    }
+    const heldSummary = buildRentalHeldBalanceSummary({
+      rentalBookingId: input.bookingId,
+      events: (ledgerEvents ?? []) as Row[],
+    });
+    const heldTotal = heldSummary.currentHeldBalanceAvailableAmount;
+    if (heldTotal > 0) {
+      await recordRentalHeldBalanceEvent({
+        client: input.adminClient,
+        rentalBookingId: input.bookingId,
+        eventType: "forfeiture",
+        amount: heldTotal,
+        currencyCode: currencyCode,
+        sourceType: "no_show_forfeiture",
+        sourceId: input.eventId,
+        staffUserId: input.adminUserId,
+        idempotencyKey: `no-show-forfeiture-${input.eventId}`,
+        metadata: {
+          noShowEventId: input.eventId,
+          dispositionForfeitedAmount: forfeitedAmount,
+          ledgerHeldTotalAtForfeiture: heldTotal,
+          policyVersion: NO_SHOW_FORFEITURE_POLICY_VERSION,
+        },
+      });
+    }
+  }
   if (dispositionError && !isUniqueViolation(dispositionError)) {
     throw createError({
       statusCode: 500,

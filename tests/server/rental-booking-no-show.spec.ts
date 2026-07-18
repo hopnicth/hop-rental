@@ -816,3 +816,74 @@ describe("rental booking no-show lifecycle", () => {
     expect(source).toContain('v-else-if="canCancel"');
   });
 });
+
+// ── T2: manual no-show writes the held-balance FORFEITURE event ───────────────
+
+describe("no-show held-balance forfeiture (T2, §b addendum item 2)", () => {
+  it("writes a ledger forfeiture for the FULL held total (ledger-derived), idempotent on the no-show event id", async () => {
+    const db: any = {
+      rental_bookings: [baseBooking()],
+      rental_booking_no_show_events: [] as Row[],
+      rental_booking_deposit_disposition_events: [] as Row[],
+      financial_recognition_events: [] as Row[],
+      rental_held_balance_events: [
+        {
+          rental_booking_id: "booking-1",
+          event_type: "booking_deposit_collection",
+          amount: 200,
+          currency_code: "THB",
+          status: "posted",
+        },
+      ],
+      official_documents: [] as Row[],
+      document_events: [] as Row[],
+      system_configs: [] as Row[],
+      branch_document_settings: [] as Row[],
+      users: [{ id: "user-1", full_name: "Customer One" }],
+      payment_refunds: [] as Row[],
+    };
+    await markRentalBookingNoShow({
+      adminClient: client(db),
+      bookingId: "booking-1",
+      adminUserId: "staff-1",
+      reason: "customer did not arrive",
+      now: new Date("2026-06-12T00:00:00.000Z"),
+    });
+    const forfeitures = db.rental_held_balance_events.filter(
+      (e: Row) => e.event_type === "forfeiture",
+    );
+    expect(forfeitures).toHaveLength(1);
+    expect(forfeitures[0]).toMatchObject({
+      amount: 200,
+      source_type: "no_show_forfeiture",
+      status: "posted",
+    });
+    expect(String(forfeitures[0].idempotency_key)).toMatch(/^no-show-forfeiture-/);
+  });
+
+  it("skips the ledger event when nothing is held (legacy booking, empty ledger)", async () => {
+    const db: any = {
+      rental_bookings: [baseBooking()],
+      rental_booking_no_show_events: [] as Row[],
+      rental_booking_deposit_disposition_events: [] as Row[],
+      financial_recognition_events: [] as Row[],
+      rental_held_balance_events: [] as Row[],
+      official_documents: [] as Row[],
+      document_events: [] as Row[],
+      system_configs: [] as Row[],
+      branch_document_settings: [] as Row[],
+      users: [{ id: "user-1", full_name: "Customer One" }],
+      payment_refunds: [] as Row[],
+    };
+    await markRentalBookingNoShow({
+      adminClient: client(db),
+      bookingId: "booking-1",
+      adminUserId: "staff-1",
+      reason: "no ledger",
+      now: new Date("2026-06-12T00:00:00.000Z"),
+    });
+    expect(
+      db.rental_held_balance_events.filter((e: Row) => e.event_type === "forfeiture"),
+    ).toHaveLength(0);
+  });
+});

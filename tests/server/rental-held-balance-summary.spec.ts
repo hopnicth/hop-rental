@@ -227,3 +227,37 @@ describe("rental held-balance summary", () => {
     expect(summary.state.warnings).toHaveLength(0);
   });
 });
+
+// ── T2 mig-125: settlement_additional_collection classification ──────────────
+
+describe("settlement_additional_collection (T2)", () => {
+  it("classifies as a COLLECTION with its own accumulator, included in the total", () => {
+    const summary = buildRentalHeldBalanceSummary({
+      rentalBookingId: "booking-1",
+      events: [
+        event("booking_deposit_collection", 200),
+        event("settlement_additional_collection", 300),
+      ],
+    });
+    expect(summary.collections.settlementAdditionalCollectedAmount).toBe(300);
+    expect(summary.collections.totalHeldBalanceCollectedAmount).toBe(500);
+    expect(
+      summary.state.warnings.some(
+        (w) => w.code === "HELD_BALANCE_UNSUPPORTED_EVENT_TYPE",
+      ),
+    ).toBe(false);
+  });
+
+  it("full-release replay nets to zero: collections equal reductions after settlement", () => {
+    const summary = buildRentalHeldBalanceSummary({
+      rentalBookingId: "booking-1",
+      events: [
+        event("booking_deposit_collection", 200),
+        event("remaining_security_deposit_collection", 1800),
+        event("settlement_additional_collection", 500),
+        event("settlement_application", 2500),
+      ],
+    });
+    expect(summary.currentHeldBalanceAvailableAmount).toBe(0);
+  });
+});
