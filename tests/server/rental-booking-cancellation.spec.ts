@@ -98,8 +98,8 @@ class Chain {
       if (insertError) return { data: [], error: insertError };
       const row = {
         id: `${this.table}-${this.db[this.table].length + 1}`,
-        created_at: "2026-06-07T16:00:00.000Z",
-        updated_at: "2026-06-07T16:00:00.000Z",
+        created_at: "2026-06-02T16:00:00.000Z",
+        updated_at: "2026-06-02T16:00:00.000Z",
         print_count: 0,
         last_printed_at: null,
         ...this.payload,
@@ -207,7 +207,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: validBody,
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
     });
     expect(result).toMatchObject({
       ok: true,
@@ -221,7 +221,7 @@ describe("customer rental booking cancellation", () => {
     expect(db.rental_booking_cancellation_events[0]).toMatchObject({
       refund_eligible: true,
       qualifies_for_restriction: true,
-      refund_cutoff_date_snapshot: "2026-06-07",
+      refund_cutoff_date_snapshot: "2026-06-03",
     });
     expect(db.payment_refunds[0]).toMatchObject({
       status: "pending_admin_review",
@@ -292,7 +292,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: validBody,
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
     });
     expect(db.payment_refunds[0]).toMatchObject({
       original_payment_source_type: "mixed_payment_allocation",
@@ -354,7 +354,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: validBody,
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
     });
     expect(db.payment_refunds[0]).toMatchObject({
       status: "pending_admin_review",
@@ -374,7 +374,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: validBody,
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
     });
     expect(result.restriction).toMatchObject({
       status: "restricted",
@@ -394,7 +394,7 @@ describe("customer rental booking cancellation", () => {
         bookingId: "booking-1",
         userId: "user-1",
         body: validBody,
-        now: new Date("2026-06-07T17:00:00.000Z"),
+        now: new Date("2026-06-03T17:00:00.000Z"),
       }),
     ).rejects.toMatchObject({
       statusMessage: "CANCELLATION_REFUND_CUTOFF_PASSED",
@@ -424,7 +424,7 @@ describe("customer rental booking cancellation", () => {
           bookingId: "booking-1",
           userId: "user-1",
           body: validBody,
-          now: new Date("2026-06-07T16:00:00.000Z"),
+          now: new Date("2026-06-02T16:00:00.000Z"),
         }),
       ).rejects.toMatchObject({ statusMessage: message });
     },
@@ -437,7 +437,7 @@ describe("customer rental booking cancellation", () => {
         bookingId: "booking-1",
         userId: "user-2",
         body: validBody,
-        now: new Date("2026-06-07T16:00:00.000Z"),
+        now: new Date("2026-06-02T16:00:00.000Z"),
       }),
     ).rejects.toMatchObject({ statusMessage: "BOOKING_ACCESS_DENIED" });
   });
@@ -448,7 +448,7 @@ describe("customer rental booking cancellation", () => {
         booking({
           status: "cancelled",
           cancellation_source_event_id: "event-1",
-          cancelled_at: "2026-06-07T16:00:00.000Z",
+          cancelled_at: "2026-06-02T16:00:00.000Z",
         }),
       ],
       rental_booking_cancellation_events: [
@@ -458,11 +458,11 @@ describe("customer rental booking cancellation", () => {
           user_id: "user-1",
           cancellation_initiator: "customer",
           cancellation_source: "customer_web",
-          cancelled_at: "2026-06-07T16:00:00.000Z",
+          cancelled_at: "2026-06-02T16:00:00.000Z",
           pickup_date_snapshot: "2026-06-10",
-          cancellation_local_date_snapshot: "2026-06-07",
-          refund_cutoff_date_snapshot: "2026-06-07",
-          refund_policy_version: "booking_deposit_refund_calendar_day_v1",
+          cancellation_local_date_snapshot: "2026-06-02",
+          refund_cutoff_date_snapshot: "2026-06-03",
+          refund_policy_version: "booking_deposit_refund_calendar_day_v2",
           refund_timezone: "Asia/Bangkok",
           refund_eligible: true,
           refund_amount_due: 200,
@@ -485,7 +485,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: {},
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
     });
     expect(result).toMatchObject({
       ok: true,
@@ -511,7 +511,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: validBody,
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
     });
     expect(result).toMatchObject({
       ok: true,
@@ -540,9 +540,9 @@ describe("customer rental booking cancellation", () => {
               cancellationEvent: {
                 id: "event-rpc-1",
                 booking_id: "booking-1",
-                cancelled_at: "2026-06-07T16:00:00.000Z",
+                cancelled_at: "2026-06-02T16:00:00.000Z",
                 pickup_date_snapshot: "2026-06-10",
-                refund_cutoff_date_snapshot: "2026-06-07",
+                refund_cutoff_date_snapshot: "2026-06-03",
                 refund_eligible: true,
                 refund_amount_due: 200,
               },
@@ -565,7 +565,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: validBody,
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
       preferTransactionalRpc: true,
     });
     expect(rpcNames).toContain(
@@ -588,11 +588,11 @@ describe("customer rental booking cancellation", () => {
           user_id: "user-1",
           cancellation_initiator: "customer",
           cancellation_source: "customer_web",
-          cancelled_at: "2026-06-07T16:00:00.000Z",
+          cancelled_at: "2026-06-02T16:00:00.000Z",
           pickup_date_snapshot: "2026-06-10",
-          cancellation_local_date_snapshot: "2026-06-07",
-          refund_cutoff_date_snapshot: "2026-06-07",
-          refund_policy_version: "booking_deposit_refund_calendar_day_v1",
+          cancellation_local_date_snapshot: "2026-06-02",
+          refund_cutoff_date_snapshot: "2026-06-03",
+          refund_policy_version: "booking_deposit_refund_calendar_day_v2",
           refund_timezone: "Asia/Bangkok",
           refund_eligible: true,
           refund_amount_due: 200,
@@ -627,7 +627,7 @@ describe("customer rental booking cancellation", () => {
       bookingId: "booking-1",
       userId: "user-1",
       body: validBody,
-      now: new Date("2026-06-07T16:00:00.000Z"),
+      now: new Date("2026-06-02T16:00:00.000Z"),
       preferTransactionalRpc: true,
     });
     expect(result).toMatchObject({
@@ -654,7 +654,7 @@ describe("customer rental booking cancellation", () => {
         bookingId: "booking-1",
         userId: "user-1",
         body: validBody,
-        now: new Date("2026-06-07T16:00:00.000Z"),
+        now: new Date("2026-06-02T16:00:00.000Z"),
         preferTransactionalRpc: true,
       }),
     ).rejects.toMatchObject({
@@ -725,7 +725,7 @@ describe("customer rental booking cancellation", () => {
         bookingId: "booking-1",
         userId: "user-1",
         body: validBody,
-        now: new Date("2026-06-07T16:00:00.000Z"),
+        now: new Date("2026-06-02T16:00:00.000Z"),
       }),
     ).rejects.toMatchObject({
       statusMessage: "ORIGINAL_PAYMENT_SOURCE_NOT_RESOLVED",
@@ -759,7 +759,7 @@ describe("customer rental booking cancellation", () => {
         bookingId: "booking-1",
         userId: "user-1",
         body: validBody,
-        now: new Date("2026-06-07T16:00:00.000Z"),
+        now: new Date("2026-06-02T16:00:00.000Z"),
       }),
     ).rejects.toMatchObject({
       statusMessage: "ORIGINAL_PAYMENT_SOURCE_NOT_RESOLVED",
@@ -807,7 +807,7 @@ describe("customer rental booking cancellation", () => {
         bookingId: "booking-1",
         userId: "user-1",
         body: validBody,
-        now: new Date("2026-06-07T16:00:00.000Z"),
+        now: new Date("2026-06-02T16:00:00.000Z"),
       }),
     ).rejects.toMatchObject({
       statusMessage: "ORIGINAL_PAYMENT_SOURCE_NOT_RESOLVED",
@@ -855,7 +855,7 @@ describe("customer rental booking cancellation", () => {
         bookingId: "booking-1",
         userId: "user-1",
         body: validBody,
-        now: new Date("2026-06-07T16:00:00.000Z"),
+        now: new Date("2026-06-02T16:00:00.000Z"),
       }),
     ).rejects.toMatchObject({
       statusMessage: "ORIGINAL_PAYMENT_SOURCE_NOT_RESOLVED",

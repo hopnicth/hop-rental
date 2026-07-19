@@ -75,10 +75,16 @@ export default defineEventHandler(
     const isSuperAdmin = platformRole === "super_admin";
 
     if (body.status !== undefined) {
-      if (body.status === "cancelled" && !isSuperAdmin) {
+      if (body.status === "cancelled") {
+        // T3 walk 4: the raw cancel flip is RETIRED. Cancellation is a money
+        // operation (refund record + stock restore + request closure) and
+        // must go through POST /api/admin/orders/:id/cancel — the mig-128
+        // RPC path with §F decision logging. Two live cancel paths may not
+        // coexist.
         throw createError({
-          statusCode: 403,
-          statusMessage: "Super admin access required to cancel orders",
+          statusCode: 409,
+          statusMessage:
+            "SALE_ORDER_CANCEL_MOVED: use POST /api/admin/orders/:id/cancel",
         });
       }
       validateTransition(
@@ -90,6 +96,16 @@ export default defineEventHandler(
       update.status = body.status;
     }
     if (body.paymentStatus !== undefined) {
+      if (body.paymentStatus === "refunded" || body.paymentStatus === "cancelled") {
+        // Money-truth payment states are RPC-owned (mig 128): refunds settle
+        // via POST /api/admin/orders/refunds/:id/settle; cancellation via
+        // POST /api/admin/orders/:id/cancel. Raw path closed (CHiP ruling).
+        throw createError({
+          statusCode: 409,
+          statusMessage:
+            "SALE_ORDER_PAYMENT_STATUS_MOVED: money-truth transitions go through the cancel/settle RPC endpoints",
+        });
+      }
       if (!isSuperAdmin) {
         throw createError({
           statusCode: 403,

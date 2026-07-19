@@ -12,15 +12,19 @@ export const ORDER_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   cancelled: [],
 };
 
+// T3 walk 4/5 (CHiP ruling 2026-07-19): 'refunded' and 'cancelled' are
+// MONEY-TRUTH states owned by the mig-128 RPC path (cancel + refund settle)
+// — they are subtracted from the generic transition table and must never be
+// reachable via the raw PATCH again.
 export const ORDER_PAYMENT_STATUS_TRANSITIONS: Record<
   OrderPaymentStatus,
   OrderPaymentStatus[]
 > = {
   not_applicable: [],
-  pending_review: ["paid", "awaiting_payment", "cancelled", "refunded"],
-  awaiting_payment: ["paid", "pending_review", "cancelled"],
-  paid: ["refunded", "cancelled"],
-  deferred: ["paid", "cancelled"],
+  pending_review: ["paid", "awaiting_payment"],
+  awaiting_payment: ["paid", "pending_review"],
+  paid: [],
+  deferred: ["paid"],
   refunded: [],
   cancelled: [],
 };

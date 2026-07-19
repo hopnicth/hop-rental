@@ -1,5 +1,42 @@
 # Handoff Log
 
+## Claude Code → Claude Code / 2026-07-19 (T3+T4-core Phase 1 COMPLETE — 8 walks + HTTP walk closed; NOT committed, NOT pushed, remote NOT touched)
+
+Task: T3 unified cancel + T4-core (blueprint docs/design/2026-07-19-t3-t4-unified-cancel-and-documents.md @ 18e3cdd), executed as gated migrations 127-132 + 8 flow walks + the HTTP-debt walk. All checkpoints CHiP-accepted. Suite 136 files / 2744 green; tsc clean.
+
+**Status: DONE locally — awaiting closing-package audit → per-file staged commit (owner "go") → later remote apply.**
+
+### REMOTE-APPLY PRECONDITIONS (when that gate comes — read before `db push`)
+1. **`--include-all` REQUIRED**: 128 and 131 were created after 129/130/132 chronologically; remote `supabase migration list` will show them as out-of-order pending. Verify the dry-run lists EXACTLY 127,128,129,130,131,132 and nothing else.
+2. Remote already has the system actor + `system_configs.system_actor` (T2 apply, 2026-07-19) — mig 126's cron needs it; nothing new required for 127-132.
+3. After push: regenerate `database.types.ts` with `--linked` (new tables: sale_order_refunds, money_ops_decision_logs; new orders column inventory_restored_at; RPCs).
+4. The 127 disposition-CHECK resolver drops constraints by pg_constraint definition-match (auto-names are 63-char truncated) — it fails loudly on 0/≠1 matches; if remote drifted, STOP and report.
+5. Suite + walks were LOCAL-ONLY; no remote smoke has been designed yet for T3 — propose one at the remote gate.
+
+### LOCAL RESIDUE INVENTORY (immutable-by-design rows; wiped by any `db reset --local`)
+- `money_ops_decision_logs`: 1 `walk2_probe` denied row (132 append-only probe) + 2 pre-fix denied rows (`order_not_cancellable` on order a4a4…0001; `booking_not_cancellable` on booking a6a6…0002) — all self-labeling.
+- `official_documents`: 1 draft probe doc (`test_draft_doc`) — undeletable by the 131 guard, by design.
+- Walk fixtures (users 1111/2222/9999, assets W8*/W9 etc., bookings/orders/refunds/documents BDR-202607-0001..0004) — dev data per §b addendum item 6.
+
+### FIXTURE KNOWLEDGE (auth seeding for local HTTP walks)
+Raw-SQL-inserted `auth.users` rows break GoTrue (`Database error finding user`) because token columns default NULL. Fix before minting sessions:
+`UPDATE auth.users SET confirmation_token='', recovery_token='', email_change_token_new='', email_change='', email_change_token_current='', phone_change='', phone_change_token='', reauthentication_token='' WHERE ...`
+Then: admin `generateLink` (magiclink) → `verifyOtp({token_hash})` → cookie `sb-127-auth-token=base64-<base64url(session JSON)>`. ALWAYS revoke after (delete `auth.sessions` + `auth.refresh_tokens` rows). Dev server: use the running `nuxt dev --dotenv .env.local` (LOCAL 54321) — never restart it, never walk against remote.
+
+### What shipped (details in progress.md 2026-07-19 section + decisions.md 2026-07-19 entry)
+- Migrations 127-132 (all gated, applied locally, chain contiguous).
+- Server: rental-cancellation-policy v2 tier; admin-refunds mark-refunded → RPC; admin-rental-booking-cancel (late-cancel + company); mixed-cancel-orchestration; admin-stuck-deposits; admin-sale-order-cancel; admin-document-void; money-ops-log; endpoints for each; raw-flip + paymentStatus closures in orders [id].patch.ts + admin-order-transitions.
+- Tests: 7 new spec files + 4 updated; suite 2744.
+- Docs: design doc (annex #7 + sub-convention), OPERATING-MODEL §3 gate rule, MASTER-GAP-MAP T3/T4 rows, BACKLOG, decisions.md, server-utils index (7 rows).
+
+### Next
+1. Closing-package audit → commit on explicit owner instruction (five-group staging; DO NOT push).
+2. Remote apply gate (preconditions above).
+3. Phase 2 (T4-rest) / T5 per the design-doc boundary; walk-1 documents leg for the cancellation notice variants remains suite-level.
+
+---
+
+
 ## Claude Code → Claude Code / 2026-06-21 (Phase A + B-0.2 audits complete — Phase B-1 ready to implement)
 
 Task: Read-only architecture audit of Partner Ecosystem UI + Category/Subcategory Readiness (Phase A) followed by Partner Taxonomy + Search Foundation deep audit (Phase B-0.2). No files changed. No migrations. No commits.

@@ -1,6 +1,6 @@
 export const RENTAL_CANCELLATION_TIME_ZONE = "Asia/Bangkok";
 export const BOOKING_DEPOSIT_REFUND_POLICY_VERSION =
-  "booking_deposit_refund_calendar_day_v1";
+  "booking_deposit_refund_calendar_day_v2";
 export const EXCESSIVE_CANCELLATION_WINDOW_MONTHS = 12;
 export const EXCESSIVE_CANCELLATION_ALLOWED_COUNT = 5;
 export const EXCESSIVE_CANCELLATION_RESTRICTION_REASON =
@@ -85,7 +85,9 @@ export function evaluateBookingDepositRefundEligibility(input: {
   const cancellationLocalDate = toBangkokLocalDate(
     input.cancellationAt ?? new Date(),
   );
-  const refundCutoffLocalDate = addDaysToLocalDate(pickupLocalDate, -3);
+  // §b ratified tier (2026-07-14): self-cancel refund requires ≥7 calendar
+  // days before pickup, Asia/Bangkok. v1 was -3; superseded by policy _v2.
+  const refundCutoffLocalDate = addDaysToLocalDate(pickupLocalDate, -7);
   return {
     eligible: cancellationLocalDate <= refundCutoffLocalDate,
     timeZone: RENTAL_CANCELLATION_TIME_ZONE,

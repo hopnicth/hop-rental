@@ -173,10 +173,62 @@ function seed(overrides: Partial<Record<string, Row[]>> = {}) {
 function client(db: Record<string, Row[]>) {
   return {
     from: (table: string) => new Chain(db, table),
-    rpc: async (_name: string, params: Row) => ({
-      data: `${params.p_prefix}-${params.p_period}-0001`,
-      error: null,
-    }),
+    rpc: async (name: string, params: Row) => {
+      if (name === "f_mark_rental_booking_refund_refunded") {
+        // Mirrors migration 130's guards: locked read → gates → flip +
+        // ledger release + cancel_refund action log in one transaction.
+        const row = db.payment_refunds.find((r) => r.id === params.p_refund_id);
+        if (!row) return { data: null, error: { message: "REFUND_NOT_FOUND" } };
+        if (row.status === "refunded")
+          return { data: { ok: true, alreadyRefunded: true }, error: null };
+        if (
+          !["pending_admin_review", "processing"].includes(String(row.status))
+        )
+          return {
+            data: null,
+            error: { message: `REFUND_TRANSITION_INVALID: ${row.status}` },
+          };
+        const proofId = params.p_refund_proof_id ?? row.refund_proof_id;
+        if (!proofId)
+          return { data: null, error: { message: "REFUND_PROOF_REQUIRED" } };
+        const proof = (db.rental_booking_deposit_proofs ?? []).find(
+          (p) => p.id === proofId,
+        );
+        if (!proof)
+          return { data: null, error: { message: "REFUND_PROOF_NOT_FOUND" } };
+        if (
+          proof.booking_id !== row.booking_id ||
+          proof.proof_kind !== "refund"
+        )
+          return { data: null, error: { message: "REFUND_PROOF_MISMATCH" } };
+        Object.assign(row, {
+          status: "refunded",
+          refunded_at: "2026-06-08T00:00:00.000Z",
+          manual_transfer_reference: params.p_manual_transfer_reference,
+          refund_proof_id: proofId,
+          processed_by_user_id: params.p_actor_user_id,
+        });
+        db.rental_booking_deposit_action_logs ??= [];
+        db.rental_booking_deposit_action_logs.push({
+          booking_id: row.booking_id,
+          action: "cancel_refund",
+          staff_user_id: params.p_actor_user_id,
+        });
+        return {
+          data: {
+            ok: true,
+            alreadyRefunded: false,
+            ledgerReleasedAmount: 200,
+            ledgerResidue: 0,
+          },
+          error: null,
+        };
+      }
+      return {
+        data: `${params.p_prefix}-${params.p_period}-0001`,
+        error: null,
+      };
+    },
   };
 }
 
@@ -390,7 +442,7 @@ describe("admin refund queue workflow", () => {
     ).toHaveLength(1);
   });
 
-  it("marks refunded without exposing refund confirmation until proof is linked", async () => {
+  it("rejects mark-refunded without proof, then succeeds with proof + cancel_refund audit row (T3 gate 130)", async () => {
     const db = seed({
       rental_booking_deposit_proofs: [
         {
@@ -408,25 +460,38 @@ describe("admin refund queue workflow", () => {
         },
       ],
     });
+    // Evidence before money: no proof (passed or linked) → 422, no writes.
+    await expect(
+      transitionAdminRefund({
+        client: client(db) as any,
+        refundId: "refund-1",
+        adminUserId: "admin-1",
+        action: "mark-refunded",
+        manualTransferReference: "TR-1",
+      }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+    expect(db.official_documents).toHaveLength(0);
+    expect(db.payment_refunds[0].status).toBe("pending_admin_review");
+
     const marked = await transitionAdminRefund({
       client: client(db) as any,
       refundId: "refund-1",
       adminUserId: "admin-1",
       action: "mark-refunded",
       manualTransferReference: "TR-1",
+      refundProofId: "proof-1",
     });
-    expect(marked.document).toBeNull();
-    expect(db.official_documents).toHaveLength(0);
-    await linkRefundProof({
-      client: client(db) as any,
-      refundId: "refund-1",
-      proofId: "proof-1",
-      adminUserId: "admin-1",
-    });
+    expect(marked.detail).toMatchObject({ status: "refunded" });
+    expect(marked.document?.alreadyIssued).toBe(false);
     expect(
       db.official_documents.filter(
         (row) =>
           row.document_type === "rental_booking_deposit_refund_confirmation",
+      ),
+    ).toHaveLength(1);
+    expect(
+      (db.rental_booking_deposit_action_logs ?? []).filter(
+        (row) => row.action === "cancel_refund",
       ),
     ).toHaveLength(1);
   });

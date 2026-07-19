@@ -500,10 +500,43 @@ export async function issueRefundConfirmationDocument(input: {
   return { document, alreadyIssued: false };
 }
 
+function mapMarkRefundedRpcError(error: {
+  message?: string;
+  code?: string;
+}): ReturnType<typeof createError> {
+  const message = String(error.message ?? "");
+  if (
+    message.startsWith("REFUND_PROOF_") ||
+    message.startsWith("MANUAL_TRANSFER_REFERENCE_REQUIRED") ||
+    message.startsWith("REFUND_ACTOR_ROLE_INVALID")
+  ) {
+    return createError({ statusCode: 422, statusMessage: message });
+  }
+  if (
+    message.startsWith("REFUND_TRANSITION_") ||
+    message.startsWith("CANCEL_REFUND_INVARIANT_VIOLATION")
+  ) {
+    return createError({ statusCode: 409, statusMessage: message });
+  }
+  if (
+    message.startsWith("REFUND_NOT_FOUND") ||
+    message.startsWith("BOOKING_NOT_FOUND")
+  ) {
+    return createError({ statusCode: 404, statusMessage: message });
+  }
+  console.error("mark-refunded RPC failed:", message);
+  return createError({
+    statusCode: 500,
+    statusMessage: "Refund transition failed",
+  });
+}
+
 export async function transitionAdminRefund(input: {
   client: AnyClient;
   refundId: string;
   adminUserId: string;
+  /** Platform role of the acting admin (from requirePlatformAdmin). */
+  actorRole?: string;
   action:
     | "start-processing"
     | "needs-customer-contact"
@@ -587,20 +620,58 @@ export async function transitionAdminRefund(input: {
         document,
       };
     }
-    Object.assign(update, {
-      status: "refunded",
-      refunded_at: now,
-      manual_transfer_reference: ref,
-    });
+    // T3 (design §A case 1, gate 130): mark-refunded money writes live in
+    // f_mark_rental_booking_refund_refunded — payment_refunds flip + FULL
+    // held-balance ledger release + residue-0 assertion + cancel_refund
+    // action-log row in ONE transaction. Evidence before money: a validated
+    // refund proof is now REQUIRED (proof-optional behavior removed,
+    // ratified at gate 130).
+    const proofId = text(input.refundProofId) || text(refund.refund_proof_id);
+    if (!proofId)
+      throw createError({
+        statusCode: 422,
+        statusMessage: "Refund proof is required before mark-refunded",
+      });
     if (text(input.refundProofId)) {
-      await assertRefundProofBelongsToRefund(
-        input.client,
-        refund,
-        text(input.refundProofId),
-      );
-      update.refund_proof_id = text(input.refundProofId);
+      await assertRefundProofBelongsToRefund(input.client, refund, proofId);
     }
+    if (typeof input.client.rpc !== "function")
+      throw createError({
+        statusCode: 500,
+        statusMessage: "Refund transition failed",
+      });
+    const { data: rpcData, error: rpcError } = await input.client.rpc(
+      "f_mark_rental_booking_refund_refunded",
+      {
+        p_refund_id: input.refundId,
+        p_actor_user_id: input.adminUserId,
+        p_actor_role: text(input.actorRole) || "staff",
+        p_manual_transfer_reference: ref,
+        p_refund_proof_id: proofId,
+        p_branch_id: null,
+      },
+    );
+    if (rpcError) throw mapMarkRefundedRpcError(rpcError);
+    void rpcData;
+    if (note) {
+      // Non-money metadata; written after the money transaction commits.
+      await input.client
+        .from("payment_refunds")
+        .update({ admin_note: note, updated_at: now })
+        .eq("id", input.refundId);
+    }
+    const document = await issueRefundConfirmationDocument({
+      client: input.client,
+      refundId: input.refundId,
+      adminUserId: input.adminUserId,
+    });
+    return {
+      detail: await getAdminRefundDetail(input.client, input.refundId),
+      document,
+    };
   }
+  // Non-money transitions (start-processing / needs-customer-contact /
+  // mark-failed) stay TS-side; mark-refunded returned above via the RPC.
   const { data, error } = await input.client
     .from("payment_refunds")
     .update(update)
@@ -615,17 +686,9 @@ export async function transitionAdminRefund(input: {
       statusCode: 409,
       statusMessage: "Invalid refund transition",
     });
-  const document =
-    input.action === "mark-refunded" && text((data as Row).refund_proof_id)
-      ? await issueRefundConfirmationDocument({
-          client: input.client,
-          refundId: input.refundId,
-          adminUserId: input.adminUserId,
-        })
-      : null;
   return {
     detail: await getAdminRefundDetail(input.client, input.refundId),
-    document,
+    document: null,
   };
 }
 

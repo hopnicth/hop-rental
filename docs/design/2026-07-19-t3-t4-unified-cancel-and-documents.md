@@ -267,6 +267,15 @@ endpoint carries a source-contract test in the kyc-download style.
    `'late_cancellation_forfeiture'`; the XOR guard `085:86-89` gains the third branch (late-cancel
    requires `cancellation_event_id` NOT NULL, `no_show_event_id` NULL); `disposition` stays
    `('forfeited')` (`085:82`); recognition vocabulary (`085:133-137`) is reused unchanged.
+7. **Lock-order convention (standing, ratified at gate 130):** every money writer touching both
+   `rental_bookings` and a money-row table locks the **booking row FIRST** (`FOR UPDATE`), then the
+   money row — the 125/126/129 order. Writers keyed on a money row (e.g. mark-refunded, keyed on
+   `payment_refunds`) read the money row unlocked to resolve `booking_id`, lock the booking, then
+   lock-and-revalidate the money row. Convention beats pairwise no-contention proofs.
+   **Order-domain sub-convention (first defined at gate 128):** sale-side money writers lock the
+   **ORDER row FIRST** (`FOR UPDATE`) → inventory rows (`sku_branch_inventory`, FIFO order — same as
+   apply) → payment-request rows. Writers keyed on a refund row (`f_settle_sale_order_refund`) use
+   the same unlocked-read → lock-order → lock-and-revalidate pattern.
 
 ## H. Phase-1 delivery plan
 

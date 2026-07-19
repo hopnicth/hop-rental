@@ -19,27 +19,30 @@ const migration081 = readFileSync(
 );
 
 describe("customer rental cancellation policy foundation", () => {
-  it("uses Bangkok calendar-day logic for the 3-day Booking Deposit refund cutoff", () => {
+  it("uses Bangkok calendar-day logic for the 7-day Booking Deposit refund cutoff (§b tier, policy v2)", () => {
     const eligible = evaluateBookingDepositRefundEligibility({
       pickupDate: "2026-06-10",
-      cancellationAt: "2026-06-07T16:59:59.000Z", // 2026-06-07 23:59:59 Bangkok
+      cancellationAt: "2026-06-03T16:59:59.000Z", // 2026-06-03 23:59:59 Bangkok
     });
     expect(eligible).toMatchObject({
       eligible: true,
       pickupLocalDate: "2026-06-10",
-      cancellationLocalDate: "2026-06-07",
-      refundCutoffLocalDate: "2026-06-07",
+      cancellationLocalDate: "2026-06-03",
+      refundCutoffLocalDate: "2026-06-03",
       policyVersion: BOOKING_DEPOSIT_REFUND_POLICY_VERSION,
     });
+    expect(BOOKING_DEPOSIT_REFUND_POLICY_VERSION).toBe(
+      "booking_deposit_refund_calendar_day_v2",
+    );
 
     const tooLate = evaluateBookingDepositRefundEligibility({
       pickupDate: "2026-06-10",
-      cancellationAt: "2026-06-07T17:00:00.000Z", // 2026-06-08 00:00:00 Bangkok
+      cancellationAt: "2026-06-03T17:00:00.000Z", // 2026-06-04 00:00:00 Bangkok
     });
     expect(tooLate).toMatchObject({
       eligible: false,
-      cancellationLocalDate: "2026-06-08",
-      refundCutoffLocalDate: "2026-06-07",
+      cancellationLocalDate: "2026-06-04",
+      refundCutoffLocalDate: "2026-06-03",
     });
   });
 

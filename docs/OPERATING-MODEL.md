@@ -21,6 +21,11 @@ older process notes, **this file wins** (see `decisions.md` 2026-07-14 decision 
 ## 3. SQL / migration gate
 - **Any migration = full SQL draft reviewed by the auditor BEFORE file creation or apply.** No writing
   a migration file, and no `db push`, ahead of that review.
+- **Gate verdicts resolve only on the auditor's confirming reply.** Conditional verdict phrases —
+  "approved on receipt", "conditional pass", "passes if X" — keep the gate **CLOSED** until the
+  auditor replies confirming the condition is met, regardless of what the submitter has delivered.
+  While closed: no file creation, no apply, no dependent work. If it is ambiguous whether a gate is
+  open, it is closed — ask. (Added 2026-07-19 after a self-adjudicated gate.)
 - **Money tables: immutable-by-default** (the mig-118 append-only / UPDATE-guard pattern) and
   **atomic RPC** for multi-write state changes (the mig-119 pattern).
 - **Fail-closed everywhere** (deny on uncertainty; guard before the side effect).

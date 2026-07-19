@@ -710,3 +710,39 @@ together (unified void/cancel + document/ERP foundation) → T5–T7` per
    AT TIME ZONE 'Asia/Bangkok' — never server/client local time, never
    UTC-truncated now(). Boundary tests construct timestamps with explicit
    zone arithmetic (dev machines are NOT in Bangkok; currently UTC+4).
+
+## 2026-07-19 — T3+T4-core Phase 1 (rulings ratified at gates/checkpoints during implementation)
+
+Context: Phase 1 of the T3+T4 blueprint (docs/design/2026-07-19-t3-t4-unified-cancel-and-documents.md
+@ 18e3cdd) implemented via the 8-walk plan + HTTP-debt walk; migrations 127-132 (LOCAL ONLY).
+The following NEW decisions were ratified by CHiP during the phase:
+
+1) Gate-verdict confirmation rule (STANDING; also in docs/OPERATING-MODEL.md §3): conditional gate
+   verdicts resolve ONLY on the auditor's confirming reply; ambiguity = closed. Added after a
+   self-adjudicated gate (violation logged, permanent track record).
+2) Lock conventions (design annex #7): money writers touching rental_bookings lock the BOOKING
+   FIRST (125/126/129 order); order-domain writers lock the ORDER FIRST → inventory → payment
+   requests; row-keyed writers do unlocked-read → lock-parent → lock-and-revalidate.
+3) Replay semantics SPLIT (ratified at walk 6): orchestration-facing cancels (sale cancel, company
+   cancel, document void) short-circuit already-terminal targets as alreadyCancelled/alreadyVoided
+   with NO decision row; late-cancel forfeit stays STRICT (409 + denied row) — forfeiting an
+   already-cancelled booking is an error, never a silent ok.
+4) Evidence-before-money tightening (gate 130): a validated refund proof is MANDATORY at
+   mark-refunded (proof-optional behavior removed); ledger release amount is RPC-derived, never
+   caller-supplied. Same discipline on sale refund settle (transfer ref + slip evidence).
+5) Raw money paths CLOSED: admin orders PATCH status='cancelled' → 409 SALE_ORDER_CANCEL_MOVED;
+   paymentStatus 'refunded'/'cancelled' subtracted from ORDER_PAYMENT_STATUS_TRANSITIONS + 409
+   SALE_ORDER_PAYMENT_STATUS_MOVED. Two live cancel paths may not coexist.
+6) Mixed post-payment bookkeeping: session flips to 'cancelled'; FINALIZED allocations are NEVER
+   voided (immutable record of money that moved); 'voided' allocations = pre-payment path only.
+7) Customer self-cancel tier: −3d → −7d calendar-day Bangkok, policy version
+   booking_deposit_refund_calendar_day_v2 (TS-side; the 082 RPC snapshots the caller-computed
+   cutoff). Staff late-cancel forfeit legal ONLY inside the <7d window (inverse guard in mig 129).
+8) Migration renumbering (§H amended): 128 sale refunds/cancel · 129 rental cancel RPCs ·
+   130 mark-refunded ledger release · 131 void/reissue · 132 money-ops decision log. Gates ride
+   walks, not numbers.
+9) §F money-ops decision log born before its first consumer; allowed rows fail-closed BEFORE the
+   side effect, denied rows best-effort; NO-PII invariant (no reason_text column). Late-cancel/
+   retry-confirm are staff-level; company cancel, sale cancel, document void are super_admin via
+   the T1a inversion (requirePlatformAdmin + explicit check, denial logged before 403).
+Impact: T3 closed (local), T4-core delivered; T4-rest + T5 unblocked per the Phase-1/2 boundary.
