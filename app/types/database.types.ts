@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
   graphql_public: {
     Tables: {
       [_ in never]: never
@@ -562,17 +567,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "asset_branch_inventory_asset_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "asset_branch_inventory_inventory_id_fkey"
+            foreignKeyName: "rental_access_branch_inventory_inventory_id_fkey"
             columns: ["inventory_id"]
             isOneToOne: false
             referencedRelation: "inventories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_access_branch_inventory_rental_access_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
         ]
@@ -616,7 +621,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "asset_checklist_template_items_template_id_fkey"
+            foreignKeyName: "rental_access_checklist_template_items_template_id_fkey"
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "asset_checklist_templates"
@@ -663,7 +668,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "asset_checklist_templates_asset_id_fkey"
+            foreignKeyName: "rental_access_checklist_templates_rental_access_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
@@ -737,14 +742,14 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "asset_documents_asset_id_fkey"
+            foreignKeyName: "rental_access_documents_rental_access_id_fkey"
             columns: ["asset_id"]
             isOneToOne: false
             referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "asset_documents_service_event_id_fkey"
+            foreignKeyName: "rental_access_documents_service_event_id_fkey"
             columns: ["service_event_id"]
             isOneToOne: false
             referencedRelation: "asset_service_events"
@@ -818,17 +823,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "asset_matches_asset_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "asset_matches_product_id_fkey"
+            foreignKeyName: "rental_access_matches_product_id_fkey"
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_access_matches_rental_access_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
         ]
@@ -884,17 +889,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "asset_service_events_asset_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "asset_service_events_performed_by_user_id_fkey"
+            foreignKeyName: "rental_access_service_events_performed_by_user_id_fkey"
             columns: ["performed_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_access_service_events_rental_access_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
         ]
@@ -1071,14 +1076,14 @@ export type Database = {
             referencedColumns: ["key"]
           },
           {
-            foreignKeyName: "assets_storage_branch_id_fkey"
+            foreignKeyName: "rental_accesses_storage_branch_id_fkey"
             columns: ["storage_branch_id"]
             isOneToOne: false
             referencedRelation: "store_branches"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "assets_storage_inventory_id_fkey"
+            foreignKeyName: "rental_accesses_storage_inventory_id_fkey"
             columns: ["storage_inventory_id"]
             isOneToOne: false
             referencedRelation: "inventories"
@@ -2327,7 +2332,7 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "home_featured_assets_asset_id_fkey"
+            foreignKeyName: "home_featured_rental_accesses_rental_access_id_fkey"
             columns: ["asset_id"]
             isOneToOne: true
             referencedRelation: "assets"
@@ -3409,6 +3414,54 @@ export type Database = {
           },
         ]
       }
+      money_ops_decision_logs: {
+        Row: {
+          actor_role: string | null
+          actor_user_id: string | null
+          amount: number | null
+          created_at: string
+          currency_code: string | null
+          decision: string
+          denial_reason: string | null
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          ip_address: unknown
+          operation: string
+          user_agent: string | null
+        }
+        Insert: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          amount?: number | null
+          created_at?: string
+          currency_code?: string | null
+          decision: string
+          denial_reason?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: unknown
+          operation: string
+          user_agent?: string | null
+        }
+        Update: {
+          actor_role?: string | null
+          actor_user_id?: string | null
+          amount?: number | null
+          created_at?: string
+          currency_code?: string | null
+          decision?: string
+          denial_reason?: string | null
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          ip_address?: unknown
+          operation?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       official_documents: {
         Row: {
           branch_id: string | null
@@ -3671,6 +3724,7 @@ export type Database = {
           grand_total: number
           id: string
           inventory_applied_at: string | null
+          inventory_restored_at: string | null
           inventory_reversed_at: string | null
           mixed_checkout_session_id: string | null
           mixed_payment_attempt_id: string | null
@@ -3715,6 +3769,7 @@ export type Database = {
           grand_total: number
           id?: string
           inventory_applied_at?: string | null
+          inventory_restored_at?: string | null
           inventory_reversed_at?: string | null
           mixed_checkout_session_id?: string | null
           mixed_payment_attempt_id?: string | null
@@ -3759,6 +3814,7 @@ export type Database = {
           grand_total?: number
           id?: string
           inventory_applied_at?: string | null
+          inventory_restored_at?: string | null
           inventory_reversed_at?: string | null
           mixed_checkout_session_id?: string | null
           mixed_payment_attempt_id?: string | null
@@ -4589,6 +4645,7 @@ export type Database = {
           refund_bank_account_number: string
           refund_bank_name: string
           refund_contact_phone: string
+          refund_method: string
           refund_proof_id: string | null
           refund_type: string
           refunded_at: string | null
@@ -4623,6 +4680,7 @@ export type Database = {
           refund_bank_account_number: string
           refund_bank_name: string
           refund_contact_phone: string
+          refund_method?: string
           refund_proof_id?: string | null
           refund_type?: string
           refunded_at?: string | null
@@ -4657,6 +4715,7 @@ export type Database = {
           refund_bank_account_number?: string
           refund_bank_name?: string
           refund_contact_phone?: string
+          refund_method?: string
           refund_proof_id?: string | null
           refund_type?: string
           refunded_at?: string | null
@@ -5645,13 +5704,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_booking_checklists_asset_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "rental_booking_checklists_booking_id_fkey"
             columns: ["booking_id"]
             isOneToOne: false
@@ -5670,6 +5722,13 @@ export type Database = {
             columns: ["performed_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_booking_checklists_rental_access_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
           {
@@ -6165,13 +6224,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_booking_documents_asset_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "rental_booking_documents_booking_checklist_id_fkey"
             columns: ["booking_checklist_id"]
             isOneToOne: false
@@ -6190,6 +6242,13 @@ export type Database = {
             columns: ["created_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_booking_documents_rental_access_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
             referencedColumns: ["id"]
           },
         ]
@@ -6973,13 +7032,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "rental_bookings_asset_id_fkey"
-            columns: ["asset_id"]
-            isOneToOne: false
-            referencedRelation: "assets"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "rental_bookings_booking_deposit_mixed_allocation_id_fkey"
             columns: ["booking_deposit_mixed_allocation_id"]
             isOneToOne: false
@@ -7069,6 +7121,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "product_skus"
             referencedColumns: ["product_id", "id"]
+          },
+          {
+            foreignKeyName: "rental_bookings_rental_access_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "rental_bookings_return_branch_id_fkey"
@@ -7228,6 +7287,116 @@ export type Database = {
           },
         ]
       }
+      sale_order_refunds: {
+        Row: {
+          created_at: string
+          created_by_user_id: string | null
+          currency_code: string
+          failed_at: string | null
+          failed_reason: string | null
+          id: string
+          manual_transfer_reference: string | null
+          metadata: Json
+          method: string
+          order_id: string
+          reason: string
+          refund_amount: number
+          refund_bank_account_name: string
+          refund_bank_account_number: string
+          refund_bank_name: string
+          refund_contact_phone: string
+          requested_at: string
+          settled_at: string | null
+          settled_by_user_id: string | null
+          slip_storage_bucket: string | null
+          slip_storage_path: string | null
+          state: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by_user_id?: string | null
+          currency_code?: string
+          failed_at?: string | null
+          failed_reason?: string | null
+          id?: string
+          manual_transfer_reference?: string | null
+          metadata?: Json
+          method?: string
+          order_id: string
+          reason: string
+          refund_amount: number
+          refund_bank_account_name: string
+          refund_bank_account_number: string
+          refund_bank_name: string
+          refund_contact_phone: string
+          requested_at?: string
+          settled_at?: string | null
+          settled_by_user_id?: string | null
+          slip_storage_bucket?: string | null
+          slip_storage_path?: string | null
+          state?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by_user_id?: string | null
+          currency_code?: string
+          failed_at?: string | null
+          failed_reason?: string | null
+          id?: string
+          manual_transfer_reference?: string | null
+          metadata?: Json
+          method?: string
+          order_id?: string
+          reason?: string
+          refund_amount?: number
+          refund_bank_account_name?: string
+          refund_bank_account_number?: string
+          refund_bank_name?: string
+          refund_contact_phone?: string
+          requested_at?: string
+          settled_at?: string | null
+          settled_by_user_id?: string | null
+          slip_storage_bucket?: string | null
+          slip_storage_path?: string | null
+          state?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sale_order_refunds_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_order_refunds_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_order_refunds_settled_by_user_id_fkey"
+            columns: ["settled_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sale_order_refunds_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_providers: {
         Row: {
           contact_email: string | null
@@ -7331,13 +7500,6 @@ export type Database = {
             columns: ["inventory_id"]
             isOneToOne: false
             referencedRelation: "inventories"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "sku_branch_inventory_new_branch_id_fkey"
-            columns: ["branch_id"]
-            isOneToOne: false
-            referencedRelation: "store_branches"
             referencedColumns: ["id"]
           },
           {
@@ -7859,6 +8021,46 @@ export type Database = {
         Returns: Json
       }
       f_cancel_pos_sale: { Args: { p_order_id: string }; Returns: Json }
+      f_cancel_rental_booking_admin: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_booking_id: string
+          p_cancellation_local_date: string
+          p_cancelled_at: string
+          p_currency_code?: string
+          p_gateway?: Database["public"]["Enums"]["payment_gateway"]
+          p_gateway_charge_id?: string
+          p_gateway_payment_reference?: string
+          p_mode: string
+          p_original_mixed_payment_allocation_id?: string
+          p_original_payment_source_type?: string
+          p_original_rental_booking_payment_attempt_id?: string
+          p_pickup_local_date: string
+          p_reason: string
+          p_refund_amount?: number
+          p_refund_bank_account_name?: string
+          p_refund_bank_account_number?: string
+          p_refund_bank_name?: string
+          p_refund_contact_phone?: string
+          p_refund_cutoff_date: string
+          p_refund_policy_version: string
+        }
+        Returns: Json
+      }
+      f_cancel_sale_order: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_order_id: string
+          p_reason: string
+          p_refund_bank_account_name?: string
+          p_refund_bank_account_number?: string
+          p_refund_bank_name?: string
+          p_refund_contact_phone?: string
+        }
+        Returns: Json
+      }
       f_confirm_rental_booking_deposit: {
         Args: {
           p_amount: number
@@ -7889,6 +8091,25 @@ export type Database = {
           version: string
         }[]
       }
+      f_mark_official_document_replaced: {
+        Args: {
+          p_actor_user_id: string
+          p_original_document_id: string
+          p_replacement_document_id: string
+        }
+        Returns: Json
+      }
+      f_mark_rental_booking_refund_refunded: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_branch_id?: string
+          p_manual_transfer_reference?: string
+          p_refund_id: string
+          p_refund_proof_id?: string
+        }
+        Returns: Json
+      }
       f_next_document_number: {
         Args: {
           p_branch_id: string
@@ -7903,6 +8124,10 @@ export type Database = {
         Args: { p_at: string; p_start: string }
         Returns: boolean
       }
+      f_restore_order_inventory: {
+        Args: { p_order_id: string }
+        Returns: boolean
+      }
       f_settle_rental_booking_return: {
         Args: {
           p_booking_id: string
@@ -7915,6 +8140,28 @@ export type Database = {
           p_special_discount_note: string
           p_staff_signature_path: string
           p_staff_user_id: string
+        }
+        Returns: Json
+      }
+      f_settle_sale_order_refund: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_failed_reason?: string
+          p_manual_transfer_reference?: string
+          p_outcome: string
+          p_refund_id: string
+          p_slip_storage_bucket?: string
+          p_slip_storage_path?: string
+        }
+        Returns: Json
+      }
+      f_void_official_document: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_document_id: string
+          p_reason: string
         }
         Returns: Json
       }
@@ -8488,4 +8735,3 @@ export const Constants = {
     },
   },
 } as const
-

@@ -4,7 +4,7 @@
 
 Task: T3 unified cancel + T4-core (blueprint docs/design/2026-07-19-t3-t4-unified-cancel-and-documents.md @ 18e3cdd), executed as gated migrations 127-132 + 8 flow walks + the HTTP-debt walk. All checkpoints CHiP-accepted. Suite 136 files / 2744 green; tsc clean.
 
-**Status: DONE locally — awaiting closing-package audit → per-file staged commit (owner "go") → later remote apply.**
+**Status: COMPLETE — committed (1ddd19c), pushed, REMOTE APPLIED 2026-07-19 (127-132 via --include-all; probes passed incl. owner-side 132 behavioral probe; zero residue; local=remote through 132). Types regenerated --linked and committed in the closer.**
 
 ### REMOTE-APPLY PRECONDITIONS (when that gate comes — read before `db push`)
 1. **`--include-all` REQUIRED**: 128 and 131 were created after 129/130/132 chronologically; remote `supabase migration list` will show them as out-of-order pending. Verify the dry-run lists EXACTLY 127,128,129,130,131,132 and nothing else.

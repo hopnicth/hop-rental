@@ -1,7 +1,7 @@
 # PROGRESS
-Last updated: 2026-07-19 (T3+T4-core Phase 1 COMPLETE — awaiting closing-package audit + commit go)
+Last updated: 2026-07-19 (T3+T4-core Phase 1 COMPLETE — committed, pushed, remote-applied through 132)
 
-## 2026-07-19 — T3+T4-core Phase 1 (blueprint 18e3cdd) ✅ (local; commit + remote apply pending)
+## 2026-07-19 — T3+T4-core Phase 1 (blueprint 18e3cdd) ✅ COMPLETE (committed 1ddd19c · pushed · remote at 132)
 
 - Design doc committed `18e3cdd` (round-1 amendments folded: deferred-release guard, §B preconditions, mixed per-leg resume). NOT pushed.
 - BACKLOG: 2 kickoff items recorded (accountant forfeiture-VAT confirmation [launch blocker]; unreachable-customer waiting-period ruling pending).
