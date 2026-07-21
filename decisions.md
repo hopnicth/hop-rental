@@ -746,3 +746,35 @@ The following NEW decisions were ratified by CHiP during the phase:
    retry-confirm are staff-level; company cancel, sale cancel, document void are super_admin via
    the T1a inversion (requirePlatformAdmin + explicit check, denial logged before 403).
 Impact: T3 closed (local), T4-core delivered; T4-rest + T5 unblocked per the Phase-1/2 boundary.
+
+## 2026-07-22 — Deposit model ratified: BOOKING GUARANTEE (Model B) + pickup-time conversion flow (CHiP-ratified)
+
+Decision:
+a) The HOPNIC deposit model is confirmed as **BOOKING GUARANTEE (Model B** per
+   docs/research/2026-07-22-no-show-forfeiture-vat-th.md**)**: the booking deposit is a
+   guarantee of the booking and is NEVER applied against rental/service charges; the
+   security deposit is fully refundable, reduced only by actual damages/penalties at
+   settlement. Both amounts are liabilities end to end. Forfeiture on customer breach
+   (no-show / late cancel) is contractual damages — non-VAT per the archived research,
+   PENDING the accountant memo (launch blocker in docs/BACKLOG.md).
+b) NEW pickup-time conversion flow (TARGET STATE — NOT yet implemented): at pickup the
+   booking deposit is formally closed and converted in three explicit documents —
+   (1) issue a booking-guarantee refund document for the booking deposit;
+   (2) collect the security deposit with the booking deposit netted against it
+       (cash collected = security deposit − booking deposit);
+   (3) issue a security-deposit receipt for the FULL security amount.
+   Three documents, no silent re-label; the money remains a liability throughout.
+c) Implementation scope: the conversion document types + tax config land in Phase 2;
+   POS pickup-flow wiring lands in T5. Until built, the CURRENT hold-both-until-settlement
+   behavior remains the operating state, explicitly noted as pre-conversion-model.
+Reason: The archived research (ป.73/2541 vs the damages/penalty ruling line) shows VAT
+   treatment follows the substance and paperwork of the deposit from day one; Model B with
+   an explicit conversion chain keeps forfeitures defensible as non-VAT contractual damages
+   and keeps both deposits out of the VAT base until (if ever) they become consideration.
+   A silent re-label of booking deposit → security deposit would blur exactly the
+   classification the research warns about.
+Impact: Phase-2 document/tax-config design and T5 POS pickup flow must implement the b)
+   chain; the current settlement held-total model is partially superseded (design impact
+   assessed at Phase-2 kickoff — BACKLOG item); customer-facing "มัดจำ" wording must be
+   reviewed for ป.73/2541 exposure (accountant blocker); forfeiture VAT posture unchanged
+   (non_vat_contractual_penalty) pending professional confirmation.

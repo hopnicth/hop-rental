@@ -1,5 +1,9 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-07-22 (Phase-2 gating)
+
+Accountant meeting is the gating event for Phase 2 kickoff; prep pack = docs/research/2026-07-22-no-show-forfeiture-vat-th.md + decisions.md 2026-07-22 entry (Model B + conversion flow).
+
 ## Claude Code → Claude Code / 2026-07-19 (T3+T4-core Phase 1 COMPLETE — 8 walks + HTTP walk closed; NOT committed, NOT pushed, remote NOT touched)
 
 Task: T3 unified cancel + T4-core (blueprint docs/design/2026-07-19-t3-t4-unified-cancel-and-documents.md @ 18e3cdd), executed as gated migrations 127-132 + 8 flow walks + the HTTP-debt walk. All checkpoints CHiP-accepted. Suite 136 files / 2744 green; tsc clean.
