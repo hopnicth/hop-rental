@@ -1,5 +1,6 @@
 <!--
 Provenance: external deep-research synthesis via ChatGPT, 2026-07-22.
+Report 1 of 3 in the 2026-07-22 research trilogy (2 = p73-movable-rental-vat-review, 3 = launch-tax-answers).
 Status: PENDING PROFESSIONAL CONFIRMATION — decision-support only.
 Not legal, tax, or accounting advice; cited RD rulings/orders must be
 verified by the engaged accountant/tax counsel before any production

@@ -778,3 +778,53 @@ Impact: Phase-2 document/tax-config design and T5 POS pickup flow must implement
    assessed at Phase-2 kickoff — BACKLOG item); customer-facing "มัดจำ" wording must be
    reviewed for ป.73/2541 exposure (accountant blocker); forfeiture VAT posture unchanged
    (non_vat_contractual_penalty) pending professional confirmation.
+
+## 2026-07-22 — MINIMAL LAUNCH ratified: single money event at return, dual invoice types, tax-point guard (CHiP-ratified)
+
+Decision:
+a) MINIMAL LAUNCH scope (individuals only): booking is FREE — NO deposits of any kind
+   (no booking deposit, no security deposit). KYC per T1a stays as the pickup gate.
+   Pickup = handover note only, no money movement. The SINGLE money event of a rental
+   is at RETURN (rental charge + any VAT-bearing add-ons, one payment). Cancellation =
+   slot release only — no refund machinery involved because nothing was collected.
+b) WEB TAX DOCUMENTS (two-stage chain on the T4-core engine):
+   - Stage 1 — STATEMENT OF CHARGES (operations document, series STM-): itemizes what
+     will be owed; MUST carry the disclaimer "ไม่ใช่ใบกำกับภาษี..." ; MAY display
+     estimated VAT; MUST NOT carry any of the 8 forbidden tax-invoice elements per
+     research report 3 (docs/research/2026-07-22-launch-tax-answers.md).
+   - Stage 2 — on payment confirmation, a TAX INVOICE/RECEIPT is issued for EVERY
+     transaction (series TIR-). The engine supports BOTH full_tax_invoice and
+     abbreviated_tax_invoice from day one, selected by a config switch whose value is
+     PENDING the accountant's §86/6 eligibility ruling (fail-safe default = full).
+   - CREDIT NOTES are in scope from launch (§86/10: must cite the original tax-invoice
+     number + reason); issued invoices are NEVER edited — 068/131 immutability + void
+     = reissue discipline applies unchanged.
+c) INVOICE SCOPE boundary: rental charges + VAT-bearing charges the web already knows
+   (late-return rental days, standard service charges) are invoice line items. GENUINE
+   damages (non-VAT contractual damages) stay OUTSIDE the web system per CHiP —
+   handled off-system until a future track brings them in.
+d) TAX-POINT GUARD (system invariant): the document engine MUST refuse to issue any
+   tax document (TIR-, credit note) while the settlement is awaiting_payment. The tax
+   invoice is issued only after payment is confirmed and is dated the PAYMENT date
+   (service tax point = receipt of payment, ม.78/1).
+e) ADDRESS CAPTURE is conditional on invoice type: full_tax_invoice requires
+   name + address intake (ม.86/4); abbreviated_tax_invoice does not force it.
+f) SUPERSEDES (parked, NOT deleted): the deposit/forfeiture machinery (booking
+   deposit, security deposit, forfeiture pipeline, deposit-refund documents, the
+   2026-07-22 Model-B conversion flow) is FEATURE-GATED OFF for launch. Revival is
+   gated on TWO conditions: card-hold (authorization hold) capability + the
+   ป.73/2541 professional memo (research report 2 — p73-movable-rental-vat-review:
+   for movable-property rental, deposits under any name pull into the VAT base on
+   receipt, so cash deposits cannot ship on a liability-only assumption).
+   Juristic customers + WHT remain parked.
+Reason: Report 2 shows the previous liability-only deposit posture is high-risk under
+   ป.73/2541 for movable-asset rental; removing deposits entirely removes the exposure
+   and collapses the money flow to one clean, taxable event at return. Report 3
+   supplies the operational answers (statement vs invoice separation, §86/6 dual-type
+   support, payment-date tax point) that make the minimal model auditable from day one.
+Impact: New T-LAUNCH track in MASTER-GAP-MAP (feature-gate deposits off, return-time
+   charging, STM-/TIR-/credit-note document types, conditional address intake,
+   awaiting_payment guard, sales-VAT report export, cancellation = release). Phase 2 /
+   T5 re-scoped around it; deposit revival becomes its own future track behind the two
+   gates in f). Accountant answers now gate CONFIG VALUES (invoice-type switch,
+   §86/6), not track start.

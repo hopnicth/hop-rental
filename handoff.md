@@ -1,6 +1,12 @@
 # Handoff Log
 
-## Claude Code → CHiP / 2026-07-22 (Phase-2 gating)
+## Claude Code → CHiP / 2026-07-22 (MINIMAL LAUNCH ratified — supersedes Phase-2 gating below)
+
+Launch model: individuals only, FREE booking, NO deposits (deposit/forfeiture machinery feature-gated OFF, parked not deleted); KYC per T1a; pickup = handover note; single money event at RETURN; web tax docs = statement-of-charges (STM-) → tax invoice/receipt every transaction (TIR-, full + abbreviated behind a config switch) + credit notes; awaiting_payment tax-point guard. Full record: decisions.md 2026-07-22 minimal-launch entry; research trilogy docs/research/2026-07-22-{no-show-forfeiture-vat-th,p73-movable-rental-vat-review,launch-tax-answers}.md.
+
+NEXT TRACK = **T-LAUNCH** (MASTER-GAP-MAP) — needs its OWN Phase 0 + design pass in a FRESH terminal (not a continuation of this docs session). The accountant meeting now gates CONFIG VALUES (invoice-type switch per §86/6, tax-point confirmation), NOT track start — T-LAUNCH design + build can begin before the accountant answers land. Phase 2 / T5 re-scoped; deposit revival = future track behind two gates (card-hold + ป.73/2541 memo).
+
+## Claude Code → CHiP / 2026-07-22 (Phase-2 gating) [SUPERSEDED by the minimal-launch entry above]
 
 Accountant meeting is the gating event for Phase 2 kickoff; prep pack = docs/research/2026-07-22-no-show-forfeiture-vat-th.md + decisions.md 2026-07-22 entry (Model B + conversion flow).
 
