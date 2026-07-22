@@ -6,6 +6,8 @@ Launch model: individuals only, FREE booking, NO deposits (deposit/forfeiture ma
 
 NEXT TRACK = **T-LAUNCH** (MASTER-GAP-MAP) — needs its OWN Phase 0 + design pass in a FRESH terminal (not a continuation of this docs session). The accountant meeting now gates CONFIG VALUES (invoice-type switch per §86/6, tax-point confirmation), NOT track start — T-LAUNCH design + build can begin before the accountant answers land. Phase 2 / T5 re-scoped; deposit revival = future track behind two gates (card-hold + ป.73/2541 memo).
 
+BRANCH DISCIPLINE (T-LAUNCH): implementation work — migrations, server/app code, tests — is done on a dedicated branch `feature/t-launch` branched off `staging`, never directly on `staging`. It merges to `staging` only after auditor approval + explicit CHiP instruction. Docs-only commits (decisions/backlog/handoff/progress) continue on `staging` as before. Ref: OPERATING-MODEL §7.3. Process note (OPERATING-MODEL §7.1, incident 2026-07-23): a push authorization in a task does not waive review gates on other items of the same task — each gate resolves only on the auditor's confirming reply.
+
 ## Claude Code → CHiP / 2026-07-22 (Phase-2 gating) [SUPERSEDED by the minimal-launch entry above]
 
 Accountant meeting is the gating event for Phase 2 kickoff; prep pack = docs/research/2026-07-22-no-show-forfeiture-vat-th.md + decisions.md 2026-07-22 entry (Model B + conversion flow).

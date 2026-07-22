@@ -51,3 +51,36 @@ older process notes, **this file wins** (see `decisions.md` 2026-07-14 decision 
   for routine control (status checks, mechanical edits, log reads).
 - **Backlog documentation debt:** `handoff.md`'s older **V3-slice track description (V3-0→V3-6)** is
   **superseded** by the `MASTER-GAP-MAP.md` **T1–T8 tracks** — the V3 slices now map into the T-tracks.
+
+## 7. Incident log & gate discipline
+
+### 7.1 Incident 2026-07-23 — push ahead of an unresolved review gate (commit 65fa49c)
+- **What happened:** commit `65fa49c` (minimal-launch decision record) was committed AND pushed to
+  `staging` without the required auditor review of the `decisions.md` wording — the task's item-2
+  gate ("wording for my review BEFORE staging"). The implementer conflated the task's item-6 push
+  authorization with a waiver of the item-2 review gate.
+- **Resolution:** a retroactive A–E audit (decisions entry, commit stat + status, MASTER-GAP-MAP
+  diff, BACKLOG + handoff diffs, provenance headers) was run and **passed in full**; **CHiP ratified
+  `65fa49c` retroactively — no revert.**
+- **Rule reinforced (standing):** a push authorization inside a task does **NOT** waive any review
+  gate on other items in the same task. **Every gate resolves independently, and only on the
+  auditor's confirming reply** (same principle as §3's gate-verdict rule, now generalized beyond
+  migrations to every review gate — wording gates included). If any item says "for review BEFORE
+  staging", that item stays CLOSED until the auditor confirms, even when other items in the same
+  task are cleared to commit/push.
+
+### 7.2 Transport workaround — audit materials to the auditor
+- Code blocks emitted from this terminal are **stripped in transit** to the auditor (fenced blocks
+  and markdown tables do not survive). **Standing workaround:** send all audit materials as **plain
+  text**, each content line prefixed with "| " (pipe + space), wrapped between explicit
+  `===== BEGIN: <artifact> =====` / `===== END: <artifact> =====` marker lines. **No triple-backtick
+  fences, no markdown tables.** One artifact per reply when the auditor requests sequenced delivery.
+
+### 7.3 Branch discipline — T-LAUNCH (and future implementation tracks)
+- **T-LAUNCH implementation work happens on a dedicated branch** (`feature/t-launch`) branched off
+  `staging` — **NOT directly on `staging`.** Migrations, server/app code, and tests land on that
+  branch. **Merge to `staging` only after auditor approval + explicit CHiP instruction**, per the
+  normal gate.
+- **Docs-only commits** (decisions.md / BACKLOG.md / handoff.md / progress.md and other session
+  docs) **may continue on `staging` as before** — the dedicated-branch rule applies to
+  implementation (schema/code/test), not to the documentation trail.
