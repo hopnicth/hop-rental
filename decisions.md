@@ -883,3 +883,10 @@ Impact: T-LAUNCH document engine implements issue-date dating on TIR-/credit-not
    chain wired to the invoice-type switch; BACKLOG N2 closed, B1 remains open; the 90-day period
    becomes a config constant carried with the parked deposit machinery. No change to c) scope or
    to the deposit parking in 2026-07-22 f).
+
+## 2026-07-23 (addendum) — Tax-invoice series prefixes split (CHiP-ratified)
+
+Decision: the two tax-invoice variants use **DISTINCT series prefixes** — full = `TIR`, abbreviated = `TIA`.
+SUPERSESSION: this refines the "series TIR-" wording of the 2026-07-22 minimal-launch entry b, which pre-dated the decision to support both variants as separate document types. The 2026-07-22 entry is left UNEDITED per the immutability-of-record convention; read it together with this addendum.
+Reason: the numbering engine keys sequences on (document_type, sequence_key, period) (mig-068:143). Two document types sharing the prefix `TIR` would produce two independent number runs that COLLIDE in the same period — e.g. two different documents both numbered TIR-202607-0001. Distinct prefixes make each series unambiguous in the tax register.
+Impact: T-LAUNCH document contract (docs/design/2026-07-23-t-launch-phase0.md §8.2) fixes full=`TIR`, abbreviated=`TIA`, statement=`STM`, credit note=`CDN`. Prefix constants must be centralized — the numbering engine silently overwrites a sequence's prefix on conflict (068:199-201), so inconsistent callers would corrupt a series without erroring.
