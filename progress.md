@@ -1,5 +1,10 @@
 # PROGRESS
-Last updated: 2026-07-19 (T3+T4-core Phase 1 COMPLETE — committed, pushed, remote-applied through 132)
+Last updated: 2026-07-23 (minimal launch ratified; T-LAUNCH next — see docs/history/2026-07-22-remote-flow-test.md)
+
+## 2026-07-22 — Remote flow test + deposit-model pivot ✅ closed
+
+- Remote flow test passed end-to-end (cancel → refund → BDR document → void/reissue); cleanup halted at FK `ON DELETE RESTRICT` — nothing deleted, sessions revoked, residue permanent by design.
+- Deposit model pivoted the same day: Model B ratified, then superseded by MINIMAL LAUNCH (no deposits) on ป.73/2541 evidence. Full record + residue IDs + one open item: `docs/history/2026-07-22-remote-flow-test.md`.
 
 ## 2026-07-19 — T3+T4-core Phase 1 (blueprint 18e3cdd) ✅ COMPLETE (committed 1ddd19c · pushed · remote at 132)
 
