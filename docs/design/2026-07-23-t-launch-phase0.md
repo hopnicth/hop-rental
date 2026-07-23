@@ -144,15 +144,20 @@ The statement of charges is **NEVER voided or superseded** when the tax invoice 
 ## 8. DESIGN UPDATES FOLLOWING THE RULINGS
 
 ### 8.1 Revised migration list (each subject to its own SQL gate; on-branch remote apply per OD-1)
-- **133 — companion payment-state row + tax-point guard** (OD-3). The state the guard needs does not exist today (survey §B2). Shape submitted separately before any SQL.
-- **134 — return-charge money direction** (survey §B3). Represents "customer owes at return" under minimal launch. Scope depends on 133.
+- **133 — companion payment-state row + tax-point guard** (OD-3). ✅ APPLIED local + remote 2026-07-23 (commit 246927e). Suite 136/2744 green.
+- **134 — return-charge money direction** (survey §B3). ✅ APPLIED local + remote 2026-07-23 (commit 12108cb). Suite 136/2744 green. Releases the I-3 merge-blocker (§8.7).
 - **135 — deposit feature-gate** (decisions 2026-07-22 f). system_configs flag (068:10) PLUS fail-closed refusal inside the deposit-writing RPCs — config alone is not a gate.
-- **136 — per-branch document series** (OD-4). MUST land before the first tax document issues. Blast-radius constraint above governs its shape; **full enumeration of all 8 call sites is a mandatory part of the 136 SQL gate** (CHiP ruling 2026-07-23).
+- **136 — per-branch document series** (OD-4). MUST land before the first tax document issues. Blast-radius constraint governs its shape; **full enumeration of all 8 call sites is a mandatory part of the 136 SQL gate** (CHiP ruling 2026-07-23).
 - **137 — unschedule no-show cron** (OD-5).
-- **138 — widen `modl_operation_chk`** for tax-document issuance logging (OD-6). **Stays SEPARATE from 133** (auditor ruling 2026-07-23) — not folded, for reviewability.
+- **138 — widen `modl_operation_chk` for TAX-DOCUMENT ISSUANCE values ONLY** (OD-6). Scope **narrowed twice**: the zero-due value landed in 133 (auditor amendment 2026-07-23) and the three settlement-payment values landed in 134 (J-2). What remains for 138 is strictly the issuance vocabulary.
+- **139 — official_documents INSERT trigger** (I-2). Deferred from 133 so its interaction with every legacy document type is reviewed in isolation. Until 139 lands, the §0 central-engine constraint is the ONLY defense against a bypassing direct INSERT.
+- **140 — held-balance fiction suppression** (§8.8). **MERGE-BLOCKER.**
+- **141 — waive denial-log fix** (§8.9). Bound to Phase 1, not a standalone merge-blocker.
 - **No migration for document types** — `document_type` is free TEXT (068:215, CHECK 068:244 is non-emptiness only). STM-/TIR-/credit-note are code constants. This remains the single biggest scope reducer.
 
-**Total: 6 migrations (133-138).**
+**Total: 9 migrations (133-141).** Two applied, seven outstanding.
+
+**STANDING PRINCIPLE — vocabulary carrying (J-2, CHiP 2026-07-23):** a migration that needs a new vocabulary value **carries that value itself**. There must never be a window in which running code can hit a CHECK rejection because its vocabulary lives in a later migration. This is why 133 carried `settlement_zero_due_auto_paid` and 134 carried `settlement_payment_confirm`, `settlement_payment_waive` and `settlement_state_migration_backfill`, progressively narrowing 138.
 
 ### 8.2 Document type + prefix contract (OD-2, OD-7)
 - STM — type `rental_statement_of_charges`, prefix `STM`, template `rental_statement_of_charges_v1`, source_type `rental_booking`. Carries the mandatory ไม่ใช่ใบกำกับภาษี disclaimer; MAY show estimated VAT; MUST NOT carry any of the 8 forbidden tax-invoice elements (research report 3). **NOT a tax document => NOT subject to the awaiting_payment guard** (that split is the whole point of two stages). Never voided (OD-7).
@@ -184,6 +189,56 @@ In the DB, inside the issuance path — never endpoint-only (OPERATING-MODEL §3
 ### 8.6 Feature-gate strategy (unchanged from the approved pass)
 Three layers — DB fail-closed writers (authoritative), server endpoints, UI (31 files, cosmetic only, never the security boundary). Ledger CHECK vocabulary (094:43-50), historical rows, BDC type and migrations 076-132 are untouched, so revival is re-enabling a flag plus un-gating writers.
 
+### 8.7 MERGE-BLOCKER register (feature/t-launch -> staging)
+A merge-blocker is a condition that must be satisfied before this branch may merge. Blockers are recorded here the moment they are created, with their release condition stated up front.
+
+**I-3 — writer-derived amount_due — ✅ RELEASED 2026-07-23 by migration 134 (J-4).**
+Release was judged against CHiP definition (ก), recorded verbatim:
+> writer-derived means no money figure originates outside the DB EXCEPT staff-entered penalty lines and discount, which carry mandatory notes and CHECK-enforced bounds (the 125 design).
+
+As implemented in 134: base rental (rental_bookings.rental_total), late-day charge (derived from booking rate + Bangkok-local return date), and held total (from the ledger) are ALL read from locked DB rows. Only penalty lines and the special discount are staff-entered, and both were already validated/bounded by 125 (125:237-242 line validation, 125:262-265 discount bound). The definition is satisfied.
+
+**140 — held-balance fiction — 🚫 OPEN. Release: migration 140 applied.** See §8.8.
+
+**141 + wrapper — waive denial logging — 🚫 OPEN as ONE condition, bound to Phase 1.** See §8.9. NOT a standalone merge-blocker per CHiP, but the waive endpoint is not §F-complete until BOTH halves land.
+
+### 8.8 KNOWN FICTION — held-balance collection that has not happened (migration 140, MERGE-BLOCKER)
+**What it is.** When `held = 0` and `penalties > 0`, the inherited 125 ledger branch (125:295-310, carried byte-unchanged through 133 and 134) writes BOTH a `settlement_additional_collection` event and a `settlement_application` event of the same amount. They net to zero, so the residue-0 invariant passes.
+
+**Why it is a fiction under minimal launch.** `settlement_additional_collection` ASSERTS that money was collected at settlement time. Under T-LAUNCH the customer has NOT paid at that moment — payment is confirmed later via `f_confirm_settlement_payment`. The ledger therefore claims a collection that does not exist.
+
+**Why it was accepted for 134** (CHiP ruling, FINDING A option (i)): the pair self-cancels, residue stays 0, the held-balance ledger is parked deposit machinery, and suppressing it would have made 134's delta unprovable against the approved "amount_due extension only" scope.
+
+**Release condition — migration 140** suppresses the pair when `held = 0` and no deposit exists. **This is a MERGE-BLOCKER: the fiction must not cross to staging.**
+
+**Do not "fix" this by widening the 094 event_type vocabulary** — that CHECK is deposit machinery and is protected by survey §C4. The fix is suppression, not new event types.
+
+### 8.9 Waive denial logging — migration 141 + wrapper (ONE condition, Phase-1 bound)
+**Defect found at the 134 read-back gate.** `f_waive_settlement_payment` writes a §F denial row to `money_ops_decision_logs` and then `RAISE EXCEPTION`s. The RAISE aborts the transaction and rolls back the INSERT — **the denial row can never persist.** Proven deterministically: modl count before = 0, call as `staff` -> ERROR SETTLEMENT_WAIVE_SUPER_ADMIN_ONLY, count after = 0. Confirmed identically on remote (zero new rows).
+
+**Root cause.** The §F inversion was reproduced in SQL without carrying over the reason it lives in TypeScript. Every existing §F path logs the denial in the WRAPPER, not the RPC — stated explicitly at 131:24 ("§F operation='document_void' is logged by the WRAPPER"), and implemented the same way for 129's company-cancel.
+
+**Impact.** NOT a data-integrity or security defect: the refusal works, and no bad state can be written. It is dead code creating a false impression of audit coverage — waive denials are currently unaudited, silently. That silence is the actual risk.
+
+**THE TWO HALVES ARE ONE CONDITION** (CHiP ruling): the waive endpoint is not §F-complete until BOTH land.
+- **Half 1 — migration 141:** CREATE OR REPLACE `f_waive_settlement_payment` removing the unreachable INSERT, with a header comment stating that denial logging is the WRAPPER's duty per the 129/131 pattern.
+- **Half 2 — Phase 1 wrapper:** the waive endpoint writes the denial row in TypeScript BEFORE returning 403, mirroring `companyCancelRentalBooking`.
+
+**Generalization worth carrying:** no plpgsql function may log a denial and then RAISE in the same transaction. If an RPC must refuse, the refusal is the RPC's job and the audit trail is the caller's.
+
+### 8.10 Money-path rulings ratified 2026-07-23 (migration 134 gate)
+- **VAT treatment = INCLUSIVE** (CHiP). The customer pays exactly the quoted price; VAT is extracted from the gross rather than added on top. Seeded in `system_configs` key `tax.vat` as `{"rate_percent": 7, "treatment": "vat_inclusive"}`, read fail-closed by `f_tax_vat_config()` — an absent or malformed config RAISEs, never a silent default rate (J-5). The rate/treatment can change without a migration; that is deliberate.
+- **Early return = NO CREDIT** (CHiP, re-ratified for the money path). A customer returning before `end_date` is charged the full booked total; `late_days` floors at 0 via GREATEST and never produces a negative charge. Consistent with the standing T2/T3 decision.
+- **End-date semantic = EXCLUSIVE**, asserted defensively. 134 RAISEs `SETTLEMENT_BOOKING_DATE_FIELDS_INCONSISTENT` when `rental_days <> (end_date - start_date)`. Rather than bill against the inclusive/exclusive ambiguity flagged in BACKLOG T6, a self-inconsistent booking refuses to settle.
+- **No new money table.** `payment_allocations` (068:361) already carries direction/status/vat_treatment/net/vat/gross with a gross = net + vat consistency CHECK, and is written by 9 existing utils. Charge lines are written `pending` at settlement and flipped `confirmed` at payment — money before state, always.
+
+### 8.11 ACCOUNTANT DISCLOSURE LIST (carry to the meeting alongside §86/6)
+These are decided, not open — but the accountant must be TOLD, because each departs from a default they may assume:
+1. **VAT treatment is inclusive** (§8.10) — quoted prices contain VAT; the register's net figures are derived by extraction.
+2. **Document number format under per-branch series** (OD-4) — whether the printed number must embed a branch code. Tracked as BACKLOG item B2; **cannot be changed after the first tax document issues.**
+3. **Invoice dating diverges from ม.78/1** (decisions.md 2026-07-23 a) — documents are dated the STAFF ISSUE date, not the payment-receipt tax point. The `awaiting_payment` guard still prevents issuance before payment, so the divergence appears only when issuance lags payment; if that lag crosses a VAT-period boundary, the document date and the tax point fall in different periods.
+
 ## CARRY-OVER
 
 Sections §A–§F above are the approved Phase 0 pass reproduced verbatim, with these deltas: §F1 migration list superseded by §8.1; §F3 schema sketch superseded by §8.2 (prefix collision resolved by OD-2); §F5 open decisions ALL CLOSED by §7, retained for audit trail with their rulings appended; §A2 amended by OD-4; the §A9 remark that no CHECK widening was expected is CORRECTED — see OD-6.
+Post-Phase-0 additions: §8.7 merge-blocker register, §8.8 known fiction (migration 140), §8.9 waive denial logging (migration 141 + wrapper), §8.10 money-path rulings, §8.11 accountant disclosure list. Migration list §8.1 now spans 133-141 with 133 and 134 applied.
