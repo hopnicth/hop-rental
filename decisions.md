@@ -828,3 +828,58 @@ Impact: New T-LAUNCH track in MASTER-GAP-MAP (feature-gate deposits off, return-
    T5 re-scoped around it; deposit revival becomes its own future track behind the two
    gates in f). Accountant answers now gate CONFIG VALUES (invoice-type switch,
    §86/6), not track start.
+
+## 2026-07-23 — Invoice dating, dual-invoice-type flow, penalties, unreachable-customer period (CHiP-ratified)
+
+Decision:
+a) INVOICE DATING — tax documents are dated the **STAFF ISSUE DATE** (the moment staff triggers
+   issuance), NOT the payment date. **SUPERSESSION:** this replaces the dating clause of the
+   2026-07-22 minimal-launch entry d ("dated the PAYMENT date ... ม.78/1"). The 2026-07-22 entry is
+   left UNEDITED per the immutability-of-record convention — read it together with this note.
+   **The awaiting_payment tax-point GUARD REMAINS UNCHANGED AND IN FULL FORCE:** no tax document
+   (TIR-, credit note) may be issued while the settlement is awaiting_payment. Payment confirmation
+   is still the precondition for issuance; only the DATE printed on the document changes.
+   AUDIT TRAIL: the auditor flagged that staff-issue dating diverges from the ม.78/1 service tax
+   point (liability arises on receipt of payment), creating a gap between the tax-point date and
+   the document date whenever issuance lags payment. CHiP ruled staff-issue dating as the business
+   decision, accepting that divergence. Recorded so the accountant sees the reasoning, not just the
+   outcome. Practical consequence to watch: if issuance slips across a VAT-period boundary, the
+   document date and the tax point fall in different periods — surface this at the accountant
+   meeting even though it is not a blocker.
+b) DUAL INVOICE TYPE FLOW (confirms and extends 2026-07-22 b): both full_tax_invoice and
+   abbreviated_tax_invoice are supported.
+   - Customer requests FULL at payment time -> issue the full tax invoice directly. No abbreviated
+     is created, nothing to void.
+   - Customer requests FULL AFTER an abbreviated was already issued -> **VOID the abbreviated, then
+     issue the full**, dated the (new) issue date per a). The abbreviated is NEVER edited or
+     upgraded in place: void = reissue discipline, per mig-068 immutable snapshot + mig-131 void/
+     replace chain. The replacement carries its own registry number; the voided document and the
+     linkage between them remain permanently readable.
+   - Both documents remain in the registry; numbers are never reused or reclaimed.
+c) FIXED PENALTIES — confirmed OFF-WEB, re-affirming 2026-07-22 c. Genuine damages and fixed
+   penalties are handled off-system; the web issues invoices only for rental charges and the
+   VAT-bearing charges it already knows (late-return rental days, standard service charges).
+d) UNREACHABLE-CUSTOMER waiting period = **90 DAYS**, **SCOPED TO THE PARKED DEPOSIT MACHINERY
+   ONLY** (CHiP ruling): it governs the deposit unreachable-close path
+   (booking_deposit_forfeiture_refund_unreachable_v1) after the refund row has failed /
+   needs_customer_contact is exhausted. Because deposits are feature-gated off at 2026-07-22 f,
+   the value is **DORMANT until deposit revival**. Launch-era unreachable cases (a refund or
+   credit note owed after a return payment) are **NOT governed by this period** — they are handled
+   case-by-case, off this policy. This closes the 2026-07-19 policy item that stood as
+   [CHiP RULING PENDING] in docs/BACKLOG.md.
+e) ACCOUNTANT AGENDA RE-SCOPED — only **§86/6 eligibility (B1)** remains in confirmation mode
+   (it still sets the full-vs-abbreviated config switch and whether address intake is mandatory).
+   The tax-point / dating agenda item (N2) is **CLOSED BY CHiP RULING** per a) — it is no longer a
+   question for the accountant, though the divergence noted in a) should be disclosed to them.
+   docs/BACKLOG.md updated accordingly in the same commit.
+Reason: Staff-issue dating matches how issuance actually happens at the counter and avoids
+   back-dating documents to a payment moment staff may not be transacting at. The guard is what
+   protects the tax position (nothing issued before money is confirmed), so relaxing the DATE
+   without relaxing the GUARD keeps the substantive control intact. Void-then-reissue for the
+   abbreviated-to-full upgrade is the only path consistent with the immutability rules already
+   shipped in 068/131 — an in-place upgrade would silently rewrite an issued tax document.
+Impact: T-LAUNCH document engine implements issue-date dating on TIR-/credit-note types while
+   keeping the awaiting_payment guard; the abbreviated->full upgrade path needs the void+reissue
+   chain wired to the invoice-type switch; BACKLOG N2 closed, B1 remains open; the 90-day period
+   becomes a config constant carried with the parked deposit machinery. No change to c) scope or
+   to the deposit parking in 2026-07-22 f).
