@@ -1,3 +1,4 @@
+<!-- STALENESS WARNING: predates migrations 118-143 / minimal-launch — verify against decisions.md + the T-LAUNCH design doc before relying. -->
 # Payment — Saved Cards & Billing Addresses (Research + Checklist)
 
 Last updated: 2026-05-07

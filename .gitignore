@@ -42,3 +42,10 @@ docs/task-runs/*.md
 # remove them with `git rm --cached <file>` if you want them gone.
 [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9] *.md
 augment_*.md
+# Skill workspaces + regenerable agent output (kept on disk, never committed)
+.playwright-mcp/
+.claude/skills/
+.impeccable/
+docs/superpowers/
+DESIGN.md
+PRODUCT.md
