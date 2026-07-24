@@ -1,5 +1,9 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-07-24 (T-LAUNCH migration track CLOSED)
+Migrations 133–143 (eleven) applied local + remote, parity, zero drift, every one gated. The DB foundation for minimal launch is complete: settlement payment-state + tax-point guard, return-charge money direction, deposit feature-gate, per-branch tax series, no-show cron unscheduled, tax-issuance vocabulary, un-bypassable tax-point trigger, held-balance fiction suppressed, waive denial-log fixed, charge-type taxonomy, staff-charge channel + discount tiers + pending_review gates.
+**NEXT = PHASE 1 (application layer: wrapper / endpoint / UI), a fresh terminal.** Its gate list is the three OPEN merge-blockers (design doc §8.7): (1) K-1 launch cancellation/slot-release path; (2) R-A the TS settle wrapper calling the 13-arg signature with typed lines + discount; (3) §8.9 half-2 the waive endpoint §F-logging denials. feature/t-launch may NOT merge to staging until all three clear. Remote schema is AHEAD of staging code (OD-1) — safe only because no staging code calls the new objects yet.
+
 ## Claude Code → CHiP / 2026-07-22 (MINIMAL LAUNCH ratified — supersedes Phase-2 gating below)
 
 Launch model: individuals only, FREE booking, NO deposits (deposit/forfeiture machinery feature-gated OFF, parked not deleted); KYC per T1a; pickup = handover note; single money event at RETURN; web tax docs = statement-of-charges (STM-) → tax invoice/receipt every transaction (TIR-, full + abbreviated behind a config switch) + credit notes; awaiting_payment tax-point guard. Full record: decisions.md 2026-07-22 minimal-launch entry; research trilogy docs/research/2026-07-22-{no-show-forfeiture-vat-th,p73-movable-rental-vat-review,launch-tax-answers}.md.

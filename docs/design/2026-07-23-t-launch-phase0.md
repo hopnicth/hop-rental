@@ -129,6 +129,9 @@ The `awaiting_payment` tax-point guard attaches to a **COMPANION payment-state r
 Whether the document NUMBER FORMAT itself embeds a branch code (e.g. `TIR-BKK01-202607-0001` vs `TIR-202607-0001`) is an **accountant question** — added to the §86/6 agenda in docs/BACKLOG.md.
 **BLAST-RADIUS CONSTRAINT (raised in survey, must be honoured by migration 136):** eight call sites across seven utils use the engine for existing types, and remote already holds `sequence_key='global'` rows with issued documents drawn from them. The migration MUST NOT re-key existing sequences in a way that could re-issue a consumed number. Shape CONFIRMED — see §8.4.
 
+### OD-4 REVISION (2026-07-23) — original shape WITHDRAWN against live data
+The confirmed `coalesce(p_branch_id,'global')` for ALL types was withdrawn: 7 of 9 live `document_sequences` rows carry a real branch_id while keyed 'global', and **all 7 call sites** (corrected from the survey's "8" — the 8th grep hit was a comment at admin-document-void.ts:11) can pass one, so universal keying would have restarted consumed counters and re-drawn issued numbers (e.g. BDR-202607-0001). The auditor's §8.4 confirmation of the original shape is formally RETRACTED. Ruled replacement: **R1** type-aware keying (branch-scoped for the 4 tax types only; legacy keeps 'global' unconditionally); **R2** hard refusal `TAX_DOCUMENT_BRANCH_REQUIRED` for a tax draw with no branch (no global fallback); **R3** prefix-constant centralization is Phase-1 CODE, not a migration; **R4** call-site count = 7.
+
 ### OD-5 — Unschedule the no-show cron
 The pg_cron job scheduled at 126:217 (`f_auto_mark_rental_no_shows()`, daily 17:00 UTC / 00:00 Bangkok) is **UNSCHEDULED by migration**. Under minimal launch there are no deposits to forfeit, so the job has no work. Revival re-adds the schedule. The RPC itself is retained (parked, not dropped) — only the schedule is removed.
 
@@ -143,27 +146,35 @@ The statement of charges is **NEVER voided or superseded** when the tax invoice 
 
 ## 8. DESIGN UPDATES FOLLOWING THE RULINGS
 
-### 8.1 Revised migration list (each subject to its own SQL gate; on-branch remote apply per OD-1)
-- **133 — companion payment-state row + tax-point guard** (OD-3). ✅ APPLIED local + remote 2026-07-23 (commit 246927e). Suite 136/2744 green.
-- **134 — return-charge money direction** (survey §B3). ✅ APPLIED local + remote 2026-07-23 (commit 12108cb). Suite 136/2744 green. Releases the I-3 merge-blocker (§8.7).
-- **135 — deposit feature-gate** (decisions 2026-07-22 f). system_configs flag (068:10) PLUS fail-closed refusal inside the deposit-writing RPCs — config alone is not a gate.
-- **136 — per-branch document series** (OD-4). MUST land before the first tax document issues. Blast-radius constraint governs its shape; **full enumeration of all 8 call sites is a mandatory part of the 136 SQL gate** (CHiP ruling 2026-07-23).
-- **137 — unschedule no-show cron** (OD-5).
-- **138 — widen `modl_operation_chk` for TAX-DOCUMENT ISSUANCE values ONLY** (OD-6). Scope **narrowed twice**: the zero-due value landed in 133 (auditor amendment 2026-07-23) and the three settlement-payment values landed in 134 (J-2). What remains for 138 is strictly the issuance vocabulary.
-- **139 — official_documents INSERT trigger** (I-2). Deferred from 133 so its interaction with every legacy document type is reviewed in isolation. Until 139 lands, the §0 central-engine constraint is the ONLY defense against a bypassing direct INSERT.
-- **140 — held-balance fiction suppression** (§8.8). **MERGE-BLOCKER.**
-- **141 — waive denial-log fix** (§8.9). Bound to Phase 1, not a standalone merge-blocker.
-- **No migration for document types** — `document_type` is free TEXT (068:215, CHECK 068:244 is non-emptiness only). STM-/TIR-/credit-note are code constants. This remains the single biggest scope reducer.
+### 8.1 Migration list (each gated; on-branch remote apply per OD-1) — TRACK CLOSED
+- **133** companion payment-state row + tax-point guard (OD-3). ✅ APPLIED `246927e`.
+- **134** return-charge money direction (J-1..J-5). ✅ APPLIED `12108cb`. Releases I-3.
+- **135** deposit feature-gate (K-1..K-5). ✅ APPLIED `6939f7b`. Method: **Option B rename-and-wrap** (CHiP 2026-07-23) — the four money RPCs (737 lines) were RENAMED to `*_ungated` and wrapped, not re-typed, so the guard delta is auditable and the bodies are md5-proven byte-identical.
+- **136** per-branch tax document series (OD-4 revised; R1-R4). ✅ APPLIED `a101597`.
+- **137** unschedule no-show cron (OD-5). ✅ APPLIED `f7c817f`.
+- **138** tax-issuance decision-log vocabulary (OD-6). ✅ APPLIED `5ed8be0`. Two ratified OMISSIONS: NO `tax_document_upgrade` (decomposes into `document_void` + `tax_document_issue`; linkage lives in official_documents.original_document_id + document_events) and NO STM-to-modl (STM is an operations document, audited in document_events). Do not "fix" these.
+- **139** tax-point INSERT trigger (L-1..L-4). ✅ APPLIED `932747c`. **LIST INVARIANT: 139's tax-type list == 133's EXACTLY (3 types — guard scope). 136's list is a deliberate SUPERSET (4 types — adds STM, numbering scope). STM must NEVER be added to 133 or 139.**
+- **140** suppress held-balance fiction (2-line mechanical delta). ✅ APPLIED `9c77922`. Releases §8.8.
+- **141** remove unreachable waive denial log (§8.9 half 1). ✅ APPLIED `741581f`.
+- **142** charge_type taxonomy schema (M-2 split, schema half). ✅ APPLIED `1b83ae1`. **RENUMBERED from "142a": the Supabase CLI requires numeric migration versions (`<timestamp>_name.sql`), so a letter-suffixed split is impossible — the CLI silently SKIPS such files with a warning, not an error. The M-2 "142a/142b" labels became sequential 142/143.**
+- **143** staff-charge channel + discount tiers + pending_review gates (Option A; R-A/R-B/R-C; M-1..M-5). ✅ APPLIED `cb0f4de`. Releases §8.12.
+**Total: 11 migrations, all applied local + remote, parity, zero drift.**
 
-**Total: 9 migrations (133-141).** Two applied, seven outstanding.
-
-**STANDING PRINCIPLE — vocabulary carrying (J-2, CHiP 2026-07-23):** a migration that needs a new vocabulary value **carries that value itself**. There must never be a window in which running code can hit a CHECK rejection because its vocabulary lives in a later migration. This is why 133 carried `settlement_zero_due_auto_paid` and 134 carried `settlement_payment_confirm`, `settlement_payment_waive` and `settlement_state_migration_backfill`, progressively narrowing 138.
+**STANDING PRINCIPLES recorded across the track:**
+- **J-2 vocabulary carrying:** a migration carries the CHECK value it needs — no window where running code hits a rejection.
+- **modl permanence:** money_ops_decision_logs is append-only; a value is removable only until its first committed use, then permanent. Every modl widening was argued down to the minimum for this reason.
+- **R-A signature change:** launch does not overload the settle RPC's parameters onto penalty_lines; the 10-arg form was DROPPED and a 13-arg form created (one signature proven post-apply).
+- **R-B privilege lookup:** a privilege decision (discount tier) reads platform_role from the DB in-transaction, never from a caller claim — distinct from confirm/waive, which take p_actor_role for audit attribution only.
+- **R-C document projection:** the launch discount is not stored on the settlement row; documents derive it as SUM(gross charge lines) − amount_due, keeping documents projections of the money rows (no negative allocation rows).
+- **BUILD METHOD:** scripted extraction of a prior applied body (used for 135/140/141/143) eliminates hand-transcription risk on money functions, but shifts the risk to BOUNDARY HANDLING — 143 hit three build defects (missing arg-list comma; a `%%%%` RAISE format passing 3 args to 2 placeholders; an awk range dropping a two-line GRANT's second line). All three failed LOUDLY at apply, none reached remote, and the RAISE hit triggered a full audit of all 20 RAISE statements. The lesson: the method is correct for content fidelity; verify the assembled file compiles (a reset) before trusting it, never the exit status.
 
 ### 8.2 Document type + prefix contract (OD-2, OD-7)
 - STM — type `rental_statement_of_charges`, prefix `STM`, template `rental_statement_of_charges_v1`, source_type `rental_booking`. Carries the mandatory ไม่ใช่ใบกำกับภาษี disclaimer; MAY show estimated VAT; MUST NOT carry any of the 8 forbidden tax-invoice elements (research report 3). **NOT a tax document => NOT subject to the awaiting_payment guard** (that split is the whole point of two stages). Never voided (OD-7).
 - TIR full — type `rental_tax_invoice_receipt_full`, prefix `TIR`, template `_full_v1`, `tax_profile_id` REQUIRED, snapshot cites the STM number.
 - TIA abbreviated — type `rental_tax_invoice_receipt_abbreviated`, prefix `TIA`, template `_abbreviated_v1`, `tax_profile_id` NULL, snapshot cites the STM number.
 - Credit note — type `rental_credit_note`, prefix `CDN`, cites the original tax-invoice number in snapshot (§86/10) and links via `original_document_id`.
+
+**SOURCE-CONVENTION CONTRACT (L-1/L-2, ruled 2026-07-23):** tax documents (TIR full / TIA abbreviated / CDN) carry `source_type='rental_booking_settlement'` + `source_id`=the settlement id. The 139 trigger and the Phase-1 issuance wrapper BOTH read from this — they must agree or every tax insert fails closed (`TAX_DOCUMENT_SOURCE_UNMAPPED`). `'rental_booking'` is the retained SECOND mapping arm (used by RBK/pickup/return forms). CDN maps through its settlement likewise; original_document_id carries the §86/10 chain linkage.
 
 ### 8.3 Abbreviated -> full upgrade path (decisions 2026-07-23 b)
 Survey §A7 established that `reissueOfficialDocument` (admin-document-void.ts:156-262) is **same-type only** — it clones document_type (:216), template (:233-234), snapshot (:235) and totals (:229-231), and derives prefix from the original number (:194). It CANNOT perform the upgrade.
@@ -189,18 +200,16 @@ In the DB, inside the issuance path — never endpoint-only (OPERATING-MODEL §3
 ### 8.6 Feature-gate strategy (unchanged from the approved pass)
 Three layers — DB fail-closed writers (authoritative), server endpoints, UI (31 files, cosmetic only, never the security boundary). Ledger CHECK vocabulary (094:43-50), historical rows, BDC type and migrations 076-132 are untouched, so revival is re-enabling a flag plus un-gating writers.
 
-### 8.7 MERGE-BLOCKER register (feature/t-launch -> staging)
-A merge-blocker is a condition that must be satisfied before this branch may merge. Blockers are recorded here the moment they are created, with their release condition stated up front.
-
-**I-3 — writer-derived amount_due — ✅ RELEASED 2026-07-23 by migration 134 (J-4).**
-Release was judged against CHiP definition (ก), recorded verbatim:
-> writer-derived means no money figure originates outside the DB EXCEPT staff-entered penalty lines and discount, which carry mandatory notes and CHECK-enforced bounds (the 125 design).
-
-As implemented in 134: base rental (rental_bookings.rental_total), late-day charge (derived from booking rate + Bangkok-local return date), and held total (from the ledger) are ALL read from locked DB rows. Only penalty lines and the special discount are staff-entered, and both were already validated/bounded by 125 (125:237-242 line validation, 125:262-265 discount bound). The definition is satisfied.
-
-**140 — held-balance fiction — 🚫 OPEN. Release: migration 140 applied.** See §8.8.
-
-**141 + wrapper — waive denial logging — 🚫 OPEN as ONE condition, bound to Phase 1.** See §8.9. NOT a standalone merge-blocker per CHiP, but the waive endpoint is not §F-complete until BOTH halves land.
+### 8.7 MERGE-BLOCKER register (feature/t-launch → staging)
+**✅ RELEASED:**
+- **I-3** writer-derived amount_due — released by 134 (J-4 definition ก).
+- **§8.8** held-balance fiction — released by 140 (v_held>0 gate).
+- **§8.12** settlement-row fiction — released by 143 (Option A: launch keeps penalty_lines empty → row 0/0/0; charges travel the typed staff-charge channel).
+**🚫 OPEN — feature/t-launch may NOT merge until all clear:**
+- **K-1** launch-era cancellation (slot-release) path. Both cancel RPCs are gated OFF (135); launch has no cancel path yet. Release: a launch slot-release path exists. CHiP note: the legacy cancel shape may never be reused; the future form is undecided — do NOT design it yet.
+- **R-A** TS settle wrapper. 143 DROPPED the 10-arg settle signature; `server/utils/rental-return-settlement.ts` → `return-settlement.post.ts` must ship the 13-arg call (typed staff-charge lines + discount) before merge. Release: the wrapper calls the new signature.
+- **§8.9 half 2** waive denial logging. 141 removed the unreachable in-RPC denial write; the waive ENDPOINT must write the denial row in TypeScript before the 403 (129/131 wrapper pattern). Release: the waive wrapper §F-logs denials.
+All three are PHASE-1 work (wrapper/endpoint/UI). The migration track is done; Phase 1 owns the release conditions.
 
 ### 8.8 KNOWN FICTION — held-balance collection that has not happened (migration 140, MERGE-BLOCKER)
 **What it is.** When `held = 0` and `penalties > 0`, the inherited 125 ledger branch (125:295-310, carried byte-unchanged through 133 and 134) writes BOTH a `settlement_additional_collection` event and a `settlement_application` event of the same amount. They net to zero, so the residue-0 invariant passes.
