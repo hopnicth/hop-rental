@@ -1,3 +1,4 @@
+<!-- STALENESS WARNING: predates migrations 118-143 / minimal-launch — verify against decisions.md + the T-LAUNCH design doc before relying. -->
 # Role Matrix
 
 Last updated: 2026-05-11
