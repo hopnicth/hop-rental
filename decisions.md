@@ -890,3 +890,20 @@ Decision: the two tax-invoice variants use **DISTINCT series prefixes** — full
 SUPERSESSION: this refines the "series TIR-" wording of the 2026-07-22 minimal-launch entry b, which pre-dated the decision to support both variants as separate document types. The 2026-07-22 entry is left UNEDITED per the immutability-of-record convention; read it together with this addendum.
 Reason: the numbering engine keys sequences on (document_type, sequence_key, period) (mig-068:143). Two document types sharing the prefix `TIR` would produce two independent number runs that COLLIDE in the same period — e.g. two different documents both numbered TIR-202607-0001. Distinct prefixes make each series unambiguous in the tax register.
 Impact: T-LAUNCH document contract (docs/design/2026-07-23-t-launch-phase0.md §8.2) fixes full=`TIR`, abbreviated=`TIA`, statement=`STM`, credit note=`CDN`. Prefix constants must be centralized — the numbering engine silently overwrites a sequence's prefix on conflict (068:199-201), so inconsistent callers would corrupt a series without erroring.
+
+## 2026-07-24 — Charge taxonomy + staff-charge channel + discount policy (CHiP-ratified; design input for T-LAUNCH)
+
+Decision:
+a) CHARGE_TYPE is a TAX-SUBSTANCE classification, SEPARATE from allocation_type (the ledger bucket). Vocabulary and treatment (WHT rates DORMANT until juristic revival):
+   - rental_charge — VAT 7% / future WHT 5%
+   - rental_extension — per-day late return; substance = continued rental benefit; VAT 7% / future WHT 5%. This is the LAUNCH form of late return; fixed-amount late penalties are NOT offered at launch.
+   - taxable_service_charge — VAT 7% / future WHT 3%
+   - actual_damage, contractual_penalty — DISABLED_FOR_LAUNCH, REQUIRES_ACCOUNTANT_MEMO, off-web per decisions.md 2026-07-22 c
+   - pending_review — BLOCKS payment confirmation AND tax-document issuance (fail-closed classification)
+   The 'late_fee'/'penalty' allocation_type values are RETAINED in the CHECK (permanence) but DEPRECATED-FOR-LAUNCH.
+   Repair is two legs never conflated: the outbound shop payment vs. the customer charging.
+b) STAFF CHARGE CHANNEL (launch): under launch, charges do NOT travel penalty_lines (that stays empty; the settlement row is naturally 0/0/0). Staff enter free-form typed lines { charge_type, amount, note } — MANDATORY charge_type + note, NO service catalogue yet (structure accommodates a future catalogue without migration). CAP 5,000 THB per line, refuse-outright, NO override (split larger charges into audit-visible lines).
+c) DISCOUNT POLICY (two-tier, rental-base only): the discountable base = rental_charge + rental_extension ONLY; service lines are NEVER discounted. staff <= 20% of the rental base (mandatory note); super_admin <= 50% (mandatory note); > 50% refused by the system with no override. The tier authority is the LOOKED-UP platform_role (never a caller claim). Every granted discount is logged to money_ops_decision_logs (§F success-path only; the super_admin tier records its authority use).
+d) LATE-RETURN CUTOFF: 00:00 Asia/Bangkok exactly, no grace (confirms 134's implementation; no change).
+Reason: a single dimension cannot carry both the ledger bucket and the tax substance without the regime-dependent ambiguity that blocked the launch settle (§8.12). Separating charge_type lets launch charges be truthfully classified, discounted within policy, and gated (pending_review) without disturbing the deposit-era settlement algebra.
+Impact: migrations 142 (charge_type column + vocabulary) + 143 (staff-charge channel, discount tiers, pending_review gates) — both applied. Accountant agenda: confirm rental_extension as rental income (VAT + future WHT); obtain the actual_damage / contractual_penalty non-VAT memo (docs/BACKLOG.md).

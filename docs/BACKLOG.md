@@ -117,3 +117,10 @@ Config values, not track start, gate on these (decisions.md 2026-07-22 minimal-l
 - [LAUNCH][ACCOUNTING][B2] Document number format under per-branch series: now that document series are branch-scoped (CHiP OD-4, 2026-07-23), must the printed document NUMBER itself embed a branch code (e.g. TIR-BKK01-202607-0001) or is a branch-scoped counter with an unchanged format (TIR-202607-0001) acceptable for the tax register? Affects mig-068 number composition and cannot be changed after the first tax document issues. Ref: docs/design/2026-07-23-t-launch-phase0.md §8.4.
 - [LAUNCH][ACCOUNTING][DISCLOSE] VAT treatment = inclusive (CHiP 2026-07-23) — quoted prices contain VAT; register net figures are extracted. Ref design doc §8.10/§8.11.
 - [LAUNCH][ACCOUNTING][DISCLOSE] Invoice dating = staff issue date, diverging from ม.78/1 payment-receipt tax point (decisions.md 2026-07-23 a) — disclose the VAT-period-boundary consequence. Ref design doc §8.11.
+
+### T-LAUNCH accountant agenda — FINAL STATE (migration track closed 2026-07-24)
+- [LAUNCH][ACCOUNTING][B1] §86/6 eligibility for tool-rental service → sets the full-vs-abbreviated invoice config + address-intake requirement. OPEN — the one remaining true confirmation gate.
+- [LAUNCH][ACCOUNTING][B2] Document number format under per-branch series (branch code in the printed number vs unchanged format). OPEN — cannot change after the first tax document issues.
+- [LAUNCH][ACCOUNTING] rental_extension confirmation: confirm the per-day late-return charge is RENTAL INCOME (VAT 7% + future WHT 5%), not a penalty (decisions.md 2026-07-24 a).
+- [LAUNCH][ACCOUNTING] actual_damage / contractual_penalty non-VAT MEMO: required before either charge_type is enabled (they are representable-but-disabled at launch).
+- [LAUNCH][ACCOUNTING][DISCLOSE] VAT treatment = inclusive; invoice dating = staff issue date (diverges from ม.78/1). Disclosure items, already recorded — carry to the meeting.
