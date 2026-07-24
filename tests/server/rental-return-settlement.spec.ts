@@ -65,7 +65,7 @@ vi.mock("h3", () => ({
     Object.assign(new Error(opts.statusMessage), opts),
 }));
 
-const { settleRentalBookingReturn } = await import(
+const { settleRentalBookingReturn, settleReturnRpcError } = await import(
   "../../server/utils/rental-return-settlement"
 );
 
@@ -141,6 +141,10 @@ function baseInput(client: any) {
     penaltyLines: [],
     specialDiscountAmount: 0,
     specialDiscountNote: null,
+    // [143 R-A] launch channel — empty by default; individual tests override.
+    staffChargeLines: [],
+    discountAmount: 0,
+    discountNote: null,
     customerSignatureDataUrl: "data:image/png;base64,AAAA",
     customerSignaturePath: "return-settlement/booking-1/customer.png",
     staffSignaturePath: "return-settlement/booking-1/staff.png",
@@ -244,13 +248,13 @@ describe("legacy refund-proof bridge", () => {
 // ── 4. Error mapping ──────────────────────────────────────────────────────────
 
 describe("RPC error mapping", () => {
-  it("SETTLEMENT_* business errors → 422", async () => {
+  it("SETTLEMENT_* business errors → 422, machine code carried in data.settleRpcCode", async () => {
     const { client } = makeClient({
       rpcError: { message: "SETTLEMENT_BOOKING_NOT_PICKED_UP" },
     });
     await expect(settleRentalBookingReturn(baseInput(client))).rejects.toMatchObject({
       statusCode: 422,
-      statusMessage: "SETTLEMENT_BOOKING_NOT_PICKED_UP",
+      data: { settleRpcCode: "SETTLEMENT_BOOKING_NOT_PICKED_UP" },
     });
     expect(mockState.fulfillmentCalls).toHaveLength(0);
   });
@@ -259,8 +263,134 @@ describe("RPC error mapping", () => {
     const { client } = makeClient({ rpcError: { message: "connection reset" } });
     await expect(settleRentalBookingReturn(baseInput(client))).rejects.toMatchObject({
       statusCode: 500,
+      data: { settleRpcCode: "connection reset" },
     });
     expect(mockState.fulfillmentCalls).toHaveLength(0);
+  });
+
+  // [143 R-A] Every new launch RAISE → approved HTTP status. The util surfaces
+  // the code through settleReturnRpcError; refusals never reach fulfillment.
+  const REFUSALS: Array<[string, number]> = [
+    ["PENALTY_LINES_NOT_ACCEPTED_AT_LAUNCH", 409],
+    ["STAFF_CHARGE_LINES_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
+    ["LAUNCH_DISCOUNT_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
+    ["STAFF_CHARGE_LINE_INVALID", 422],
+    ["CHARGE_TYPE_DISABLED_FOR_LAUNCH", 422],
+    ["CHARGE_TYPE_NOT_SETTABLE", 422],
+    ["CHARGE_TYPE_UNKNOWN", 422],
+    ["STAFF_CHARGE_AMOUNT_INVALID", 422],
+    ["STAFF_CHARGE_EXCEEDS_CAP", 422],
+    ["DISCOUNT_NEGATIVE", 422],
+    ["DISCOUNT_NOTE_REQUIRED", 422],
+    ["DISCOUNT_WITHOUT_RENTAL_BASE", 422],
+    ["DISCOUNT_EXCEEDS_MAX", 422],
+    ["DISCOUNT_REQUIRES_SUPER_ADMIN", 403],
+    ["SETTLEMENT_ACTOR_NOT_FOUND", 422],
+  ];
+  it.each(REFUSALS)(
+    "refusal %s → HTTP %i via the util, fulfillment never reached",
+    async (code, status) => {
+      const { client } = makeClient({ rpcError: { message: `${code}: detail` } });
+      await expect(
+        settleRentalBookingReturn(baseInput(client)),
+      ).rejects.toMatchObject({
+        statusCode: status,
+        data: { settleRpcCode: `${code}: detail` },
+      });
+      expect(mockState.fulfillmentCalls).toHaveLength(0);
+    },
+  );
+});
+
+// ── 4b. settleReturnRpcError pure map (the endpoint's HTTP + Thai mapping) ────
+
+describe("settleReturnRpcError (HTTP + Thai map)", () => {
+  const CASES: Array<[string, number]> = [
+    ["PENALTY_LINES_NOT_ACCEPTED_AT_LAUNCH", 409],
+    ["STAFF_CHARGE_LINES_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
+    ["LAUNCH_DISCOUNT_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
+    ["STAFF_CHARGE_LINES_INVALID", 422],
+    ["STAFF_CHARGE_LINE_INVALID", 422],
+    ["CHARGE_TYPE_DISABLED_FOR_LAUNCH", 422],
+    ["CHARGE_TYPE_NOT_SETTABLE", 422],
+    ["CHARGE_TYPE_UNKNOWN", 422],
+    ["STAFF_CHARGE_AMOUNT_INVALID", 422],
+    ["STAFF_CHARGE_EXCEEDS_CAP", 422],
+    ["DISCOUNT_NEGATIVE", 422],
+    ["DISCOUNT_NOTE_REQUIRED", 422],
+    ["DISCOUNT_WITHOUT_RENTAL_BASE", 422],
+    ["DISCOUNT_EXCEEDS_MAX", 422],
+    ["DISCOUNT_REQUIRES_SUPER_ADMIN", 403],
+    ["SETTLEMENT_ACTOR_REQUIRED", 422],
+    ["SETTLEMENT_ACTOR_NOT_FOUND", 422],
+  ];
+  it.each(CASES)("%s → %i with a non-empty Thai message", (code, status) => {
+    const mapped = settleReturnRpcError(code);
+    expect(mapped.statusCode).toBe(status);
+    expect(mapped.statusMessage.length).toBeGreaterThan(0);
+  });
+
+  it("prefixed but unlisted codes fall back to business 422 (not 500)", () => {
+    expect(settleReturnRpcError("SETTLEMENT_ALREADY_EXISTS").statusCode).toBe(422);
+    expect(settleReturnRpcError("DISCOUNT_SOMETHING_NEW").statusCode).toBe(422);
+  });
+
+  it("unknown / infrastructure codes → 500", () => {
+    expect(settleReturnRpcError("connection reset").statusCode).toBe(500);
+    expect(settleReturnRpcError("timeout").statusCode).toBe(500);
+  });
+
+  it("money copy never contains the bare deposit word มัดจำ (glossary rule)", () => {
+    for (const [code] of CASES) {
+      expect(settleReturnRpcError(code).statusMessage).not.toContain("มัดจำ");
+    }
+  });
+});
+
+// ── 4c. Happy path — typed staff-charge lines + discount pass through ─────────
+
+describe("launch staff-charge + discount passthrough (143 R-A)", () => {
+  it("forwards p_staff_charge_lines / p_discount_amount / p_discount_note and returns the 3 new keys", async () => {
+    const { client, calls } = makeClient({
+      rpcResult: {
+        settlement_id: "settle-launch",
+        held_total: 0,
+        penalty_total: 0,
+        special_discount_amount: 0,
+        settlement_applied_amount: 0,
+        refund_amount: 0,
+        additional_collection_amount: 0,
+        staff_charge_total: 450,
+        discount_amount: 50,
+        rental_base: 500,
+      },
+    });
+    const input = {
+      ...baseInput(client),
+      staffChargeLines: [
+        { charge_type: "taxable_service_charge", amount: 450, note: "cleaning" },
+      ],
+      discountAmount: 50,
+      discountNote: "goodwill",
+    };
+    const result = await settleRentalBookingReturn(input);
+
+    // Return-shape +3 keys surfaced from the RPC result.
+    expect(result.settlement.staffChargeTotal).toBe(450);
+    expect(result.settlement.discountAmount).toBe(50);
+    expect(result.settlement.rentalBase).toBe(500);
+
+    // The 13-arg call carried the launch params verbatim (snake_case keys).
+    const rpcCall = calls.rpcs.find(
+      (c) => c.fn === "f_settle_rental_booking_return",
+    )!;
+    expect(rpcCall.args.p_staff_charge_lines).toEqual([
+      { charge_type: "taxable_service_charge", amount: 450, note: "cleaning" },
+    ]);
+    expect(rpcCall.args.p_discount_amount).toBe(50);
+    expect(rpcCall.args.p_discount_note).toBe("goodwill");
+    // Fulfillment still completes on the happy path.
+    expect(mockState.fulfillmentCalls).toHaveLength(1);
   });
 });
 
@@ -288,6 +418,49 @@ describe("endpoint pins", () => {
   it("discount note enforced; penalty lines shape-validated", () => {
     expect(postSrc).toContain("SETTLEMENT_DISCOUNT_NOTE_REQUIRED");
     expect(postSrc).toContain("SETTLEMENT_PENALTY_LINES_INVALID");
+  });
+
+  it("[143 R-A] parses the launch multipart fields and forwards them", () => {
+    expect(postSrc).toContain("staffChargeLines");
+    expect(postSrc).toContain("discountAmount");
+    expect(postSrc).toContain("discountNote");
+    // Snake-case charge_type key preserved for the RPC.
+    expect(postSrc).toContain("charge_type");
+  });
+
+  it("[143 R-A] maps RPC RAISEs via settleReturnRpcError (HTTP + Thai)", () => {
+    expect(postSrc).toContain("settleReturnRpcError");
+  });
+
+  it("[143 R-A] does NOT duplicate the RPC per-line cap (RPC is sole money authority)", () => {
+    // The 5,000 cap + discount tiers live ONLY in the RPC; the endpoint never
+    // re-checks them (shape/parse only).
+    expect(postSrc).not.toContain("5000");
+    expect(postSrc).not.toContain("0.20");
+    expect(postSrc).not.toContain("0.50");
+  });
+});
+
+// ── 8. POS v1 settle path disabled for launch (CHiP ruling §4, option ก) ──────
+
+describe("POS v1 return/settle path — launch gate", () => {
+  const posSrc = read("app/pages/admin/pos.vue");
+
+  it("declares the launch settle-disabled flag", () => {
+    expect(posSrc).toContain("POS_LAUNCH_SETTLE_DISABLED");
+  });
+
+  it("does NOT rewire POS to the 13-arg settle endpoint (T5 scope)", () => {
+    expect(posSrc).not.toContain("return-settlement");
+    expect(posSrc).not.toContain("staffChargeLines");
+    expect(posSrc).not.toContain("f_settle_rental_booking_return");
+  });
+
+  it("gates the Confirm Return button behind the launch flag", () => {
+    // The return button and the deposit-refund block both hide at launch.
+    expect(posSrc).toContain("!POS_LAUNCH_SETTLE_DISABLED");
+    // A Thai notice directs staff to the main settle page.
+    expect(posSrc).toContain("หน้าจัดการการเช่า");
   });
 });
 

@@ -49,6 +49,7 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 
 ### T5 — POS V3 sale + fiscal docs; retire v1
 - [QUEUED] POS V3 slip-upload for walk-ins (evidence-only on attempt/booking, private bucket + signed URL — fixes POS v1 public-bucket hygiene; survey done 2026-07-10, not gated by G3/G4/A1)
+- [T5][T-LAUNCH] POS v1 return/settle path is GATED OFF for launch (pos.vue `POS_LAUNCH_SETTLE_DISABLED`, R-A / CHiP ruling 2026-07-25 option ก) — the deposit-refund return flow is hidden and staff are directed to the main rental-booking settle page (the mig-143 13-arg launch settlement). Re-wiring the POS return flow to the launch settlement — or retiring it with POS v1 — is T5 scope; do NOT teach pos.vue the 13-arg call before then. Ref: decisions.md 2026-07-24; docs/design/2026-07-23-t-launch-phase0.md §8.6.
 
 ### T6 — cross-surface consistency + status visibility
 - [QUEUED] No unified transaction view (customer or staff) for mixed — four surfaces, four numbers, join only via the request (Case-3 W3/W1)

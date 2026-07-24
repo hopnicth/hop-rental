@@ -12,9 +12,14 @@
  * Auth:  requirePlatformAdmin (staff + super_admin) — returns are a staff
  *        counter operation.
  * Input: multipart/form-data
- *   penaltyLines            — JSON array of { amount, note } (may be [])
- *   specialDiscountAmount?  — number ≥ 0 (note REQUIRED when > 0)
+ *   penaltyLines            — JSON array of { amount, note } (may be []) —
+ *                             DEPOSIT-era channel; refused by the RPC at launch
+ *   specialDiscountAmount?  — number ≥ 0 (note REQUIRED when > 0) — deposit-era
  *   specialDiscountNote?    — text
+ *   staffChargeLines?       — [143 R-A] JSON array of { charge_type, amount,
+ *                             note } (may be []) — LAUNCH staff-charge channel
+ *   discountAmount?         — [143 R-A] number — LAUNCH rental-base discount
+ *   discountNote?           — [143 R-A] text (RPC requires it when amount > 0)
  *   refundBankAccountRef?   — REQUIRED by the RPC when a refund results
  *   notes?                  — free text for the fulfillment log
  *   customerSignature       — PNG data URL (required)
@@ -22,8 +27,14 @@
  *   slip?                   — JPEG/PNG/PDF by MAGIC BYTES (required by the
  *                             RPC whenever refund/collection > 0)
  *
+ * The RPC (migration 143) is the SOLE money authority — it enforces the
+ * per-line 5,000 cap, the charge-type taxonomy, the discount tiers (by the
+ * looked-up role), regime channel exclusion, and pending_review gating. This
+ * endpoint validates SHAPE/PARSE only and maps every RPC RAISE to its HTTP
+ * status + Thai message via settleReturnRpcError.
+ *
  * Returns: { settlement, fulfillment } (see rental-return-settlement.ts)
- * Errors:  400 | 401 | 403 | 404 | 413 | 415 | 422 | 500
+ * Errors:  400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 500
  */
 import {
   createError,
@@ -32,7 +43,10 @@ import {
   readMultipartFormData,
 } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
-import { settleRentalBookingReturn } from "~~/server/utils/rental-return-settlement";
+import {
+  settleRentalBookingReturn,
+  settleReturnRpcError,
+} from "~~/server/utils/rental-return-settlement";
 import {
   RENTAL_DEPOSIT_SLIP_BUCKET,
   RENTAL_DEPOSIT_SLIP_MAX_FILE_BYTES,
@@ -114,6 +128,45 @@ export default defineEventHandler(async (event) => {
       statusMessage: "SETTLEMENT_DISCOUNT_NOTE_REQUIRED",
     });
   }
+
+  // [143 R-A] Launch staff-charge lines — SHAPE/PARSE only. The RPC is the
+  // sole authority on the 5,000 cap, the taxonomy, disabled/not-settable
+  // types, and amount > 0; we only assert a well-formed { charge_type, amount,
+  // note } array here for a friendly 422. Keys stay snake_case for the RPC.
+  let staffChargeLines: Array<{
+    charge_type: string;
+    amount: number;
+    note: string;
+  }>;
+  try {
+    const parsed = JSON.parse(textPart(parts, "staffChargeLines") || "[]");
+    if (!Array.isArray(parsed)) throw new Error("not array");
+    staffChargeLines = parsed.map((line: Record<string, unknown>) => {
+      const charge_type =
+        typeof line?.charge_type === "string" ? line.charge_type.trim() : "";
+      const amount = Number(line?.amount);
+      const note = typeof line?.note === "string" ? line.note.trim() : "";
+      if (charge_type.length === 0 || !Number.isFinite(amount) || note.length === 0) {
+        throw new Error("bad line");
+      }
+      return { charge_type, amount: Math.round(amount * 100) / 100, note };
+    });
+  } catch {
+    const mapped = settleReturnRpcError("STAFF_CHARGE_LINES_INVALID");
+    throw createError({
+      statusCode: mapped.statusCode,
+      statusMessage: mapped.statusMessage,
+      data: { settleRpcCode: "STAFF_CHARGE_LINES_INVALID" },
+    });
+  }
+
+  // [143 R-A] Launch rental-base discount — parse only. Negatives pass through
+  // so the RPC's DISCOUNT_NEGATIVE stays authoritative; non-numeric → 0. The
+  // RPC owns note-required (DISCOUNT_NOTE_REQUIRED) and the tier ceilings.
+  const discountAmount =
+    Math.round((Number(textPart(parts, "discountAmount")) || 0) * 100) / 100;
+  const discountNote = textPart(parts, "discountNote") || null;
+
   const refundBankAccountRef = textPart(parts, "refundBankAccountRef") || null;
   const notes = textPart(parts, "notes") || null;
 
@@ -176,6 +229,9 @@ export default defineEventHandler(async (event) => {
     penaltyLines,
     specialDiscountAmount,
     specialDiscountNote,
+    staffChargeLines,
+    discountAmount,
+    discountNote,
     customerSignatureDataUrl,
     customerSignaturePath,
     staffSignaturePath,

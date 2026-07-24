@@ -197,6 +197,14 @@ const returnSignature = ref<string | null>(null);
 const fulfillmentNotes = ref("");
 const fulfillmentErrorMessage = ref<string | null>(null);
 const fulfillmentSubmittingType = ref<"pickup" | "return" | null>(null);
+
+// [T-LAUNCH R-A] The POS v1 return/settle path is DEPOSIT-era machinery
+// (deposit-refund at return). Deposits are feature-gated OFF for minimal
+// launch (decisions.md 2026-07-22 f; migration 135), so this path is DISABLED
+// here and staff are directed to the main rental-booking settle page, which
+// runs the launch settlement (migration 143 13-arg RPC). POS re-wiring to the
+// launch flow is T5 scope (docs/BACKLOG.md). Deposit revival flips this back.
+const POS_LAUNCH_SETTLE_DISABLED = true;
 const refundForm = reactive({
   status: "pending" as RentalDepositRefundStatus,
   amount: 0,
@@ -3271,10 +3279,23 @@ async function retryPendingBookingDraft() {
             </p>
           </div>
 
+          <UAlert
+            v-if="
+              selectedBooking.status === 'picked_up' &&
+              POS_LAUNCH_SETTLE_DISABLED
+            "
+            color="info"
+            variant="soft"
+            icon="bx:info-circle"
+            title="การคืนสินค้าและปิดยอดค่าเช่า ทำที่หน้าจัดการการเช่า"
+            description="โหมดเปิดตัวปิดการปิดยอดจากหน้า POS กรุณากดปุ่ม “เปิด Detail” ด้านล่างเพื่อไปยังหน้าจัดการการเช่า แล้วบันทึกการคืนสินค้าและค่าใช้จ่ายที่นั่น"
+          />
+
           <div
             v-if="
-              selectedBooking.status === 'picked_up' ||
-              selectedBooking.status === 'returned'
+              !POS_LAUNCH_SETTLE_DISABLED &&
+              (selectedBooking.status === 'picked_up' ||
+                selectedBooking.status === 'returned')
             "
             class="space-y-3 rounded-xl border border-success/40 bg-success/5 p-3 text-sm"
           >
@@ -3427,7 +3448,10 @@ async function retryPendingBookingDraft() {
             />
           </div>
           <div
-            v-else-if="selectedBooking.status === 'picked_up'"
+            v-else-if="
+              selectedBooking.status === 'picked_up' &&
+              !POS_LAUNCH_SETTLE_DISABLED
+            "
             class="space-y-2"
           >
             <p class="text-sm font-medium">Return Signature</p>
@@ -3466,7 +3490,10 @@ async function retryPendingBookingDraft() {
               @click="applyFulfillment('pickup')"
             />
             <UButton
-              v-if="selectedBooking.status === 'picked_up'"
+              v-if="
+                selectedBooking.status === 'picked_up' &&
+                !POS_LAUNCH_SETTLE_DISABLED
+              "
               :loading="fulfillmentSubmittingType === 'return'"
               :disabled="
                 !canConfirmReturn || Boolean(fulfillmentSubmittingType)
@@ -3508,6 +3535,7 @@ async function retryPendingBookingDraft() {
           <p
             v-if="
               selectedBooking.status === 'picked_up' &&
+              !POS_LAUNCH_SETTLE_DISABLED &&
               confirmReturnDisabledReason
             "
             class="text-xs text-warning"
