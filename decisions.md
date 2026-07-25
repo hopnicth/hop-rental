@@ -930,3 +930,79 @@ Reason: launch bookings are free, so cancellation is an inventory event, not a m
    with no reason, timestamp or audit row.
 Impact: migration 145 + the K-1 application layer; the Case-2 B7 raw-flip debt is
    retired; launch produces no `no_show` rows at all (see the BACKLOG no-show item).
+
+## 2026-07-25 — Accountant gates B1 + B2 CLOSED: dual invoice types live, no branch code in the document number (CHiP-ratified)
+
+Decision:
+a) **B1 CLOSED — ABBREVIATED INVOICES ARE PERMITTED.** HOPNIC may issue
+   `abbreviated_tax_invoice` for tool-rental service; the dual-type flow ratified
+   2026-07-23 b operates in BOTH modes (TIA- abbreviated, TIR- full). This closes the
+   §86/6 eligibility question that had stood as the last true accountant confirmation
+   gate since 2026-07-22.
+   TWO CONDITIONS ATTACH to the permission:
+   1. the `charge_type` taxonomy must classify every line correctly — already shipped
+      as migrations 142 (schema) + 143 (RPCs), so this condition is SATISFIED at
+      ruling time, not outstanding;
+   2. the payment document is **ONE COMBINED DOCUMENT** — tax invoice and receipt are
+      not separate issuances.
+   DOCUMENT HEADERS — EXACT THAI, WORD ORDER FIXED (ใบกำกับภาษี leads in both):
+   - TIA- (abbreviated) = "ใบกำกับภาษีอย่างย่อ/ใบเสร็จรับเงิน"
+   - TIR- (full)        = "ใบกำกับภาษี/ใบเสร็จรับเงิน"
+   The order is part of the ruling, not a formatting preference: the tax-invoice
+   nature leads, the receipt function follows.
+b) **B2 CLOSED — THE PRINTED DOCUMENT NUMBER DOES NOT EMBED A BRANCH CODE.**
+   Migration 136's per-branch sequences stay exactly as applied and
+   `f_next_document_number` needs NO change; the number format stays
+   `PREFIX-YYYYMM-NNNN` (e.g. TIR-202607-0001). The branch identity is carried by the
+   SELLER ADDRESS BLOCK on the template instead:
+       บริษัท ฮอปนิค จำกัด (สำนักงานใหญ่ 00000)
+       888/8 ม.1 ต.พนมสารคาม อ.พนมสารคาม จ.ฉะเชิงเทรา 24120
+       เลขประจำตัวผู้เสียภาษี 0105564155415
+   VAT registration is at the HEAD OFFICE.
+   This closes the item that "cannot be changed after the first tax document issues";
+   because no tax document has issued yet, the closure lands with zero migration cost.
+c) **EFFECT ON THE INVOICE-TYPE CONFIG SWITCH.** The switch is no longer PENDING and
+   its fail-safe posture is released. It was specified 2026-07-22 b as a config whose
+   value awaited the §86/6 ruling, defaulting to "full every time" while unknown.
+   B1 supplies the answer: BOTH types are permitted, so the switch stops being a
+   global on/off and becomes a PER-TRANSACTION selection driven by the customer, per
+   the 2026-07-23 b flow — abbreviated for the ordinary transaction, full when the
+   customer asks, and void-then-reissue when they ask after an abbreviated was already
+   issued. Address intake follows the type per 2026-07-22 e and is now OPERATIVE
+   rather than pending: full requires name + address (ม.86/4), abbreviated does not
+   force it. Nothing here relaxes the awaiting_payment tax-point guard or the
+   staff-issue-date dating (2026-07-23 a) — both stand unchanged.
+d) **TEMPLATE PRINCIPLES for the document layer** (CHiP, 2026-07-25) — design
+   requirements recorded now so the build starts from them rather than discovering them:
+   1. **SINGLE ISSUANCE + SINGLE RENDER PATH.** Issuance goes through the mig-068
+      engine ONLY (re-affirms design doc §0), and rendering goes through ONE shared
+      template engine. No surface composes its own document layout.
+   2. **UNIFORM THEME/FORMAT across ALL document types**, per accounting-document
+      practice: identical layout, seller block, number/date/issuer block, line table
+      and VAT block. Types differ ONLY in (i) the document header — the exact Thai in
+      item a) — and (ii) the fields that type legally requires (full requires buyer
+      name + address; abbreviated does not force it).
+   3. **VOID RENDERING.** A voided document renders with a red rubber-stamp-style
+      "ยกเลิก" overlay, slightly rotated and stamp-like, with the ORIGINAL CONTENT
+      STILL LEGIBLE beneath it for the audit trail. A voided document is never deleted
+      and never hidden — this is the visual half of the void=reissue chain, where the
+      replacement cites `original_document_id`.
+   Detailed template decisions — paper size, bilingual vs Thai-only, stamp position and
+   the like — are DEFERRED to the design-delta pass that precedes document-layer
+   implementation.
+Reason: the §86/6 eligibility answer was the only question whose outcome could have
+   forced a different document contract; with abbreviated permitted, the shipped
+   design (dual types, distinct prefixes, void=reissue upgrade) is confirmed correct
+   as built rather than needing rework. Keeping the branch code out of the number and
+   in the address block preserves the mig-068 numbering contract intact — the
+   alternative would have required re-composing document numbers, which is exactly the
+   change that becomes impossible after the first issuance.
+Impact: NO migration is required by either ruling. B1/B2 move to CLOSED in
+   docs/BACKLOG.md, leaving THREE accountant items before real documents issue
+   (rental_extension income classification; the actual_damage / contractual_penalty
+   non-VAT memo; the two disclosure items). The document layer — STM/TIR/TIA/CDN
+   issuance wrappers, the abbreviated→full upgrade path, conditional address intake,
+   sales-VAT export — is now UNBLOCKED at the accountant boundary but remains
+   UNSCHEDULED: it queues AFTER post-merge batch 1 (types regen; the no-show
+   0-amount forfeiture-row fix-or-gate). Header strings and the seller address block
+   become template content for that work; the exact Thai above is the source of truth.
