@@ -1,5 +1,9 @@
 import { createError, defineEventHandler, readBody } from "h3";
 import { requireSuperAdmin } from "~~/server/utils/admin";
+import {
+  cancelRentalBookingLaunch,
+  type LaunchCancelClient,
+} from "~~/server/utils/rental-booking-launch-cancel";
 
 type PosHistoryType = "sale" | "rental";
 type Row = Record<string, unknown>;
@@ -13,7 +17,7 @@ function isPaidLike(value: unknown): boolean {
 }
 
 export default defineEventHandler(async (event) => {
-  const { adminClient } = await requireSuperAdmin(event);
+  const { adminClient, userId } = await requireSuperAdmin(event);
   const body = ((await readBody(event)) ?? {}) as {
     id?: unknown;
     type?: unknown;
@@ -76,18 +80,20 @@ export default defineEventHandler(async (event) => {
       statusMessage: "Cannot cancel rental after pickup/return",
     });
   }
-  if (currentStatus !== "cancelled") {
-    const { error: updateError } = await adminClient
-      .from("rental_bookings")
-      .update({ status: "cancelled" })
-      .eq("id", id);
-    if (updateError) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: updateError.message,
-      });
-    }
-  }
+  // [K-1 / mig 145] Was a RAW STATUS FLIP (no cancelled_at, no reason, no
+  // audit row — the Case-2 B7 debt). Now routed through the lean cancel RPC,
+  // which is the single writer: it validates the status, releases the slot and
+  // logs the §F row atomically. Its own already-cancelled branch is a no-op,
+  // so no pre-check is needed here.
+  await cancelRentalBookingLaunch({
+    client: adminClient as unknown as LaunchCancelClient,
+    rawBookingId: id,
+    actorUserId: userId,
+    actorRole: "super_admin",
+    initiator: "pos",
+    source: "pos_history",
+    reason: "ยกเลิกรายการเช่าจากประวัติการขายหน้า POS",
+  });
 
   return {
     ok: true,

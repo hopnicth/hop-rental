@@ -1259,7 +1259,11 @@
       "refundProofTitle": "หลักฐานการคืนเงิน",
       "refundProofAvailable": "HOPNIC อัปโหลดหลักฐานการคืนเงินสำหรับรายการนี้แล้ว",
       "viewRefundProof": "ดูหลักฐานการคืนเงิน",
-      "refundProofOpenFailed": "ไม่สามารถเปิดหลักฐานการคืนเงินได้"
+      "refundProofOpenFailed": "ไม่สามารถเปิดหลักฐานการคืนเงินได้",
+      "cancelLaunchTitle": "[NEEDS_TRANSLATION]: Cancel this booking",
+      "cancelLaunchDesc": "[NEEDS_TRANSLATION]: This booking has no payment, so cancelling is free. The dates are released immediately for other customers.",
+      "cancelLaunchModalDesc": "[NEEDS_TRANSLATION]: The booking will be cancelled and the dates released right away. No payment or refund is involved.",
+      "cancelLaunchSuccess": "[NEEDS_TRANSLATION]: Booking cancelled"
     },
     "documents": {
       "title": "เอกสาร",

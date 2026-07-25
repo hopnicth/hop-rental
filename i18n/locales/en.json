@@ -1259,7 +1259,11 @@
       "refundProofTitle": "Refund proof",
       "refundProofAvailable": "HOPNIC has uploaded refund proof for this booking.",
       "viewRefundProof": "View refund proof",
-      "refundProofOpenFailed": "Unable to open refund proof."
+      "refundProofOpenFailed": "Unable to open refund proof.",
+      "cancelLaunchTitle": "Cancel this booking",
+      "cancelLaunchDesc": "This booking has no payment, so cancelling is free. The dates are released immediately for other customers.",
+      "cancelLaunchModalDesc": "The booking will be cancelled and the dates released right away. No payment or refund is involved.",
+      "cancelLaunchSuccess": "Booking cancelled"
     },
     "documents": {
       "title": "Documents",
