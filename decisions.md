@@ -1006,3 +1006,43 @@ Impact: NO migration is required by either ruling. B1/B2 move to CLOSED in
    UNSCHEDULED: it queues AFTER post-merge batch 1 (types regen; the no-show
    0-amount forfeiture-row fix-or-gate). Header strings and the seller address block
    become template content for that work; the exact Thai above is the source of truth.
+
+## 2026-07-26 (addendum to the 2026-07-25 B1/B2 entry) — DEPOSIT DATA vs DEPOSIT DISPLAY (CHiP-ratified)
+
+Decision: **deposit STRUCTURES remain in the database — parked, not deleted, per
+2026-07-22 f — but deposit INFORMATION must NOT appear on any statement, tax document,
+or customer-facing money surface until the deposit machinery formally revives.**
+The two are separate concerns and are now separately governed: persistence is a schema
+question (answered: keep), visibility is a product question (answered: hide).
+
+SCOPE — this binds every document-layer template (STM-, TIA-, TIR-, CDN-) and every
+customer-facing money surface, not only documents. A surface is in scope if a customer
+can read a deposit amount, a deposit status, or deposit vocabulary from it.
+
+RULING CONTEXT: a launch booking carries no deposit at all. Any deposit line or deposit
+status rendered on one is therefore FICTION in the §8.8 sense — a surface asserting
+money machinery that did not happen — and simultaneously a bare-มัดจำ glossary exposure
+of exactly the kind the ป.73/2541 review warns about (2026-07-22 a). The two defects
+arrive together because they have the same cause: a display inherited from the
+deposit era rendering unconditionally in a regime that has no deposits.
+
+CONSEQUENCE FOR IMPLEMENTATION — the fix shape is HIDE, NEVER DELETE. Deposit-era
+rendering is preserved behind a condition (deposit state / the feature gate) so revival
+is re-enabling a flag rather than rebuilding a surface, exactly as the three-layer
+feature-gate strategy already prescribes for writers (design doc §8.6). Removing the
+markup outright would trade one revival cost for another and is not what this ruling
+authorises.
+
+Reason: keeping the data is what makes revival cheap; keeping the DISPLAY is what makes
+launch wrong. Separating them lets both hold at once. The launch regime's whole claim to
+the customer is that a booking is free — a "สถานะมัดจำ: unpaid" chip contradicts that
+claim on the same screen that makes it, and an unpaid state implies an outstanding
+obligation that no launch booking can incur.
+
+Impact: first application is the customer rental-detail header badge, recorded in
+docs/BACKLOG.md as a [MED][UI][GLOSSARY] item scheduled for the next session, before or
+alongside post-merge batch 1. Beyond that, this is a STANDING CONSTRAINT on the
+document-layer build: template work must gate every deposit field rather than assume
+one exists, and the T7 glossary sweep (bare มัดจำ on customer list cards and POS
+surfaces) inherits the same principle. No migration, no schema change, no data
+migration — deposit columns, ledger vocabulary and historical rows are untouched.

@@ -27,6 +27,7 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-07-25 | wording:handoff-entry | Phase-1/merge/smoke handoff record | CLOSED-PASS | auditor | handoff.md (this commit)
 2026-07-25 | fix:launch-cancel-copy | F-1 toast branch + F-2 launch copy (branch-not-replace; deposit-era keys untouched) | CLOSED-PASS | auditor | (this commit)
 2026-07-25 | wording:b1-b2-closure | accountant gates B1/B2 closed — dual-type headers + no branch code in document number | CLOSED-PASS | auditor | decisions.md (this commit)
+2026-07-26 | wording:deposit-data-vs-display | deposit stays in the DB, off every customer money surface until revival | CLOSED-PASS | auditor | decisions.md (this commit)
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,
