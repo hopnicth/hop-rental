@@ -76,6 +76,10 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 - [INFRA] Baht-vs-satang decision audit (auditor-owned; DECISIONS conflict)
 - [INFRA] Empty-string Select values: 4 latent sites (USelectMenu→USelect)
 - [PARKED][INFRA] A2 PDPA retention/purge (must design formal trigger-drop path vs mig-118 delete blocks)
+- [DEBT][post-merge] `app/types/database.types.ts` regen: stale since mig 132, missing every 133-145 object. Forces boundary casts at return-settlement.get.ts, settlement-waive.post.ts and the launch-cancel endpoints. FIX = one batched `supabase gen types --linked`, then remove the casts. Do NOT hand-edit the generated file. OWNER: next post-merge batch.
+- [DEBT][post-merge][2026-07-25] Manual no-show writes 0-amount forfeiture-shaped rows: `markRentalBookingNoShow` is NOT gated by 135 and still inserts a disposition row with `forfeitedAmount = 0` when no deposit exists — the same FICTION FAMILY as §8.8 (a record asserting money machinery that did not happen). Launch also produces no `no_show` rows at all now, since overdue bookings auto-cancel instead. FIX OR GATE within the first post-merge batch. OWNER: post-merge batch 1.
+- [NICE] F-1 cancel-wrapper §F denial log: `cancelRentalBookingLaunch` currently logs no denial rows (its refusals are status/business, not privilege). Cheap to add — `launch_booking_cancel` + `decision='denied'` needs no new vocabulary.
+- [DEBT] HTTP-level walk for the T-LAUNCH endpoints (settle 13-arg, waive, cancel × 3 surfaces) — ABSORBED BY THE POST-MERGE SMOKE. All three blockers are proven at unit/contract level plus real DB probes for 145; no HTTP walk has been run. Same class as the standing T3 Phase-1 close-gate debt.
 
 ### T1a Phase 1 close-out (2026-07-15)
 - [T1b] Company/juristic customer self-serve KYC — owner ruling: company/kyc/document.post.ts is B2B onboarding, NOT rental KYC; juristic self-serve intake builds on kyc_profiles rails in T1b (decisions.md §a addendum item 3 amendment).

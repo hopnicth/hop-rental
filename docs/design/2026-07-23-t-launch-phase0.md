@@ -158,7 +158,9 @@ The statement of charges is **NEVER voided or superseded** when the tax invoice 
 - **141** remove unreachable waive denial log (§8.9 half 1). ✅ APPLIED `741581f`.
 - **142** charge_type taxonomy schema (M-2 split, schema half). ✅ APPLIED `1b83ae1`. **RENUMBERED from "142a": the Supabase CLI requires numeric migration versions (`<timestamp>_name.sql`), so a letter-suffixed split is impossible — the CLI silently SKIPS such files with a warning, not an error. The M-2 "142a/142b" labels became sequential 142/143.**
 - **143** staff-charge channel + discount tiers + pending_review gates (Option A; R-A/R-B/R-C; M-1..M-5). ✅ APPLIED `cb0f4de`. Releases §8.12.
-**Total: 11 migrations, all applied local + remote, parity, zero drift.**
+- **144** waive-denial modl vocabulary (§8.9-half-2 prerequisite). ✅ APPLIED `13d7981`. One value `settlement_payment_waive_denied`; the success value `settlement_payment_waive` stays in-RPC.
+- **145** lean launch cancel RPC + auto-cancel cron (K-1). ✅ APPLIED `84ca4a4`. Two values (`launch_booking_cancel`, `auto_no_show_cancel`), `f_cancel_rental_booking_launch`, `f_auto_cancel_expired_rental_bookings`, cron `rental-launch-auto-cancel` at `'5 17 * * *'` = 00:05 Asia/Bangkok. NO enum or column widening — `cancelled` and every cancellation column already existed.
+**Total: 13 migrations (133-145), all applied local + remote, parity, zero drift.**
 
 **STANDING PRINCIPLES recorded across the track:**
 - **J-2 vocabulary carrying:** a migration carries the CHECK value it needs — no window where running code hits a rejection.
@@ -205,11 +207,10 @@ Three layers — DB fail-closed writers (authoritative), server endpoints, UI (3
 - **I-3** writer-derived amount_due — released by 134 (J-4 definition ก).
 - **§8.8** held-balance fiction — released by 140 (v_held>0 gate).
 - **§8.12** settlement-row fiction — released by 143 (Option A: launch keeps penalty_lines empty → row 0/0/0; charges travel the typed staff-charge channel).
-**🚫 OPEN — feature/t-launch may NOT merge until all clear:**
-- **K-1** launch-era cancellation (slot-release) path. Both cancel RPCs are gated OFF (135); launch has no cancel path yet. Release: a launch slot-release path exists. CHiP note: the legacy cancel shape may never be reused; the future form is undecided — do NOT design it yet.
-- **R-A** TS settle wrapper. 143 DROPPED the 10-arg settle signature; `server/utils/rental-return-settlement.ts` → `return-settlement.post.ts` must ship the 13-arg call (typed staff-charge lines + discount) before merge. Release: the wrapper calls the new signature.
-- **§8.9 half 2** waive denial logging. 141 removed the unreachable in-RPC denial write; the waive ENDPOINT must write the denial row in TypeScript before the 403 (129/131 wrapper pattern). Release: the waive wrapper §F-logs denials.
-All three are PHASE-1 work (wrapper/endpoint/UI). The migration track is done; Phase 1 owns the release conditions.
+- **R-A** TS settle wrapper — RELEASED `d7f640d`. `rental-return-settlement.ts` ships the 13-arg call with typed staff-charge lines + rental-base discount; `settleReturnRpcError` maps every RAISE to HTTP + Thai, keyed on the leading RAISE token.
+- **§8.9 half 2** waive denial logging — RELEASED `87259ef` (vocabulary `13d7981`). The waive wrapper writes the `settlement_payment_waive_denied`/`denied` row before returning the error, on its own guards AND on every RPC RAISE; success stays in-RPC so there is no double log. The route uses `requirePlatformAdmin` with the super_admin check in the util — the §F inversion, pinned by a test so a "tighten the guard" edit cannot silently re-open the gap.
+- **K-1** launch-era cancellation (slot release) — RELEASED `84ca4a4` (mig 145) + `3f51bb5` (app layer). Lean RPC `f_cancel_rental_booking_launch` + nightly auto-cancel sweep; customer, staff and POS all route through it; the POS raw status flip is retired. Legacy cancels remain gated by 135.
+**🚫 OPEN: none. All merge-blockers are clear; feature/t-launch may merge to staging on CHiP instruction.**
 
 ### 8.8 KNOWN FICTION — held-balance collection that has not happened (migration 140, MERGE-BLOCKER)
 **What it is.** When `held = 0` and `penalties > 0`, the inherited 125 ledger branch (125:295-310, carried byte-unchanged through 133 and 134) writes BOTH a `settlement_additional_collection` event and a `settlement_application` event of the same amount. They net to zero, so the residue-0 invariant passes.

@@ -907,3 +907,26 @@ c) DISCOUNT POLICY (two-tier, rental-base only): the discountable base = rental_
 d) LATE-RETURN CUTOFF: 00:00 Asia/Bangkok exactly, no grace (confirms 134's implementation; no change).
 Reason: a single dimension cannot carry both the ledger bucket and the tax substance without the regime-dependent ambiguity that blocked the launch settle (§8.12). Separating charge_type lets launch charges be truthfully classified, discounted within policy, and gated (pending_review) without disturbing the deposit-era settlement algebra.
 Impact: migrations 142 (charge_type column + vocabulary) + 143 (staff-charge channel, discount tiers, pending_review gates) — both applied. Accountant agenda: confirm rental_extension as rental income (VAT + future WHT); obtain the actual_damage / contractual_penalty non-VAT memo (docs/BACKLOG.md).
+
+## 2026-07-25 — Launch-era cancellation ruled (K-1; CHiP-ratified)
+
+Decision:
+a) SHAPE — a NEW LEAN RPC (`f_cancel_rental_booking_launch`), not an un-gate of the
+   deposit-era cancels. Slot release + status + §F log, ZERO money branches. The
+   135-gated legacy RPCs stay gated; deposit revival remains a config flip.
+b) WHO — BOTH customer self-serve and staff. No approval tier: nothing is
+   financially at stake at launch, and the decision log records who acted.
+c) CUT-OFF — NONE. A confirmed booking may be cancelled at any time before pickup
+   and the slot is released immediately.
+d) AUTO-NO-SHOW RETURNS in launch form — bookings past their pickup date auto-cancel
+   via a NEW pg_cron job that only releases slots. This is NOT the 137-removed job,
+   which forfeited deposits and stays gated. Cut-off 00:00 Asia/Bangkok the day after
+   the pickup date (job runs 00:05 ICT = 17:05 UTC; Thailand is a constant UTC+7, no DST).
+e) AUDIT — auto rows always carry the `auto_no_show_cancel` operation and manual rows
+   `launch_booking_cancel`; a NULL actor is NEVER the discriminator (N-1..N-3).
+Reason: launch bookings are free, so cancellation is an inventory event, not a money
+   event. A single DB-level writer is the only shape where the three surfaces
+   (customer, staff, POS) cannot drift apart — the POS path had been a raw status flip
+   with no reason, timestamp or audit row.
+Impact: migration 145 + the K-1 application layer; the Case-2 B7 raw-flip debt is
+   retired; launch produces no `no_show` rows at all (see the BACKLOG no-show item).
