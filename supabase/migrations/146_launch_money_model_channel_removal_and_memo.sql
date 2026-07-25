@@ -57,6 +57,15 @@
 --   P8 pre-146 settlement rows still readable and still satisfy both new CHECKs.
 --   P9 payment_allocations rows for a P6 settlement carry exactly two charge_type
 --      values: rental_charge and rental_extension.
+--   P10 the pending_review backstop's own predicate, run against the P6
+--      settlement, returns 0 rows while the same predicate minus the charge_type
+--      test matches 2 — proving the assertion is aimed at real allocations and
+--      the 0 is a real absence. Its RAISE path is structurally unreachable from
+--      any caller (this function is the only writer of those rows, in the same
+--      transaction), so no positive test for it exists or can be fabricated.
+--   P11 a call passing exactly the 13 pre-146 named arguments still resolves
+--      against the 14-arg function and returns normally — the added parameter
+--      breaks no existing call site.
 -- ============================================================
 
 -- ──────────────────────────────────────────────────────────────────────────────

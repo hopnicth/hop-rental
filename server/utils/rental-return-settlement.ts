@@ -38,19 +38,6 @@ export interface ReturnSettlementPenaltyLine {
   note: string;
 }
 
-/**
- * Launch staff-charge line (migration 143). Keys are snake_case ON PURPOSE —
- * the RPC reads them verbatim from the jsonb (v_staff_line->>'charge_type' /
- * 'amount' / 'note', 143:201-203), so no transform happens on the way through.
- * The util does NOT validate substance (cap/tier/taxonomy) — that is the RPC's
- * sole authority; the endpoint does shape/parse only.
- */
-export interface ReturnSettlementStaffChargeLine {
-  charge_type: string;
-  amount: number;
-  note: string;
-}
-
 export interface ReturnSettlementInput {
   adminClient: AdminClient;
   userId: string;
@@ -59,9 +46,11 @@ export interface ReturnSettlementInput {
   penaltyLines: ReturnSettlementPenaltyLine[];
   specialDiscountAmount: number;
   specialDiscountNote: string | null;
-  // [143 R-A] launch staff-charge channel + rental-base discount. Deposit
-  // regime refuses these; launch regime refuses penaltyLines/specialDiscount.
-  staffChargeLines: ReturnSettlementStaffChargeLine[];
+  // [143 R-A / 146] launch rental-base discount. The deposit regime refuses it;
+  // the launch regime refuses penaltyLines/specialDiscount. The typed
+  // staff-charge channel is REMOVED (decisions.md 2026-07-26 c) — this wrapper
+  // sends no charge lines at all, so the RPC's p_staff_charge_lines default
+  // (empty) applies and its removal RAISE is unreachable from the app.
   discountAmount: number;
   discountNote: string | null;
   // [146] RECORD-BUT-NO-MONEY memo (decisions.md 2026-07-26 b). TEXT ONLY: no
@@ -87,8 +76,8 @@ export interface ReturnSettlementResult {
     settlementAppliedAmount: number;
     refundAmount: number;
     additionalCollectionAmount: number;
-    // [143 R-A] launch return keys (RPC 143:468-470).
-    staffChargeTotal: number;
+    // [143 R-A / 146] launch return keys (RPC 146). No staff-charge total: the
+    // channel is removed and the RPC no longer returns one.
     discountAmount: number;
     rentalBase: number;
   };
@@ -118,47 +107,22 @@ export function settleReturnRpcError(rawCode: string): {
   const code = (rawCode.split(":")[0] ?? rawCode).trim();
   const map: Record<string, { statusCode: number; statusMessage: string }> = {
     // Regime / channel — 409: wrong channel for the active deposit regime.
+    // [146] Both refusals carry the SAME CHiP-ratified sentence: the web takes
+    // no additional charge line of any kind, the detail goes in the memo, and
+    // the bill is issued in the accounting program outside this system.
     PENALTY_LINES_NOT_ACCEPTED_AT_LAUNCH: {
       statusCode: 409,
       statusMessage:
-        "โหมดเปิดตัวไม่รับรายการค่าปรับ กรุณาบันทึกเป็นรายการเรียกเก็บของเจ้าหน้าที่แทน",
+        "ระบบไม่รองรับรายการเรียกเก็บเพิ่มเติม กรุณาบันทึกรายละเอียดในช่องหมายเหตุ และออกบิลเรียกเก็บภายนอกระบบ",
     },
-    STAFF_CHARGE_LINES_NOT_ACCEPTED_IN_DEPOSIT_REGIME: {
+    STAFF_CHARGE_CHANNEL_REMOVED: {
       statusCode: 409,
-      statusMessage: "อยู่ในโหมดเงินประกัน ไม่รองรับรายการเรียกเก็บของเจ้าหน้าที่",
+      statusMessage:
+        "ระบบไม่รองรับรายการเรียกเก็บเพิ่มเติม กรุณาบันทึกรายละเอียดในช่องหมายเหตุ และออกบิลเรียกเก็บภายนอกระบบ",
     },
     LAUNCH_DISCOUNT_NOT_ACCEPTED_IN_DEPOSIT_REGIME: {
       statusCode: 409,
       statusMessage: "อยู่ในโหมดเงินประกัน ไม่รองรับส่วนลดแบบเปิดตัว",
-    },
-    // Staff-charge validation — 422.
-    STAFF_CHARGE_LINES_INVALID: {
-      statusCode: 422,
-      statusMessage: "รูปแบบรายการเรียกเก็บไม่ถูกต้อง",
-    },
-    STAFF_CHARGE_LINE_INVALID: {
-      statusCode: 422,
-      statusMessage: "รายการเรียกเก็บไม่ครบถ้วน ต้องระบุประเภทและหมายเหตุ",
-    },
-    CHARGE_TYPE_DISABLED_FOR_LAUNCH: {
-      statusCode: 422,
-      statusMessage: "ประเภทการเรียกเก็บนี้ยังไม่เปิดใช้งานในช่วงเปิดตัว",
-    },
-    CHARGE_TYPE_NOT_SETTABLE: {
-      statusCode: 422,
-      statusMessage: "ไม่สามารถกำหนดประเภทการเรียกเก็บนี้ได้",
-    },
-    CHARGE_TYPE_UNKNOWN: {
-      statusCode: 422,
-      statusMessage: "ประเภทการเรียกเก็บไม่ถูกต้อง",
-    },
-    STAFF_CHARGE_AMOUNT_INVALID: {
-      statusCode: 422,
-      statusMessage: "จำนวนเงินเรียกเก็บไม่ถูกต้อง",
-    },
-    STAFF_CHARGE_EXCEEDS_CAP: {
-      statusCode: 422,
-      statusMessage: "จำนวนเงินต่อรายการเกิน 5,000 บาท กรุณาแยกเป็นหลายรายการ",
     },
     // Discount — 422 (hard rules) / 403 (privilege tier).
     DISCOUNT_NEGATIVE: {
@@ -202,13 +166,10 @@ export function settleReturnRpcError(rawCode: string): {
   if (hit) return hit;
   // Pre-existing deposit-era SETTLEMENT_* guards + launch prefixes without an
   // explicit entry: business 422 with a generic Thai message (the machine code
-  // is still carried in error.data.settleRpcCode for logs/tests).
-  if (
-    code.startsWith("SETTLEMENT_") ||
-    code.startsWith("STAFF_CHARGE_") ||
-    code.startsWith("CHARGE_TYPE_") ||
-    code.startsWith("DISCOUNT_")
-  ) {
+  // is still carried in error.data.settleRpcCode for logs/tests). [146] the
+  // STAFF_CHARGE_ / CHARGE_TYPE_ prefix tests are GONE with the channel — the
+  // only surviving STAFF_CHARGE_ code is mapped explicitly above.
+  if (code.startsWith("SETTLEMENT_") || code.startsWith("DISCOUNT_")) {
     return {
       statusCode: 422,
       statusMessage: "ไม่สามารถปิดยอดการคืนได้ กรุณาตรวจสอบข้อมูล",
@@ -224,6 +185,56 @@ export function settleReturnRpcError(rawCode: string): {
 function money(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0;
+}
+
+export interface LaunchSettlementPreview {
+  baseRental: number;
+  dailyRate: number;
+  lateDays: number;
+  lateCharge: number;
+  rentalBase: number;
+}
+
+/**
+ * [146] LAUNCH preview — DISPLAY ONLY. Mirrors the derivation the RPC performs
+ * from the locked booking row (base rental = rental_total; rental_extension =
+ * daily_rate x late days, Asia/Bangkok, end_date EXCLUSIVE) so the panel can
+ * show what will be collected BEFORE staff submit.
+ *
+ * This is NOT an authority: `f_settle_rental_booking_return` recomputes every
+ * figure from the row it locks, and a divergence between this preview and the
+ * RPC is the RPC's answer, not this one's. Kept pure so it is unit-testable
+ * without a database.
+ */
+export function buildLaunchSettlementPreview(input: {
+  rentalTotal: unknown;
+  dailyRate: unknown;
+  endDate: string | null;
+  todayBangkok: string;
+}): LaunchSettlementPreview {
+  const baseRental = money(input.rentalTotal);
+  // Multiply the RAW rate, then round ONCE — the RPC computes
+  // round(daily_rate * late_days, 2) from the unrounded column, so rounding the
+  // rate first would drift the preview off the figure staff are about to commit.
+  const rawDailyRate = Number(input.dailyRate ?? 0);
+  const dailyRate = Number.isFinite(rawDailyRate) ? money(rawDailyRate) : 0;
+  const end = Date.parse(`${input.endDate ?? ""}T00:00:00Z`);
+  const today = Date.parse(`${input.todayBangkok}T00:00:00Z`);
+  const lateDays =
+    Number.isFinite(end) && Number.isFinite(today)
+      ? Math.max(0, Math.round((today - end) / 86_400_000))
+      : 0;
+  const lateCharge =
+    lateDays > 0 && Number.isFinite(rawDailyRate)
+      ? money(rawDailyRate * lateDays)
+      : 0;
+  return {
+    baseRental,
+    dailyRate,
+    lateDays,
+    lateCharge,
+    rentalBase: money(baseRental + lateCharge),
+  };
 }
 
 function canonicalLines(
@@ -295,7 +306,6 @@ export async function settleRentalBookingReturn(
       p_refund_bank_account_ref: input.refundBankAccountRef ?? null,
       p_staff_user_id: input.userId,
       p_branch_id: input.branchId ?? null,
-      p_staff_charge_lines: input.staffChargeLines,
       p_discount_amount: input.discountAmount,
       p_discount_note: input.discountNote ?? null,
       p_staff_memo: input.staffMemo ?? null,
@@ -388,7 +398,6 @@ export async function settleRentalBookingReturn(
       settlementAppliedAmount: money(rpc.settlement_applied_amount),
       refundAmount,
       additionalCollectionAmount,
-      staffChargeTotal: money(rpc.staff_charge_total),
       discountAmount: money(rpc.discount_amount),
       rentalBase: money(rpc.rental_base),
     },
@@ -530,11 +539,9 @@ async function resumeSettledReturn(
       refundAmount,
       additionalCollectionAmount,
       // Resume re-runs ONLY the fulfillment half (the RPC already committed the
-      // money). The launch staff-charge total lives in payment_allocations and
-      // the launch discount is not stored on the settlement row (R-C), so they
-      // are not recomputed here — 0 placeholders; no consumer reads them on the
-      // resume path (the panel ignores the response body).
-      staffChargeTotal: 0,
+      // money). The launch discount is not stored on the settlement row (R-C),
+      // so it is not recomputed here — 0 placeholder; no consumer reads it on
+      // the resume path (the panel ignores the response body).
       discountAmount: 0,
       rentalBase: 0,
     },

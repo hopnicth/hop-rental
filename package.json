@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "build": "nuxt build",
-    "dev": "nuxt dev",
+    "predev": "node scripts/check-dev-env.mjs",
+    "dev": "nuxt dev --dotenv .env.local",
+    "dev:remote": "node scripts/check-dev-env.mjs --allow-remote && nuxt dev --dotenv .env.remote",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",

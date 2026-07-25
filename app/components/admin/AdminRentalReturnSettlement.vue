@@ -1,12 +1,25 @@
 <script setup lang="ts">
 /**
- * T2 return-settlement panel (decisions.md §b addendum item 3 — SIMPLE).
+ * Return-settlement panel. ONE instruction, computed — never staff arithmetic.
  *
- * The panel COMPUTES everything and shows staff ONE instruction:
- * "REFUND ฿X" / "COLLECT ฿Y" / "EVEN". Staff enter only damage penalties
- * (amount + note each), an optional special discount (+ mandatory note),
- * signatures, and — when money moves — the transfer slip (iPad camera via
- * capture="environment"). The server RPC recomputes authoritatively.
+ * TWO REGIMES, chosen by the server-authoritative `depositsEnabled` flag
+ * (f_deposits_enabled, mig 135) that the GET feed carries:
+ *
+ *  LAUNCH (deposits OFF — the current regime). The web collects exactly two
+ *  charge types, both COMPUTED from the booking row: ค่าเช่า (rental_charge) and
+ *  ค่าเช่าเกินเวลา (rental_extension = daily rate × late days). Staff enter only a
+ *  rental-base discount (+ mandatory reason) and the RECORD-BUT-NO-MONEY memo,
+ *  which is mandatory when the return is late. The instruction is always
+ *  COLLECT: rental + extension − discount. Damages, penalties, cleaning and fuel
+ *  are billed in the accounting program, off-web (decisions.md 2026-07-26).
+ *
+ *  DEPOSIT ERA (deposits ON — parked, revivable by flag). Damage penalties, the
+ *  special discount, the held-balance algebra and the REFUND/COLLECT/EVEN
+ *  outcome with its slip and bank-account fields. HIDDEN, NOT DELETED, per the
+ *  deposit DATA vs deposit DISPLAY ruling.
+ *
+ * The server RPC recomputes every figure authoritatively; everything here is
+ * display and pre-flight validation.
  */
 import DigitalSignaturePad from "~/components/admin/DigitalSignaturePad.vue";
 
@@ -32,6 +45,25 @@ interface PaymentState {
   waive_reason: string | null;
 }
 const paymentState = ref<PaymentState | null>(null);
+// [146] Server-authoritative deposit regime + launch preview. depositsEnabled
+// gates DISPLAY only: the deposit-era inputs and held-balance arithmetic are
+// hidden while deposits are off, never deleted, so revival is a flag flip
+// (decisions.md 2026-07-26 addendum — deposit DATA vs deposit DISPLAY).
+interface LaunchPreview {
+  baseRental: number;
+  dailyRate: number;
+  lateDays: number;
+  lateCharge: number;
+  rentalBase: number;
+}
+const depositsEnabled = ref(false);
+const preview = ref<LaunchPreview>({
+  baseRental: 0,
+  dailyRate: 0,
+  lateDays: 0,
+  lateCharge: 0,
+  rentalBase: 0,
+});
 const { profile } = useUserProfile();
 const isSuperAdmin = computed(
   () => profile.value?.platformRole === "super_admin",
@@ -54,10 +86,14 @@ const specialDiscountAmount = ref<number | null>(null);
 const specialDiscountNote = ref("");
 const refundBankAccountRef = ref("");
 // [146] RECORD-BUT-NO-MONEY memo. Text only — it never enters any total. The
-// server refuses a LATE return without one; this panel does not know late_days
-// yet (the launch preview feed lands in 2b), so the requirement is surfaced by
-// the RPC's ratified Thai refusal rather than gated client-side.
+// server refuses a LATE return without one; the panel mirrors that requirement
+// from the preview's late_days, but the RPC remains the authority.
 const staffMemo = ref("");
+// [146] LAUNCH rental-base discount (staff ≤20% / super_admin ≤50%). The
+// ceilings are enforced by the RPC against the LOOKED-UP role — this input
+// never decides authority, it only collects the request.
+const discountAmount = ref<number | null>(null);
+const discountNote = ref("");
 const notes = ref("");
 const customerSignature = ref<string | null>(null);
 const staffSignature = ref<string | null>(null);
@@ -73,12 +109,16 @@ async function load() {
       settlement: Record<string, unknown> | null;
       returnChecklistComplete: boolean;
       paymentState: PaymentState | null;
+      depositsEnabled: boolean;
+      preview: LaunchPreview;
     }>(`/api/admin/rental-bookings/${props.bookingId}/return-settlement`);
     heldTotal.value = res.heldTotal;
     currencyCode.value = res.currencyCode;
     existingSettlement.value = res.settlement;
     returnChecklistComplete.value = res.returnChecklistComplete;
     paymentState.value = res.paymentState;
+    depositsEnabled.value = res.depositsEnabled === true;
+    if (res.preview) preview.value = res.preview;
   } catch {
     toast.add({
       title: "Failed to load settlement preview",
@@ -90,6 +130,14 @@ async function load() {
   }
 }
 onMounted(() => void load());
+
+// [146] The return checklist is completed in a SIBLING component, and this
+// panel's gate ("Complete the return checklist first") comes from the feed
+// above — so without this the gate persisted until a manual page reload and
+// read as "the checklist did not save". The parent calls reload() when the ops
+// payload changes. Exposed rather than keyed on a prop so a remount never
+// discards signatures or a memo already typed.
+defineExpose({ reload: load });
 
 const penaltyTotal = computed(() =>
   penaltyLines.value.reduce((sum, line) => sum + (Number(line.amount) || 0), 0),
@@ -120,17 +168,37 @@ const invalidLines = computed(() =>
     (line) => !(Number(line.amount) > 0) || line.note.trim().length === 0,
   ),
 );
-const canSubmit = computed(
-  () =>
-    !submitting.value &&
-    returnChecklistComplete.value &&
-    !invalidLines.value &&
-    (discount.value === 0 || specialDiscountNote.value.trim().length > 0) &&
-    !!customerSignature.value &&
-    !!staffSignature.value &&
-    (!moneyMoves.value || !!slipFile.value) &&
-    (outcome.value !== "refund" || refundBankAccountRef.value.trim().length > 0),
+
+// ── [146] LAUNCH arithmetic ────────────────────────────────────────────────
+// rental_charge + rental_extension − discount = the amount to COLLECT. There is
+// no held balance at launch, so none of the deposit-era refund/collect algebra
+// applies. Display only; f_settle_rental_booking_return recomputes every figure
+// from the booking row it locks, and its answer wins.
+const launchDiscount = computed(() =>
+  Math.max(0, Number(discountAmount.value) || 0),
 );
+const launchCollect = computed(() =>
+  Math.max(0, Math.round((preview.value.rentalBase - launchDiscount.value) * 100) / 100),
+);
+const isLateReturn = computed(() => preview.value.lateDays > 0);
+/** The RPC refuses a late return with no memo; mirror it so staff see it first. */
+const memoMissing = computed(
+  () => isLateReturn.value && staffMemo.value.trim().length === 0,
+);
+
+const canSubmit = computed(() => {
+  if (submitting.value || !returnChecklistComplete.value) return false;
+  if (!customerSignature.value || !staffSignature.value) return false;
+  if (memoMissing.value) return false;
+  return depositsEnabled.value
+    ? !invalidLines.value &&
+        (discount.value === 0 ||
+          specialDiscountNote.value.trim().length > 0) &&
+        (!moneyMoves.value || !!slipFile.value) &&
+        (outcome.value !== "refund" ||
+          refundBankAccountRef.value.trim().length > 0)
+    : launchDiscount.value === 0 || discountNote.value.trim().length > 0;
+});
 
 function addPenaltyLine() {
   penaltyLines.value.push({ amount: null, note: "" });
@@ -203,6 +271,12 @@ async function submit() {
     if (specialDiscountNote.value.trim()) {
       body.append("specialDiscountNote", specialDiscountNote.value.trim());
     }
+    // [146] The two regimes never share an input channel (the RPC refuses the
+    // wrong one), so the launch discount travels only while deposits are off.
+    if (!depositsEnabled.value && launchDiscount.value > 0) {
+      body.append("discountAmount", String(launchDiscount.value));
+      body.append("discountNote", discountNote.value.trim());
+    }
     if (refundBankAccountRef.value.trim()) {
       body.append("refundBankAccountRef", refundBankAccountRef.value.trim());
     }
@@ -242,8 +316,14 @@ async function submit() {
     <template #header>
       <div>
         <h3 class="font-semibold">Return & settlement</h3>
+        <!-- [146] Regime-aware subtitle: at launch there are no penalties to
+             enter, and saying otherwise contradicts the surface below it. -->
         <p class="text-xs text-muted">
-          Enter penalties and discount — the system computes the outcome.
+          {{
+            depositsEnabled
+              ? "Enter penalties and discount — the system computes the outcome."
+              : "ค่าเช่าและค่าเช่าเกินเวลาคำนวณจากข้อมูลการจอง — เจ้าหน้าที่ระบุเฉพาะส่วนลดและหมายเหตุ"
+          }}
         </p>
       </div>
     </template>
@@ -362,12 +442,32 @@ async function submit() {
         title="Settlement already recorded — completing the return"
         :description="`Re-enter the SAME figures to finish (stored: penalties ${formatMoney(Number(existingSettlement.penalty_total ?? 0))}, discount ${formatMoney(Number(existingSettlement.special_discount_amount ?? 0))}, refund ${formatMoney(Number(existingSettlement.refund_amount ?? 0))}).`"
       />
-      <p class="text-sm">
+      <!-- [146] LAUNCH breakdown — the two charge types the web collects, both
+           COMPUTED from the booking row. Shown when deposits are OFF. -->
+      <div v-if="!depositsEnabled" class="space-y-1 rounded-xl border border-default p-3 text-sm">
+        <div class="flex justify-between">
+          <span>ค่าเช่า</span>
+          <span class="font-semibold">{{ formatMoney(preview.baseRental) }}</span>
+        </div>
+        <div v-if="isLateReturn" class="flex justify-between">
+          <span>
+            ค่าเช่าเกินเวลา ({{ preview.lateDays }} วัน ×
+            {{ formatMoney(preview.dailyRate) }})
+          </span>
+          <span class="font-semibold">{{ formatMoney(preview.lateCharge) }}</span>
+        </div>
+        <div v-if="launchDiscount > 0" class="flex justify-between text-success">
+          <span>ส่วนลด</span>
+          <span class="font-semibold">−{{ formatMoney(launchDiscount) }}</span>
+        </div>
+      </div>
+
+      <p v-if="depositsEnabled" class="text-sm">
         Held balance:
         <span class="font-semibold">{{ formatMoney(heldTotal) }}</span>
       </p>
 
-      <div class="space-y-2">
+      <div v-if="depositsEnabled" class="space-y-2">
         <div class="flex items-center justify-between">
           <p class="text-sm font-medium">Damage penalties</p>
           <UButton
@@ -406,7 +506,7 @@ async function submit() {
         </div>
       </div>
 
-      <div class="flex flex-wrap items-end gap-3">
+      <div v-if="depositsEnabled" class="flex flex-wrap items-end gap-3">
         <UFormField label="Special discount" hint="Staff-entered; note required">
           <UInput
             v-model.number="specialDiscountAmount"
@@ -421,12 +521,31 @@ async function submit() {
         </UFormField>
       </div>
 
+      <!-- [146] LAUNCH discount on the rental base. Tier ceilings (staff ≤20%,
+           super_admin ≤50%) are enforced by the RPC against the looked-up role;
+           a refusal comes back as its own Thai message. -->
+      <div v-if="!depositsEnabled" class="flex flex-wrap items-end gap-3">
+        <UFormField label="ส่วนลด" hint="คิดจากค่าเช่าและค่าเช่าเกินเวลา">
+          <UInput
+            v-model.number="discountAmount"
+            type="number"
+            min="0"
+            step="0.01"
+            class="w-32"
+          />
+        </UFormField>
+        <UFormField v-if="launchDiscount > 0" label="เหตุผลของส่วนลด (จำเป็น)">
+          <UInput v-model="discountNote" class="w-72" />
+        </UFormField>
+      </div>
+
       <!-- [146] RECORD-BUT-NO-MONEY memo (decisions.md 2026-07-26 b).
            Text only: no amount, no charge line, no document, no effect on any
            total. The server REQUIRES it when the return is late. -->
       <UFormField
-        label="หมายเหตุการคืน"
+        :label="isLateReturn ? 'หมายเหตุการคืน (จำเป็น)' : 'หมายเหตุการคืน'"
         hint="บังคับเมื่อมีการคืนล่าช้า"
+        :error="memoMissing ? 'กรุณาบันทึกหมายเหตุสำหรับการคืนล่าช้า' : undefined"
       >
         <UTextarea
           v-model="staffMemo"
@@ -436,8 +555,23 @@ async function submit() {
         />
       </UFormField>
 
-      <!-- The single computed instruction (decision 3) -->
+      <!-- [146] LAUNCH: the single computed instruction is always COLLECT —
+           rental + extension − discount. No held balance, so no refund branch. -->
       <UAlert
+        v-if="!depositsEnabled"
+        :color="launchCollect > 0 ? 'warning' : 'info'"
+        variant="soft"
+        :title="
+          launchCollect > 0
+            ? `เรียกเก็บ ${formatMoney(launchCollect)}`
+            : 'ไม่มียอดต้องเรียกเก็บ'
+        "
+        :description="`ค่าเช่า ${formatMoney(preview.baseRental)} · ค่าเช่าเกินเวลา ${formatMoney(preview.lateCharge)} · ส่วนลด ${formatMoney(launchDiscount)}`"
+      />
+
+      <!-- The single computed instruction (decision 3) — deposit era -->
+      <UAlert
+        v-if="depositsEnabled"
         :color="outcome === 'refund' ? 'success' : outcome === 'collect' ? 'warning' : 'info'"
         variant="soft"
         :title="
@@ -451,7 +585,7 @@ async function submit() {
       />
 
       <UFormField
-        v-if="outcome === 'refund'"
+        v-if="depositsEnabled && outcome === 'refund'"
         label="Customer bank account (required for refund)"
       >
         <UInput
@@ -473,7 +607,7 @@ async function submit() {
       </div>
 
       <UFormField
-        v-if="moneyMoves"
+        v-if="depositsEnabled && moneyMoves"
         label="Transfer slip (required)"
         hint="Photograph the slip with the iPad camera"
       >

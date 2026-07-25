@@ -31,6 +31,7 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-07-26 | wording:final-launch-money-model | two charge types only; staff-charge channel REMOVED not gated; pending_review kept as a guard; accountant agenda cut to three | CLOSED-PASS | auditor | decisions.md (this commit)
 2026-07-26 | sql:mig-146 | staff-charge channel removal RAISE + settlement memo/late_days columns; 14-arg signature (DEVIATION-1), M2 columns+CHECKs, GQ2 pending_review backstop | CLOSED-PASS | auditor | supabase/migrations/146_launch_money_model_channel_removal_and_memo.sql
 2026-07-26 | fix:2a-memo-fast-path | mig-146 file + memo passthrough + admin memo field; closes the overdue-return window; both walk branches proven | CLOSED-PASS | auditor | (this commit)
+2026-07-26 | fix:2b-launch-surface | channel removal (-8/+2 map) + discount UI + launch preview + depositsEnabled hiding + customer memo + checklist refresh + types regen + env local-default inversion; term amended to ค่าเช่าเกินเวลา | CLOSED-PASS | auditor | (this commit)
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,

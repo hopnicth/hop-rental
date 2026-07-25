@@ -4278,6 +4278,7 @@ export type Database = {
           allocated_at: string
           allocation_type: string
           branch_id: string | null
+          charge_type: string | null
           created_at: string
           currency_code: string
           deposit_lifecycle_status: string | null
@@ -4312,6 +4313,7 @@ export type Database = {
           allocated_at?: string
           allocation_type: string
           branch_id?: string | null
+          charge_type?: string | null
           created_at?: string
           currency_code?: string
           deposit_lifecycle_status?: string | null
@@ -4346,6 +4348,7 @@ export type Database = {
           allocated_at?: string
           allocation_type?: string
           branch_id?: string | null
+          charge_type?: string | null
           created_at?: string
           currency_code?: string
           deposit_lifecycle_status?: string | null
@@ -6715,6 +6718,7 @@ export type Database = {
           customer_signature_path: string
           held_total: number
           id: string
+          late_days: number | null
           penalty_lines: Json
           penalty_total: number | null
           refund_amount: number
@@ -6723,6 +6727,7 @@ export type Database = {
           slip_evidence_ref: string | null
           special_discount_amount: number
           special_discount_note: string | null
+          staff_memo: string | null
           staff_signature_path: string
         }
         Insert: {
@@ -6735,6 +6740,7 @@ export type Database = {
           customer_signature_path: string
           held_total: number
           id?: string
+          late_days?: number | null
           penalty_lines?: Json
           penalty_total?: number | null
           refund_amount: number
@@ -6743,6 +6749,7 @@ export type Database = {
           slip_evidence_ref?: string | null
           special_discount_amount?: number
           special_discount_note?: string | null
+          staff_memo?: string | null
           staff_signature_path: string
         }
         Update: {
@@ -6755,6 +6762,7 @@ export type Database = {
           customer_signature_path?: string
           held_total?: number
           id?: string
+          late_days?: number | null
           penalty_lines?: Json
           penalty_total?: number | null
           refund_amount?: number
@@ -6763,6 +6771,7 @@ export type Database = {
           slip_evidence_ref?: string | null
           special_discount_amount?: number
           special_discount_note?: string | null
+          staff_memo?: string | null
           staff_signature_path?: string
         }
         Relationships: [
@@ -7222,6 +7231,95 @@ export type Database = {
           {
             foreignKeyName: "rental_held_balance_events_staff_user_id_fkey"
             columns: ["staff_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rental_settlement_payment_states: {
+        Row: {
+          amount_due: number
+          amount_paid: number
+          booking_id: string
+          confirmed_by_user_id: string | null
+          created_at: string
+          currency_code: string
+          id: string
+          paid_at: string | null
+          payment_method: string | null
+          payment_reference: string | null
+          settlement_id: string
+          slip_evidence_ref: string | null
+          state: string
+          updated_at: string
+          waive_reason: string | null
+          waived_at: string | null
+          waived_by_user_id: string | null
+        }
+        Insert: {
+          amount_due: number
+          amount_paid?: number
+          booking_id: string
+          confirmed_by_user_id?: string | null
+          created_at?: string
+          currency_code?: string
+          id?: string
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          settlement_id: string
+          slip_evidence_ref?: string | null
+          state?: string
+          updated_at?: string
+          waive_reason?: string | null
+          waived_at?: string | null
+          waived_by_user_id?: string | null
+        }
+        Update: {
+          amount_due?: number
+          amount_paid?: number
+          booking_id?: string
+          confirmed_by_user_id?: string | null
+          created_at?: string
+          currency_code?: string
+          id?: string
+          paid_at?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          settlement_id?: string
+          slip_evidence_ref?: string | null
+          state?: string
+          updated_at?: string
+          waive_reason?: string | null
+          waived_at?: string | null
+          waived_by_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rental_settlement_payment_states_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: true
+            referencedRelation: "rental_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_settlement_payment_states_confirmed_by_user_id_fkey"
+            columns: ["confirmed_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_settlement_payment_states_settlement_id_fkey"
+            columns: ["settlement_id"]
+            isOneToOne: true
+            referencedRelation: "rental_booking_settlements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rental_settlement_payment_states_waived_by_user_id_fkey"
+            columns: ["waived_by_user_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -7990,8 +8088,43 @@ export type Database = {
         Args: { p_order_id: string }
         Returns: boolean
       }
+      f_assert_tax_document_issuable: {
+        Args: { p_booking_id: string; p_document_type: string }
+        Returns: undefined
+      }
+      f_auto_cancel_expired_rental_bookings: { Args: never; Returns: Json }
       f_auto_mark_rental_no_shows: { Args: never; Returns: Json }
+      f_auto_mark_rental_no_shows_ungated: { Args: never; Returns: Json }
       f_cancel_customer_rental_booking_refund_request: {
+        Args: {
+          p_booking_id: string
+          p_cancellation_local_date: string
+          p_cancellation_reason_code: string
+          p_cancellation_reason_note: string
+          p_cancelled_at: string
+          p_currency_code: string
+          p_gateway: Database["public"]["Enums"]["payment_gateway"]
+          p_gateway_charge_id: string
+          p_gateway_payment_reference: string
+          p_original_mixed_payment_allocation_id: string
+          p_original_payment_source_type: string
+          p_original_rental_booking_payment_attempt_id: string
+          p_pickup_local_date: string
+          p_refund_amount: number
+          p_refund_bank_account_name: string
+          p_refund_bank_account_number: string
+          p_refund_bank_name: string
+          p_refund_contact_phone: string
+          p_refund_customer_note: string
+          p_refund_cutoff_date: string
+          p_refund_policy_version: string
+          p_refund_timezone: string
+          p_restriction_window_started_at: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      f_cancel_customer_rental_booking_refund_request_ungated: {
         Args: {
           p_booking_id: string
           p_cancellation_local_date: string
@@ -8048,6 +8181,44 @@ export type Database = {
         }
         Returns: Json
       }
+      f_cancel_rental_booking_admin_ungated: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_booking_id: string
+          p_cancellation_local_date: string
+          p_cancelled_at: string
+          p_currency_code?: string
+          p_gateway?: Database["public"]["Enums"]["payment_gateway"]
+          p_gateway_charge_id?: string
+          p_gateway_payment_reference?: string
+          p_mode: string
+          p_original_mixed_payment_allocation_id?: string
+          p_original_payment_source_type?: string
+          p_original_rental_booking_payment_attempt_id?: string
+          p_pickup_local_date: string
+          p_reason: string
+          p_refund_amount?: number
+          p_refund_bank_account_name?: string
+          p_refund_bank_account_number?: string
+          p_refund_bank_name?: string
+          p_refund_contact_phone?: string
+          p_refund_cutoff_date: string
+          p_refund_policy_version: string
+        }
+        Returns: Json
+      }
+      f_cancel_rental_booking_launch: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_booking_id: string
+          p_initiator: string
+          p_reason: string
+          p_source: string
+        }
+        Returns: Json
+      }
       f_cancel_sale_order: {
         Args: {
           p_actor_role: string
@@ -8077,6 +8248,35 @@ export type Database = {
         }
         Returns: Json
       }
+      f_confirm_rental_booking_deposit_ungated: {
+        Args: {
+          p_amount: number
+          p_attempt_id: string
+          p_booking_id: string
+          p_branch_id: string
+          p_currency_code: string
+          p_event_metadata?: Json
+          p_idempotency_key: string
+          p_payment_method: string
+          p_source_id: string
+          p_source_type: string
+          p_staff_user_id: string
+        }
+        Returns: Json
+      }
+      f_confirm_settlement_payment: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_amount_paid: number
+          p_booking_id: string
+          p_payment_method: string
+          p_payment_reference: string
+          p_slip_evidence_ref: string
+        }
+        Returns: Json
+      }
+      f_deposits_enabled: { Args: never; Returns: boolean }
       f_get_active_agreement_version: {
         Args: { p_agreement_type: string; p_as_of?: string }
         Returns: {
@@ -8133,11 +8333,15 @@ export type Database = {
           p_booking_id: string
           p_branch_id?: string
           p_customer_signature_path: string
+          p_discount_amount?: number
+          p_discount_note?: string
           p_penalty_lines: Json
           p_refund_bank_account_ref: string
           p_slip_evidence_ref: string
           p_special_discount_amount: number
           p_special_discount_note: string
+          p_staff_charge_lines?: Json
+          p_staff_memo?: string
           p_staff_signature_path: string
           p_staff_user_id: string
         }
@@ -8156,6 +8360,7 @@ export type Database = {
         }
         Returns: Json
       }
+      f_tax_vat_config: { Args: never; Returns: Json }
       f_void_official_document: {
         Args: {
           p_actor_role: string
@@ -8164,6 +8369,27 @@ export type Database = {
           p_reason: string
         }
         Returns: Json
+      }
+      f_waive_settlement_payment: {
+        Args: {
+          p_actor_role: string
+          p_actor_user_id: string
+          p_booking_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      f_write_settlement_charge_line: {
+        Args: {
+          p_allocation_type: string
+          p_booking_id: string
+          p_branch_id: string
+          p_charge_type?: string
+          p_gross: number
+          p_settlement_id: string
+          p_staff_user_id: string
+        }
+        Returns: string
       }
       filter_resync_main_category: {
         Args: { p_main_category: string }

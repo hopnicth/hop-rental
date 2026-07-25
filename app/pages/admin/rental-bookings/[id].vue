@@ -132,8 +132,14 @@ async function load(): Promise<void> {
   }
 }
 
+const settlementPanel = ref<{ reload: () => Promise<void> } | null>(null);
+
 function onOpsUpdated(payload: AdminBookingOpsPayload): void {
   ops.value = payload;
+  // [146] Completing the return checklist unlocks the settle form, but that
+  // gate is computed from the settlement feed, not from `ops` — refresh it so
+  // the panel reflects the checklist that was just completed.
+  void settlementPanel.value?.reload();
 }
 
 async function onDepositConfirmed(): Promise<void> {
@@ -866,6 +872,7 @@ async function issueMissingNoShowDocuments(): Promise<void> {
            reachable after the return is recorded (§8.9 half 2). -->
       <AdminRentalReturnSettlement
         v-if="booking.status === 'picked_up' || booking.status === 'returned'"
+        ref="settlementPanel"
         :booking-id="bookingId"
         :booking-status="booking.status"
         @settled="void onSettled()"

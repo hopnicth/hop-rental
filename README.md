@@ -51,6 +51,22 @@ npm run dev
 
 App URL: `http://localhost:3000`
 
+Dev targets the **LOCAL** Supabase stack by default: `npm run dev` loads
+`.env.local` and a pre-flight guard (`scripts/check-dev-env.mjs`) refuses to
+start if that file does not resolve to `127.0.0.1`/`localhost`.
+
+Working against the remote project is an explicit opt-in — put its values in
+`.env.remote` (gitignored) and run:
+
+```bash
+npm run dev:remote
+```
+
+That path prints a warning before starting, because every write it makes is
+real. Do **not** keep remote values in a plain `.env`: Nuxt loads `.env` by
+default, so `npx nuxt dev` and `nuxt build` would silently target production.
+The guard fails on that file for the same reason.
+
 ### Verification commands
 
 ```bash

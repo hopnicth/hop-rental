@@ -21,9 +21,17 @@ logs
 # Local Supabase CLI temp state
 supabase/.temp/
 
-# Local env files
+# Local env files.
+# LAYOUT (2026-07-26): the DEFAULT dev target is LOCAL. `.env.local` holds the
+# local Supabase stack; the REMOTE project lives ONLY in `.env.remote` and is
+# reached solely through `npm run dev:remote`. A `.env` holding remote values is
+# a setup error — scripts/check-dev-env.mjs refuses to start on it, because Nuxt
+# loads `.env` by default and `npx nuxt dev` would then target production.
+# The `.env.*` glob already covers `.env.remote`; it is named here so the
+# convention is discoverable from the ignore file itself.
 .env
 .env.*
+.env.remote
 !.env.example
 
 # AI agent workspace temp files

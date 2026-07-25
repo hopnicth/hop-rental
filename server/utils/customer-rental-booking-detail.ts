@@ -376,6 +376,30 @@ function historyDocumentSummary(document: Row | null) {
     : null;
 }
 
+/**
+ * [146] RECORD-BUT-NO-MONEY memo, customer-visible (CHiP, 2026-07-26 a5).
+ *
+ * The memo is the in-system reference for a bill that is issued OUTSIDE the
+ * system in the accounting program, so the customer must be able to read the
+ * same text the staff member recorded. TEXT ONLY — it carries no amount and is
+ * not a charge; nothing here may be summed, formatted as money, or presented as
+ * something owed. Absent (null) on on-time returns and on every pre-146 row.
+ */
+async function loadReturnMemo(
+  client: AnyClient,
+  bookingId: string,
+): Promise<{ memo: string; lateDays: number } | null> {
+  const { data } = await client
+    .from("rental_booking_settlements")
+    .select("staff_memo, late_days")
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  const row = (data ?? null) as Record<string, unknown> | null;
+  const memo = text(row?.staff_memo).trim();
+  if (!memo) return null;
+  return { memo, lateDays: Number(row?.late_days ?? 0) || 0 };
+}
+
 export async function getCustomerRentalBookingDetail(
   client: AnyClient,
   bookingId: string,
@@ -383,8 +407,14 @@ export async function getCustomerRentalBookingDetail(
   now = new Date(),
 ) {
   const booking = await loadCustomerRentalBookingRow(client, bookingId, userId);
-  const [paymentAttempt, cancellation, bookingDoc, paymentDoc, noShowDocs] =
-    await Promise.all([
+  const [
+    paymentAttempt,
+    cancellation,
+    bookingDoc,
+    paymentDoc,
+    noShowDocs,
+    returnMemo,
+  ] = await Promise.all([
       loadLatestPaymentAttempt(client, booking),
       loadCancellationState(client, booking),
       loadDocumentBySource(
@@ -400,6 +430,7 @@ export async function getCustomerRentalBookingDetail(
         "rental_booking_deposit_payment_confirmation",
       ),
       loadNoShowForfeitureState(client, booking),
+      loadReturnMemo(client, bookingId),
     ]);
   const currencyCode = text(booking.currency_code) || "THB";
   const depositPaid = money(booking.booking_deposit_paid_amount);
@@ -489,6 +520,8 @@ export async function getCustomerRentalBookingDetail(
         }
       : null,
     refundProof: customerRefundProofSummary(cancellation.refundProof),
+    // [146] Text only. No amount, no charge, nothing owed.
+    returnMemo,
     eligibility,
     documents: {
       bookingConfirmation: documentSummary(bookingDoc as Row | null),

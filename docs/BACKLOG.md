@@ -71,7 +71,7 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 - [PARKED] Accounting-office export pack (VAT register, WHT register, deposit liability ledger, cash reconciliation) — owner vision, end goal (decisions.md §c reconciliation loops)
 
 ### Cross-cutting / infra (fold into the touching track)
-- [INFRA] Dev default targets REMOTE db (.env) — invert to local-default (nearly caused prod writes twice on 2026-07-09/10)
+- [DONE 2026-07-26][INFRA] Dev default targets REMOTE db (.env) — RETIRED. Inverted to local-default: `npm run dev` loads `.env.local` behind a fail-closed pre-flight guard (`scripts/check-dev-env.mjs`) that also refuses a remote `.env`; remote is an explicit opt-in via `npm run dev:remote` + `.env.remote` (gitignored). Third near-miss was the mig-146 browser walk on 2026-07-26, after the two on 2026-07-09/10.
 - [INFRA] Stale-'finalizing' POS attempts sweep/alert (mig-119 commit note)
 - [INFRA] RLS hardening bundle: mig-070 draft-insert policy + confirmBooking dead path + legacy upsert migration (B2-fix report)
 - [INFRA] Baht-vs-satang decision audit (auditor-owned; DECISIONS conflict)
@@ -132,7 +132,7 @@ Config values, not track start, gate on these (decisions.md 2026-07-22 minimal-l
 ### T-LAUNCH accountant agenda — FINAL STATE (migration track closed 2026-07-24)
 **B1 and B2 are CLOSED (CHiP, 2026-07-25). The FINAL LAUNCH MONEY MODEL (CHiP, 2026-07-26) reduces the agenda to THREE confirmations — the web collects only rental_charge + rental_extension, so deposit VAT, the damage memo and mixed-VAT settlement are all moot and DROPPED:**
 - [LAUNCH][ACCOUNTING][1 of 3] TAX POINT at payment receipt with same-day invoice issuance (RD ruling 0811/พ.01760, cited by the accountant). Confirm.
-- [LAUNCH][ACCOUNTING][2 of 3] rental_extension is ADDITIONAL RENTAL INCOME, VAT 7% (customer-facing name "ค่าเช่าต่อเวลา", never ค่าปรับ/เบี้ยปรับ). Confirm.
+- [LAUNCH][ACCOUNTING][2 of 3] rental_extension is ADDITIONAL RENTAL INCOME, VAT 7% (customer-facing name **"ค่าเช่าเกินเวลา"** — amended by CHiP 2026-07-26 from "ค่าเช่าต่อเวลา"; substance unchanged, never ค่าปรับ/เบี้ยปรับ. This is the term to put in front of the accountant and the term every future document, tax invoices included, must use). Confirm.
 - [LAUNCH][ACCOUNTING][3 of 3] the pre-payment STATEMENT may show VAT base / VAT / total, carrying the "not a tax invoice" disclaimer. Confirm.
 - [CLOSED 2026-07-25] B1 (§86/6 eligibility) and B2 (branch code in the document number) — see the CONFIRMATION MODE section above and decisions.md 2026-07-25.
 - [DROPPED 2026-07-26] actual_damage / contractual_penalty non-VAT MEMO — moot: both types are REMOVED FROM THE WEB (external paper billing), so there is no web charge for the memo to govern (decisions.md 2026-07-26 c).
