@@ -64,6 +64,11 @@ export interface ReturnSettlementInput {
   staffChargeLines: ReturnSettlementStaffChargeLine[];
   discountAmount: number;
   discountNote: string | null;
+  // [146] RECORD-BUT-NO-MONEY memo (decisions.md 2026-07-26 b). TEXT ONLY: no
+  // amount, no charge line, no document, no effect on any total. Optional at
+  // this boundary ON PURPOSE — mandatory-when-late is the RPC's authority
+  // (SETTLEMENT_MEMO_REQUIRED_FOR_LATE_RETURN), never a wrapper re-validation.
+  staffMemo?: string | null;
   customerSignatureDataUrl: string;
   customerSignaturePath: string;
   staffSignaturePath: string;
@@ -177,6 +182,12 @@ export function settleReturnRpcError(rawCode: string): {
       statusMessage:
         "ส่วนลดเกินสิทธิ์ของเจ้าหน้าที่ ต้องได้รับอนุมัติจากผู้ดูแลระบบระดับสูง",
     },
+    // [146] Return memo — 422. The RPC refuses a LATE return with no memo;
+    // Thai is CHiP-ratified verbatim (2026-07-26).
+    SETTLEMENT_MEMO_REQUIRED_FOR_LATE_RETURN: {
+      statusCode: 422,
+      statusMessage: "กรุณาบันทึกหมายเหตุสำหรับการคืนล่าช้า",
+    },
     // Actor — 422.
     SETTLEMENT_ACTOR_REQUIRED: {
       statusCode: 422,
@@ -287,6 +298,7 @@ export async function settleRentalBookingReturn(
       p_staff_charge_lines: input.staffChargeLines,
       p_discount_amount: input.discountAmount,
       p_discount_note: input.discountNote ?? null,
+      p_staff_memo: input.staffMemo ?? null,
     },
   );
   if (rpcError) {

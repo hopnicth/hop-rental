@@ -20,6 +20,10 @@
  *                             note } (may be []) — LAUNCH staff-charge channel
  *   discountAmount?         — [143 R-A] number — LAUNCH rental-base discount
  *   discountNote?           — [143 R-A] text (RPC requires it when amount > 0)
+ *   staffMemo?              — [146] RECORD-BUT-NO-MONEY memo, TEXT ONLY (no
+ *                             amount, no charge line, no document, no effect on
+ *                             the total). REQUIRED BY THE RPC when the return is
+ *                             late (late_days > 0)
  *   refundBankAccountRef?   — REQUIRED by the RPC when a refund results
  *   notes?                  — free text for the fulfillment log
  *   customerSignature       — PNG data URL (required)
@@ -170,6 +174,11 @@ export default defineEventHandler(async (event) => {
   const refundBankAccountRef = textPart(parts, "refundBankAccountRef") || null;
   const notes = textPart(parts, "notes") || null;
 
+  // [146] RECORD-BUT-NO-MONEY memo — passthrough only. The RPC owns
+  // mandatory-when-late (SETTLEMENT_MEMO_REQUIRED_FOR_LATE_RETURN); this
+  // endpoint neither computes late days nor re-validates the requirement.
+  const staffMemo = textPart(parts, "staffMemo") || null;
+
   const customerSignatureDataUrl = textPart(parts, "customerSignature");
   const staffSignatureDataUrl = textPart(parts, "staffSignature");
   const customerSigBuffer = decodeSignature(
@@ -232,6 +241,7 @@ export default defineEventHandler(async (event) => {
     staffChargeLines,
     discountAmount,
     discountNote,
+    staffMemo,
     customerSignatureDataUrl,
     customerSignaturePath,
     staffSignaturePath,

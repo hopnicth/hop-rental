@@ -53,6 +53,11 @@ const penaltyLines = ref<PenaltyLine[]>([]);
 const specialDiscountAmount = ref<number | null>(null);
 const specialDiscountNote = ref("");
 const refundBankAccountRef = ref("");
+// [146] RECORD-BUT-NO-MONEY memo. Text only — it never enters any total. The
+// server refuses a LATE return without one; this panel does not know late_days
+// yet (the launch preview feed lands in 2b), so the requirement is surfaced by
+// the RPC's ratified Thai refusal rather than gated client-side.
+const staffMemo = ref("");
 const notes = ref("");
 const customerSignature = ref<string | null>(null);
 const staffSignature = ref<string | null>(null);
@@ -201,6 +206,7 @@ async function submit() {
     if (refundBankAccountRef.value.trim()) {
       body.append("refundBankAccountRef", refundBankAccountRef.value.trim());
     }
+    if (staffMemo.value.trim()) body.append("staffMemo", staffMemo.value.trim());
     if (notes.value.trim()) body.append("notes", notes.value.trim());
     body.append("customerSignature", customerSignature.value ?? "");
     body.append("staffSignature", staffSignature.value ?? "");
@@ -414,6 +420,21 @@ async function submit() {
           <UInput v-model="specialDiscountNote" class="w-72" />
         </UFormField>
       </div>
+
+      <!-- [146] RECORD-BUT-NO-MONEY memo (decisions.md 2026-07-26 b).
+           Text only: no amount, no charge line, no document, no effect on any
+           total. The server REQUIRES it when the return is late. -->
+      <UFormField
+        label="หมายเหตุการคืน"
+        hint="บังคับเมื่อมีการคืนล่าช้า"
+      >
+        <UTextarea
+          v-model="staffMemo"
+          :rows="3"
+          class="w-full"
+          placeholder="เช่น คืนล่าช้า 1 วัน — ออกบิลเรียกเก็บที่โปรแกรมบัญชี"
+        />
+      </UFormField>
 
       <!-- The single computed instruction (decision 3) -->
       <UAlert
