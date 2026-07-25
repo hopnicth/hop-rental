@@ -766,9 +766,13 @@ async function issueMissingNoShowDocuments(): Promise<void> {
         </div>
       </UCard>
 
+      <!-- Also mounted for 'returned': the settle form hides itself, but the
+           settlement payment state (and the super-admin waive) must stay
+           reachable after the return is recorded (§8.9 half 2). -->
       <AdminRentalReturnSettlement
-        v-if="booking.status === 'picked_up'"
+        v-if="booking.status === 'picked_up' || booking.status === 'returned'"
         :booking-id="bookingId"
+        :booking-status="booking.status"
         @settled="void onSettled()"
       />
 

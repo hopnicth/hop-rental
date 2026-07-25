@@ -77,6 +77,8 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 - [INFRA] Baht-vs-satang decision audit (auditor-owned; DECISIONS conflict)
 - [INFRA] Empty-string Select values: 4 latent sites (USelectMenu→USelect)
 - [PARKED][INFRA] A2 PDPA retention/purge (must design formal trigger-drop path vs mig-118 delete blocks)
+- [T-LAUNCH][INFRA] `app/types/database.types.ts` is STALE since migration 132 — it lacks every 133-144 object (e.g. table `rental_settlement_payment_states`, RPC `f_waive_settlement_payment`, the 13-arg `f_settle_rental_booking_return`, `charge_type`). Harmless at runtime (utils take a loose client shape and `.rpc` is untyped there), but it forces boundary casts: see return-settlement.get.ts (looseClient) and settlement-waive.post.ts (WaiveClient cast). FIX = one batched `supabase gen types --linked` covering 133-144, then remove those casts. Do NOT hand-edit the generated file.
+- [INFRA] `npx tsc --noEmit` (the command documented in CLAUDE.md + tests/CLAUDE.md) type-checks NOTHING: the root tsconfig is `files: []` + project references, so without `--build` it silently passes even on a deliberate type error. The real checks are `tsc -p .nuxt/tsconfig.server.json` / `.nuxt/tsconfig.app.json`, which currently report ~223 pre-existing errors. Either fix the documented command or record the real baseline; today the docs imply a gate that does not exist.
 
 ### T1a Phase 1 close-out (2026-07-15)
 - [T1b] Company/juristic customer self-serve KYC — owner ruling: company/kyc/document.post.ts is B2B onboarding, NOT rental KYC; juristic self-serve intake builds on kyc_profiles rails in T1b (decisions.md §a addendum item 3 amendment).

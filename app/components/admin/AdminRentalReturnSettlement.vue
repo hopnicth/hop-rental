@@ -10,7 +10,7 @@
  */
 import DigitalSignaturePad from "~/components/admin/DigitalSignaturePad.vue";
 
-const props = defineProps<{ bookingId: string }>();
+const props = defineProps<{ bookingId: string; bookingStatus?: string }>();
 const emit = defineEmits<{ settled: [] }>();
 
 const toast = useToast();
@@ -20,6 +20,30 @@ const currencyCode = ref("THB");
 const existingSettlement = ref<Record<string, unknown> | null>(null);
 const returnChecklistComplete = ref(false);
 const loading = ref(true);
+
+// ── [§8.9 half 2] Settlement payment state + super-admin waive ──────────────
+interface PaymentState {
+  id: string;
+  state: string;
+  amount_due: number;
+  amount_paid: number;
+  currency_code: string;
+  waived_at: string | null;
+  waive_reason: string | null;
+}
+const paymentState = ref<PaymentState | null>(null);
+const { profile } = useUserProfile();
+const isSuperAdmin = computed(
+  () => profile.value?.platformRole === "super_admin",
+);
+const awaitingPayment = computed(
+  () => paymentState.value?.state === "awaiting_payment",
+);
+/** The settle FORM is only meaningful before the return is recorded. */
+const showSettleForm = computed(() => props.bookingStatus !== "returned");
+const waiveOpen = ref(false);
+const waiveReason = ref("");
+const waiving = ref(false);
 
 interface PenaltyLine {
   amount: number | null;
@@ -43,11 +67,13 @@ async function load() {
       currencyCode: string;
       settlement: Record<string, unknown> | null;
       returnChecklistComplete: boolean;
+      paymentState: PaymentState | null;
     }>(`/api/admin/rental-bookings/${props.bookingId}/return-settlement`);
     heldTotal.value = res.heldTotal;
     currencyCode.value = res.currencyCode;
     existingSettlement.value = res.settlement;
     returnChecklistComplete.value = res.returnChecklistComplete;
+    paymentState.value = res.paymentState;
   } catch {
     toast.add({
       title: "Failed to load settlement preview",
@@ -119,6 +145,41 @@ function formatMoney(value: number): string {
   }).format(value);
 }
 
+/**
+ * [§8.9 half 2] Super-admin waive. The server is the authority: the endpoint
+ * re-checks the role from the session and logs every refusal to
+ * money_ops_decision_logs before returning the error. This visibility gate is
+ * UX only.
+ */
+async function submitWaive() {
+  if (waiving.value || waiveReason.value.trim().length === 0) return;
+  waiving.value = true;
+  try {
+    await $fetch(
+      `/api/admin/rental-bookings/${props.bookingId}/settlement-waive`,
+      { method: "POST", body: { reason: waiveReason.value.trim() } },
+    );
+    toast.add({
+      title: "ยกเว้นยอดชำระเรียบร้อย",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+    waiveOpen.value = false;
+    waiveReason.value = "";
+    await load();
+  } catch (e) {
+    const err = e as { data?: { statusMessage?: string; message?: string } };
+    toast.add({
+      title: "ยกเว้นยอดชำระไม่สำเร็จ",
+      description: err?.data?.statusMessage ?? err?.data?.message ?? "ไม่ทราบสาเหตุ",
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    waiving.value = false;
+  }
+}
+
 async function submit() {
   if (!canSubmit.value) return;
   submitting.value = true;
@@ -184,13 +245,110 @@ async function submit() {
     <div v-if="loading" class="text-sm text-muted">Loading…</div>
 
     <div v-else class="space-y-4">
+      <!-- [§8.9 half 2] Settlement payment state + super-admin waive -->
+      <div
+        v-if="paymentState"
+        class="space-y-3 rounded-xl border border-default p-3 text-sm"
+      >
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p class="font-semibold">สถานะการชำระเงินค่าปิดยอด</p>
+            <p class="text-xs text-muted">
+              ยอดที่ต้องชำระ
+              {{ formatMoney(Number(paymentState.amount_due ?? 0)) }}
+            </p>
+          </div>
+          <UBadge
+            :color="
+              paymentState.state === 'paid'
+                ? 'success'
+                : paymentState.state === 'waived'
+                  ? 'neutral'
+                  : 'warning'
+            "
+            variant="soft"
+          >
+            {{
+              paymentState.state === "paid"
+                ? "ชำระแล้ว"
+                : paymentState.state === "waived"
+                  ? "ยกเว้นแล้ว"
+                  : "รอชำระเงิน"
+            }}
+          </UBadge>
+        </div>
+
+        <p
+          v-if="paymentState.state === 'waived' && paymentState.waive_reason"
+          class="text-xs text-muted"
+        >
+          เหตุผลการยกเว้น: {{ paymentState.waive_reason }}
+        </p>
+
+        <UButton
+          v-if="awaitingPayment && isSuperAdmin"
+          color="warning"
+          variant="soft"
+          icon="bx:receipt"
+          label="ยกเว้นยอดชำระ"
+          @click="waiveOpen = true"
+        />
+      </div>
+
+      <UModal v-model:open="waiveOpen" title="ยืนยันการยกเว้นยอดชำระ">
+        <template #body>
+          <div class="space-y-3 text-sm">
+            <p>
+              ระบบจะยกเว้นยอดค้างชำระ
+              <span class="font-semibold">{{
+                formatMoney(Number(paymentState?.amount_due ?? 0))
+              }}</span>
+              โดยจะไม่มีการรับชำระเงินสำหรับรายการนี้
+              และรายการเรียกเก็บทั้งหมดจะถูกยกเลิก
+            </p>
+            <p class="text-xs text-warning">
+              การดำเนินการนี้ย้อนกลับไม่ได้ และจะถูกบันทึกไว้ในระบบตรวจสอบ
+            </p>
+            <UFormField label="เหตุผลในการยกเว้น (จำเป็น)">
+              <UTextarea
+                v-model="waiveReason"
+                :rows="3"
+                class="w-full"
+                placeholder="ระบุเหตุผลสำหรับการตรวจสอบภายหลัง"
+              />
+            </UFormField>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="ยกเลิก"
+              :disabled="waiving"
+              @click="waiveOpen = false"
+            />
+            <UButton
+              color="warning"
+              label="ยืนยันการยกเว้น"
+              :loading="waiving"
+              :disabled="waiving || waiveReason.trim().length === 0"
+              @click="void submitWaive()"
+            />
+          </div>
+        </template>
+      </UModal>
+
       <UAlert
-        v-if="!returnChecklistComplete"
+        v-if="showSettleForm && !returnChecklistComplete"
         color="warning"
         variant="soft"
         title="Complete the return checklist first"
         description="The equipment return checklist must be completed before settlement."
       />
+      <!-- Settle FORM — hidden once the booking is returned (already settled);
+           the payment-state/waive block above stays visible. -->
+      <div v-if="showSettleForm" class="space-y-4">
       <UAlert
         v-if="existingSettlement"
         color="info"
@@ -318,6 +476,7 @@ async function submit() {
         :disabled="!canSubmit"
         @click="void submit()"
       />
+      </div>
     </div>
   </UCard>
 </template>
