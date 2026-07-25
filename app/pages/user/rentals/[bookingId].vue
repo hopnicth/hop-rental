@@ -326,6 +326,12 @@ async function openRefundProof() {
 }
 async function submitCancel() {
   if ((!canCancel.value && !canCancelLaunch.value) || cancelling.value) return;
+  // [F-1] Capture the regime BEFORE the awaits below. loadDetail() refetches the
+  // booking as `cancelled`, and canCancelLaunch requires status === "confirmed",
+  // so reading it after the refetch always yields false and the launch success
+  // toast could never fire — the customer was told a refund request had been
+  // created when a launch cancel creates none.
+  const wasLaunchCancel = canCancelLaunch.value;
   cancelling.value = true;
   cancelError.value = null;
   try {
@@ -339,7 +345,7 @@ async function submitCancel() {
     await loadDetail();
     await refreshBookings();
     toast.add({
-      title: canCancelLaunch.value
+      title: wasLaunchCancel
         ? t("rentalsPage.detail.cancelLaunchSuccess")
         : t("rentalsPage.detail.cancelSuccessRefundRequest"),
       color: "success",
@@ -611,10 +617,17 @@ watch(
       <UCard id="cancel-refund" class="scroll-mt-24 border-warning/30"
         ><template #header
           ><div>
+            <!-- [F-2] LAUNCH bookings carry no money, so the deposit/refund
+                 framing must not appear on them. The deposit-era copy stays for
+                 the (135-gated) deposit path. -->
             <h2 class="font-semibold">
-              {{ t("rentalsPage.detail.cancelRefundTitle") }}
+              {{
+                canCancelLaunch
+                  ? t("rentalsPage.detail.cancelLaunchSectionTitle")
+                  : t("rentalsPage.detail.cancelRefundTitle")
+              }}
             </h2>
-            <p class="text-xs text-muted">
+            <p v-if="!canCancelLaunch" class="text-xs text-muted">
               {{ t("rentalsPage.detail.cancelRefundSubtitle") }}
             </p>
           </div></template
@@ -636,7 +649,7 @@ watch(
             :description="t('rentalsPage.detail.cancelLaunchDesc')"
           />
           <UButton color="error" icon="bx:x-circle" @click="cancelOpen = true">{{
-            t("rentalsPage.detail.cancelSubmitOpen")
+            t("rentalsPage.detail.cancelLaunchSubmitOpen")
           }}</UButton>
         </div>
         <div v-else-if="canCancel" class="space-y-4">
@@ -749,7 +762,11 @@ watch(
     </div>
     <UModal
       v-model:open="cancelOpen"
-      :title="t('rentalsPage.detail.cancelModalTitle')"
+      :title="
+        canCancelLaunch
+          ? t('rentalsPage.detail.cancelLaunchModalTitle')
+          : t('rentalsPage.detail.cancelModalTitle')
+      "
       :dismissible="!cancelling"
       ><template #body
         ><div class="space-y-3">
@@ -758,7 +775,6 @@ watch(
           <template v-if="canCancelLaunch">
             <UAlert
               color="warning"
-              :title="t('rentalsPage.detail.cancelLaunchTitle')"
               :description="t('rentalsPage.detail.cancelLaunchModalDesc')"
             />
             <UAlert v-if="cancelError" color="error" :title="cancelError" />
@@ -805,7 +821,11 @@ watch(
             variant="ghost"
             :disabled="cancelling"
             @click="cancelOpen = false"
-            >{{ t("rentalsPage.cancelKeep") }}</UButton
+            >{{
+              canCancelLaunch
+                ? t("rentalsPage.detail.cancelLaunchBack")
+                : t("rentalsPage.cancelKeep")
+            }}</UButton
           ><UButton
             color="error"
             :loading="cancelling"
@@ -814,7 +834,11 @@ watch(
               (!canCancelLaunch && !form.confirmRefundDestinationAccuracy)
             "
             @click="submitCancel"
-            >{{ t("rentalsPage.detail.confirmCancellation") }}</UButton
+            >{{
+              canCancelLaunch
+                ? t("rentalsPage.detail.cancelLaunchConfirm")
+                : t("rentalsPage.detail.confirmCancellation")
+            }}</UButton
           >
         </div></template
       ></UModal

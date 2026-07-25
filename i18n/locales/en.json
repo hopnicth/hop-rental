@@ -1262,8 +1262,13 @@
       "refundProofOpenFailed": "Unable to open refund proof.",
       "cancelLaunchTitle": "Cancel this booking",
       "cancelLaunchDesc": "This booking has no payment, so cancelling is free. The dates are released immediately for other customers.",
-      "cancelLaunchModalDesc": "The booking will be cancelled and the dates released right away. No payment or refund is involved.",
-      "cancelLaunchSuccess": "Booking cancelled"
+      "cancelLaunchModalDesc": "This booking has no charges. Once cancelled, the slot is released to others immediately and this cannot be undone.",
+      "cancelLaunchSuccess": "Booking cancelled",
+      "cancelLaunchSectionTitle": "Cancel booking",
+      "cancelLaunchSubmitOpen": "Cancel booking",
+      "cancelLaunchModalTitle": "Confirm cancellation",
+      "cancelLaunchConfirm": "Confirm cancellation",
+      "cancelLaunchBack": "Back"
     },
     "documents": {
       "title": "Documents",

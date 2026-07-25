@@ -25,6 +25,7 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-07-25 | sql:seed | local fixture seed for post-merge smoke (supabase/seed.sql) | CLOSED-PASS (first cut FAILED apply: 428C9 generated column + inventory-trigger collision; second cut FAILED login: GoTrue NULL token columns, progress.md:40 recurrence; both fix diffs re-confirmed by auditor) | auditor | supabase/seed.sql (this commit)
 2026-07-25 | wording:smoke-audit | post-merge smoke record + BACKLOG narrowing | CLOSED-PASS | auditor | docs/audit/2026-07-25-t-launch-post-merge-smoke.md (this commit)
 2026-07-25 | wording:handoff-entry | Phase-1/merge/smoke handoff record | CLOSED-PASS | auditor | handoff.md (this commit)
+2026-07-25 | fix:launch-cancel-copy | F-1 toast branch + F-2 launch copy (branch-not-replace; deposit-era keys untouched) | CLOSED-PASS | auditor | (this commit)
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,

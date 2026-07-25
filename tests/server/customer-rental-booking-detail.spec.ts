@@ -1046,4 +1046,92 @@ describe("customer rental booking detail and documents", () => {
     expect(printPage).toContain("ไม่ใช่ใบเสร็จรับเงิน");
     expect(printPage).toContain("ไม่ใช่ใบกำกับภาษี");
   });
+
+  it("keeps the launch cancel surface free of deposit/refund framing (F-1, F-2)", () => {
+    const detailPage = readFileSync(
+      resolve(process.cwd(), "app/pages/user/rentals/[bookingId].vue"),
+      "utf8",
+    );
+
+    // F-1 — the launch regime must be captured BEFORE the post-cancel refetch.
+    // loadDetail() flips status to "cancelled" and canCancelLaunch requires
+    // "confirmed", so reading it after the awaits made the launch branch dead
+    // and every launch cancel claimed a refund request had been created.
+    expect(detailPage).toContain("const wasLaunchCancel = canCancelLaunch.value");
+    expect(detailPage).toContain("title: wasLaunchCancel");
+    expect(detailPage).not.toContain("title: canCancelLaunch.value");
+    // Within submitCancel specifically, the capture must precede both refetches
+    // and the toast. Scoped to that function body — loadDetail() is also called
+    // from elsewhere in the page, so a whole-file index comparison is meaningless.
+    const fnStart = detailPage.indexOf("async function submitCancel()");
+    expect(fnStart).toBeGreaterThan(-1);
+    const fnEnd = detailPage.indexOf("\n}", fnStart);
+    const submitCancelBody = detailPage.slice(fnStart, fnEnd);
+    const captureAt = submitCancelBody.indexOf("const wasLaunchCancel");
+    expect(captureAt).toBeGreaterThan(-1);
+    expect(captureAt).toBeLessThan(submitCancelBody.indexOf("await loadDetail()"));
+    expect(captureAt).toBeLessThan(
+      submitCancelBody.indexOf("await refreshBookings()"),
+    );
+    expect(captureAt).toBeLessThan(submitCancelBody.indexOf("toast.add("));
+
+    // F-2 — launch-specific copy keys exist on the surface...
+    for (const key of [
+      "rentalsPage.detail.cancelLaunchSectionTitle",
+      "rentalsPage.detail.cancelLaunchSubmitOpen",
+      "rentalsPage.detail.cancelLaunchModalTitle",
+      "rentalsPage.detail.cancelLaunchModalDesc",
+      "rentalsPage.detail.cancelLaunchConfirm",
+      "rentalsPage.detail.cancelLaunchBack",
+    ]) {
+      expect(detailPage).toContain(key);
+    }
+    // ...and the deposit-era keys survive for the (135-gated) deposit path,
+    // so this is a branch, never a replacement.
+    for (const key of [
+      "rentalsPage.detail.cancelRefundTitle",
+      "rentalsPage.detail.cancelSubmitOpen",
+      "rentalsPage.detail.cancelModalTitle",
+      "rentalsPage.detail.confirmCancellation",
+      "rentalsPage.cancelKeep",
+    ]) {
+      expect(detailPage).toContain(key);
+    }
+
+    // Both active locales carry every launch key, and none of them uses
+    // money / refund / deposit vocabulary (CHiP: a launch cancel moves no money).
+    const MONEY_WORDS_TH = ["คืนเงิน", "มัดจำ", "ชำระเงิน", "Booking Deposit"];
+    const MONEY_WORDS_EN = ["refund", "deposit", "payment"];
+    const LAUNCH_KEYS = [
+      "cancelLaunchSectionTitle",
+      "cancelLaunchSubmitOpen",
+      "cancelLaunchModalTitle",
+      "cancelLaunchModalDesc",
+      "cancelLaunchConfirm",
+      "cancelLaunchBack",
+      "cancelLaunchSuccess",
+    ];
+    for (const [locale, words] of [
+      ["th", MONEY_WORDS_TH],
+      ["en", MONEY_WORDS_EN],
+    ] as const) {
+      const detail = JSON.parse(
+        readFileSync(
+          resolve(process.cwd(), `i18n/locales/${locale}.json`),
+          "utf8",
+        ),
+      ).rentalsPage.detail as Record<string, string>;
+      for (const key of LAUNCH_KEYS) {
+        const value = detail[key];
+        expect(value, `${locale}.${key} must exist`).toBeTruthy();
+        expect(value).not.toContain("NEEDS_TRANSLATION");
+        for (const word of words) {
+          expect(
+            value.toLowerCase().includes(word.toLowerCase()),
+            `${locale}.${key} must not use "${word}" — a launch cancel moves no money`,
+          ).toBe(false);
+        }
+      }
+    }
+  });
 });
