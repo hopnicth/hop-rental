@@ -1260,10 +1260,10 @@
       "refundProofAvailable": "HOPNIC อัปโหลดหลักฐานการคืนเงินสำหรับรายการนี้แล้ว",
       "viewRefundProof": "ดูหลักฐานการคืนเงิน",
       "refundProofOpenFailed": "ไม่สามารถเปิดหลักฐานการคืนเงินได้",
-      "cancelLaunchTitle": "[NEEDS_TRANSLATION]: Cancel this booking",
-      "cancelLaunchDesc": "[NEEDS_TRANSLATION]: This booking has no payment, so cancelling is free. The dates are released immediately for other customers.",
-      "cancelLaunchModalDesc": "[NEEDS_TRANSLATION]: The booking will be cancelled and the dates released right away. No payment or refund is involved.",
-      "cancelLaunchSuccess": "[NEEDS_TRANSLATION]: Booking cancelled"
+      "cancelLaunchTitle": "รายการนี้ยกเลิกผ่านเว็บไซต์ได้ทันที",
+      "cancelLaunchDesc": "การจองนี้ไม่มีการชำระเงิน จึงยกเลิกได้โดยไม่มีค่าใช้จ่าย และช่วงวันที่ที่จองไว้จะเปิดให้ลูกค้าท่านอื่นจองได้ทันที",
+      "cancelLaunchModalDesc": "ระบบจะยกเลิกการจองนี้และเปิดช่วงวันที่ที่จองไว้ให้จองใหม่ได้ทันที ไม่มีการเรียกเก็บเงินหรือคืนเงินใด ๆ",
+      "cancelLaunchSuccess": "ยกเลิกการจองแล้ว"
     },
     "documents": {
       "title": "เอกสาร",
