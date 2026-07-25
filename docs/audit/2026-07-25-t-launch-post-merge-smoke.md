@@ -1,5 +1,18 @@
 # T-LAUNCH post-merge smoke — 2026-07-25
 
+> **ANNOTATION 2026-07-26 — PART OF THIS RECORD DESCRIBES A REMOVED CHANNEL.**
+> The FINAL LAUNCH MONEY MODEL (decisions.md 2026-07-26) removes the typed
+> staff-charge channel from the web: the only collectable types are now
+> `rental_charge` and `rental_extension`. The settle walks below that exercise
+> `taxable_service_charge`, the 5,000 THB per-line cap and the
+> `actual_damage` disabled-type refusal therefore describe behaviour that is
+> being REMOVED, not behaviour to preserve.
+> **The findings and results below are NOT edited** — this record stands as the
+> account of what was true on 2026-07-25, which is what makes it an audit record.
+> The removal is tracked as its own BACKLOG task, queued before post-merge
+> batch 1. Everything else here — cancel across all surfaces, the waive denial
+> row, VAT-inclusive extraction, slot release — is unaffected.
+
 Status: **COMPLETE WITH FINDINGS.** Two layers run fresh against the merge result.
 Scope: the three released §8.7 gates (R-A settle, §8.9-half-2 waive, K-1 cancel).
 Merge under test: `d13795f` (feature/t-launch → staging), pushed to origin/staging.

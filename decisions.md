@@ -1046,3 +1046,96 @@ document-layer build: template work must gate every deposit field rather than as
 one exists, and the T7 glossary sweep (bare มัดจำ on customer list cards and POS
 surfaces) inherits the same principle. No migration, no schema change, no data
 migration — deposit columns, ledger vocabulary and historical rows are untouched.
+
+## 2026-07-26 — FINAL LAUNCH MONEY MODEL: two charge types, everything else off-web (CHiP-ratified from the accountant's recommendation)
+
+Decision:
+a) **LAUNCH CHARGE MODEL — the web collects EXACTLY TWO charge types.**
+   `rental_charge` and `rental_extension`. Both are RENTAL INCOME, both carry VAT 7%
+   INCLUSIVE, and both settle into ONE COMBINED TAX DOCUMENT (TIA-/TIR- per the
+   2026-07-25 B1 ruling). Everything else — damages, penalties, cleaning, fuel, and any
+   service charge — is REMOVED FROM THE WEB and billed externally on paper, outside the
+   system.
+   NAMING IS PART OF THE RULING: the customer-facing term is **"ค่าเช่าต่อเวลา"**
+   (rental extension). Never ค่าปรับ, never เบี้ยปรับ, never "penalty" — per the
+   accountant's substance analysis, an overdue-time charge is continued rental benefit,
+   and calling it a penalty invites the non-VAT damages classification that the substance
+   does not support.
+b) **RECORD-BUT-NO-MONEY.** The settlement return flow gains a MEMO field. Staff record
+   overdue days (`late_days` is already computed by migration 134) and any adjustment
+   notes as **TEXT ONLY**: no amount, no charge line, no document, and no effect on the
+   settlement total. Severe cases leave the web entirely — they become an Asset Incident
+   plus a manual legal exception under the Terms, where rights are RESERVED but not
+   exercised through the system.
+c) **SUPERSESSION — the typed staff-charge channel of 2026-07-24 is REMOVED, NOT GATED.**
+   This supersedes decisions.md 2026-07-24 b (staff free-form typed lines, mandatory
+   charge_type + note, 5,000 THB per-line cap). The 2026-07-24 entry is left UNEDITED per
+   the immutability-of-record convention; read it together with this one.
+   CHiP RATIONALE FOR REMOVAL RATHER THAN GATING: an unused money-collection path that
+   can be switched on is a LIVE RISK. This is deliberately different treatment from the
+   parked deposit machinery, which is gated rather than removed because it has a defined
+   revival plan behind two named conditions (2026-07-22 f). A path with no revival plan
+   and no launch purpose should not exist.
+   CONSEQUENCES:
+   - Discount tiers (staff ≤20%, super_admin ≤50%) survive unchanged and now apply to
+     the rental base only. NOTE: this is a CONFIRMATION, not a change — 2026-07-24 c
+     already restricted the discountable base to `rental_charge + rental_extension` and
+     already excluded service lines. With service lines gone, the rental base is simply
+     the whole base.
+   - `taxable_service_charge` leaves the collectable set.
+   - `actual_damage` and `contractual_penalty` move from DISABLED_FOR_LAUNCH to
+     REMOVED-FROM-WEB (external billing). This ELIMINATES the damage non-VAT memo from
+     the accountant agenda entirely — there is no longer a web charge for it to govern.
+d) **REMOVAL SCOPE — a constraint on the implementation task, not a licence to rewrite
+   history.** Application code paths go: wrapper arguments, endpoint fields, UI. DB
+   vocabulary is NARROWED FOR NEW WRITES ONLY. Historical append-only rows citing the
+   removed types REMAIN VALID. No history rewrite, no destructive migration against
+   existing data. This follows the modl-permanence principle already standing from the
+   133-145 track: a vocabulary value is removable only until its first committed use.
+   **`pending_review` STAYS** (auditor ruling, 2026-07-26): the vocabulary value and all
+   four guard sites — `f_assert_tax_document_issuable`, `f_confirm_settlement_payment`,
+   `f_settle_rental_booking_return`, `f_cancel_sale_order` — are KEPT as a dormant
+   fail-closed backstop. It is a GUARD, not a collection path, and CHiP's removal
+   rationale targets enable-able money paths. Under this model no writer can produce it,
+   because both surviving charge types are computed rather than classified by hand.
+e) **NEGATIVE SPEC — adopted from the accountant document, as amended.** The web must
+   satisfy all of it:
+   1. no free-text charges;
+   2. no penalty or damage charge types;
+   3. `rental_extension` is COMPUTED FROM TIME at a predefined rate only — never
+      hand-entered;
+   4. every web charge carries VAT 7%;
+   5. no money is accepted without a tax document issuing;
+   6. an Asset Incident NEVER creates a receivable;
+   7. post-issuance changes go through CREDIT NOTES, never edits;
+   8. payment completion and tax-document issuance are COUPLED. The exact mechanism is
+      designed in the document-layer pass. **This does NOT replace the existing
+      `awaiting_payment` guard** (migrations 133/139), which stands unchanged — the
+      coupling is additive to it, not a substitute.
+f) **ACCOUNTANT AGENDA — REDUCED TO THREE CONFIRMATIONS.**
+   1. TAX POINT at payment receipt, with same-day invoice issuance — per RD ruling
+      0811/พ.01760 as cited by the accountant.
+   2. `rental_extension` is ADDITIONAL RENTAL INCOME, VAT 7%.
+   3. the pre-payment STATEMENT may show VAT base / VAT / total, carrying the required
+      "not a tax invoice" disclaimer.
+   DROPPED from the launch agenda: deposit VAT, the damage memo, and mixed-VAT
+   settlement — all three are moot once the web collects only rental income.
+Reason: the accountant's substance analysis collapses the launch money surface to what
+   the business actually does on the web — rent a tool and, if it comes back late, rent
+   it for longer. Every other charge either is not rental income or cannot be classified
+   reliably at the counter, and each one carried its own tax question. Removing them
+   removes the questions rather than answering them, which is why the accountant agenda
+   shrinks from five open items to three. Naming the overdue charge as extended rental
+   rather than a penalty is what keeps it inside VAT 7% honestly.
+Impact: an implementation task queues BEFORE post-merge batch 1, alongside the deposit
+   badge fix — remove the staff-charge channel from the application layer and add the
+   settlement memo field. It touches `server/utils/rental-return-settlement.ts`,
+   `server/api/admin/rental-bookings/[id]/return-settlement.post.ts` and the admin
+   settlement UI, and the T-LAUNCH smoke walks that exercised the removed channel
+   (`tests/server/rental-return-settlement.spec.ts`) need their assertions updated in
+   the same task — the 2026-07-25 post-merge smoke deliberately walked the 5,000 cap,
+   the disabled-type refusal and a `taxable_service_charge` success, all of which
+   describe behaviour that is being removed. No migration is required to STOP writing
+   the removed types; any vocabulary narrowing is new-writes-only per d). The
+   `charge_type` column itself stays — it is what makes `rental_charge` vs
+   `rental_extension` legible on the tax document.
