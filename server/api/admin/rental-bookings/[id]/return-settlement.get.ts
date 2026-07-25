@@ -62,10 +62,31 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 500, statusMessage: checklistError.message });
   }
 
+  // [§8.9 half 2] Payment state (migration 133) — display-only, so the panel
+  // can show the outstanding amount and gate the super-admin waive action.
+  // Until now this row was surfaced NOWHERE in the app.
+  // NOTE: app/types/database.types.ts has not been regenerated since migration
+  // 132, so rental_settlement_payment_states (mig 133) is absent from the
+  // generated Database type. Read through a loose view until the 133-144 types
+  // are regenerated (tracked in docs/BACKLOG.md).
+  const looseClient = adminClient as unknown as { from(t: string): any };
+  const { data: paymentState, error: paymentStateError } = await looseClient
+    .from("rental_settlement_payment_states")
+    .select("id, state, amount_due, amount_paid, currency_code, waived_at, waive_reason")
+    .eq("booking_id", bookingId)
+    .maybeSingle();
+  if (paymentStateError) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: paymentStateError.message,
+    });
+  }
+
   return {
     heldTotal: summary.currentHeldBalanceAvailableAmount,
     currencyCode: summary.currencyCode ?? "THB",
     settlement: settlement ?? null,
     returnChecklistComplete: !!checklist,
+    paymentState: paymentState ?? null,
   };
 });

@@ -22,7 +22,11 @@ export type MoneyOpsOperation =
   | "document_void"
   | "sale_cancel_paid"
   | "refund_mark_refunded"
-  | "manual_stock_adjustment";
+  | "manual_stock_adjustment"
+  // [144] wrapper-written waive denial (§8.9 half 2). The waive SUCCESS row
+  // is 'settlement_payment_waive' and is written IN-RPC (141:86-89) — never
+  // by TypeScript — so it is deliberately NOT in this union.
+  | "settlement_payment_waive_denied";
 
 export type MoneyOpsEntityType =
   | "rental_booking"

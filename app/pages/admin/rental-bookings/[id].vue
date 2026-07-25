@@ -77,6 +77,42 @@ async function onSettled() {
   await load();
 }
 
+// ── [K-1 / mig 145] Launch cancellation: slot release, no money ─────────────
+const cancelOpen = ref(false);
+const cancelReason = ref("");
+const cancelling = ref(false);
+/** Only a confirmed booking holds a slot; that is the only thing to release. */
+const canLaunchCancel = computed(() => booking.value?.status === "confirmed");
+
+async function submitLaunchCancel() {
+  if (cancelling.value || cancelReason.value.trim().length === 0) return;
+  cancelling.value = true;
+  try {
+    await $fetch(`/api/admin/rental-bookings/${bookingId.value}/cancel`, {
+      method: "POST",
+      body: { reason: cancelReason.value.trim() },
+    });
+    toast.add({
+      title: "ยกเลิกการจองแล้ว คิวว่างสำหรับลูกค้ารายอื่น",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+    cancelOpen.value = false;
+    cancelReason.value = "";
+    await load();
+  } catch (e) {
+    const err = e as { data?: { statusMessage?: string; message?: string } };
+    toast.add({
+      title: "ยกเลิกการจองไม่สำเร็จ",
+      description: err?.data?.statusMessage ?? err?.data?.message ?? "ไม่ทราบสาเหตุ",
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    cancelling.value = false;
+  }
+}
+
 async function load(): Promise<void> {
   if (!bookingId.value) return;
   loading.value = true;
@@ -766,9 +802,72 @@ async function issueMissingNoShowDocuments(): Promise<void> {
         </div>
       </UCard>
 
+      <!-- [K-1] Launch cancellation — slot release only, no money moves. -->
+      <UCard v-if="canLaunchCancel">
+        <template #header>
+          <div>
+            <h3 class="font-semibold">ยกเลิกการจอง</h3>
+            <p class="text-xs text-muted">
+              ปล่อยคิวให้ว่างทันที ไม่มีการเรียกเก็บหรือคืนเงินใด ๆ
+            </p>
+          </div>
+        </template>
+        <UButton
+          color="error"
+          variant="soft"
+          icon="bx:x-circle"
+          label="ยกเลิกการจอง"
+          @click="cancelOpen = true"
+        />
+      </UCard>
+
+      <UModal v-model:open="cancelOpen" title="ยืนยันการยกเลิกการจอง">
+        <template #body>
+          <div class="space-y-3 text-sm">
+            <p>
+              ระบบจะยกเลิกการจองนี้และปล่อยคิวให้ลูกค้ารายอื่นจองได้ทันที
+              ไม่มีการเรียกเก็บเงินหรือคืนเงินสำหรับรายการนี้
+            </p>
+            <p class="text-xs text-warning">
+              การดำเนินการนี้ย้อนกลับไม่ได้ และจะถูกบันทึกไว้ในระบบตรวจสอบ
+            </p>
+            <UFormField label="เหตุผลในการยกเลิก (จำเป็น)">
+              <UTextarea
+                v-model="cancelReason"
+                :rows="3"
+                class="w-full"
+                placeholder="ระบุเหตุผลสำหรับการตรวจสอบภายหลัง"
+              />
+            </UFormField>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="ปิด"
+              :disabled="cancelling"
+              @click="cancelOpen = false"
+            />
+            <UButton
+              color="error"
+              label="ยืนยันการยกเลิก"
+              :loading="cancelling"
+              :disabled="cancelling || cancelReason.trim().length === 0"
+              @click="void submitLaunchCancel()"
+            />
+          </div>
+        </template>
+      </UModal>
+
+      <!-- Also mounted for 'returned': the settle form hides itself, but the
+           settlement payment state (and the super-admin waive) must stay
+           reachable after the return is recorded (§8.9 half 2). -->
       <AdminRentalReturnSettlement
-        v-if="booking.status === 'picked_up'"
+        v-if="booking.status === 'picked_up' || booking.status === 'returned'"
         :booking-id="bookingId"
+        :booking-status="booking.status"
         @settled="void onSettled()"
       />
 

@@ -38,6 +38,19 @@ export interface ReturnSettlementPenaltyLine {
   note: string;
 }
 
+/**
+ * Launch staff-charge line (migration 143). Keys are snake_case ON PURPOSE —
+ * the RPC reads them verbatim from the jsonb (v_staff_line->>'charge_type' /
+ * 'amount' / 'note', 143:201-203), so no transform happens on the way through.
+ * The util does NOT validate substance (cap/tier/taxonomy) — that is the RPC's
+ * sole authority; the endpoint does shape/parse only.
+ */
+export interface ReturnSettlementStaffChargeLine {
+  charge_type: string;
+  amount: number;
+  note: string;
+}
+
 export interface ReturnSettlementInput {
   adminClient: AdminClient;
   userId: string;
@@ -46,6 +59,11 @@ export interface ReturnSettlementInput {
   penaltyLines: ReturnSettlementPenaltyLine[];
   specialDiscountAmount: number;
   specialDiscountNote: string | null;
+  // [143 R-A] launch staff-charge channel + rental-base discount. Deposit
+  // regime refuses these; launch regime refuses penaltyLines/specialDiscount.
+  staffChargeLines: ReturnSettlementStaffChargeLine[];
+  discountAmount: number;
+  discountNote: string | null;
   customerSignatureDataUrl: string;
   customerSignaturePath: string;
   staffSignaturePath: string;
@@ -64,8 +82,132 @@ export interface ReturnSettlementResult {
     settlementAppliedAmount: number;
     refundAmount: number;
     additionalCollectionAmount: number;
+    // [143 R-A] launch return keys (RPC 143:468-470).
+    staffChargeTotal: number;
+    discountAmount: number;
+    rentalBase: number;
   };
   fulfillment: RentalFulfillmentResult;
+}
+
+/**
+ * RPC RAISE code -> { HTTP status, Thai user message }. Single source of truth
+ * for surfacing f_settle_rental_booking_return refusals (migration 143) at the
+ * HTTP boundary. Applied here for RPC errors and re-used by the endpoint for
+ * its own shape-validation errors, so the map is one place and unit-testable
+ * (the route file cannot be imported under vitest — defineEventHandler + the
+ * h3 mock — so the map lives in the util the endpoint calls).
+ *
+ * Glossary rule (decisions.md 2026-07-07): NO bare "มัดจำ" in money copy. These
+ * are rental / service-charge / discount errors, so deposit vocabulary never
+ * appears. Thai copy is authored per the rule and pending owner confirmation.
+ */
+export function settleReturnRpcError(rawCode: string): {
+  statusCode: number;
+  statusMessage: string;
+} {
+  // Postgres RAISE messages carry a detail suffix (`CODE: %`, e.g.
+  // "STAFF_CHARGE_EXCEEDS_CAP: 6000 (max 5000 per line)"). Map on the leading
+  // token before the first colon so the specific status is never lost to the
+  // prefix fallback.
+  const code = (rawCode.split(":")[0] ?? rawCode).trim();
+  const map: Record<string, { statusCode: number; statusMessage: string }> = {
+    // Regime / channel — 409: wrong channel for the active deposit regime.
+    PENALTY_LINES_NOT_ACCEPTED_AT_LAUNCH: {
+      statusCode: 409,
+      statusMessage:
+        "โหมดเปิดตัวไม่รับรายการค่าปรับ กรุณาบันทึกเป็นรายการเรียกเก็บของเจ้าหน้าที่แทน",
+    },
+    STAFF_CHARGE_LINES_NOT_ACCEPTED_IN_DEPOSIT_REGIME: {
+      statusCode: 409,
+      statusMessage: "อยู่ในโหมดเงินประกัน ไม่รองรับรายการเรียกเก็บของเจ้าหน้าที่",
+    },
+    LAUNCH_DISCOUNT_NOT_ACCEPTED_IN_DEPOSIT_REGIME: {
+      statusCode: 409,
+      statusMessage: "อยู่ในโหมดเงินประกัน ไม่รองรับส่วนลดแบบเปิดตัว",
+    },
+    // Staff-charge validation — 422.
+    STAFF_CHARGE_LINES_INVALID: {
+      statusCode: 422,
+      statusMessage: "รูปแบบรายการเรียกเก็บไม่ถูกต้อง",
+    },
+    STAFF_CHARGE_LINE_INVALID: {
+      statusCode: 422,
+      statusMessage: "รายการเรียกเก็บไม่ครบถ้วน ต้องระบุประเภทและหมายเหตุ",
+    },
+    CHARGE_TYPE_DISABLED_FOR_LAUNCH: {
+      statusCode: 422,
+      statusMessage: "ประเภทการเรียกเก็บนี้ยังไม่เปิดใช้งานในช่วงเปิดตัว",
+    },
+    CHARGE_TYPE_NOT_SETTABLE: {
+      statusCode: 422,
+      statusMessage: "ไม่สามารถกำหนดประเภทการเรียกเก็บนี้ได้",
+    },
+    CHARGE_TYPE_UNKNOWN: {
+      statusCode: 422,
+      statusMessage: "ประเภทการเรียกเก็บไม่ถูกต้อง",
+    },
+    STAFF_CHARGE_AMOUNT_INVALID: {
+      statusCode: 422,
+      statusMessage: "จำนวนเงินเรียกเก็บไม่ถูกต้อง",
+    },
+    STAFF_CHARGE_EXCEEDS_CAP: {
+      statusCode: 422,
+      statusMessage: "จำนวนเงินต่อรายการเกิน 5,000 บาท กรุณาแยกเป็นหลายรายการ",
+    },
+    // Discount — 422 (hard rules) / 403 (privilege tier).
+    DISCOUNT_NEGATIVE: {
+      statusCode: 422,
+      statusMessage: "ส่วนลดต้องไม่ติดลบ",
+    },
+    DISCOUNT_NOTE_REQUIRED: {
+      statusCode: 422,
+      statusMessage: "กรุณาระบุหมายเหตุสำหรับส่วนลด",
+    },
+    DISCOUNT_WITHOUT_RENTAL_BASE: {
+      statusCode: 422,
+      statusMessage: "ไม่มีฐานค่าเช่าสำหรับการให้ส่วนลด",
+    },
+    DISCOUNT_EXCEEDS_MAX: {
+      statusCode: 422,
+      statusMessage: "ส่วนลดเกินเพดานสูงสุดที่ระบบอนุญาต (สูงสุด 50% ของค่าเช่า)",
+    },
+    DISCOUNT_REQUIRES_SUPER_ADMIN: {
+      statusCode: 403,
+      statusMessage:
+        "ส่วนลดเกินสิทธิ์ของเจ้าหน้าที่ ต้องได้รับอนุมัติจากผู้ดูแลระบบระดับสูง",
+    },
+    // Actor — 422.
+    SETTLEMENT_ACTOR_REQUIRED: {
+      statusCode: 422,
+      statusMessage: "ไม่พบรหัสเจ้าหน้าที่ผู้ทำรายการ",
+    },
+    SETTLEMENT_ACTOR_NOT_FOUND: {
+      statusCode: 422,
+      statusMessage: "ไม่พบบัญชีเจ้าหน้าที่ผู้ทำรายการในระบบ",
+    },
+  };
+  const hit = map[code];
+  if (hit) return hit;
+  // Pre-existing deposit-era SETTLEMENT_* guards + launch prefixes without an
+  // explicit entry: business 422 with a generic Thai message (the machine code
+  // is still carried in error.data.settleRpcCode for logs/tests).
+  if (
+    code.startsWith("SETTLEMENT_") ||
+    code.startsWith("STAFF_CHARGE_") ||
+    code.startsWith("CHARGE_TYPE_") ||
+    code.startsWith("DISCOUNT_")
+  ) {
+    return {
+      statusCode: 422,
+      statusMessage: "ไม่สามารถปิดยอดการคืนได้ กรุณาตรวจสอบข้อมูล",
+    };
+  }
+  // Anything else = infrastructure / unexpected.
+  return {
+    statusCode: 500,
+    statusMessage: "เกิดข้อผิดพลาดของระบบ กรุณาลองใหม่อีกครั้ง",
+  };
 }
 
 function money(value: unknown): number {
@@ -124,6 +266,11 @@ export async function settleRentalBookingReturn(
   }
 
   // 1. Settlement RPC — writer authority for the settlement row + ledger.
+  //    [143 R-A] 13-arg signature: typed staff-charge lines + rental-base
+  //    discount travel their own channel; penaltyLines/specialDiscount stay
+  //    the deposit-era channel. The RPC discriminates the regime internally
+  //    (f_deposits_enabled) and is the SOLE authority on cap/tier/taxonomy —
+  //    the util passes shapes through, it does not re-validate substance.
   const { data: rpcResult, error: rpcError } = await adminClient.rpc(
     "f_settle_rental_booking_return",
     {
@@ -137,13 +284,18 @@ export async function settleRentalBookingReturn(
       p_refund_bank_account_ref: input.refundBankAccountRef ?? null,
       p_staff_user_id: input.userId,
       p_branch_id: input.branchId ?? null,
+      p_staff_charge_lines: input.staffChargeLines,
+      p_discount_amount: input.discountAmount,
+      p_discount_note: input.discountNote ?? null,
     },
   );
   if (rpcError) {
-    const msg = rpcError.message ?? "f_settle_rental_booking_return failed";
+    const code = rpcError.message ?? "SETTLEMENT_RPC_FAILED";
+    const mapped = settleReturnRpcError(code);
     throw createError({
-      statusCode: msg.startsWith("SETTLEMENT_") ? 422 : 500,
-      statusMessage: msg,
+      statusCode: mapped.statusCode,
+      statusMessage: mapped.statusMessage,
+      data: { settleRpcCode: code },
     });
   }
   const rpc = (rpcResult ?? {}) as Record<string, unknown>;
@@ -224,6 +376,9 @@ export async function settleRentalBookingReturn(
       settlementAppliedAmount: money(rpc.settlement_applied_amount),
       refundAmount,
       additionalCollectionAmount,
+      staffChargeTotal: money(rpc.staff_charge_total),
+      discountAmount: money(rpc.discount_amount),
+      rentalBase: money(rpc.rental_base),
     },
     fulfillment,
   };
@@ -362,6 +517,14 @@ async function resumeSettledReturn(
       settlementAppliedAmount: money(stored.settlement_applied_amount),
       refundAmount,
       additionalCollectionAmount,
+      // Resume re-runs ONLY the fulfillment half (the RPC already committed the
+      // money). The launch staff-charge total lives in payment_allocations and
+      // the launch discount is not stored on the settlement row (R-C), so they
+      // are not recomputed here — 0 placeholders; no consumer reads them on the
+      // resume path (the panel ignores the response body).
+      staffChargeTotal: 0,
+      discountAmount: 0,
+      rentalBase: 0,
     },
     fulfillment,
   };

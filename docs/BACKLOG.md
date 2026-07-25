@@ -49,6 +49,7 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 
 ### T5 — POS V3 sale + fiscal docs; retire v1
 - [QUEUED] POS V3 slip-upload for walk-ins (evidence-only on attempt/booking, private bucket + signed URL — fixes POS v1 public-bucket hygiene; survey done 2026-07-10, not gated by G3/G4/A1)
+- [T5][T-LAUNCH] POS v1 return/settle path is GATED OFF for launch (pos.vue `POS_LAUNCH_SETTLE_DISABLED`, R-A / CHiP ruling 2026-07-25 option ก) — the deposit-refund return flow is hidden and staff are directed to the main rental-booking settle page (the mig-143 13-arg launch settlement). Re-wiring the POS return flow to the launch settlement — or retiring it with POS v1 — is T5 scope; do NOT teach pos.vue the 13-arg call before then. Ref: decisions.md 2026-07-24; docs/design/2026-07-23-t-launch-phase0.md §8.6.
 
 ### T6 — cross-surface consistency + status visibility
 - [QUEUED] No unified transaction view (customer or staff) for mixed — four surfaces, four numbers, join only via the request (Case-3 W3/W1)
@@ -82,6 +83,7 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 - [DEBT] HTTP-level walk for the T-LAUNCH endpoints (settle 13-arg, waive, cancel × 3 surfaces) — ABSORBED BY THE POST-MERGE SMOKE. All three blockers are proven at unit/contract level plus real DB probes for 145; no HTTP walk has been run. Same class as the standing T3 Phase-1 close-gate debt.
 - [MED][INFRA] Dead/contradictory theme config: `app/app.config.ts:3` declares `ui.primary: "green"` while `app/assets/css/main.css:6` sets `--ui-primary: #f1b323` (gold). The CSS var wins at runtime, so behavior is correct TODAY, but the config is contradictory and could flip the brand if nuxt-ui changes precedence. Resolve to one source of truth — recommend removing the color declaration from `app.config.ts` and keeping `main.css` authoritative. (Surfaced by the DESIGN-KIT-SCOPE token extraction.)
 - [MED][INFRA] Public Sans declared but never loaded: `app/assets/css/main.css:5` sets `--font-sans: "Public Sans", sans-serif`, but no font loader is installed (`@nuxt/fonts` absent, no google-fonts module), so the app silently falls back to system fonts. Either install the loader (e.g. `@nuxt/fonts`) or drop the declaration. (Surfaced by DESIGN-KIT-SCOPE §1.4.)
+- [INFRA] `npx tsc --noEmit` (the command documented in CLAUDE.md + tests/CLAUDE.md) type-checks NOTHING: the root tsconfig is `files: []` + project references, so without `--build` it silently passes even on a deliberate type error. The real checks are `tsc -p .nuxt/tsconfig.server.json` / `.nuxt/tsconfig.app.json`, which currently report ~223 pre-existing errors. Either fix the documented command or record the real baseline; today the docs imply a gate that does not exist.
 
 ### T1a Phase 1 close-out (2026-07-15)
 - [T1b] Company/juristic customer self-serve KYC — owner ruling: company/kyc/document.post.ts is B2B onboarding, NOT rental KYC; juristic self-serve intake builds on kyc_profiles rails in T1b (decisions.md §a addendum item 3 amendment).

@@ -61,6 +61,16 @@ const form = reactive({
   confirmRefundDestinationAccuracy: false,
 });
 
+// [K-1 / mig 145] LAUNCH bookings are free: there is no deposit and no refund
+// policy, so cancelling is a pure slot release and is always allowed while the
+// booking is still confirmed. A booking WITH a paid deposit keeps the
+// deposit-era rules (refund eligibility + cutoff) below.
+const isLaunchBooking = computed(
+  () => detail.value?.booking.bookingDepositPaymentStatus !== "paid",
+);
+const canCancelLaunch = computed(
+  () => detail.value?.booking.status === "confirmed" && isLaunchBooking.value,
+);
 const canCancel = computed(
   () =>
     detail.value?.booking.status === "confirmed" &&
@@ -315,7 +325,7 @@ async function openRefundProof() {
   }
 }
 async function submitCancel() {
-  if (!canCancel.value || cancelling.value) return;
+  if ((!canCancel.value && !canCancelLaunch.value) || cancelling.value) return;
   cancelling.value = true;
   cancelError.value = null;
   try {
@@ -329,7 +339,9 @@ async function submitCancel() {
     await loadDetail();
     await refreshBookings();
     toast.add({
-      title: t("rentalsPage.detail.cancelSuccessRefundRequest"),
+      title: canCancelLaunch.value
+        ? t("rentalsPage.detail.cancelLaunchSuccess")
+        : t("rentalsPage.detail.cancelSuccessRefundRequest"),
       color: "success",
     });
   } catch (e: any) {
@@ -614,6 +626,19 @@ watch(
           :title="t('rentalsPage.detail.noShowRefundTitle')"
           :description="t('rentalsPage.detail.noShowRefundDesc')"
         />
+        <!-- [K-1] LAUNCH booking: free, so no refund figures and no cutoff —
+             cancelling simply releases the slot. -->
+        <div v-else-if="canCancelLaunch" class="space-y-4">
+          <UAlert
+            color="warning"
+            icon="bx:info-circle"
+            :title="t('rentalsPage.detail.cancelLaunchTitle')"
+            :description="t('rentalsPage.detail.cancelLaunchDesc')"
+          />
+          <UButton color="error" icon="bx:x-circle" @click="cancelOpen = true">{{
+            t("rentalsPage.detail.cancelSubmitOpen")
+          }}</UButton>
+        </div>
         <div v-else-if="canCancel" class="space-y-4">
           <UAlert
             color="warning"
@@ -728,6 +753,17 @@ watch(
       :dismissible="!cancelling"
       ><template #body
         ><div class="space-y-3">
+          <!-- [K-1] LAUNCH booking: nothing was paid, so no refund destination
+               is collected — only a confirmation. -->
+          <template v-if="canCancelLaunch">
+            <UAlert
+              color="warning"
+              :title="t('rentalsPage.detail.cancelLaunchTitle')"
+              :description="t('rentalsPage.detail.cancelLaunchModalDesc')"
+            />
+            <UAlert v-if="cancelError" color="error" :title="cancelError" />
+          </template>
+          <template v-else>
           <UAlert
             color="warning"
             :title="t('rentalsPage.detail.cancelModalWarningTitle')"
@@ -762,7 +798,7 @@ watch(
             v-if="cancelError"
             color="error"
             :title="cancelError"
-          /></div></template
+          /></template></div></template
       ><template #footer
         ><div class="flex w-full justify-end gap-2">
           <UButton
@@ -773,7 +809,10 @@ watch(
           ><UButton
             color="error"
             :loading="cancelling"
-            :disabled="cancelling || !form.confirmRefundDestinationAccuracy"
+            :disabled="
+              cancelling ||
+              (!canCancelLaunch && !form.confirmRefundDestinationAccuracy)
+            "
             @click="submitCancel"
             >{{ t("rentalsPage.detail.confirmCancellation") }}</UButton
           >
