@@ -1,5 +1,102 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-07-25 (T-LAUNCH Phase 1 COMPLETE — merged to staging, two-layer smoke run)
+
+Phase 1 (application layer) is code-complete and MERGED. The three merge-blockers of
+design-doc §8.7 are RESOLVED and CHiP-ratified (confirmed with a prior auditor instance
+in CHiP's presence — recorded in docs/audit/gate-log.md as RATIFIED-RETRO, no re-audit):
+  - **R-A** `d7f640d` — `rental-return-settlement.ts` ships the 13-arg settle call with
+    typed staff-charge lines + rental-base discount; `settleReturnRpcError` maps every
+    RAISE to HTTP + Thai on the leading token. POS v1 settle stays GATED OFF
+    (`POS_LAUNCH_SETTLE_DISABLED`) for T5 — do not teach pos.vue the 13-arg call before then.
+  - **§8.9 half-2** `87259ef` (vocabulary `13d7981` = mig-144) — the waive wrapper writes
+    the `settlement_payment_waive_denied` row before returning, on its own guards AND on
+    every RPC RAISE, in a separate transaction. Success stays in-RPC: no double log.
+  - **K-1** `84ca4a4` (mig-145) + `3f51bb5` + `34fc044` — launch cancellation is a slot
+    release, not a money event. Lean `f_cancel_rental_booking_launch` + nightly
+    `rental-launch-auto-cancel` sweep (00:05 Asia/Bangkok). Customer, staff and POS all
+    route through the one writer; the POS raw status flip is retired (Case-2 B7 closed).
+    Ruling: decisions.md 2026-07-25.
+
+**MERGE STATUS — MERGED AND PUSHED. Merge sha `d13795f`.** origin/staging now contains
+`34fc044`. One conflict arose, in docs/BACKLOG.md only, resolved as a UNION on auditor
+ruling (all six HEAD-side lines kept, the branch's `npx tsc --noEmit` non-gate item
+appended, the branch's older database.types.ts line dropped as a strict subset of
+a3c2452's rewrite). Everything else — 13 migrations, 4 endpoints/utils, 2 specs, 4 Vue
+surfaces, both locale files — auto-merged clean. The records commit and the F-1/F-2 fix
+commit land after this entry and push in the same batch.
+
+VERIFICATION (commands and numbers, run on the merge result before pushing it):
+  - `npx vitest run` → **138 files, 2838 tests, 2838 passed, 0 failed, 0 skipped.**
+  - `npx tsc -p .nuxt/tsconfig.server.json` → 223 errors ·
+    `.nuxt/tsconfig.app.json` → 210 errors. **ZERO NET NEW** against a clean pre-Phase-1
+    baseline (detached worktree at `cc5ca01` with `.nuxt` regenerated in-tree, which
+    also reports 223/210); the only set difference is the SAME two pre-existing
+    boundary-cast errors shifted by line drift. Both clear with the types regen.
+  - `supabase migration list --linked` → 145 rows, local == remote, **zero drift**.
+  - NOTE: `npx tsc --noEmit` (the command in CLAUDE.md) checks NOTHING — root tsconfig is
+    `files: []` + project references. The two project-scoped commands above are the real gate.
+
+**SMOKE STATUS — RUN FRESH, BOTH LAYERS, COMPLETE WITH FINDINGS.** The earlier verbal
+smoke report was ruled as not having happened (no repo record) and nothing was carried
+over. Full record: `docs/audit/2026-07-25-t-launch-post-merge-smoke.md`.
+  - Layer 1 (HTTP): auth boundary 401 × 6; cancel via customer / staff / auto sweep incl.
+    ownership 403, idempotency with no duplicate §F row, and slot-release proven with a
+    negative control; settle 13-arg with five refusals (5,000 cap, discount ceiling,
+    pending_review, actual_damage, missing note) and a success producing amount_due
+    1100.00 with VAT extracted inclusive (1000.00 = 934.58 + 65.42); waive denial as
+    staff returning 403 **while persisting the denial row** — the §8.9-half-2 assertion.
+  - Layer 2 (browser): customer and staff cancel walks through the real UI, both landing
+    correct DB provenance and §F rows, zero money rows across the layer.
+  - **Three findings, none blocking, all in the audit doc.** F-1: the launch success toast
+    is unreachable (`canCancelLaunch` is read after `loadDetail()` has flipped the status,
+    so customers are told a refund request was created when none was — the
+    `cancelLaunchSuccess` key from 34fc044 is dead code). F-2: deposit-era framing still
+    surrounds the customer launch-cancel section. F-3: chat FAB overlaps the cancel CTA.
+    **Disposition (CHiP): F-1 + F-2 FIXED THIS SESSION as one standalone commit; F-3 is
+    now a [MED][UI] BACKLOG item.**
+  - **Two surfaces NOT covered:** POS cancel (needs a `pos_branch_id` fixture; the
+    endpoint also requires super_admin, not staff) and the staff 20% discount tier (staff
+    user has no `admin_user_branch_access` row; super_admin bypasses that check).
+
+NEW TOOLING: `supabase/seed.sql` (commit `96f4256`) — the local fixture set. Before it,
+`supabase db reset` left zero business data and config.toml pointed at a seed file that
+did not exist. It took three cuts: two failed applies (generated column 428C9;
+inventory-trigger unique-index collision) and one failed login (GoTrue NULL token
+columns — a recurrence of progress.md:40). Both fix diffs were auditor-re-confirmed.
+LOCAL-ONLY is enforced by tooling (db push never reads seeds) plus a fail-closed guard
+that refuses any database already holding auth users or bookings.
+
+POST-MERGE QUEUE (origin/staging BACKLOG, owner order):
+  1. `app/types/database.types.ts` regen — stale since mig-132, missing every 133-145
+     object. One batched `supabase gen types --linked`, then remove the boundary casts.
+     Also clears the two residual type errors above. OWNER: next post-merge batch.
+  2. Manual no-show 0-amount forfeiture-shaped rows — `markRentalBookingNoShow` is NOT
+     gated by 135 and still writes `forfeitedAmount = 0` rows. Same FICTION FAMILY as
+     §8.8. FIX OR GATE. OWNER: post-merge batch 1.
+  3. HTTP-walk debt — **NARROWED, not retired** (BACKLOG rewritten this session):
+     settle / waive / cancel × (customer, staff, auto) are now walked at HTTP and in the
+     browser. Still open: POS-origin cancel, and the staff 20% discount tier — each needs
+     a seed addition (a `pos_branch_id` booking; an `admin_user_branch_access` row).
+  4. [NICE] F-1 cancel-wrapper §F denial log — cheap, no new vocabulary. (Unrelated to
+     smoke finding F-1 despite the shared label — this is the BACKLOG's own F-1.)
+  5. [MED][UI] chat FAB overlapping the cancel CTA (smoke finding F-3), added this session.
+
+NOT YET SCHEDULED (designed, zero application code): the T-LAUNCH DOCUMENT LAYER —
+STM/TIR/TIA/CDN issuance wrappers (§8.2), the `issueUpgradedTaxInvoice` abbreviated→full
+void+reissue path (§8.3), conditional address intake (§D), sales-VAT export (§E). Grep
+confirms no code for any of it. Still gated on accountant B1 (§86/6 → full-vs-abbreviated
+config switch + whether address intake is mandatory) and B2 (branch code in the printed
+document number — cannot change after the first tax document issues).
+
+DOCS STATE: progress.md has NOT been updated for the 2026-07-24/25 work (newest figures
+are the 2744 / T3+T4-core era). BACKLOG's header still reads "Current work = T1a".
+
+LOCAL DB WARNING (unchanged and now doubled): the `rental-launch-auto-cancel` cron is
+live locally at 00:05 Asia/Bangkok and will cancel ANY confirmed booking whose start_date
+has passed. The seed's booking C is single-use by design for exactly this reason —
+reseed to repeat the auto-cancel walk.
+
 ## Claude Code → CHiP / 2026-07-24 (T-LAUNCH migration track CLOSED)
 Migrations 133–143 (eleven) applied local + remote, parity, zero drift, every one gated. The DB foundation for minimal launch is complete: settlement payment-state + tax-point guard, return-charge money direction, deposit feature-gate, per-branch tax series, no-show cron unscheduled, tax-issuance vocabulary, un-bypassable tax-point trigger, held-balance fiction suppressed, waive denial-log fixed, charge-type taxonomy, staff-charge channel + discount tiers + pending_review gates.
 **NEXT = PHASE 1 (application layer: wrapper / endpoint / UI), a fresh terminal.** Its gate list is the three OPEN merge-blockers (design doc §8.7): (1) K-1 launch cancellation/slot-release path; (2) R-A the TS settle wrapper calling the 13-arg signature with typed lines + discount; (3) §8.9 half-2 the waive endpoint §F-logging denials. feature/t-launch may NOT merge to staging until all three clear. Remote schema is AHEAD of staging code (OD-1) — safe only because no staging code calls the new objects yet.
