@@ -5,8 +5,19 @@
  * total (same source the migration-125 RPC uses as writer authority) plus
  * any existing settlement row. Display-only — the RPC recomputes.
  *
+ * [146] Also carries the two things the LAUNCH panel cannot know on its own:
+ *   depositsEnabled — the server-authoritative deposit regime flag
+ *                     (f_deposits_enabled, mig 135). The panel hides the
+ *                     deposit-era inputs and the held-balance arithmetic behind
+ *                     it: DISPLAY is gated, data is untouched (decisions.md
+ *                     2026-07-26 addendum, deposit DATA vs deposit DISPLAY).
+ *   preview         — base rental + computed rental_extension, so the panel can
+ *                     show what will be COLLECTED before submit. Display only;
+ *                     the RPC recomputes from the row it locks.
+ *
  * Auth: requirePlatformAdmin.
- * Returns: { heldTotal, currencyCode, settlement: {...} | null }
+ * Returns: { heldTotal, currencyCode, settlement, returnChecklistComplete,
+ *            paymentState, depositsEnabled, preview }
  */
 import { createError, defineEventHandler, getRouterParam } from "h3";
 import { requirePlatformAdmin } from "~~/server/utils/admin";
@@ -14,6 +25,8 @@ import {
   RENTAL_HELD_BALANCE_EVENT_SELECT,
 } from "~~/server/utils/rental-held-balance-events";
 import { buildRentalHeldBalanceSummary } from "~~/server/utils/rental-held-balance-summary";
+import { buildLaunchSettlementPreview } from "~~/server/utils/rental-return-settlement";
+import { toBangkokLocalDate } from "~~/server/utils/rental-cancellation-policy";
 
 export default defineEventHandler(async (event) => {
   const { adminClient } = await requirePlatformAdmin(event);
@@ -82,11 +95,39 @@ export default defineEventHandler(async (event) => {
     });
   }
 
+  // [146] Deposit regime — read through the RPC so the FAIL-CLOSED reader
+  // (mig 135: absent or malformed config = GATED) stays the single authority.
+  // An error here must not open the deposit surfaces, so it falls back to OFF.
+  const { data: depositsEnabledRaw } = await adminClient.rpc(
+    "f_deposits_enabled",
+  );
+  const depositsEnabled = depositsEnabledRaw === true;
+
+  // [146] Launch preview inputs, derived server-side from the booking row.
+  const { data: booking, error: bookingError } = await adminClient
+    .from("rental_bookings")
+    .select("rental_total, daily_rate, end_date")
+    .eq("id", bookingId)
+    .maybeSingle();
+  if (bookingError) {
+    throw createError({ statusCode: 500, statusMessage: bookingError.message });
+  }
+  const bookingRow = (booking ?? {}) as Record<string, unknown>;
+  const preview = buildLaunchSettlementPreview({
+    rentalTotal: bookingRow.rental_total,
+    dailyRate: bookingRow.daily_rate,
+    endDate:
+      typeof bookingRow.end_date === "string" ? bookingRow.end_date : null,
+    todayBangkok: toBangkokLocalDate(new Date()),
+  });
+
   return {
     heldTotal: summary.currentHeldBalanceAvailableAmount,
     currencyCode: summary.currencyCode ?? "THB",
     settlement: settlement ?? null,
     returnChecklistComplete: !!checklist,
     paymentState: paymentState ?? null,
+    depositsEnabled,
+    preview,
   };
 });

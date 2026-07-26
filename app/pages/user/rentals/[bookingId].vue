@@ -22,6 +22,8 @@ type Detail = {
     fileSizeBytes?: number;
     createdAt?: string | null;
   };
+  // [146] Staff's return memo — TEXT ONLY, never an amount or an obligation.
+  returnMemo: { memo: string; lateDays: number } | null;
   eligibility: { eligible: boolean; refundCutoffLocalDate: string } | null;
   documents: {
     bookingConfirmation: Doc;
@@ -422,6 +424,28 @@ watch(
           :title="t('rentalsPage.detail.noShowTitle')"
           :description="t('rentalsPage.detail.noShowDesc')"
         />
+        <!-- [146] RECORD-BUT-NO-MONEY memo. Neutral colour and no currency
+             formatting on purpose: this is a note, not a charge and not a
+             balance. Late days are stated as a fact, never as a penalty. -->
+        <UAlert
+          v-if="detail.returnMemo"
+          class="mb-4"
+          color="neutral"
+          variant="soft"
+          icon="bx:note"
+          :title="t('rentalsPage.detail.returnMemoTitle')"
+        >
+          <template #description>
+            <p v-if="detail.returnMemo.lateDays > 0" class="mb-1 font-medium">
+              {{
+                t("rentalsPage.detail.returnMemoLateDays", {
+                  count: detail.returnMemo.lateDays,
+                })
+              }}
+            </p>
+            <p class="whitespace-pre-line">{{ detail.returnMemo.memo }}</p>
+          </template>
+        </UAlert>
         <div class="grid gap-4 md:grid-cols-3">
           <p>
             <b>{{ t("rentalsPage.rentalPeriod") }}</b

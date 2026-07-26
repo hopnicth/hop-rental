@@ -164,7 +164,12 @@ Notes:
 
 - Keep the secret key server-only.
 - Admin pages may degrade to read-only if the server key is missing.
-- Restart Nuxt after `.env` changes.
+- Restart Nuxt after env changes.
+- Which file: `npm run dev` reads **`.env.local`** and must resolve to the LOCAL
+  stack — a pre-flight guard refuses otherwise. The remote project belongs in
+  `.env.remote`, reached only with `npm run dev:remote`. Do not put remote
+  values in a plain `.env`; Nuxt loads it by default and `npx nuxt dev` /
+  `nuxt build` would then target production. See README → Run locally.
 
 ## Setup order for a new rentable item
 

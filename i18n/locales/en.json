@@ -1209,6 +1209,8 @@
       "fallbackBookingTitle": "Rental booking",
       "bookingReference": "Booking: {reference}",
       "depositStatus": "Deposit: {status}",
+      "returnMemoTitle": "Return note from our staff",
+      "returnMemoLateDays": "Returned {count} day(s) after the end date",
       "days": "{count} day(s)",
       "rentalSummary": "Rental summary",
       "item": "Item",

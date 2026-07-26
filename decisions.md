@@ -1061,6 +1061,14 @@ a) **LAUNCH CHARGE MODEL — the web collects EXACTLY TWO charge types.**
    accountant's substance analysis, an overdue-time charge is continued rental benefit,
    and calling it a penalty invites the non-VAT damages classification that the substance
    does not support.
+   **AMENDMENT 2026-07-26 (CHiP) — THE TERM IS NOW "ค่าเช่าเกินเวลา".** The
+   customer-facing name amended from "ค่าเช่าต่อเวลา" to **"ค่าเช่าเกินเวลา"** (rental
+   beyond the rental period). The SUBSTANCE ANALYSIS IS UNCHANGED: it remains rental
+   income at VAT 7%, it remains never ค่าปรับ / เบี้ยปรับ / "penalty", and the reasoning
+   above stands in full — this amends the wording only. **"ค่าเช่าเกินเวลา" is the source
+   of truth for every future surface and document, tax invoices included.** The original
+   sentence is left unedited above per the immutability-of-record convention; read the two
+   together, with this amendment controlling.
 b) **RECORD-BUT-NO-MONEY.** The settlement return flow gains a MEMO field. Staff record
    overdue days (`late_days` is already computed by migration 134) and any adjustment
    notes as **TEXT ONLY**: no amount, no charge line, no document, and no effect on the

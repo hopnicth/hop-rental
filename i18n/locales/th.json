@@ -1209,6 +1209,8 @@
       "fallbackBookingTitle": "รายการจองเช่า",
       "bookingReference": "เลขที่การจอง: {reference}",
       "depositStatus": "สถานะมัดจำ: {status}",
+      "returnMemoTitle": "หมายเหตุการคืนจากเจ้าหน้าที่",
+      "returnMemoLateDays": "คืนล่าช้า {count} วัน",
       "days": "{count} วัน",
       "rentalSummary": "สรุปรายการเช่า",
       "item": "รายการ",

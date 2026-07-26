@@ -65,9 +65,11 @@ vi.mock("h3", () => ({
     Object.assign(new Error(opts.statusMessage), opts),
 }));
 
-const { settleRentalBookingReturn, settleReturnRpcError } = await import(
-  "../../server/utils/rental-return-settlement"
-);
+const {
+  settleRentalBookingReturn,
+  settleReturnRpcError,
+  buildLaunchSettlementPreview,
+} = await import("../../server/utils/rental-return-settlement");
 
 function makeClient(opts: {
   rpcResult?: Record<string, unknown>;
@@ -141,8 +143,6 @@ function baseInput(client: any) {
     penaltyLines: [],
     specialDiscountAmount: 0,
     specialDiscountNote: null,
-    // [143 R-A] launch channel — empty by default; individual tests override.
-    staffChargeLines: [],
     discountAmount: 0,
     discountNote: null,
     customerSignatureDataUrl: "data:image/png;base64,AAAA",
@@ -268,18 +268,13 @@ describe("RPC error mapping", () => {
     expect(mockState.fulfillmentCalls).toHaveLength(0);
   });
 
-  // [143 R-A] Every new launch RAISE → approved HTTP status. The util surfaces
+  // [146] Every reachable launch RAISE → approved HTTP status. The util surfaces
   // the code through settleReturnRpcError; refusals never reach fulfillment.
   const REFUSALS: Array<[string, number]> = [
     ["PENALTY_LINES_NOT_ACCEPTED_AT_LAUNCH", 409],
-    ["STAFF_CHARGE_LINES_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
+    ["STAFF_CHARGE_CHANNEL_REMOVED", 409],
     ["LAUNCH_DISCOUNT_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
-    ["STAFF_CHARGE_LINE_INVALID", 422],
-    ["CHARGE_TYPE_DISABLED_FOR_LAUNCH", 422],
-    ["CHARGE_TYPE_NOT_SETTABLE", 422],
-    ["CHARGE_TYPE_UNKNOWN", 422],
-    ["STAFF_CHARGE_AMOUNT_INVALID", 422],
-    ["STAFF_CHARGE_EXCEEDS_CAP", 422],
+    ["SETTLEMENT_MEMO_REQUIRED_FOR_LATE_RETURN", 422],
     ["DISCOUNT_NEGATIVE", 422],
     ["DISCOUNT_NOTE_REQUIRED", 422],
     ["DISCOUNT_WITHOUT_RENTAL_BASE", 422],
@@ -307,15 +302,9 @@ describe("RPC error mapping", () => {
 describe("settleReturnRpcError (HTTP + Thai map)", () => {
   const CASES: Array<[string, number]> = [
     ["PENALTY_LINES_NOT_ACCEPTED_AT_LAUNCH", 409],
-    ["STAFF_CHARGE_LINES_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
+    ["STAFF_CHARGE_CHANNEL_REMOVED", 409],
     ["LAUNCH_DISCOUNT_NOT_ACCEPTED_IN_DEPOSIT_REGIME", 409],
-    ["STAFF_CHARGE_LINES_INVALID", 422],
-    ["STAFF_CHARGE_LINE_INVALID", 422],
-    ["CHARGE_TYPE_DISABLED_FOR_LAUNCH", 422],
-    ["CHARGE_TYPE_NOT_SETTABLE", 422],
-    ["CHARGE_TYPE_UNKNOWN", 422],
-    ["STAFF_CHARGE_AMOUNT_INVALID", 422],
-    ["STAFF_CHARGE_EXCEEDS_CAP", 422],
+    ["SETTLEMENT_MEMO_REQUIRED_FOR_LATE_RETURN", 422],
     ["DISCOUNT_NEGATIVE", 422],
     ["DISCOUNT_NOTE_REQUIRED", 422],
     ["DISCOUNT_WITHOUT_RENTAL_BASE", 422],
@@ -345,12 +334,57 @@ describe("settleReturnRpcError (HTTP + Thai map)", () => {
       expect(settleReturnRpcError(code).statusMessage).not.toContain("มัดจำ");
     }
   });
+
+  it("[146] the two refusals carry CHiP's ratified strings verbatim", () => {
+    const external =
+      "ระบบไม่รองรับรายการเรียกเก็บเพิ่มเติม กรุณาบันทึกรายละเอียดในช่องหมายเหตุ และออกบิลเรียกเก็บภายนอกระบบ";
+    expect(settleReturnRpcError("STAFF_CHARGE_CHANNEL_REMOVED").statusMessage).toBe(
+      external,
+    );
+    // The penalty-lines refusal no longer tells staff to record a staff charge:
+    // that channel is gone, so it carries the same external-billing sentence.
+    expect(
+      settleReturnRpcError("PENALTY_LINES_NOT_ACCEPTED_AT_LAUNCH").statusMessage,
+    ).toBe(external);
+    expect(
+      settleReturnRpcError("SETTLEMENT_MEMO_REQUIRED_FOR_LATE_RETURN")
+        .statusMessage,
+    ).toBe("กรุณาบันทึกหมายเหตุสำหรับการคืนล่าช้า");
+  });
+
+  it("[146] money copy never calls the overdue charge a penalty (ค่าปรับ/เบี้ยปรับ)", () => {
+    // decisions.md 2026-07-26 a: naming is part of the ruling — an overdue-time
+    // charge is continued rental benefit, and calling it a penalty invites the
+    // non-VAT damages classification the substance does not support.
+    for (const [code] of CASES) {
+      const msg = settleReturnRpcError(code).statusMessage;
+      expect(msg).not.toContain("ค่าปรับ");
+      expect(msg).not.toContain("เบี้ยปรับ");
+    }
+  });
+
+  it("[146] the removed channel's codes are no longer mapped or prefix-matched", () => {
+    // They are unreachable after mig-146; nothing should claim to translate
+    // them, and the STAFF_CHARGE_/CHARGE_TYPE_ prefix branches are gone.
+    for (const dead of [
+      "STAFF_CHARGE_LINES_INVALID",
+      "STAFF_CHARGE_LINE_INVALID",
+      "STAFF_CHARGE_AMOUNT_INVALID",
+      "STAFF_CHARGE_EXCEEDS_CAP",
+      "STAFF_CHARGE_LINES_NOT_ACCEPTED_IN_DEPOSIT_REGIME",
+      "CHARGE_TYPE_DISABLED_FOR_LAUNCH",
+      "CHARGE_TYPE_NOT_SETTABLE",
+      "CHARGE_TYPE_UNKNOWN",
+    ]) {
+      expect(settleReturnRpcError(dead).statusCode).toBe(500);
+    }
+  });
 });
 
-// ── 4c. Happy path — typed staff-charge lines + discount pass through ─────────
+// ── 4c. Happy path — launch discount + memo pass through, channel is gone ────
 
-describe("launch staff-charge + discount passthrough (143 R-A)", () => {
-  it("forwards p_staff_charge_lines / p_discount_amount / p_discount_note and returns the 3 new keys", async () => {
+describe("launch discount + memo passthrough (146)", () => {
+  it("forwards p_discount_amount / p_discount_note / p_staff_memo and sends NO charge lines", async () => {
     const { client, calls } = makeClient({
       rpcResult: {
         settlement_id: "settle-launch",
@@ -360,37 +394,117 @@ describe("launch staff-charge + discount passthrough (143 R-A)", () => {
         settlement_applied_amount: 0,
         refund_amount: 0,
         additional_collection_amount: 0,
-        staff_charge_total: 450,
         discount_amount: 50,
         rental_base: 500,
       },
     });
     const input = {
       ...baseInput(client),
-      staffChargeLines: [
-        { charge_type: "taxable_service_charge", amount: 450, note: "cleaning" },
-      ],
       discountAmount: 50,
       discountNote: "goodwill",
+      staffMemo: "คืนล่าช้า 1 วัน",
     };
     const result = await settleRentalBookingReturn(input);
 
-    // Return-shape +3 keys surfaced from the RPC result.
-    expect(result.settlement.staffChargeTotal).toBe(450);
     expect(result.settlement.discountAmount).toBe(50);
     expect(result.settlement.rentalBase).toBe(500);
 
-    // The 13-arg call carried the launch params verbatim (snake_case keys).
     const rpcCall = calls.rpcs.find(
       (c) => c.fn === "f_settle_rental_booking_return",
     )!;
-    expect(rpcCall.args.p_staff_charge_lines).toEqual([
-      { charge_type: "taxable_service_charge", amount: 450, note: "cleaning" },
-    ]);
     expect(rpcCall.args.p_discount_amount).toBe(50);
     expect(rpcCall.args.p_discount_note).toBe("goodwill");
-    // Fulfillment still completes on the happy path.
+    expect(rpcCall.args.p_staff_memo).toBe("คืนล่าช้า 1 วัน");
+    // The removed channel: the wrapper must not send the argument at all, so
+    // the RPC default (empty) applies and its removal RAISE stays unreachable.
+    expect(rpcCall.args).not.toHaveProperty("p_staff_charge_lines");
     expect(mockState.fulfillmentCalls).toHaveLength(1);
+  });
+
+  it("omitted memo travels as explicit null (never undefined — PostgREST named args)", async () => {
+    const { client, calls } = makeClient({});
+    await settleRentalBookingReturn({ ...baseInput(client) });
+    const rpcCall = calls.rpcs.find(
+      (c) => c.fn === "f_settle_rental_booking_return",
+    )!;
+    expect(rpcCall.args.p_staff_memo).toBeNull();
+  });
+
+  it("the wrapper never derives late days — that is the RPC's authority", () => {
+    // The wrapper may TRANSLATE the RPC's memo refusal (it owns the error map),
+    // but it must never compute lateness itself: a second derivation could
+    // disagree with the row the RPC locks. The display-only preview builder is
+    // the one place a date is compared, and it is pure and separately tested.
+    const src = read("server/utils/rental-return-settlement.ts");
+    const wrapper = src.slice(src.indexOf("export async function settleRentalBookingReturn"));
+    expect(wrapper).not.toContain("Asia/Bangkok");
+    expect(wrapper).not.toContain("lateDays");
+  });
+});
+
+// ── 4d. Launch settlement preview (pure) ─────────────────────────────────────
+
+describe("buildLaunchSettlementPreview (146, display-only mirror of the RPC)", () => {
+  it("on-time return: no extension, base only", () => {
+    const p = buildLaunchSettlementPreview({
+      rentalTotal: 1000,
+      dailyRate: 500,
+      endDate: "2026-07-27",
+      todayBangkok: "2026-07-26",
+    });
+    expect(p).toEqual({
+      baseRental: 1000,
+      dailyRate: 500,
+      lateDays: 0,
+      lateCharge: 0,
+      rentalBase: 1000,
+    });
+  });
+
+  it("late return: extension = daily rate x late days, added to the base", () => {
+    const p = buildLaunchSettlementPreview({
+      rentalTotal: 1000,
+      dailyRate: 500,
+      endDate: "2026-07-25",
+      todayBangkok: "2026-07-26",
+    });
+    expect(p.lateDays).toBe(1);
+    expect(p.lateCharge).toBe(500);
+    expect(p.rentalBase).toBe(1500);
+  });
+
+  it("returning BEFORE the end date is never negative late days", () => {
+    const p = buildLaunchSettlementPreview({
+      rentalTotal: 1000,
+      dailyRate: 500,
+      endDate: "2026-08-30",
+      todayBangkok: "2026-07-26",
+    });
+    expect(p.lateDays).toBe(0);
+    expect(p.lateCharge).toBe(0);
+  });
+
+  it("missing end date degrades to zero late days, never NaN", () => {
+    const p = buildLaunchSettlementPreview({
+      rentalTotal: 1000,
+      dailyRate: 500,
+      endDate: null,
+      todayBangkok: "2026-07-26",
+    });
+    expect(p.lateDays).toBe(0);
+    expect(p.rentalBase).toBe(1000);
+  });
+
+  it("rounds money to 2dp", () => {
+    const p = buildLaunchSettlementPreview({
+      rentalTotal: 333.333,
+      dailyRate: 166.666,
+      endDate: "2026-07-23",
+      todayBangkok: "2026-07-26",
+    });
+    expect(p.lateDays).toBe(3);
+    expect(p.lateCharge).toBe(500);
+    expect(p.rentalBase).toBe(833.33);
   });
 });
 
@@ -420,12 +534,25 @@ describe("endpoint pins", () => {
     expect(postSrc).toContain("SETTLEMENT_PENALTY_LINES_INVALID");
   });
 
-  it("[143 R-A] parses the launch multipart fields and forwards them", () => {
-    expect(postSrc).toContain("staffChargeLines");
+  it("[146] parses the surviving launch fields and forwards them", () => {
     expect(postSrc).toContain("discountAmount");
     expect(postSrc).toContain("discountNote");
-    // Snake-case charge_type key preserved for the RPC.
-    expect(postSrc).toContain("charge_type");
+    expect(postSrc).toContain("staffMemo");
+  });
+
+  it("[146] the staff-charge channel is GONE from the endpoint", () => {
+    // No parse block, no forwarding, no charge_type vocabulary — the web
+    // collects only the two COMPUTED charge types (decisions.md 2026-07-26 c).
+    expect(postSrc).not.toContain('textPart(parts, "staffChargeLines")');
+    expect(postSrc).not.toContain("staffChargeLines,");
+    expect(postSrc).not.toContain("charge_type");
+    expect(postSrc).not.toContain("taxable_service_charge");
+  });
+
+  it("[146] the GET feed carries depositsEnabled + the launch preview", () => {
+    expect(getSrc).toContain("depositsEnabled");
+    expect(getSrc).toContain("f_deposits_enabled");
+    expect(getSrc).toContain("buildLaunchSettlementPreview");
   });
 
   it("[143 R-A] maps RPC RAISEs via settleReturnRpcError (HTTP + Thai)", () => {
@@ -438,6 +565,99 @@ describe("endpoint pins", () => {
     expect(postSrc).not.toContain("5000");
     expect(postSrc).not.toContain("0.20");
     expect(postSrc).not.toContain("0.50");
+  });
+});
+
+// ── 7b. [146] Panel + page contracts: launch/deposit split, memo, refresh ────
+
+describe("[146] settlement panel contracts", () => {
+  const panel = read("app/components/admin/AdminRentalReturnSettlement.vue");
+  const page = read("app/pages/admin/rental-bookings/[id].vue");
+
+  it("reads the regime and the preview from the SERVER feed, never infers them", () => {
+    expect(panel).toContain("depositsEnabled");
+    expect(panel).toContain("res.depositsEnabled === true");
+    expect(panel).toContain("preview");
+    // No client-side deposit inference and no client-side late-day maths.
+    expect(panel).not.toContain("bookingDepositPaymentStatus");
+    expect(panel).not.toContain("Asia/Bangkok");
+  });
+
+  it("deposit-era inputs are HIDDEN behind the flag, not deleted (data vs display)", () => {
+    // The markup survives for revival; every deposit-era surface is conditional.
+    expect(panel).toContain("Damage penalties");
+    expect(panel).toContain("Special discount");
+    expect(panel).toContain('v-if="depositsEnabled"');
+    expect(panel).toContain("depositsEnabled && outcome === 'refund'");
+    expect(panel).toContain('v-if="depositsEnabled && moneyMoves"');
+  });
+
+  it("launch surface: rental + extension − discount, and never the word ค่าปรับ", () => {
+    expect(panel).toContain("launchCollect");
+    expect(panel).toContain("ค่าเช่าเกินเวลา");
+    expect(panel).not.toContain("ค่าปรับ");
+    expect(panel).not.toContain("เบี้ยปรับ");
+  });
+
+  it("launch discount is submitted only while deposits are off", () => {
+    expect(panel).toContain("!depositsEnabled.value && launchDiscount.value > 0");
+    expect(panel).toContain('body.append("discountAmount"');
+    expect(panel).toContain('body.append("discountNote"');
+  });
+
+  it("memo is required client-side when the return is late (mirrors the RPC)", () => {
+    expect(panel).toContain("memoMissing");
+    expect(panel).toContain("isLateReturn");
+    expect(panel).toContain("กรุณาบันทึกหมายเหตุสำหรับการคืนล่าช้า");
+  });
+
+  it("the panel refetches when the checklist completes (no stale gate)", () => {
+    expect(panel).toContain("defineExpose({ reload: load })");
+    expect(page).toContain('ref="settlementPanel"');
+    expect(page).toContain("settlementPanel.value?.reload()");
+  });
+});
+
+// ── 7c. [146] Customer-visible return memo ───────────────────────────────────
+
+describe("[146] customer return memo", () => {
+  const util = read("server/utils/customer-rental-booking-detail.ts");
+  const page = read("app/pages/user/rentals/[bookingId].vue");
+  const en = JSON.parse(read("i18n/locales/en.json"));
+  const th = JSON.parse(read("i18n/locales/th.json"));
+
+  it("the detail payload carries the memo and its late-day count", () => {
+    expect(util).toContain("staff_memo, late_days");
+    expect(util).toContain("returnMemo");
+  });
+
+  it("an empty or absent memo yields null, never an empty card", () => {
+    expect(util).toContain("if (!memo) return null");
+  });
+
+  it("the page renders it through i18n, with no money formatting", () => {
+    expect(page).toContain("rentalsPage.detail.returnMemoTitle");
+    expect(page).toContain("rentalsPage.detail.returnMemoLateDays");
+    expect(page).toContain("detail.returnMemo.memo");
+  });
+
+  it("both active locales carry the keys (th + en parity)", () => {
+    for (const bundle of [en, th]) {
+      expect(bundle.rentalsPage.detail.returnMemoTitle).toBeTruthy();
+      expect(bundle.rentalsPage.detail.returnMemoLateDays).toBeTruthy();
+    }
+  });
+
+  it("the surrounding customer copy obeys the glossary rule", () => {
+    // No bare มัดจำ, no refund vocabulary, and never a penalty framing for an
+    // overdue return (decisions.md 2026-07-26 a + the 2026-07-07 glossary rule).
+    for (const key of ["returnMemoTitle", "returnMemoLateDays"] as const) {
+      const copy = th.rentalsPage.detail[key] as string;
+      expect(copy).not.toContain("มัดจำ");
+      expect(copy).not.toContain("คืนเงิน");
+      expect(copy).not.toContain("ค่าปรับ");
+      expect(copy).not.toContain("เบี้ยปรับ");
+    }
   });
 });
 
