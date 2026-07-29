@@ -887,3 +887,62 @@ describe("no-show held-balance forfeiture (T2, §b addendum item 2)", () => {
     ).toHaveLength(0);
   });
 });
+
+// ── [batch-1, CHiP 2026-07-27] AUTO-CANCEL ONLY at launch ────────────────────
+// The manual no-show path is deposit-era machinery: it forfeits a deposit,
+// recognises the forfeiture as income, and issues two numbered CUSTOMER-VISIBLE
+// forfeiture documents. On a launch booking all of that is fiction, so the path
+// is GATED — endpoint and button — rather than restructured. Nothing can reach
+// the writer while deposits are off, and the deposit-era code stays intact.
+describe("[batch-1] manual no-show is gated to the deposit era", () => {
+  const readSrc = (path: string) =>
+    readFileSync(resolve(process.cwd(), path), "utf8");
+  const endpoint = readSrc(
+    "server/api/admin/rental-bookings/[id]/mark-no-show.post.ts",
+  );
+  const page = readSrc("app/pages/admin/rental-bookings/[id].vue");
+  const detailEndpoint = readSrc(
+    "server/api/admin/rental-bookings/[id].get.ts",
+  );
+
+  it("the endpoint refuses while deposits are off, and fails closed", () => {
+    expect(endpoint).toContain('adminClient.rpc("f_deposits_enabled")');
+    // Strict !== true: an rpc error, a null, or any non-boolean refuses.
+    expect(endpoint).toContain("depositsEnabled !== true");
+    expect(endpoint).toContain("NO_SHOW_DISABLED_DEPOSITS_OFF");
+  });
+
+  it("the refusal is a 409, not a silent no-op", () => {
+    const guard = endpoint.slice(endpoint.indexOf("depositsEnabled !== true"));
+    expect(guard).toContain("statusCode: 409");
+  });
+
+  it("the admin button is hidden behind the SERVER flag, not a client guess", () => {
+    // Whitespace-insensitive: the call is prettier-wrapped across lines.
+    expect(detailEndpoint.replace(/\s+/g, " ")).toContain(
+      'adminClient.rpc( "f_deposits_enabled", )',
+    );
+    expect(detailEndpoint).toContain("depositsEnabled: depositsEnabled === true");
+    expect(page).toContain("booking.value?.depositsEnabled === true");
+    // Both render sites and the action itself go through the same predicate.
+    expect(page).not.toContain('v-if="isOverdueConfirmed"');
+    expect((page.match(/v-if="canMarkNoShow"/g) || []).length).toBe(2);
+    expect(page).toContain("!canMarkNoShow.value || markingNoShow.value");
+  });
+
+  it("HIDE-NOT-DELETE: the deposit-era path and its markup are preserved", () => {
+    // The util keeps its writer, the endpoint keeps calling it, and the button
+    // markup survives — revival is a config flip, not a rebuild.
+    expect(endpoint).toContain("markRentalBookingNoShow");
+    expect(page).toContain("markNoShow");
+    const util = readSrc("server/utils/rental-booking-no-show.ts");
+    expect(util).toContain("rental_booking_deposit_disposition_events");
+    expect(util).toContain("financial_recognition_events");
+  });
+
+  it("the parked deposit revenue vocabulary is untouched (do-not-sweep)", () => {
+    const util = readSrc("server/utils/rental-booking-no-show.ts");
+    expect(util).toContain("contractual_penalty_damage_deposit_forfeiture");
+    expect(util).toContain("non_vat_contractual_penalty");
+  });
+});

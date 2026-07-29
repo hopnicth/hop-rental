@@ -171,8 +171,7 @@ async function applyPatch(
 }
 
 async function markNoShow(): Promise<void> {
-  if (!bookingId.value || !isOverdueConfirmed.value || markingNoShow.value)
-    return;
+  if (!bookingId.value || !canMarkNoShow.value || markingNoShow.value) return;
   const reason = import.meta.client
     ? window.prompt("Optional no-show note for audit/support", "")
     : "";
@@ -251,6 +250,18 @@ const isOverdueConfirmed = computed(
     booking.value?.status === "confirmed" &&
     Boolean(booking.value.startDate) &&
     booking.value.startDate < bangkokTodayLocalDate(),
+);
+
+// [batch-1, CHiP 2026-07-27] Manual no-show is DEPOSIT-ERA ONLY. Launch is
+// auto-cancel only: the mig-145 nightly sweep releases the slot and writes an
+// `auto_no_show_cancel` §F row, and there is no deposit to forfeit — so marking
+// no-show here would write forfeiture rows and issue two numbered,
+// customer-visible ฿0 forfeiture documents for money that never existed.
+// The action is HIDDEN behind the server-authoritative flag, not deleted: the
+// markup and the whole deposit-era path stay intact for revival. The endpoint
+// refuses independently, so this is UX, not the gate.
+const canMarkNoShow = computed(
+  () => isOverdueConfirmed.value && booking.value?.depositsEnabled === true,
 );
 
 // Phase 2D-B6: CTA to resume booking deposit collection in POS V3.
@@ -531,7 +542,7 @@ async function issueMissingNoShowDocuments(): Promise<void> {
           </div>
 
           <UAlert
-            v-if="isOverdueConfirmed"
+            v-if="canMarkNoShow"
             color="warning"
             icon="bx:time-five"
             title="Pickup date has passed and this booking is still confirmed"
@@ -591,7 +602,7 @@ async function issueMissingNoShowDocuments(): Promise<void> {
 
           <div class="flex flex-wrap gap-2">
             <UButton
-              v-if="isOverdueConfirmed"
+              v-if="canMarkNoShow"
               size="sm"
               color="warning"
               variant="solid"
