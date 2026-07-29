@@ -151,6 +151,12 @@ export interface AdminRentalBookingDetail {
   customer: AdminCustomerProfile;
   /** POS V3 booking deposit payment status. Null for non-POS bookings. */
   bookingDepositPaymentStatus: RentalBookingDepositPaymentStatus | null;
+  /**
+   * Server-authoritative deposit regime (f_deposits_enabled, mig 135). Gates
+   * DISPLAY of deposit-era admin actions; optional because only the detail
+   * endpoint composes it.
+   */
+  depositsEnabled?: boolean;
 }
 
 /** Allowed PATCH payload for sale orders. Each field is optional; sender supplies only what changed. */

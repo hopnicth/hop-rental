@@ -62,6 +62,16 @@ export default defineEventHandler(
       String((row as Record<string, unknown>).user_id ?? ""),
     );
 
-    return mapAdminRentalBookingDetail(row, customer);
+    // [batch-1] Deposit regime, server-authoritative (f_deposits_enabled, mig
+    // 135), fail-closed. The page uses it to hide deposit-era actions — the
+    // manual no-show button — rather than deleting them (hide-not-delete).
+    const { data: depositsEnabled } = await adminClient.rpc(
+      "f_deposits_enabled",
+    );
+
+    return {
+      ...mapAdminRentalBookingDetail(row, customer),
+      depositsEnabled: depositsEnabled === true,
+    };
   },
 );

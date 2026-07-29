@@ -91,18 +91,11 @@ export default defineEventHandler(
     if (getErr) {
       throw createError({ statusCode: 500, statusMessage: getErr.message });
     }
-    const existingRow = (existing ?? null) as unknown as {
-      photo_urls?: string[] | null;
-    } | null;
-    const current = Array.isArray(existingRow?.photo_urls)
-      ? (existingRow!.photo_urls as string[])
-      : [];
+    const current = Array.isArray(existing?.photo_urls) ? existing.photo_urls : [];
 
-    const updatePayload: Record<string, unknown> = {};
-    updatePayload.photo_urls = [...current, url];
     const { error: updateErr } = await adminClient
       .from("rental_booking_checklist_items")
-      .update(updatePayload as never)
+      .update({ photo_urls: [...current, url] })
       .eq("id", itemId);
     if (updateErr) {
       throw createError({ statusCode: 500, statusMessage: updateErr.message });
