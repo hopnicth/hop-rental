@@ -34,6 +34,7 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-07-26 | fix:2b-launch-surface | channel removal (-8/+2 map) + discount UI + launch preview + depositsEnabled hiding + customer memo + checklist refresh + types regen + env local-default inversion; term amended to ค่าเช่าเกินเวลา | CLOSED-PASS | auditor | (this commit)
 2026-07-26 | verify:mig-146-remote | owner-side remote spot-check: both CHECK constraints present (rbs_late_days_nonneg_chk, rbs_staff_memo_required_when_late_chk) and f_settle_rental_booking_return proacl service_role-only — the two items the implementer could not verify without the DB password | CLOSED-PASS | CHiP | mig-146 remote apply (b6f905b)
 2026-07-27 | fix:deposit-badge | customer deposit chip + the three payment-summary deposit cells gated on server-authoritative depositsEnabled (empty slot at launch per ruling a-ก; hide-not-delete proven by flag flip); enum labels and the documents-card gap deferred | CLOSED-PASS | auditor | (this commit)
+2026-07-27 | wording:remote-inventory-note | read-only remote booking inventory + CHiP's three dispositions (smoke row stays, BDR numbers disclosed, public-bucket file stays) | CLOSED-PASS | auditor | docs/audit/2026-07-27-remote-legacy-booking-inventory.md (this commit)
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,
