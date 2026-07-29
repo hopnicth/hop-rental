@@ -377,6 +377,27 @@ function historyDocumentSummary(document: Row | null) {
 }
 
 /**
+ * Deposit regime for DISPLAY gating (decisions.md 2026-07-26 addendum — deposit
+ * DATA vs deposit DISPLAY). Read through `f_deposits_enabled()` (mig 135) so the
+ * FAIL-CLOSED reader stays the single authority, exactly as the admin settlement
+ * feed does.
+ *
+ * FAIL-CLOSED HERE TOO: a missing rpc capability or any error resolves to FALSE,
+ * i.e. deposit surfaces stay hidden. The customer never sees a deposit claim
+ * because a lookup failed.
+ *
+ * This is NOT derivable from the booking row: `booking_deposit_payment_status`
+ * is NOT NULL DEFAULT 'unpaid', so "no deposit exists" and "deposit era, not yet
+ * paid" are the same value.
+ */
+async function loadDepositsEnabled(client: AnyClient): Promise<boolean> {
+  if (typeof client.rpc !== "function") return false;
+  const { data, error } = await client.rpc("f_deposits_enabled", {});
+  if (error) return false;
+  return data === true;
+}
+
+/**
  * [146] RECORD-BUT-NO-MONEY memo, customer-visible (CHiP, 2026-07-26 a5).
  *
  * The memo is the in-system reference for a bill that is issued OUTSIDE the
@@ -414,6 +435,7 @@ export async function getCustomerRentalBookingDetail(
     paymentDoc,
     noShowDocs,
     returnMemo,
+    depositsEnabled,
   ] = await Promise.all([
       loadLatestPaymentAttempt(client, booking),
       loadCancellationState(client, booking),
@@ -431,6 +453,7 @@ export async function getCustomerRentalBookingDetail(
       ),
       loadNoShowForfeitureState(client, booking),
       loadReturnMemo(client, bookingId),
+      loadDepositsEnabled(client),
     ]);
   const currencyCode = text(booking.currency_code) || "THB";
   const depositPaid = money(booking.booking_deposit_paid_amount);
@@ -522,6 +545,10 @@ export async function getCustomerRentalBookingDetail(
     refundProof: customerRefundProofSummary(cancellation.refundProof),
     // [146] Text only. No amount, no charge, nothing owed.
     returnMemo,
+    // Deposit DISPLAY gate. The deposit FIELDS above stay in the payload — they
+    // are data — but no customer money surface may render a deposit amount, a
+    // deposit status, or deposit vocabulary while this is false.
+    depositsEnabled,
     eligibility,
     documents: {
       bookingConfirmation: documentSummary(bookingDoc as Row | null),

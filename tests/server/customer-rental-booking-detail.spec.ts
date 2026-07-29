@@ -133,13 +133,25 @@ function seed(overrides: Partial<Record<string, Row[]>> = {}) {
   } as Record<string, Row[]>;
 }
 
-function client(db: Record<string, Row[]>) {
+function client(
+  db: Record<string, Row[]>,
+  opts: { depositsEnabled?: unknown; depositsRpcError?: boolean } = {},
+) {
   return {
     from: (table: string) => new Chain(db, table),
-    rpc: async (_name: string, params: Row) => ({
-      data: `${params.p_prefix}-${params.p_period}-0001`,
-      error: null,
-    }),
+    rpc: async (name: string, params: Row) => {
+      // Deposit regime (mig 135) — dispatched by NAME so a test can set the
+      // regime without disturbing the document-number rpc.
+      if (name === "f_deposits_enabled") {
+        return opts.depositsRpcError
+          ? { data: null, error: { message: "boom" } }
+          : { data: opts.depositsEnabled ?? false, error: null };
+      }
+      return {
+        data: `${params.p_prefix}-${params.p_period}-0001`,
+        error: null,
+      };
+    },
   };
 }
 function clientWithStorage(db: Record<string, Row[]>) {
@@ -157,6 +169,89 @@ function clientWithStorage(db: Record<string, Row[]>) {
     },
   };
 }
+
+const read = (path: string) =>
+  readFileSync(resolve(process.cwd(), path), "utf8");
+
+// ── Deposit DISPLAY gate (decisions.md 2026-07-26 addendum; ruling a-ก) ──────
+describe("deposit display gate — customer surface", () => {
+  const page = read("app/pages/user/rentals/[bookingId].vue");
+
+  it("carries the SERVER-authoritative regime flag on the payload", async () => {
+    const detail = await getCustomerRentalBookingDetail(
+      client(seed(), { depositsEnabled: true }) as any,
+      "booking-1",
+      "user-1",
+      new Date("2026-06-02T16:00:00.000Z"),
+    );
+    expect(detail.depositsEnabled).toBe(true);
+  });
+
+  it("LAUNCH (deposits off) resolves false — the gate closes", async () => {
+    const detail = await getCustomerRentalBookingDetail(
+      client(seed(), { depositsEnabled: false }) as any,
+      "booking-1",
+      "user-1",
+      new Date("2026-06-02T16:00:00.000Z"),
+    );
+    expect(detail.depositsEnabled).toBe(false);
+  });
+
+  it("FAILS CLOSED: an rpc error hides deposits rather than showing them", async () => {
+    const detail = await getCustomerRentalBookingDetail(
+      client(seed(), { depositsRpcError: true }) as any,
+      "booking-1",
+      "user-1",
+      new Date("2026-06-02T16:00:00.000Z"),
+    );
+    expect(detail.depositsEnabled).toBe(false);
+  });
+
+  it("FAILS CLOSED: a client without rpc capability hides deposits", async () => {
+    const base = client(seed());
+    const noRpc = { from: base.from } as any;
+    const detail = await getCustomerRentalBookingDetail(
+      noRpc,
+      "booking-1",
+      "user-1",
+      new Date("2026-06-02T16:00:00.000Z"),
+    );
+    expect(detail.depositsEnabled).toBe(false);
+  });
+
+  it("a non-boolean rpc result is not truthy-coerced", async () => {
+    const detail = await getCustomerRentalBookingDetail(
+      client(seed(), { depositsEnabled: "true" }) as any,
+      "booking-1",
+      "user-1",
+      new Date("2026-06-02T16:00:00.000Z"),
+    );
+    expect(detail.depositsEnabled).toBe(false);
+  });
+
+  it("the deposit chip is gated on the FLAG, never on isLaunchBooking", () => {
+    expect(page).toContain('v-if="detail.depositsEnabled"');
+    // isLaunchBooking is bookingDepositPaymentStatus !== "paid" — it also matches
+    // deposit-era pending/failed/expired bookings, whose status must stay visible.
+    expect(page).not.toContain('v-if="!isLaunchBooking"');
+    expect(page).not.toContain('v-if="isLaunchBooking"');
+  });
+
+  it("EMPTY SLOT at launch — no replacement chip, no substitute text", () => {
+    // Ruling (a-ก). The gated chip must have no v-else sibling.
+    const chip = page.slice(
+      page.indexOf('v-if="detail.depositsEnabled"'),
+      page.indexOf('v-if="detail.depositsEnabled"') + 400,
+    );
+    expect(chip).not.toContain("v-else");
+  });
+
+  it("deposit-era markup is PRESERVED behind the flag, not deleted", () => {
+    // hide-not-delete: revival is a config flip, not a rebuild.
+    expect(page).toContain("rentalsPage.detail.depositStatus");
+    expect(page).toContain("detail.booking.bookingDepositPaymentStatus");
+  });
+});
 
 describe("customer rental booking detail and documents", () => {
   it("loads customer-safe detail for the booking owner", async () => {

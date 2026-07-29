@@ -24,6 +24,8 @@ type Detail = {
   };
   // [146] Staff's return memo — TEXT ONLY, never an amount or an obligation.
   returnMemo: { memo: string; lateDays: number } | null;
+  /** Server-authoritative deposit regime (f_deposits_enabled). Gates DISPLAY only. */
+  depositsEnabled: boolean;
   eligibility: { eligible: boolean; refundCutoffLocalDate: string } | null;
   documents: {
     bookingConfirmation: Doc;
@@ -408,7 +410,17 @@ watch(
             </div>
             <div class="flex gap-2">
               <UBadge>{{ statusText(detail.booking.status) }}</UBadge
-              ><UBadge color="info">{{
+              ><!-- Deposit DISPLAY gate (decisions.md 2026-07-26 addendum). A
+                   launch booking carries no deposit, so a deposit chip on it is
+                   fiction AND a bare-มัดจำ exposure. Ruling (a-ก): the slot is
+                   EMPTY at launch — no chip, no replacement text. The deposit-era
+                   markup below is PRESERVED behind the server-authoritative flag,
+                   never deleted, so revival is a config flip.
+                   The flag is `depositsEnabled`, NOT `isLaunchBooking`: that
+                   predicate is `bookingDepositPaymentStatus !== "paid"` and would
+                   also swallow deposit-era pending/failed/expired bookings, whose
+                   deposit status the customer must still see. -->
+              <UBadge v-if="detail.depositsEnabled" color="info">{{
                 t("rentalsPage.detail.depositStatus", {
                   status: detail.booking.bookingDepositPaymentStatus,
                 })
@@ -525,7 +537,11 @@ watch(
           </h2></template
         >
         <div class="grid gap-3 text-sm md:grid-cols-4">
-          <p>
+          <!-- Deposit DISPLAY gate: these two cells and the footnote below are
+               deposit-era money. On a launch booking they render ฿0.00 and bare
+               มัดจำ — fiction plus a glossary exposure. Hidden behind the flag,
+               markup preserved (decisions.md 2026-07-26 addendum). -->
+          <p v-if="detail.depositsEnabled">
             {{ t("rentalsPage.detail.bookingDepositPaid") }}<br /><b>{{
               money(
                 detail.money.bookingDepositPaid,
@@ -541,7 +557,7 @@ watch(
               )
             }}</b>
           </p>
-          <p>
+          <p v-if="detail.depositsEnabled">
             {{ t("rentalsPage.detail.remainingDepositDueAtPickup") }}<br /><b>{{
               money(
                 detail.money.remainingRefundableSecurityDepositDueAtPickup,
@@ -558,7 +574,7 @@ watch(
             }}</b>
           </p>
         </div>
-        <p class="mt-4 text-xs text-muted">
+        <p v-if="detail.depositsEnabled" class="mt-4 text-xs text-muted">
           {{ t("rentalsPage.detail.depositOperationalNote") }}
         </p></UCard
       >
