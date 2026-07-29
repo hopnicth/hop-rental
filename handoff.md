@@ -1,5 +1,41 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-07-27 (T-LAUNCH task 2 COMPLETE — merged to staging)
+
+Task 2 is code-complete and MERGED. **Merge sha `84c8ee0`; origin/staging contains
+`b7d3a55`.** Clean merge, no conflicts.
+
+WHAT LANDED. The first CUSTOMER application of deposit DATA vs deposit DISPLAY. The header
+deposit chip renders NOTHING on a launch booking — an empty slot, no replacement text
+(ruling a-ก) — gated on a server-authoritative `depositsEnabled` read through
+`f_deposits_enabled()`, fail-closed on three paths, and explicitly NOT on `isLaunchBooking`,
+which would have swallowed deposit-era pending/failed/expired bookings too.
+
+THE WALK CHANGED THE SCOPE. With the chip gone, มัดจำ still appeared four times in the
+page's main content, so the acceptance criterion could not pass on the chip alone. The three
+payment-card deposit elements now sit behind the same flag; rental fee and total due are
+untouched. Hide-not-delete was PROVEN by flipping the local flag — chip and all three cells
+returned.
+
+DEFERRED WITH RECORDS, not silent fixes: the raw-enum leak ("สถานะมัดจำ: unpaid"), reachable
+only in the deposit era; and the documents card's "ชำระ Booking Deposit สำเร็จ", which is not
+a display bug — `canIssueBookingConfirmation` requires a paid deposit, so a launch booking
+can never issue its own confirmation document. That is T4 document-layer work.
+
+REMOTE INVENTORY (read-only, SELECTs only) and CHiP's dispositions also landed: remote holds
+exactly ONE rental_booking and it is 2026-07-21 smoke residue; nothing is deletable in
+principle (append-only evidence); ZERO real deposit-era bookings, which is what licenses the
+enum-label deferral. Smoke row stays, BDR-202607-0001/0002 disclosed, public-bucket file
+stays with T5 hygiene still open. Record:
+`docs/audit/2026-07-27-remote-legacy-booking-inventory.md`.
+
+VERIFICATION on the merge result: suite **2859/2859**; tsc **223 / 210, zero net new**;
+migration list **146 rows, local == remote**. Post-merge smoke on a launch booking: มัดจำ 0,
+คืนเงิน 0, raw enum 0 — read-only, no reseed needed.
+
+NEXT: post-merge batch 1 — boundary-cast removal and the no-show 0-amount forfeiture
+fix-or-gate. Those are the last items before the document layer.
+
 ## Claude Code → CHiP / 2026-07-25 (T-LAUNCH Phase 1 COMPLETE — merged to staging, two-layer smoke run)
 
 Phase 1 (application layer) is code-complete and MERGED. The three merge-blockers of
