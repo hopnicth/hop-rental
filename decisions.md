@@ -1147,3 +1147,71 @@ Impact: an implementation task queues BEFORE post-merge batch 1, alongside the d
    the removed types; any vocabulary narrowing is new-writes-only per d). The
    `charge_type` column itself stays — it is what makes `rental_charge` vs
    `rental_extension` legible on the tax document.
+
+## 2026-07-27 — MODEL SIMPLIFICATION: the web collects ONE money item (CHiP-ratified)
+
+Decision:
+a) **THE WEB COLLECTS EXACTLY ONE MONEY ITEM — `rental_charge`, the rental as booked.**
+   `amount_due = rental base − discount`. Nothing else is charged on the web.
+   **SUPERSEDES the 2026-07-26 a) "two charge types" model**: `rental_extension` is REMOVED
+   FROM WEB COLLECTION. It was computed from time and collected at settle; it is now not
+   charged at all. The 2026-07-26 entry is left UNEDITED per the immutability-of-record
+   convention — read the two together, with this entry controlling.
+   The principle: the web keeps only what is simple and direct. Everything beyond the booked
+   rental — overdue rental, any adjustment — LEAVES THE WEB as a printable report that Admin
+   bills through the external accounting program.
+b) **WHAT STAYS RECORDED, AS FACT RATHER THAN MONEY.** `late_days` (computed from the locked
+   booking row) and the staff memo REMAIN on the settlement. They stop being inputs to any
+   amount and become REPORT DATA. Recording that a return was late is a fact; charging for it
+   on the web is what stops. This is the same distinction the deposit ruling drew between
+   data and display, applied to money instead of display.
+c) **THE TERM ค่าเช่าเกินเวลา SURVIVES — ITS HOME MOVES.** It is no longer an invoice line on
+   a web-issued tax document. It becomes EXTERNAL BILLING VOCABULARY: the name Admin uses when
+   billing overdue rental through the accounting program, and the name any future document
+   must use if that charge ever returns to the system. The substance analysis behind it is
+   unchanged and still binding — an overdue-time charge is continued rental benefit, never
+   ค่าปรับ, never เบี้ยปรับ, never "penalty" — because that reasoning governs how the external
+   bill is written, not merely where the line appeared.
+   (The 2026-07-26 amendment from ค่าเช่าต่อเวลา to ค่าเช่าเกินเวลา stands; only the venue moves.)
+d) **CONSEQUENCES INSIDE THE SYSTEM.**
+   - The discountable base becomes the rental charge alone. The tiers are unchanged
+     (staff <= 20%, super_admin <= 50%) but now apply to a base with one component.
+   - `rental_extension` joins the set of `charge_type` values with no web writer — like
+     `taxable_service_charge` before it. The VOCABULARY STAYS (mig-142 permanence, historical
+     rows remain valid); only the writer goes. No destructive migration.
+   - Negative-spec item 3 of 2026-07-26 e) ("rental_extension is computed from time at a
+     predefined rate only — never hand-entered") is MOOT on the web: there is no such web
+     charge to compute. The other seven points stand unchanged.
+   - One web charge means one settlement line, which makes the combined tax document simpler,
+     not different: TIA-/TIR- per the 2026-07-25 B1 ruling, VAT 7% inclusive, unchanged.
+e) **ACCOUNTANT AGENDA — NOW ONE OPEN CONFIRMATION, NOT THREE.**
+   1. TAX POINT at payment receipt with same-day issuance — STANDS, answered by CHiP
+      (tax point = payment day, invoice the same day). RECOMMENDATION: still obtain ONE LINE
+      IN WRITING from the accountant confirming it. It is the only item where an external
+      professional's signature protects a position the business has already taken.
+   2. `rental_extension` as additional rental income at VAT 7% — **WITHDRAWN.** There is no
+      web charge left to classify. If overdue rental is ever brought back on-web it returns
+      as a fresh question.
+   3. The pre-payment statement showing VAT base / VAT / total — **RESOLVED.** The statement
+      carries the ratified "not a tax invoice" disclaimer sentence and nothing further; the
+      remaining space on it is CONTRACT TERMS, not additional money copy.
+f) **THE REPORT (ratification conditions, CHiP 2026-07-27).** The overdue/adjustment report is
+   an INTERNAL BILLING AID, not a document: no `official_documents` row, no document number,
+   no series, no sequence consumed. It must NOT wear `OfficialDocumentHeader` — the shared
+   document theme is the visual signature of an ISSUED document (template principle 2), and a
+   non-document must not borrow it. Plain header instead: company name on one line, the report
+   title, and the line "เอกสารภายในสำหรับการออกบิล — ไม่ใช่ใบกำกับภาษี/ใบเสร็จรับเงิน".
+   **NO COMPUTED TOTAL** — the page shows days overdue and the daily rate as booked and stops;
+   the arithmetic belongs to the accounting program. This is a ratification condition, not a
+   layout preference: the moment the page multiplies rate by days, the web has written a bill.
+Reason: every charge beyond the booked rental carried its own classification question, its own
+   UI, and its own way to be wrong at the counter. Removing the second charge removes the last
+   of those questions rather than answering it — the same move that took the agenda from five
+   items to three now takes it to one. The business still recovers overdue rental; it recovers
+   it on paper, where a human decides the amount, instead of through a computed line that the
+   web would have to defend.
+Impact: migration 147 (RPC stops charging the late term; `late_days` + memo enforcement stay,
+   `v_late_charge` and `SETTLEMENT_DAILY_RATE_INVALID_FOR_LATE_DAYS` are removed entirely and
+   `late_day_charge` leaves the return contract), the settlement preview and panel, the tests
+   that assert the extension, and a NEW PRINTABLE REPORT for Admin whose layout CHiP ratifies
+   before it is built. No schema is dropped; `charge_type` keeps its vocabulary.
