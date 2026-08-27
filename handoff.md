@@ -1,5 +1,54 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-07-27 (post-merge BATCH 1 COMPLETE — the queue is empty)
+
+Batch 1 is merged. **Merge sha `0bc2b05`; origin/staging contains `1958125`.** Clean
+merge, no migration.
+
+ITEM A — boundary casts. The two stale-types casts are gone now that database.types.ts
+is regenerated through mig-146. The BACKLOG line tracking this was wrong in both
+directions and is corrected in place: it named files carrying the house named-client
+adapter pattern (`as unknown as <Name>Client`, ~15 endpoints, which no regen removes)
+and never named the two files that actually had stale-types casts.
+**THE TSC BASELINES DID NOT MOVE — 223 server / 210 app, error set byte-identical.**
+These casts SUPPRESSED checking rather than produced errors, so removing them restores
+checking without moving a counter. The older prediction that the regen would clear two
+residual errors never held. Every future "zero net new" claim still measures against
+223 / 210.
+
+ITEM B — manual no-show, GATED (CHiP: launch is auto-cancel only). The endpoint refuses
+while `f_deposits_enabled()` is false, fail-closed on `!== true`, and the admin button
+is hidden behind the same server-authoritative flag, now on the booking-detail payload.
+Scoping found the fiction was bigger than the record said: beyond the ฿0 disposition row
+the path also wrote a ฿0 revenue-recognition row, flipped `deposit_refund_status` to
+'forfeited', and issued TWO NUMBERED, CUSTOMER-VISIBLE forfeiture documents. All of it
+is unreachable now. Gated, not restructured — the deposit-era path survives whole for
+revival, and the parked deposit revenue vocabulary is untouched per the do-not-sweep rule.
+Verified at HTTP as super_admin: 409 `NO_SHOW_DISABLED_DEPOSITS_OFF`, nothing written.
+
+STATS capability verified, not built: the mig-145 sweep already writes an
+`auto_no_show_cancel` §F row per auto-cancel. The row identifies the BOOKING
+(`entity_id`); the customer comes from a join to `rental_bookings`, and walk-ins key on
+`walk_in_phone` because `user_id` is NULL. Query shape confirmed against live local data.
+
+VERIFICATION on the merge result: suite **2864/2864**; tsc **223 / 210**; migration list
+**146 rows, local == remote**.
+
+THE QUEUE AHEAD OF THE DOCUMENT LAYER IS NOW EMPTY. What remains is parked or deferred:
+  - T4 document layer — the next track.
+  - Deposit-status enum labels — moot until a real deposit-era booking exists; remote has
+    ZERO (its only deposit-era row is smoke residue).
+  - Documents-card gap — "ชำระ Booking Deposit สำเร็จ" on a launch booking, symptom of
+    `canIssueBookingConfirmation` requiring a paid deposit, so a launch booking can never
+    issue its own confirmation document. T4 scope.
+  - A9 deposit-status sites — customer document print (print.vue:496) and
+    rental-booking-payment.vue:177,242, both raw-enum, both customer money surfaces.
+  - [PARKED][UI] no-show / frequent-canceller stats view — data captured, UI awaits CHiP.
+  - Two unwalked HTTP surfaces — POS-origin cancel and the staff 20% discount tier, each
+    needing a seed addition (`pos_branch_id` booking; `admin_user_branch_access` row).
+  - Standing infra items: stale-'finalizing' POS sweep, RLS hardening bundle,
+    baht-vs-satang audit, empty-string USelect sites, PDPA retention/purge.
+
 ## Claude Code → CHiP / 2026-07-27 (T-LAUNCH task 2 COMPLETE — merged to staging)
 
 Task 2 is code-complete and MERGED. **Merge sha `84c8ee0`; origin/staging contains

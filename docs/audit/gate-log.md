@@ -38,6 +38,7 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-07-27 | wording:task2-handoff | task-2 complete + merged handoff entry (merge sha 84c8ee0, verification, read-only smoke) | CLOSED-PASS | auditor | handoff.md (this commit)
 2026-07-27 | merge:task2 | deposit display gate merged to staging; suite 2859, tsc 223/210 zero net new, 146/146 parity | CLOSED-PASS | auditor | 84c8ee0
 2026-07-27 | fix:batch-1 | stale-types casts removed (baselines stand 223/210 — casts suppressed checking); manual no-show gated on f_deposits_enabled per CHiP (auto-cancel only at launch; ฿0 fiction rows + both customer-visible documents unreachable); stats capability verified by live query (join via entity_id, walk-in caveat recorded) | CLOSED-PASS | auditor | (this commit)
+2026-07-27 | merge:batch-1 | post-merge batch 1 merged to staging; suite 2864, tsc 223/210, 146/146 parity, HTTP probe 409 NO_SHOW_DISABLED_DEPOSITS_OFF with zero writes | CLOSED-PASS | auditor | 0bc2b05
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,
