@@ -407,7 +407,7 @@ describe("launch discount + memo passthrough (146)", () => {
     const result = await settleRentalBookingReturn(input);
 
     expect(result.settlement.discountAmount).toBe(50);
-    expect(result.settlement.rentalBase).toBe(500);
+    expect(result.settlement.rentalBase).toBe(500); // RPC-returned, unchanged shape
 
     const rpcCall = calls.rpcs.find(
       (c) => c.fn === "f_settle_rental_booking_return",
@@ -456,12 +456,11 @@ describe("buildLaunchSettlementPreview (146, display-only mirror of the RPC)", (
       baseRental: 1000,
       dailyRate: 500,
       lateDays: 0,
-      lateCharge: 0,
       rentalBase: 1000,
     });
   });
 
-  it("late return: extension = daily rate x late days, added to the base", () => {
+  it("[147] late return: days are a FACT and the base does NOT move", () => {
     const p = buildLaunchSettlementPreview({
       rentalTotal: 1000,
       dailyRate: 500,
@@ -469,8 +468,13 @@ describe("buildLaunchSettlementPreview (146, display-only mirror of the RPC)", (
       todayBangkok: "2026-07-26",
     });
     expect(p.lateDays).toBe(1);
-    expect(p.lateCharge).toBe(500);
-    expect(p.rentalBase).toBe(1500);
+    // The booked rental IS the base. Overdue rental is billed externally, so no
+    // amount is computed here — a computed-but-uncharged figure is how fiction
+    // gets reintroduced (decisions.md 2026-07-27).
+    expect(p.rentalBase).toBe(1000);
+    expect(p).not.toHaveProperty("lateCharge");
+    // The rate is still surfaced AS BOOKED, for the printed report.
+    expect(p.dailyRate).toBe(500);
   });
 
   it("returning BEFORE the end date is never negative late days", () => {
@@ -481,7 +485,7 @@ describe("buildLaunchSettlementPreview (146, display-only mirror of the RPC)", (
       todayBangkok: "2026-07-26",
     });
     expect(p.lateDays).toBe(0);
-    expect(p.lateCharge).toBe(0);
+    expect(p.rentalBase).toBe(1000);
   });
 
   it("missing end date degrades to zero late days, never NaN", () => {
@@ -495,7 +499,7 @@ describe("buildLaunchSettlementPreview (146, display-only mirror of the RPC)", (
     expect(p.rentalBase).toBe(1000);
   });
 
-  it("rounds money to 2dp", () => {
+  it("[147] rounds the booked rental to 2dp and multiplies NOTHING", () => {
     const p = buildLaunchSettlementPreview({
       rentalTotal: 333.333,
       dailyRate: 166.666,
@@ -503,8 +507,10 @@ describe("buildLaunchSettlementPreview (146, display-only mirror of the RPC)", (
       todayBangkok: "2026-07-26",
     });
     expect(p.lateDays).toBe(3);
-    expect(p.lateCharge).toBe(500);
-    expect(p.rentalBase).toBe(833.33);
+    // 3 late days x 166.67 would have been 500.01 — the old drift bug. No
+    // multiplication happens at all now, so the base is simply the rental.
+    expect(p.rentalBase).toBe(333.33);
+    expect(p.dailyRate).toBe(166.67);
   });
 });
 
@@ -592,9 +598,14 @@ describe("[146] settlement panel contracts", () => {
     expect(panel).toContain('v-if="depositsEnabled && moneyMoves"');
   });
 
-  it("launch surface: rental + extension − discount, and never the word ค่าปรับ", () => {
+  it("[147] launch surface: rental − discount, with overdue shown as a FACT", () => {
     expect(panel).toContain("launchCollect");
-    expect(panel).toContain("ค่าเช่าเกินเวลา");
+    // ONE money item: no extension line, no computed overdue amount anywhere.
+    expect(panel).not.toContain("ค่าเช่าเกินเวลา");
+    expect(panel).not.toContain("lateCharge");
+    // The overdue days still show, and point at the external bill.
+    expect(panel).toContain("คืนล่าช้า {{ preview.lateDays }} วัน");
+    expect(panel).toContain("ออกบิลเรียกเก็บที่โปรแกรมบัญชี");
     expect(panel).not.toContain("ค่าปรับ");
     expect(panel).not.toContain("เบี้ยปรับ");
   });

@@ -29,12 +29,14 @@
  *   slip?                   — JPEG/PNG/PDF by MAGIC BYTES (required by the
  *                             RPC whenever refund/collection > 0)
  *
- * The RPC (migration 146) is the SOLE money authority — it computes both web
- * charge types (rental_charge + rental_extension) from the locked booking row,
+ * The RPC (migration 147) is the SOLE money authority — it computes THE ONE web
+ * charge (rental_charge, the rental as booked) from the locked booking row,
  * enforces the memo-when-late rule, the discount tiers (by the looked-up role),
  * regime channel exclusion, and pending_review gating, and refuses any
- * staff-charge line outright. This endpoint validates SHAPE/PARSE only and maps
- * every RPC RAISE to its HTTP status + Thai message via settleReturnRpcError.
+ * staff-charge line outright. Overdue rental is NOT charged on the web: it is
+ * recorded (late_days + memo) and billed externally (decisions.md 2026-07-27).
+ * This endpoint validates SHAPE/PARSE only and maps every RPC RAISE to its HTTP
+ * status + Thai message via settleReturnRpcError.
  *
  * Returns: { settlement, fulfillment } (see rental-return-settlement.ts)
  * Errors:  400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 500
@@ -134,9 +136,10 @@ export default defineEventHandler(async (event) => {
 
   // [146] The typed staff-charge channel is REMOVED (decisions.md 2026-07-26 c).
   // This endpoint parses no charge lines and the wrapper sends none, so the web
-  // collects exactly the two COMPUTED charge types. A hand-crafted request that
-  // still carries a staffChargeLines part is simply ignored here and, if it ever
-  // reached the RPC, refused there (STAFF_CHARGE_CHANNEL_REMOVED).
+  // collects exactly ONE COMPUTED charge — the rental as booked (decisions.md
+  // 2026-07-27). A hand-crafted request that still carries a staffChargeLines
+  // part is simply ignored here and, if it ever reached the RPC, refused there
+  // (STAFF_CHARGE_CHANNEL_REMOVED).
 
   // [143 R-A] Launch rental-base discount — parse only. Negatives pass through
   // so the RPC's DISCOUNT_NEGATIVE stays authoritative; non-numeric → 0. The

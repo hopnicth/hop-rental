@@ -189,17 +189,24 @@ function money(value: unknown): number {
 
 export interface LaunchSettlementPreview {
   baseRental: number;
+  /** As booked. Shown as a FACT beside the overdue days; never multiplied here. */
   dailyRate: number;
+  /** Overdue days, Asia/Bangkok, end_date EXCLUSIVE. Report data, not money. */
   lateDays: number;
-  lateCharge: number;
   rentalBase: number;
 }
 
 /**
- * [146] LAUNCH preview — DISPLAY ONLY. Mirrors the derivation the RPC performs
- * from the locked booking row (base rental = rental_total; rental_extension =
- * daily_rate x late days, Asia/Bangkok, end_date EXCLUSIVE) so the panel can
- * show what will be collected BEFORE staff submit.
+ * [147] LAUNCH preview — DISPLAY ONLY. Mirrors what the RPC derives from the
+ * locked booking row so the panel can show what will be collected BEFORE staff
+ * submit.
+ *
+ * THE WEB COLLECTS ONE MONEY ITEM (decisions.md 2026-07-27 a): the rental as
+ * booked. `rentalBase` IS the booked rental — there is no second component.
+ * `lateDays` is still derived because staff must see that a return was late and
+ * the printed report is built from it, but NO LATE CHARGE IS COMPUTED here or
+ * anywhere: a computed-but-uncharged figure is exactly how a number ends up
+ * rendered as money it never was. Overdue rental is billed externally.
  *
  * This is NOT an authority: `f_settle_rental_booking_return` recomputes every
  * figure from the row it locks, and a divergence between this preview and the
@@ -213,9 +220,6 @@ export function buildLaunchSettlementPreview(input: {
   todayBangkok: string;
 }): LaunchSettlementPreview {
   const baseRental = money(input.rentalTotal);
-  // Multiply the RAW rate, then round ONCE — the RPC computes
-  // round(daily_rate * late_days, 2) from the unrounded column, so rounding the
-  // rate first would drift the preview off the figure staff are about to commit.
   const rawDailyRate = Number(input.dailyRate ?? 0);
   const dailyRate = Number.isFinite(rawDailyRate) ? money(rawDailyRate) : 0;
   const end = Date.parse(`${input.endDate ?? ""}T00:00:00Z`);
@@ -224,16 +228,12 @@ export function buildLaunchSettlementPreview(input: {
     Number.isFinite(end) && Number.isFinite(today)
       ? Math.max(0, Math.round((today - end) / 86_400_000))
       : 0;
-  const lateCharge =
-    lateDays > 0 && Number.isFinite(rawDailyRate)
-      ? money(rawDailyRate * lateDays)
-      : 0;
   return {
     baseRental,
     dailyRate,
     lateDays,
-    lateCharge,
-    rentalBase: money(baseRental + lateCharge),
+    // The booked rental IS the base. No extension term exists to add.
+    rentalBase: baseRental,
   };
 }
 

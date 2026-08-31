@@ -5,13 +5,14 @@
  * TWO REGIMES, chosen by the server-authoritative `depositsEnabled` flag
  * (f_deposits_enabled, mig 135) that the GET feed carries:
  *
- *  LAUNCH (deposits OFF — the current regime). The web collects exactly two
- *  charge types, both COMPUTED from the booking row: ค่าเช่า (rental_charge) and
- *  ค่าเช่าเกินเวลา (rental_extension = daily rate × late days). Staff enter only a
- *  rental-base discount (+ mandatory reason) and the RECORD-BUT-NO-MONEY memo,
- *  which is mandatory when the return is late. The instruction is always
- *  COLLECT: rental + extension − discount. Damages, penalties, cleaning and fuel
- *  are billed in the accounting program, off-web (decisions.md 2026-07-26).
+ *  LAUNCH (deposits OFF — the current regime). The web collects ONE money item,
+ *  COMPUTED from the booking row: ค่าเช่า (rental_charge), the rental as booked.
+ *  Staff enter only a discount (+ mandatory reason) and the RECORD-BUT-NO-MONEY
+ *  memo, which is mandatory when the return is late. The instruction is always
+ *  COLLECT: rental − discount. Overdue rental, damages, penalties, cleaning and
+ *  fuel are ALL billed in the accounting program, off-web — the overdue days and
+ *  the memo are shown here as FACTS and printed on the report Admin bills from
+ *  (decisions.md 2026-07-27).
  *
  *  DEPOSIT ERA (deposits ON — parked, revivable by flag). Damage penalties, the
  *  special discount, the held-balance algebra and the REFUND/COLLECT/EVEN
@@ -53,7 +54,6 @@ interface LaunchPreview {
   baseRental: number;
   dailyRate: number;
   lateDays: number;
-  lateCharge: number;
   rentalBase: number;
 }
 const depositsEnabled = ref(false);
@@ -61,7 +61,6 @@ const preview = ref<LaunchPreview>({
   baseRental: 0,
   dailyRate: 0,
   lateDays: 0,
-  lateCharge: 0,
   rentalBase: 0,
 });
 const { profile } = useUserProfile();
@@ -169,11 +168,12 @@ const invalidLines = computed(() =>
   ),
 );
 
-// ── [146] LAUNCH arithmetic ────────────────────────────────────────────────
-// rental_charge + rental_extension − discount = the amount to COLLECT. There is
-// no held balance at launch, so none of the deposit-era refund/collect algebra
-// applies. Display only; f_settle_rental_booking_return recomputes every figure
-// from the booking row it locks, and its answer wins.
+// ── [147] LAUNCH arithmetic ────────────────────────────────────────────────
+// rental_charge − discount = the amount to COLLECT. ONE money item; overdue
+// rental is not charged here (decisions.md 2026-07-27). There is no held balance
+// at launch either, so none of the deposit-era refund/collect algebra applies.
+// Display only; f_settle_rental_booking_return recomputes every figure from the
+// booking row it locks, and its answer wins.
 const launchDiscount = computed(() =>
   Math.max(0, Number(discountAmount.value) || 0),
 );
@@ -181,6 +181,13 @@ const launchCollect = computed(() =>
   Math.max(0, Math.round((preview.value.rentalBase - launchDiscount.value) * 100) / 100),
 );
 const isLateReturn = computed(() => preview.value.lateDays > 0);
+// [147] The overdue report is the sheet Admin bills from — it exists only once a
+// LATE return has actually been SETTLED (before that there is no recorded
+// overdue fact, and an on-time return has nothing to bill). The endpoint 404s on
+// both cases, so this predicate mirrors the server rather than guessing.
+const canPrintOverdueReport = computed(
+  () => isLateReturn.value && !!existingSettlement.value,
+);
 /** The RPC refuses a late return with no memo; mirror it so staff see it first. */
 const memoMissing = computed(
   () => isLateReturn.value && staffMemo.value.trim().length === 0,
@@ -322,7 +329,7 @@ async function submit() {
           {{
             depositsEnabled
               ? "Enter penalties and discount — the system computes the outcome."
-              : "ค่าเช่าและค่าเช่าเกินเวลาคำนวณจากข้อมูลการจอง — เจ้าหน้าที่ระบุเฉพาะส่วนลดและหมายเหตุ"
+              : "ค่าเช่าคำนวณจากข้อมูลการจอง — เจ้าหน้าที่ระบุเฉพาะส่วนลดและหมายเหตุ"
           }}
         </p>
       </div>
@@ -425,6 +432,20 @@ async function submit() {
         </template>
       </UModal>
 
+      <!-- [147] OVERDUE REPORT — printable, NOT a document (no number, no series,
+           no computed total). Opens in a new tab so the settle form is never
+           lost behind a print view. -->
+      <UButton
+        v-if="canPrintOverdueReport"
+        icon="bx:printer"
+        color="neutral"
+        variant="soft"
+        size="sm"
+        target="_blank"
+        :to="`/admin/rental-bookings/overdue-report/${bookingId}`"
+        label="พิมพ์รายงานการคืนล่าช้า"
+      />
+
       <UAlert
         v-if="showSettleForm && !returnChecklistComplete"
         color="warning"
@@ -449,12 +470,14 @@ async function submit() {
           <span>ค่าเช่า</span>
           <span class="font-semibold">{{ formatMoney(preview.baseRental) }}</span>
         </div>
-        <div v-if="isLateReturn" class="flex justify-between">
-          <span>
-            ค่าเช่าเกินเวลา ({{ preview.lateDays }} วัน ×
-            {{ formatMoney(preview.dailyRate) }})
-          </span>
-          <span class="font-semibold">{{ formatMoney(preview.lateCharge) }}</span>
+        <!-- [147] OVERDUE IS A FACT HERE, NOT A CHARGE. No baht figure is shown
+             or computed: overdue rental is billed externally from the printed
+             report (decisions.md 2026-07-27). -->
+        <div v-if="isLateReturn" class="flex justify-between text-warning">
+          <span>คืนล่าช้า {{ preview.lateDays }} วัน</span>
+          <span class="text-xs"
+            >ค่าเช่าตามจอง {{ formatMoney(preview.dailyRate) }}/วัน — ออกบิลเรียกเก็บที่โปรแกรมบัญชี</span
+          >
         </div>
         <div v-if="launchDiscount > 0" class="flex justify-between text-success">
           <span>ส่วนลด</span>
@@ -525,7 +548,7 @@ async function submit() {
            super_admin ≤50%) are enforced by the RPC against the looked-up role;
            a refusal comes back as its own Thai message. -->
       <div v-if="!depositsEnabled" class="flex flex-wrap items-end gap-3">
-        <UFormField label="ส่วนลด" hint="คิดจากค่าเช่าและค่าเช่าเกินเวลา">
+        <UFormField label="ส่วนลด" hint="คิดจากค่าเช่าตามที่จอง">
           <UInput
             v-model.number="discountAmount"
             type="number"
@@ -566,7 +589,7 @@ async function submit() {
             ? `เรียกเก็บ ${formatMoney(launchCollect)}`
             : 'ไม่มียอดต้องเรียกเก็บ'
         "
-        :description="`ค่าเช่า ${formatMoney(preview.baseRental)} · ค่าเช่าเกินเวลา ${formatMoney(preview.lateCharge)} · ส่วนลด ${formatMoney(launchDiscount)}`"
+        :description="`ค่าเช่า ${formatMoney(preview.baseRental)} · ส่วนลด ${formatMoney(launchDiscount)}`"
       />
 
       <!-- The single computed instruction (decision 3) — deposit era -->
