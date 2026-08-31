@@ -11,8 +11,9 @@
  *                     deposit-era inputs and the held-balance arithmetic behind
  *                     it: DISPLAY is gated, data is untouched (decisions.md
  *                     2026-07-26 addendum, deposit DATA vs deposit DISPLAY).
- *   preview         — base rental + computed rental_extension, so the panel can
- *                     show what will be COLLECTED before submit. Display only;
+ *   preview         — the booked rental (the ONLY money item the web collects,
+ *                     decisions.md 2026-07-27) plus the overdue days as a FACT.
+ *                     No late charge is computed here or anywhere. Display only;
  *                     the RPC recomputes from the row it locks.
  *
  * Auth: requirePlatformAdmin.
