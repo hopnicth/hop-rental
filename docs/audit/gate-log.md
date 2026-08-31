@@ -43,6 +43,7 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-08-27 | sql:mig-147 | v_late_charge REMOVED entirely (shape i), rental base = the booked total, no rental_extension write, no late_day_charge in the return jsonb; 14-arg signature byte-unchanged; applied local + remote, 147/147 parity | CLOSED-PASS | auditor | supabase/migrations/147_one_money_item_launch.sql
 2026-08-27 | wording:report-layout | overdue & adjustments report — six fields, plain header (NOT OfficialDocumentHeader), the internal-document disclaimer line, no document number, no sequence consumed; NO COMPUTED TOTAL recorded as a ratification condition | CLOSED-PASS | CHiP | app/pages/admin/rental-bookings/overdue-report/[id].vue
 2026-09-01 | fix:one-money-item | launch preview without the late charge, overdue shown as a fact not a price, and the printable report reusing the return-confirmation digital signatures; amended layout (title, full-width memo, format pass, signature block ruling ก) ratified by CHiP from the printed artifact | CLOSED-PASS | CHiP | (this commit)
+2026-09-01 | merge:one-money-item | one money item merged to staging; suite 2893, tsc 223/210 zero net new, 147/147 parity local + remote; report layout ratified by CHiP from the printed artifact | CLOSED-PASS | CHiP | 50868e1
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,

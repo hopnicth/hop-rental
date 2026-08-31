@@ -1,5 +1,71 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-09-01 (SIMPLE-WEB TRACK COMPLETE — the web collects one money item)
+
+The simplification ruling is in the code and merged. **Merge sha `50868e1`;
+origin/staging contains `56d1796`.** Clean merge. Migration 147 applied local and remote.
+
+THE MODEL. The web now collects EXACTLY ONE money item: the rental as booked. Overdue
+rental and every adjustment leave the web as a PRINTABLE REPORT that Admin bills through
+the external accounting program. mig-147 is CREATE OR REPLACE on the unchanged 14-arg
+signature — `v_late_charge` is REMOVED entirely (auditor ruling, shape i), the rental base
+is the BOOKED TOTAL rounded once rather than a rate x days recomputation, the
+`rental_extension` write is gone, and `late_day_charge` is gone from the return jsonb. The
+mig-146 memo RAISE and the pending_review backstop are untouched.
+
+PROVEN, not assumed: a 5-day-late settle walk wrote ONE `payment_allocations` row —
+rental_charge / in / pending / 1000.00. Nothing else.
+
+THE REPORT — `/admin/rental-bookings/overdue-report/:id`, layout ratified by CHiP FROM THE
+PRINTED ARTIFACT, not from a mock. Deliberately NOT a document: no `official_documents`
+row, no OfficialDocumentHeader, no number, no series, no sequence consumed, and NO
+COMPUTED TOTAL — the moment the sheet multiplies rate by days the web has written a bill,
+which is the thing the ruling removes.
+
+SIGNATURES, ruling (ก): the report reuses the DIGITAL signatures already captured at return
+confirmation. The customer never signs twice and never appears to have signed a sheet they
+have not seen. **A CORRECTION FOR THE RECORD: there is NO void-on-edit mechanism in this
+codebase.** What guarantees the rendered signature is the live one is that
+`rental_booking_settlements` is APPEND-ONLY — mig-125's
+`trg_rental_booking_settlements_no_mutate` blocks UPDATE and DELETE, so the bound path
+cannot be swapped or cleared. `rental_booking_fulfillments` carries the same signature
+WITHOUT that protection, so it supplies only the timestamp. Anyone reasoning about
+signature integrity should reason about append-only, not about revocation.
+
+VERIFICATION on the merge result: suite **2893/2893** across 139 files; tsc **223 / 210**,
+zero net new; migration list **147, local == remote**.
+
+FIXTURE NOTE for the next session: `supabase/seed.sql` derives booking dates from now(), so
+it can NEVER produce an overdue booking. Reproducing the report needs a booking moved into
+the past by hand, keeping `rental_days == end - start` or the RPC's consistency guard
+refuses it.
+
+THE QUEUE AHEAD OF THE DOCUMENT LAYER IS STILL EMPTY. What remains is parked, deferred, or
+external:
+  - T4 document layer — the next track. It now also owns the settlement numbered document,
+    the ฿0 BDC/RBK issue, the A8/A9 receipt→tax-invoice void chain, and WHT capture.
+  - ONE accountant confirmation, external: tax point at payment receipt with same-day
+    invoice issuance (RD 0811/พ.01760). Answered by CHiP 2026-07-27; one line in writing is
+    still recommended. Carry the DISCLOSE items to the same meeting — inclusive VAT,
+    invoice dating on the staff issue date (diverges from ม.78/1), and the two BDR numbers
+    consumed by the 2026-07-21 smoke walk.
+  - [BUG][MED][UI] `[id]/print.vue` is UNREACHABLE — the nested-route trap. PRE-EXISTING;
+    the report sidestepped it with a flat route. Whoever fixes it should check for links to
+    the dead route.
+  - Deposit-status enum labels — moot until a real deposit-era booking exists; remote has
+    ZERO.
+  - Documents-card gap ("ชำระ Booking Deposit สำเร็จ" on a launch booking) — T4 scope.
+  - A9 raw-enum deposit-status sites: user/documents/[id]/print.vue:496 and
+    rental-booking-payment/[bookingId].vue:177,242.
+  - [PARKED][UI] no-show / frequent-canceller stats view — data captured, UI awaits CHiP.
+  - Two unwalked HTTP surfaces: POS-origin cancel and the staff 20% discount tier, each
+    needing a seed addition.
+  - [MED][UI] chat FAB overlaps the cancel CTA at ~529px.
+  - Standing infra: stale-'finalizing' POS sweep, RLS hardening bundle, baht-vs-satang
+    audit, empty-string USelect sites, PDPA retention/purge, the contradictory theme
+    config, Public Sans declared but never loaded, and the documented `npx tsc --noEmit`
+    that checks nothing.
+
 ## Claude Code → CHiP / 2026-07-27 (post-merge BATCH 1 COMPLETE — the queue is empty)
 
 Batch 1 is merged. **Merge sha `0bc2b05`; origin/staging contains `1958125`.** Clean
