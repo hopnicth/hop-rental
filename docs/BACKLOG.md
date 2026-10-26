@@ -11,7 +11,7 @@ Item tags: **[QUEUED]** (ordered) · **[PARKED]** (no date) · **[INFRA]** (cros
 
 ## ACTIVE — T-track order (per MASTER-GAP-MAP)
 
-Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 → T6/T7 (parallel) → T8.
+Current work = **T-UAT**. Order: T-UAT → T4 → T5 → T6/T7 (parallel) → T8. T1a/T1b/T2/T3/T4-core are delivered and merged; T-UAT precedes T4 because the rental fiscal documents cannot issue until a settlement can be paid.
 
 - **T1 — KYC (unfrozen 2026-07-14):** T1a staff-KYC + SUPER ADMIN approve queue (User-ID QR link) → T1b customer online KYC. Unblocks the pickup 422 `no_profile` deadlock.
 - **T2 — pickup → return → settlement:** the rental ledger release side. After T1.
@@ -23,6 +23,41 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 - **T8 — accounting-office export pack** (VAT/WHT/deposit-liability/cash reconciliation). End goal, after T4.
 
 ## Backlog by track
+
+### T-UAT — launch blockers (UAT 2026-09-01)
+
+Simulated UAT walked one booking end to end on local seed data: customer journey, then staff
+pickup → late return → settlement → overdue report. Observation-only by CHiP's instruction, so
+nothing was recorded at the time; written up here on 2026-10-26 by HUB ruling Q4. Branch for the
+fixes: `feature/launch-blockers`.
+
+- [BLOCKER][CUSTOMER] Checkout cannot complete. `POST /api/user/manual-payment-requests` → 422 `NO_AMOUNT_DUE_FOR_TARGETS`. ROOT CAUSE: checkout raises a manual payment request for the BOOKING DEPOSIT, which is ฿0 while `f_deposits_enabled()` is false, so the request has no payable target and is refused. The rental is not collected at checkout, so nothing else funds it. FIX SHAPE (2a): when deposits are off, confirm the booking WITHOUT raising a ฿0 payment request.
+- [BLOCKER][CUSTOMER] The 422 surfaces to the customer as a raw string — `[POST] "/api/user/manual-payment-requests": 422 NO_AMOUNT_DUE_FOR_TARGETS` — inside the toast. FIX SHAPE (2a): customer-facing message, no HTTP method, path or internal constant.
+- [BLOCKER][CUSTOMER] After checkout fails the booking is invisible to the customer. It DOES exist — as a `draft` — but /user/rentals lists only confirmed / picked_up / returned, so the customer has no evidence of it and no way to resume it. Observed: the booking created during the UAT walk never appeared, while the two seeded bookings did. CLOSES WITH 2a — once checkout confirms the booking instead of raising a ฿0 payment request, it is `confirmed` and appears.
+- [ROUGH][CUSTOMER] draft booking invisible after any non-2a checkout failure — surface drafts in /user/rentals or discard on failure; not folded into 2a. Recorded only, not scheduled.
+- [BLOCKER][CUSTOMER] Cart money block contradicts itself: ค่าเช่าอุปกรณ์ ฿1,500 listed under ชำระวันรับสินค้า, then รวมยอดชำระวันรับสินค้า ฿0 three lines below. A self-contradicting total on the screen where the customer commits money.
+- [BLOCKER][STAFF] Pickup refused: 422 "Pickup requires paid deposit/payment status". ROOT CAUSE: the pickup gate requires a PAID booking deposit, unsatisfiable while deposits are off; the POS V3 panel simultaneously renders "ชำระครบแล้ว ✓" for the same ฿0. FIX SHAPE (2b): drop the deposit condition when deposits are off. The checklist and both signatures REMAIN mandatory.
+- [BLOCKER][STAFF] The settlement amount cannot be collected. `f_confirm_settlement_payment` EXISTS (mig-134:375, hardened mig-143) but has NO application caller — only `f_waive_settlement_payment` was wired (server/utils/rental-settlement-waive.ts + endpoint). The only control on screen is ยกเว้นยอดชำระ, so the staff choice is leave it awaiting_payment forever or write the money off. FIX SHAPE (2c): wrapper + endpoint + collect button mirroring the waive path, with the §F decision log.
+- [BLOCKER][STAFF] Non-super_admin staff get 403 "POS branch access required" on `/api/admin/pos-v2/rental-bookings/[id]/pickup-readiness` and the panel spins on "กำลังตรวจสอบสถานะการรับมอบ…" forever with no error. Seeded staff has no `admin_user_branch_access` row. A blocking failure rendered as an infinite spinner. FIX SHAPE (2b): show the error instead of an endless spinner.
+- [BLOCKER][MONEY] Ledger disagrees with the till on any discount. `rental_settlement_payment_states.amount_due` carries the discount (฿1,300.00 observed) but the `payment_allocations` rental_charge row is written from `v_base_rental` undiscounted (฿1,500.00). The charge-line write is unchanged since mig-143:365 and was carried forward in mig-146 and mig-147 — PRE-EXISTING, not introduced by the simplification, but critical now that rental_charge is the ONE money item. FIX SHAPE (2c): record the post-discount amount.
+- [ROUGH][STAFF] Raw status buttons bypass the whole gated flow: "→ picked_up" moved the booking with NO fulfillment row, NO signature and no deposit check — the gate that had just refused the proper path. "→ cancelled" sits adjacent, same size, one click, no confirmation, no undo.
+- [ROUGH][STAFF] Ad-hoc checklists are created with zero items and can be Completed at "0 / 0 items checked", satisfying the condition-check gate without anything being inspected.
+- [ROUGH][STAFF] The STAFF signature pad is captioned "ให้ลูกค้าเซ็นรับของบนหน้าจอนี้". The hint is hardcoded in `app/components/admin/DigitalSignaturePad.vue:7` and the settlement panel does not override it for the staff pad.
+- [ROUGH][CUSTOMER] Login wipes the booking form. Prefill works on a fresh load; the post-login redirect returns an empty form — dates, name and phone all lost.
+- [ROUGH][CUSTOMER] The pickup branch chosen in the cart is never persisted — `pickup_branch_id` is NULL afterwards, while admin still displays a branch label from another source, so the mismatch is invisible.
+- [ROUGH][ALL] Three surfaces give three answers on when rent is due: cart says pickup day, POS V3 says "ค่าเช่าจะชำระวันคืนสินค้า", admin detail says "Total due at start".
+- [ROUGH][MONEY] The overdue report bills from the EXCLUSIVE end date while the customer agreed to the inclusive one — ±1 day on every late bill. This is the known end-date item (T6), promoted here because it now reaches a document accounting bills from.
+- [POLISH][CUSTOMER] ฿0 deposit vocabulary on every customer money surface while deposits are off: catalog badge "ค่ามัดจำ ฿0", asset page ×2, cart ×8+ including a full เงินมัดจำประกัน block of three zero rows and a banner instructing the customer to transfer a deposit and upload a slip, plus a ยอดมัดจำ ฿0.00 headline stat and a per-card มัดจำ ฿0.00 on /user/rentals. Same DATA-vs-DISPLAY principle as decisions.md 2026-07-26 addendum; these surfaces are NOT in the existing A9 line.
+- [POLISH][CUSTOMER] English in Thai customer copy — "กลับไปหน้า Asset", the raw category slug "others", and a date picker headed "Event Date, September 2026" with English weekday initials.
+- [POLISH][CUSTOMER] Empty `<title>` and missing `lang` attribute, flagged by the built-in a11y checker on every page.
+- [POLISH][STAFF] Internal scaffolding copy on live admin screens: "ADMIN MVP", "Lightweight internal area for products, assets, and inventory", and POS V3's "Operational Entry Shell" / "Completion, sale checkout, KYC, and fiscal workflows are not implemented here" — shown on the screen the booking page routes staff TO.
+- [POLISH][STAFF] No link into /admin anywhere after staff login, and the account menu reports a `platform_role = staff` user as "HOPNIC Role: Customer".
+- [POLISH][STAFF] Pervasive English/Thai mixing in admin, including "server จะตรวจสอบซ้ำ"; two date formats between the admin list ("1 ก.ย. 2569") and detail ("1 Sept 2026"); button label drift Start / Complete Checklist / Complete; a permanent "deposit unpaid" badge on every row.
+- [POLISH][DOC] The overdue report prints the raw booking UUID as เลขที่การจอง. The admin list already shows a short form.
+
+FIXTURE NOTE for whoever re-walks this: `supabase/seed.sql` derives booking dates from now(), so it
+can never produce an overdue booking. A late return needs a booking moved into the past by hand
+with `rental_days == end - start`, or the RPC's consistency guard refuses it.
 
 ### T1 — KYC
 - [QUEUED] B-M3: phone-number lookup for staff locate (customer with no login) — feeds staff-KYC + tax-profile creation channels (§a/§d; currently DEAD in V3)
@@ -116,7 +151,7 @@ Current work = **T1a**. Order: T1a → T1b → T2 → (T3 + T4 together) → T5 
 ### T3+T4-core Phase 1 close-out (2026-07-19)
 - [DONE 2026-07-19] HTTP-debt walk: all three debt items closed at transport level (company-cancel flow w/ live BDR document + void/reissue chain over HTTP; PATCH paid→refunded 409; staff denial row over HTTP).
 - [HYGIENE][LOW] Malformed session cookie yields HTTP 500 (cookie-parse) instead of 401 on admin endpoints — pre-existing @nuxtjs/supabase behavior, observed at the HTTP walk.
-- [T4-REST] Phase 2 remains per the design-doc boundary: tax_treatment config, A8/A9 sale receipt/tax invoice, WHT/50-bis, 3 reconciliation loops, settlement numbered document, refund-doc tax-invoice linkage backfill (accountant item).
+- [T4-REST] Phase 2 remains per the design-doc boundary: tax_treatment config, A8/A9 sale receipt/tax invoice, 3 reconciliation loops (loop 3 deposit liability DEFERRED 2026-10-26 with deposit revival — no stub), settlement numbered document, refund-doc tax-invoice linkage backfill (accountant item). WHT/50-bis REMOVED from T4-rest 2026-10-26 — parked with juristic revival per decisions.md 2026-07-22; existing schema stays dormant.
 - [T3][RESIDUE][LOCAL-ONLY] Immutable local residue from the walks: money_ops_decision_logs walk2_probe denied row + 2 pre-fix denied rows (order 0001 order_not_cancellable; booking B booking_not_cancellable); 1 undeletable draft probe doc (test_draft_doc — 131 guard). All self-labeling; wiped by any db reset.
 - [DONE 2026-07-19] T3+T4-core remote apply: migrations 127-132 pushed to remote via --include-all (dry-run exact-six verified); pre-flight 0/0/0/0 data sanity + system_actor verified; all structural probes passed from schema dump (constraints/RPCs/guards/policies/grants service_role-only); 132 behavioral probe run OWNER-SIDE (in-txn INSERT accepted, UPDATE blocked by append-only guard, ROLLBACK, post-probe count 0 — zero residue). migration list local=remote through 132, zero drift. Types regenerated --linked (tsc clean, suite 2744 green). Code pushed at 1ddd19c.
 

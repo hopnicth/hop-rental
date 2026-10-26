@@ -44,6 +44,8 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-08-27 | wording:report-layout | overdue & adjustments report — six fields, plain header (NOT OfficialDocumentHeader), the internal-document disclaimer line, no document number, no sequence consumed; NO COMPUTED TOTAL recorded as a ratification condition | CLOSED-PASS | CHiP | app/pages/admin/rental-bookings/overdue-report/[id].vue
 2026-09-01 | fix:one-money-item | launch preview without the late charge, overdue shown as a fact not a price, and the printable report reusing the return-confirmation digital signatures; amended layout (title, full-width memo, format pass, signature block ruling ก) ratified by CHiP from the printed artifact | CLOSED-PASS | CHiP | (this commit)
 2026-09-01 | merge:one-money-item | one money item merged to staging; suite 2893, tsc 223/210 zero net new, 147/147 parity local + remote; report layout ratified by CHiP from the printed artifact | CLOSED-PASS | CHiP | 50868e1
+2026-10-26 | wording:t-uat-record | 2026-09-01 UAT launch blockers recorded (8 BLOCKER + ROUGH + POLISH, customer and staff) with root cause and fix shape; T-UAT inserted ahead of T4 | CLOSED-PASS | CHiP | docs/BACKLOG.md + handoff.md (this commit) (HUB reviewed on CHiP's docs-only delegation 2026-10-26)
+2026-10-26 | ruling:t4-scope | WHT/50-bis REMOVED from T4-rest (parked with juristic revival, decisions.md 2026-07-22; schema stays dormant); reconciliation loop 3 deposit liability DEFERRED with deposit revival, no stub | CLOSED-PASS | CHiP | docs/BACKLOG.md (this commit)
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,

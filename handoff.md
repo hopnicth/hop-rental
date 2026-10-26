@@ -1,5 +1,47 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-10-26 (T-UAT recorded; T4 scoped and re-ordered behind it)
+
+Docs only. No schema, no application code.
+
+WHY THIS ENTRY EXISTS. The 2026-09-01 simulated UAT found eight blockers and was
+observation-only by instruction, so none of it was written down. Eight weeks later a grep for it
+across BACKLOG, handoff, decisions and the gate-log returned nothing — in the repo, which is our
+truth, the findings did not exist. They are now in BACKLOG under **T-UAT — launch blockers (UAT
+2026-09-01)** with root cause and fix shape per item.
+
+THE SHORT VERSION: a customer cannot complete a booking, a staff member cannot hand over the
+equipment, and the one money item the web collects cannot be collected. All three trace to the
+same thing — the rental flow still gates on a booking deposit that the launch regime sets to ฿0
+and `f_deposits_enabled()` turns off.
+
+ONE CORRECTION to the original UAT wording: the money writer is NOT missing.
+`f_confirm_settlement_payment` exists (mig-134:375, hardened mig-143) and is service_role-only; it
+simply has no caller, while its sibling `f_waive_settlement_payment` was wired end to end. Waive
+was built, confirm was not.
+
+WHY T4 WAITS. T4's rental fiscal documents are blocked behind that.
+`f_assert_tax_document_issuable` (mig-133:120) refuses the three rental tax types while the
+settlement state is `awaiting_payment` and passes only on `paid` or `waived`; mig-133 reaches
+`paid` by itself only for the zero-due case. With no confirm caller, the only way to make a rental
+tax invoice issuable today is to WAIVE the money first. The guard is right; the money path under
+it is missing. T-UAT therefore runs before T4 (`feature/launch-blockers`), and T4 picks up after.
+
+WHAT T4 ALREADY HAS, so the next session does not rebuild it: the three rental fiscal types,
+per-branch series and `f_next_document_number` (mig-136), the tax-point trigger (mig-139), the
+issuability guards (mig-133/143), void = reissue (mig-131) and the money-ops log (mig-132) all
+exist. What does NOT exist is any code that ISSUES them — grepping server/ and app/ for the three
+type names returns nothing, and the sale side issues no documents at all.
+
+T4 RULINGS (HUB on CHiP's delegation, 2026-10-26): WHT/50-bis is OUT of T4-rest, parked with
+juristic revival per decisions.md 2026-07-22; existing schema stays dormant. Reconciliation loop 3
+(deposit liability) is DEFERRED with deposit revival — no stub, because deposits are off and
+remote holds zero real deposit-era bookings.
+
+APPROVED ORDER: step 1 these records · step 2 feature/launch-blockers (2a checkout, 2b pickup gate
++ staff 403, 2c collect endpoint + discounted allocation), then re-walk the same flow without
+touching a raw status button · step 3 T4 phases A→F.
+
 ## Claude Code → CHiP / 2026-09-01 (SIMPLE-WEB TRACK COMPLETE — the web collects one money item)
 
 The simplification ruling is in the code and merged. **Merge sha `50868e1`;
