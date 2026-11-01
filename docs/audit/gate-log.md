@@ -46,6 +46,7 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 2026-09-01 | merge:one-money-item | one money item merged to staging; suite 2893, tsc 223/210 zero net new, 147/147 parity local + remote; report layout ratified by CHiP from the printed artifact | CLOSED-PASS | CHiP | 50868e1
 2026-10-26 | wording:t-uat-record | 2026-09-01 UAT launch blockers recorded (8 BLOCKER + ROUGH + POLISH, customer and staff) with root cause and fix shape; T-UAT inserted ahead of T4 | CLOSED-PASS | CHiP | docs/BACKLOG.md + handoff.md (this commit) (HUB reviewed on CHiP's docs-only delegation 2026-10-26)
 2026-10-26 | ruling:t4-scope | WHT/50-bis REMOVED from T4-rest (parked with juristic revival, decisions.md 2026-07-22; schema stays dormant); reconciliation loop 3 deposit liability DEFERRED with deposit revival, no stub | CLOSED-PASS | CHiP | docs/BACKLOG.md (this commit)
+2026-11-02 | fix:2a | launch checkout confirms the booking instead of raising a ฿0 deposit payment request; cart's chosen pickup hub validated server-side (active branch + asset carried there) and written as hub_id + hub_name before confirm; customer-safe error copy replaces the raw HTTP string; rental fee presented as due on the return day | CLOSED-PASS | CHiP | (this commit) (Thai ratified by CHiP; HUB-reviewed on CHiP's delegation 2026-11-02)
 
 RETRO-RECORD NOTE: the three lines above were confirmed with a prior auditor instance
 in CHiP's presence on 2026-07-25, BEFORE this log existed. They are recorded here once,

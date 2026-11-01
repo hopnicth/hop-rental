@@ -894,6 +894,8 @@
     "rentalSummarySecurityDepositTitle": "Security deposit",
     "rentalSummaryBookingDeposit": "Booking Deposit / เงินมัดจำจอง",
     "rentalSummaryRentalFeeAtPickup": "Equipment rental fee",
+    "rentalSummaryPayAtReturnTitle": "Due on the return day",
+    "rentalSummaryRentalFeeAtReturn": "Rental fee — paid at the branch on the return day",
     "rentalSummaryRemainingSecurityDepositAtPickup": "Remaining refundable security deposit",
     "rentalSummaryTotalDueAtPickup": "Total due at pickup",
     "rentalSummaryFullSecurityDeposit": "Full refundable security deposit required",

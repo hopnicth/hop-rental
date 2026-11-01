@@ -44,7 +44,7 @@ fixes: `feature/launch-blockers`.
 - [ROUGH][STAFF] Ad-hoc checklists are created with zero items and can be Completed at "0 / 0 items checked", satisfying the condition-check gate without anything being inspected.
 - [ROUGH][STAFF] The STAFF signature pad is captioned "ให้ลูกค้าเซ็นรับของบนหน้าจอนี้". The hint is hardcoded in `app/components/admin/DigitalSignaturePad.vue:7` and the settlement panel does not override it for the staff pad.
 - [ROUGH][CUSTOMER] Login wipes the booking form. Prefill works on a fresh load; the post-login redirect returns an empty form — dates, name and phone all lost.
-- [ROUGH][CUSTOMER] The pickup branch chosen in the cart is never persisted — `pickup_branch_id` is NULL afterwards, while admin still displays a branch label from another source, so the mismatch is invisible.
+- [BLOCKER][CUSTOMER] The pickup branch chosen in the cart is never persisted. Nothing in the customer path assigns a hub at all: `RentalBookingForm.vue` sets none and the cart's branch control only FILTERED by `hubId` (cart.vue:235-277) rather than writing it. Admin still displays a branch label from another source, so the mismatch is invisible. RE-RATED 2026-10-28 at 2a live verification: blocks confirm (422 "Pickup hub is required", rental-booking-confirmation.ts:280) — the 2a fix for the checkout blocker cannot complete without it. FIX SHAPE (2a): cart sends the chosen branch; server validates it is active and that the asset is carried there, then writes `hub_id` + `hub_name` before confirming. `hub_name` matters because /user/rentals renders `booking.hubName`.
 - [ROUGH][ALL] Three surfaces give three answers on when rent is due: cart says pickup day, POS V3 says "ค่าเช่าจะชำระวันคืนสินค้า", admin detail says "Total due at start".
 - [ROUGH][MONEY] The overdue report bills from the EXCLUSIVE end date while the customer agreed to the inclusive one — ±1 day on every late bill. This is the known end-date item (T6), promoted here because it now reaches a document accounting bills from.
 - [POLISH][CUSTOMER] ฿0 deposit vocabulary on every customer money surface while deposits are off: catalog badge "ค่ามัดจำ ฿0", asset page ×2, cart ×8+ including a full เงินมัดจำประกัน block of three zero rows and a banner instructing the customer to transfer a deposit and upload a slip, plus a ยอดมัดจำ ฿0.00 headline stat and a per-card มัดจำ ฿0.00 on /user/rentals. Same DATA-vs-DISPLAY principle as decisions.md 2026-07-26 addendum; these surfaces are NOT in the existing A9 line.
@@ -99,6 +99,7 @@ with `rental_days == end - start`, or the RPC's consistency guard refuses it.
 - [PARKED] A3 status-transition legality trigger (NICE-TO-HAVE)
 
 ### T7 — glossary / i18n / money-copy
+- [I18N] `cart.rentalSummaryRentalFeeAtPickup` (en + th) is orphaned since 2a — the rental fee moved to a pay-at-return line. Left in place deliberately; delete at the next glossary sweep.
 - [QUEUED] sale_only payment template leaks booking-deposit wording (Case-1 M2); note: the mixed money-note is CONFIRMED-CORRECT (Case-3) — fix is the pure-case reuse
 - [PARKED] Glossary sweep: bare มัดจำ on customer list cards + POS surfaces (Case-1/2/3 W1)
 

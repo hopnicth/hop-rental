@@ -894,6 +894,8 @@
     "rentalSummarySecurityDepositTitle": "เงินมัดจำประกัน",
     "rentalSummaryBookingDeposit": "Booking Deposit / เงินมัดจำจอง",
     "rentalSummaryRentalFeeAtPickup": "ค่าเช่าอุปกรณ์",
+    "rentalSummaryPayAtReturnTitle": "ชำระวันคืนอุปกรณ์",
+    "rentalSummaryRentalFeeAtReturn": "ค่าเช่า — ชำระที่สาขาในวันคืนอุปกรณ์",
     "rentalSummaryRemainingSecurityDepositAtPickup": "เงินมัดจำประกันคงเหลือ",
     "rentalSummaryTotalDueAtPickup": "รวมยอดชำระวันรับสินค้า",
     "rentalSummaryFullSecurityDeposit": "เงินมัดจำประกันเต็มจำนวน",
