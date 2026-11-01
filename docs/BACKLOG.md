@@ -102,6 +102,7 @@ with `rental_days == end - start`, or the RPC's consistency guard refuses it.
 - [PARKED] A3 status-transition legality trigger (NICE-TO-HAVE)
 
 ### T7 — glossary / i18n / money-copy
+- [T7][I18N] `app/components/admin/AdminRentalReturnSettlement.vue` hardcodes ALL of its Thai and carries no i18n keys at all (pre-existing). 2c followed the file's own convention rather than leaving it half-and-half (HUB ruling 2026-11-02). Migrate the WHOLE file to i18n keys in one pass at the glossary sweep, including the 2c collect strings (รับชำระ, รับชำระยอดปิดการเช่า, the payment-method labels, and the collect toasts).
 - [I18N] `cart.rentalSummaryRentalFeeAtPickup` (en + th) is orphaned since 2a — the rental fee moved to a pay-at-return line. Left in place deliberately; delete at the next glossary sweep.
 - [QUEUED] sale_only payment template leaks booking-deposit wording (Case-1 M2); note: the mixed money-note is CONFIRMED-CORRECT (Case-3) — fix is the pure-case reuse
 - [PARKED] Glossary sweep: bare มัดจำ on customer list cards + POS surfaces (Case-1/2/3 W1)

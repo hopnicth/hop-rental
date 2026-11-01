@@ -26,7 +26,11 @@ export type MoneyOpsOperation =
   // [144] wrapper-written waive denial (§8.9 half 2). The waive SUCCESS row
   // is 'settlement_payment_waive' and is written IN-RPC (141:86-89) — never
   // by TypeScript — so it is deliberately NOT in this union.
-  | "settlement_payment_waive_denied";
+  | "settlement_payment_waive_denied"
+  // [T-UAT 2c] wrapper-written COLLECT denial, same §8.9 split. The success
+  // row is 'settlement_payment_confirm' and is written IN-RPC (mig-134) —
+  // never by TypeScript — so it too is deliberately absent here.
+  | "settlement_payment_confirm_denied";
 
 export type MoneyOpsEntityType =
   | "rental_booking"
