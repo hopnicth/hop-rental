@@ -1584,5 +1584,12 @@
       "plc_programmers_automation": "Industrial Automation",
       "plc_programmers_robotics": "Robotics"
     }
+  },
+  "posV3": {
+    "pickup": {
+      "readinessForbidden": "You do not have POS access for this branch. Please contact an administrator.",
+      "readinessUnavailable": "Could not load the handover status. Please try again.",
+      "readinessErrorTitle": "Handover status unavailable"
+    }
   }
 }

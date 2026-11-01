@@ -1584,5 +1584,12 @@
       "plc_programmers_automation": "ระบบอัตโนมัติในอุตสาหกรรม",
       "plc_programmers_robotics": "หุ่นยนต์"
     }
+  },
+  "posV3": {
+    "pickup": {
+      "readinessForbidden": "คุณไม่มีสิทธิ์ใช้ POS ของสาขานี้ กรุณาติดต่อผู้ดูแลระบบ",
+      "readinessUnavailable": "ไม่สามารถโหลดสถานะการรับมอบได้ กรุณาลองใหม่อีกครั้ง",
+      "readinessErrorTitle": "โหลดสถานะการรับมอบไม่สำเร็จ"
+    }
   }
 }
