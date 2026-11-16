@@ -11,7 +11,7 @@ Item tags: **[QUEUED]** (ordered) · **[PARKED]** (no date) · **[INFRA]** (cros
 
 ## ACTIVE — T-track order (per MASTER-GAP-MAP)
 
-Current work = **T-UAT (blockers closed; awaiting remote apply of mig-148 + mig-149 and merge)**. Order: T-UAT → T4 → T5 → T6/T7 (parallel) → T8. All nine T-UAT blockers are closed and verified end to end as STAFF on 2026-11-02; what remains is the remote migration apply (CHiP's gate) and the merge it precondition-blocks. T4 follows.
+Current work = **T4 — document / ERP foundation**. Order: T4 → T5 → T6/T7 (parallel) → T8. T-UAT is CLOSED AND MERGED (664039d, 2026-11-17): all nine launch blockers closed and verified end to end as STAFF, with mig-148 and mig-149 applied on remote. T4 proceeds on the approved plan — phases A→F, WHT/50-bis OUT (parked with juristic revival), reconciliation loop 3 DEFERRED with deposit revival. The rental fiscal issuance half of T4 is now UNBLOCKED: f_assert_tax_document_issuable passes once a settlement is `paid`, and a settlement can finally be paid.
 
 - **T1 — KYC (unfrozen 2026-07-14):** T1a staff-KYC + SUPER ADMIN approve queue (User-ID QR link) → T1b customer online KYC. Unblocks the pickup 422 `no_profile` deadlock.
 - **T2 — pickup → return → settlement:** the rental ledger release side. After T1.

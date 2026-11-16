@@ -2,7 +2,10 @@
 
 ## Claude Code → CHiP / 2026-11-16 (T-UAT COMPLETE — the launch flow runs end to end as staff)
 
-DELIVERED, five commits on `feature/launch-blockers`, none pushed:
+**MERGED TO STAGING 2026-11-17 at `664039d`** (suite 2977, tsc 223/210 zero net new, migration
+parity 149/149). The branch is kept, not deleted.
+
+DELIVERED, five commits on `feature/launch-blockers`:
   b3c2eb9  2a — checkout confirms without a ฿0 deposit request; cart writes the pickup hub;
            customer-safe errors
   d4e74c7  2b — pickup gate follows the deposit regime; readiness errors surface; branch-access
