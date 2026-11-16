@@ -1,5 +1,57 @@
 # Handoff Log
 
+## Claude Code → CHiP / 2026-11-16 (T-UAT COMPLETE — the launch flow runs end to end as staff)
+
+DELIVERED, five commits on `feature/launch-blockers`, none pushed:
+  b3c2eb9  2a — checkout confirms without a ฿0 deposit request; cart writes the pickup hub;
+           customer-safe errors
+  d4e74c7  2b — pickup gate follows the deposit regime; readiness errors surface; branch-access
+           guard fails closed (42P01 only)
+  cd8f9af  148 — settlement discount line
+  57493d1  149 — §F vocabulary for the collect denial
+  2c81b6d  2c — settlement collect (รับชำระ)
+
+WHAT THE SEPTEMBER UAT FOUND, AND WHERE IT STANDS. A customer could not complete a booking, a
+staff member could not hand over equipment, and the one money item the web collects could not be
+collected. All three traced to the same cause: the rental flow still gated on a booking deposit
+that the launch regime sets to ฿0 and `f_deposits_enabled()` turns off. All nine blockers are now
+closed and re-verified.
+
+STEP 3 RE-WALK (2026-11-02), booking 4aa92a98-6ebc-4517-83b3-9302f59a0dac, on a clean 001→149 +
+seed, AS seed-staff throughout — never super_admin, and no raw status button at any point:
+customer booked from the asset page → staff readiness 200 → pickup via checklist + signature →
+dates shifted late (disclosed; the seed cannot produce an overdue booking) → settle with ฿200
+discount + memo → collect cash → report printed with the live signature.
+LEDGER: rental_charge in 1500.00 (1401.87 + 98.13) and settlement_discount out 200.00
+(186.92 + 13.08), both confirmed; in − out = 1300.00 = amount_due = amount_paid. state paid, ref
+CASH-4aa92a98-20261102, confirmed_by the staff user. status returned, late_days 4, TWO fulfillment
+rows (pickup and return) where September produced none.
+
+MIGRATIONS 148 AND 149 ARE LOCAL ONLY. Remote sits at 147 with no drift; a dry-run confirms
+exactly those two would push; remote holds zero settlements, zero rental_charge allocations, zero
+settlement_discount rows and zero settlement §F rows. MERGE PRECONDITION:
+`feature/launch-blockers` must NOT merge to staging until both are applied on remote — 2c calls
+the RPC that 148 replaces, so merging first would put code on staging whose money behaviour the
+remote schema does not implement.
+
+STILL OPEN (unchanged, all recorded in BACKLOG T-UAT): login wipes the booking form · raw status
+buttons still bypass the gated flow · ad-hoc checklists completable at 0/0 items · staff signature
+pad captioned for the customer · end-date ±1 reaching the report · admin detail still says "Total
+due at start" while cart and POS V3 agree on at-return · ฿0 deposit vocabulary on customer money
+surfaces · POS V3 "ชำระครบแล้ว ✓" on a ฿0 deposit · admin English/Thai mixing and scaffolding copy
+· report prints the raw booking UUID · collect modal has no receipt-note field.
+
+TWO LESSONS WORTH KEEPING IN THE RECORD:
+1. I concluded "there is no DB check on the §F operation column" from output I had truncated with
+   `head -5`. The check existed. Because `logMoneyOpsDecision` is best-effort, every denial insert
+   was rejected and SWALLOWED — refusals reached the user correctly while the audit row silently
+   did not exist. Found only by counting rows after a live walk instead of trusting the HTTP
+   status. mig-149 is the fix. Do not draw a negative conclusion from truncated output.
+2. The 2c unit tests were green throughout that failure, because the mock client accepted any
+   operation string — the mock was LAXER THAN THE DATABASE. A mock-fidelity test now asserts every
+   operation the wrapper can emit exists in a migration vocabulary. Where a mock stands in for a
+   constraint, something must pin the two together.
+
 ## Claude Code → CHiP / 2026-10-26 (T-UAT recorded; T4 scoped and re-ordered behind it)
 
 Docs only. No schema, no application code.
