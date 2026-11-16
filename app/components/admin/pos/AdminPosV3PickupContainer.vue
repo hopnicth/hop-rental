@@ -23,9 +23,18 @@ interface PickupReadinessPreview {
 const props = defineProps<{
   booking: AdminRentalBookingDetail;
   readiness: PickupReadinessPreview | null;
+  /**
+   * [T-UAT 2b-2] Already-translated failure message from the parent, or null.
+   * Without this, `readiness === null` meant BOTH "still fetching" and "fetch
+   * failed", so a 403 rendered as an endless spinner and the staff member was
+   * never told why the handover could not start (UAT 2026-09-01).
+   */
+  readinessError?: string | null;
   checklists: AdminBookingChecklist[];
   templates: AssetChecklistTemplateSummary[];
 }>();
+
+const { t } = useI18n();
 
 const emit = defineEmits<{
   (e: "pickup-confirmed", booking: AdminRentalBookingDetail): void;
@@ -96,7 +105,10 @@ const canCollectDeposit = computed(
 );
 
 const readinessLoading = computed(
-  () => props.readiness === null && !isAlreadyPickedUp.value,
+  () =>
+    props.readiness === null &&
+    !props.readinessError &&
+    !isAlreadyPickedUp.value,
 );
 
 const hasChecklistError = computed(
@@ -242,7 +254,19 @@ async function submitPickup() {
       </div>
     </div>
 
-    <!-- State 2: Readiness still loading -->
+    <!-- State 2a: Readiness FAILED — say so. Never fall through to the
+         spinner: a failure that renders as "loading" is indistinguishable
+         from a slow network and leaves staff stuck at the counter. -->
+    <UAlert
+      v-else-if="readinessError"
+      color="warning"
+      variant="soft"
+      icon="bx:error-circle"
+      :title="t('posV3.pickup.readinessErrorTitle')"
+      :description="readinessError"
+    />
+
+    <!-- State 2b: Readiness still loading -->
     <div
       v-else-if="readinessLoading"
       class="py-6 text-center text-sm text-muted"

@@ -894,6 +894,8 @@
     "rentalSummarySecurityDepositTitle": "เงินมัดจำประกัน",
     "rentalSummaryBookingDeposit": "Booking Deposit / เงินมัดจำจอง",
     "rentalSummaryRentalFeeAtPickup": "ค่าเช่าอุปกรณ์",
+    "rentalSummaryPayAtReturnTitle": "ชำระวันคืนอุปกรณ์",
+    "rentalSummaryRentalFeeAtReturn": "ค่าเช่า — ชำระที่สาขาในวันคืนอุปกรณ์",
     "rentalSummaryRemainingSecurityDepositAtPickup": "เงินมัดจำประกันคงเหลือ",
     "rentalSummaryTotalDueAtPickup": "รวมยอดชำระวันรับสินค้า",
     "rentalSummaryFullSecurityDeposit": "เงินมัดจำประกันเต็มจำนวน",
@@ -1581,6 +1583,13 @@
       "plc_programmers_scada_hmi": "SCADA / HMI",
       "plc_programmers_automation": "ระบบอัตโนมัติในอุตสาหกรรม",
       "plc_programmers_robotics": "หุ่นยนต์"
+    }
+  },
+  "posV3": {
+    "pickup": {
+      "readinessForbidden": "คุณไม่มีสิทธิ์ใช้ POS ของสาขานี้ กรุณาติดต่อผู้ดูแลระบบ",
+      "readinessUnavailable": "ไม่สามารถโหลดสถานะการรับมอบได้ กรุณาลองใหม่อีกครั้ง",
+      "readinessErrorTitle": "โหลดสถานะการรับมอบไม่สำเร็จ"
     }
   }
 }

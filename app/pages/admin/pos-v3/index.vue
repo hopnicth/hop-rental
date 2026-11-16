@@ -90,6 +90,7 @@ interface PendingWorkItem extends AdminPosV3PendingWorkItem {
 }
 
 const route = useRoute();
+const { t } = useI18n();
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -108,6 +109,25 @@ const pendingError = ref<string | null>(null);
 const bookingContext = ref<AdminRentalBookingDetail | null>(null);
 const bookingReadiness = ref<PickupReadinessPreview | null>(null);
 const bookingReadinessError = ref<string | null>(null);
+
+/**
+ * [T-UAT 2b-2] Readiness failures must SAY something. A 403 here means the
+ * staff member has no POS access for this booking's branch — previously the
+ * panel below just span forever and nobody learned that (UAT 2026-09-01).
+ * The 403 gets its own message so staff know to ask an administrator; anything
+ * else falls back to the generic line. Translated here so both consumers
+ * (AdminPosV3BookingContext and AdminPosV3PickupContainer) receive a ready
+ * string.
+ */
+function readinessErrorMessage(error: unknown): string {
+  const status =
+    (error as { statusCode?: number; response?: { status?: number } } | null)
+      ?.statusCode ??
+    (error as { response?: { status?: number } } | null)?.response?.status;
+  return status === 403
+    ? t("posV3.pickup.readinessForbidden")
+    : t("posV3.pickup.readinessUnavailable");
+}
 const bookingLoading = ref(false);
 const bookingError = ref<string | null>(null);
 // Phase 2E-B2: ops payload for the active pickup booking (checklists + templates).
@@ -215,9 +235,8 @@ async function handleDepositCollected() {
       `/api/admin/pos-v2/rental-bookings/${encodeURIComponent(bookingContext.value.id)}/pickup-readiness`,
     );
     bookingReadiness.value = response.readiness as PickupReadinessPreview;
-  } catch {
-    bookingReadinessError.value =
-      "Pickup readiness preview is unavailable for this booking.";
+  } catch (e) {
+    bookingReadinessError.value = readinessErrorMessage(e);
   }
 }
 
@@ -374,9 +393,8 @@ async function loadBookingContext(
           `/api/admin/pos-v2/rental-bookings/${encodeURIComponent(detail.id)}/pickup-readiness`,
         );
         bookingReadiness.value = response.readiness as PickupReadinessPreview;
-      } catch {
-        bookingReadinessError.value =
-          "Pickup readiness preview is unavailable for this booking.";
+      } catch (e) {
+        bookingReadinessError.value = readinessErrorMessage(e);
       }
       // Phase 2E-B2: load checklist + template ops for inline pickup checklist.
       void loadPickupOps(detail.id);
@@ -749,6 +767,7 @@ onMounted(async () => {
       "
       :booking="bookingContext"
       :readiness="bookingReadiness"
+      :readiness-error="bookingReadinessError"
       :checklists="pickupOps?.checklists ?? []"
       :templates="pickupOps?.templates ?? []"
       @pickup-confirmed="handlePickupConfirmed"

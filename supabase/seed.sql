@@ -183,6 +183,30 @@ VALUES (
 
 
 -- -----------------------------------------------------------------------------
+-- 3b. STAFF POS BRANCH ACCESS  [T-UAT 2b]
+--
+--   Without this row the seeded STAFF user has no admin_user_branch_access and
+--   every branch-scoped POS call 403s — pickup readiness, pickup, settle and
+--   settlement collection. super_admin bypasses the check, so a walk run as
+--   super_admin passes while the staff path is silently unverified. That is
+--   exactly how the 2026-09-01 UAT missed a 403 that blocks every handover.
+--
+--   This row exists so the operational walk can run AS STAFF end to end. It
+--   also closes the BACKLOG debt that the staff 20% discount tier was never
+--   exercised because branch-scoped settle 403'd.
+--
+--   LOCAL SEED ONLY — grants nothing on remote; see the file header guard.
+-- -----------------------------------------------------------------------------
+INSERT INTO public.admin_user_branch_access
+  (user_id, branch_id, can_pos, created_by_user_id)
+VALUES (
+  '5eed0000-0000-4000-8000-000000000002'::uuid, 'seed-branch-01', TRUE,
+  '5eed0000-0000-4000-8000-000000000003'::uuid
+)
+ON CONFLICT (user_id, branch_id) DO NOTHING;
+
+
+-- -----------------------------------------------------------------------------
 -- 4. ASSETS (+ branch inventory)
 --    Three assets so the four bookings below can never trip the
 --    rental_bookings_prevent_blocking_overlap trigger, which blocks overlapping

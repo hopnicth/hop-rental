@@ -226,6 +226,69 @@ function formatMoney(value: number): string {
 }
 
 /**
+ * [T-UAT 2c] COLLECT the settlement amount — the ordinary counter action.
+ *
+ * The server is the authority: `f_confirm_settlement_payment` re-reads
+ * amount_due and refuses anything short of it, re-checks the actor role, and
+ * refuses unless the state is still `awaiting_payment` — so a double-submit
+ * returns 409 rather than collecting twice. The cash reference is generated
+ * server-side; nothing typed here reaches that audit field for cash.
+ */
+const collectOpen = ref(false);
+const collecting = ref(false);
+const collectMethod = ref<"cash" | "transfer">("cash");
+const collectReference = ref("");
+const collectSlipRef = ref("");
+
+const canSubmitCollect = computed(() => {
+  if (collecting.value) return false;
+  if (collectMethod.value === "cash") return true;
+  return (
+    collectReference.value.trim().length > 0 &&
+    collectSlipRef.value.trim().length > 0
+  );
+});
+
+async function submitCollect() {
+  if (!canSubmitCollect.value) return;
+  collecting.value = true;
+  try {
+    await $fetch(
+      `/api/admin/rental-bookings/${props.bookingId}/settlement-collect`,
+      {
+        method: "POST",
+        body: {
+          amountPaid: Number(paymentState.value?.amount_due ?? 0),
+          paymentMethod: collectMethod.value,
+          // Ignored server-side for cash; sent only so transfer carries it.
+          paymentReference: collectReference.value.trim() || undefined,
+          slipEvidenceRef: collectSlipRef.value.trim() || undefined,
+        },
+      },
+    );
+    toast.add({
+      title: "รับชำระเงินเรียบร้อย",
+      color: "success",
+      icon: "bx:check-circle",
+    });
+    collectOpen.value = false;
+    collectReference.value = "";
+    collectSlipRef.value = "";
+    await load();
+  } catch (e) {
+    const err = e as { data?: { statusMessage?: string; message?: string } };
+    toast.add({
+      title: "รับชำระเงินไม่สำเร็จ",
+      description: err?.data?.statusMessage ?? err?.data?.message ?? "ไม่ทราบสาเหตุ",
+      color: "error",
+      icon: "bx:error-circle",
+    });
+  } finally {
+    collecting.value = false;
+  }
+}
+
+/**
  * [§8.9 half 2] Super-admin waive. The server is the authority: the endpoint
  * re-checks the role from the session and logs every refusal to
  * money_ops_decision_logs before returning the error. This visibility gate is
@@ -378,15 +441,78 @@ async function submit() {
           เหตุผลการยกเว้น: {{ paymentState.waive_reason }}
         </p>
 
-        <UButton
-          v-if="awaitingPayment && isSuperAdmin"
-          color="warning"
-          variant="soft"
-          icon="bx:receipt"
-          label="ยกเว้นยอดชำระ"
-          @click="waiveOpen = true"
-        />
+        <!-- [T-UAT 2c] Collect is the PRIMARY path: taking the money is what
+             normally happens. Waive sits beside it as a quiet secondary and
+             stays super-admin-only, because it destroys money. Before this the
+             only control here was waive, so the counter's choice was write it
+             off or leave it owing forever. -->
+        <div v-if="awaitingPayment" class="flex flex-wrap items-center gap-2">
+          <UButton
+            color="primary"
+            icon="bx:money"
+            label="รับชำระ"
+            @click="collectOpen = true"
+          />
+          <UButton
+            v-if="isSuperAdmin"
+            color="neutral"
+            variant="ghost"
+            icon="bx:receipt"
+            label="ยกเว้นยอดชำระ"
+            @click="waiveOpen = true"
+          />
+        </div>
       </div>
+
+      <UModal v-model:open="collectOpen" title="รับชำระยอดปิดการเช่า">
+        <template #body>
+          <div class="space-y-3 text-sm">
+            <p>
+              ยอดที่ต้องชำระ
+              <span class="font-semibold">{{
+                formatMoney(Number(paymentState?.amount_due ?? 0))
+              }}</span>
+            </p>
+            <UFormField label="วิธีชำระเงิน">
+              <URadioGroup
+                v-model="collectMethod"
+                :items="[
+                  { label: 'เงินสด', value: 'cash' },
+                  { label: 'โอนเงิน', value: 'transfer' },
+                ]"
+              />
+            </UFormField>
+            <!-- Cash needs no reference: the server generates one so the audit
+                 field is never free text. Transfer needs both. -->
+            <template v-if="collectMethod === 'transfer'">
+              <UFormField label="เลขอ้างอิงการโอน (จำเป็น)">
+                <UInput v-model="collectReference" class="w-full" />
+              </UFormField>
+              <UFormField label="หลักฐานการโอน (จำเป็น)">
+                <UInput v-model="collectSlipRef" class="w-full" />
+              </UFormField>
+            </template>
+          </div>
+        </template>
+        <template #footer>
+          <div class="flex justify-end gap-2">
+            <UButton
+              variant="ghost"
+              color="neutral"
+              label="ยกเลิก"
+              :disabled="collecting"
+              @click="collectOpen = false"
+            />
+            <UButton
+              color="primary"
+              label="ยืนยันรับชำระ"
+              :loading="collecting"
+              :disabled="!canSubmitCollect"
+              @click="void submitCollect()"
+            />
+          </div>
+        </template>
+      </UModal>
 
       <UModal v-model:open="waiveOpen" title="ยืนยันการยกเว้นยอดชำระ">
         <template #body>

@@ -715,9 +715,17 @@ async function handleCheckout(): Promise<void> {
     // mixed). Amounts are computed authoritatively server-side; the request is
     // evidence-only (order stays unpaid, bookings stay draft).
     try {
+      // [T-UAT 2a] Send the pickup branch. The customer already chooses one
+      // here and checkout is blocked until they do, but the choice was never
+      // persisted — so confirmation refused every booking with "Pickup hub is
+      // required". The server re-validates the branch and the asset's presence
+      // at it; this value is a request, not a grant.
       const res = await $fetch<{ redirectTo: string }>(
         "/api/user/manual-payment-requests",
-        { method: "POST", body: { orderId, bookingIds } },
+        {
+          method: "POST",
+          body: { orderId, bookingIds, pickupHubId: pickupBranchId.value },
+        },
       );
       await navigateTo(res.redirectTo);
       // ── Cart cleanup after successful payment-request handoff ──────────────
@@ -733,10 +741,20 @@ async function handleCheckout(): Promise<void> {
         // Non-fatal — cleanup runs best-effort; user is already on /user/payments/[id].
       }
     } catch (e) {
-      showInlineOrderError(
-        t("cart.paymentRequestFailedTitle"),
-        e instanceof Error ? e.message : t("cart.paymentRequestFailedDesc"),
+      // [T-UAT 2a] NEVER render the thrown message. ofetch's `.message` is the
+      // raw transport string — the customer was shown
+      // `[POST] "/api/user/manual-payment-requests": 422 NO_AMOUNT_DUE_FOR_TARGETS`
+      // verbatim (UAT 2026-09-01). Known server codes map to customer copy;
+      // anything else falls back to the generic line. No HTTP method, path or
+      // internal constant can reach the screen from here.
+      const code = String(
+        (e as { data?: { statusMessage?: string } })?.data?.statusMessage ?? "",
       );
+      const description =
+        code === "NO_CHECKOUT_TARGETS"
+          ? t("cart.noCheckoutItemsDesc")
+          : t("cart.paymentRequestFailedDesc");
+      showInlineOrderError(t("cart.paymentRequestFailedTitle"), description);
     }
   } finally {
     isCheckingOut.value = false;
@@ -1627,14 +1645,13 @@ async function requestQuotation() {
                     {{ t("cart.rentalSummaryPayAtPickupTitle") }}
                   </p>
                   <div class="space-y-1">
-                    <div class="flex justify-between gap-3">
-                      <span class="text-muted">{{
-                        t("cart.rentalSummaryRentalFeeAtPickup")
-                      }}</span>
-                      <span>{{
-                        moneyLabel(rentalPaymentSummary.rentalFeeDue)
-                      }}</span>
-                    </div>
+                    <!-- [T-UAT 2a] The rental fee is NOT due at pickup. It is
+                         deferred to return by the money model itself (see
+                         rental-payment-lines.ts — netPayableAtPickup excludes
+                         lineType 'rental_fee'), so listing it here above a total
+                         that excludes it read as ฿1,500 owed and ฿0 total on the
+                         same screen. It now has its own pay-at-return section
+                         below, which is also what POS V3 tells staff. -->
                     <div class="flex justify-between gap-3">
                       <span class="text-muted">{{
                         t("cart.rentalSummaryRemainingSecurityDepositAtPickup")
@@ -1652,6 +1669,23 @@ async function requestQuotation() {
                         moneyLabel(rentalPaymentSummary.netPayableAtPickup)
                       }}</span>
                     </div>
+                  </div>
+                </section>
+
+                <!-- [T-UAT 2a] Pay-at-return — the ONE money item the web
+                     collects, stated where the customer can see when and where
+                     it is paid. -->
+                <section class="rounded-lg bg-default p-3">
+                  <p class="mb-2 font-semibold text-highlighted">
+                    {{ t("cart.rentalSummaryPayAtReturnTitle") }}
+                  </p>
+                  <div class="flex justify-between gap-3">
+                    <span class="text-muted">{{
+                      t("cart.rentalSummaryRentalFeeAtReturn")
+                    }}</span>
+                    <span class="font-semibold">{{
+                      moneyLabel(rentalPaymentSummary.rentalFeeDue)
+                    }}</span>
                   </div>
                 </section>
 

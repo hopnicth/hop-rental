@@ -48,7 +48,12 @@ describe("Phase 3.1B cart UX source safeguards", () => {
     expect(cartVue).toContain("cart.rentalSummaryPayAtPickupTitle");
     expect(cartVue).toContain("cart.rentalSummarySecurityDepositTitle");
     expect(cartVue).toContain("cart.rentalSummaryBookingDeposit");
-    expect(cartVue).toContain("cart.rentalSummaryRentalFeeAtPickup");
+    // [T-UAT 2a, 2026-10-28] The rental fee moved OUT of the pay-at-pickup
+    // section. netPayableAtPickup excludes lineType 'rental_fee' by design
+    // (app/utils/rental-payment-lines.ts), so listing the fee above that total
+    // showed ฿1,500 owed and ฿0 total on the same screen (UAT 2026-09-01).
+    // The fee is now stated as due on the return day, matching POS V3.
+    expect(cartVue).toContain("cart.rentalSummaryRentalFeeAtReturn");
     expect(cartVue).toContain(
       "cart.rentalSummaryRemainingSecurityDepositAtPickup",
     );

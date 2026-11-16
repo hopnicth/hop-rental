@@ -50,6 +50,13 @@ export interface CompleteRentalFulfillmentOptions {
   bookingId: string;
   eventType: RentalFulfillmentEventType;
   payload: RentalFulfillmentPayload;
+  /**
+   * [T-UAT 2b] PASSTHROUGH ONLY — this module does not decide it.
+   * The deposit regime is read by the CALLER (the admin pickup endpoint)
+   * through `f_deposits_enabled()` and passed down. Defaults to the
+   * deposit-required behaviour, so every existing caller is unchanged.
+   */
+  requirePaidPickupDeposit?: boolean;
 }
 
 export interface AssertRentalFulfillmentPrerequisitesOptions extends CompleteRentalFulfillmentOptions {
@@ -150,12 +157,21 @@ function resolveEventBranch(
   );
 }
 
+/**
+ * [T-UAT 2b-3] FAIL-CLOSED. The ONLY error that may escape the branch-access
+ * guard is a genuinely absent table (SQLSTATE 42P01), which keeps older-schema
+ * deployments working.
+ *
+ * The previous form also returned true for ANY error whose MESSAGE matched
+ * /admin_user_branch_access/i, so a permission error, an RLS refusal or a
+ * timeout that merely named the table GRANTED branch access instead of refusing
+ * it. That contradicted OPERATING-MODEL §3 (fail-closed) and this util's own
+ * index edit rule, which already required table-not-found only:
+ * "must match only table-not-found errors — widening it to swallow general DB
+ * errors silently bypasses branch access for all staff".
+ */
 function isMissingBranchAccessTable(error: unknown): boolean {
-  const err = error as { code?: string | null; message?: string | null } | null;
-  return (
-    err?.code === "42P01" ||
-    /admin_user_branch_access/i.test(err?.message ?? "")
-  );
+  return (error as { code?: string | null } | null)?.code === "42P01";
 }
 
 function isUniqueViolation(error: unknown): boolean {
@@ -562,6 +578,7 @@ export async function completeRentalBookingFulfillment({
   bookingId,
   eventType,
   payload,
+  requirePaidPickupDeposit,
 }: CompleteRentalFulfillmentOptions): Promise<AdminRentalBookingDetail> {
   const prerequisites = await assertRentalFulfillmentPrerequisites({
     adminClient,
@@ -570,6 +587,11 @@ export async function completeRentalBookingFulfillment({
     bookingId,
     eventType,
     payload,
+    // Omitted by every caller that does not read the regime, so the
+    // destructuring default (true) keeps the deposit requirement in force.
+    ...(requirePaidPickupDeposit === undefined
+      ? {}
+      : { requirePaidPickupDeposit }),
   });
   const {
     current,
