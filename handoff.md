@@ -27,6 +27,10 @@ LEDGER: rental_charge in 1500.00 (1401.87 + 98.13) and settlement_discount out 2
 CASH-4aa92a98-20261102, confirmed_by the staff user. status returned, late_days 4, TWO fulfillment
 rows (pickup and return) where September produced none.
 
+**UPDATE 2026-11-17: 148/149 APPLIED REMOTE, parity 149/149, all five post-apply probes
+passed.** The merge precondition below is therefore SATISFIED; merging remains CHiP's gate.
+The text that follows describes the state before that apply.
+
 MIGRATIONS 148 AND 149 ARE LOCAL ONLY. Remote sits at 147 with no drift; a dry-run confirms
 exactly those two would push; remote holds zero settlements, zero rental_charge allocations, zero
 settlement_discount rows and zero settlement §F rows. MERGE PRECONDITION:
