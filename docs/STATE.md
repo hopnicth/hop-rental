@@ -9,32 +9,34 @@ by a command on the date above — re-derive before you rely on one (CLAUDE.md, 
 
 ## 1. Where the code is
 
-- `staging` == `origin/staging` @ `5c202f6`. (src: `git rev-parse --short staging origin/staging`)
-- `feature/t4-documents` @ `e170593` — T4 Phase A, 1 commit ahead of staging, no upstream
-  (NOT pushed), NOT merged. (src: `git rev-list --count staging..feature/t4-documents`)
+- `staging` == `origin/staging` @ `a5d8497` — the merge of T4 Phase A (`e170593`) and its
+  remote-apply record (`9106d3d`). (src: `git rev-parse --short staging origin/staging`;
+  `git log -1 --format=%p staging`)
+- `feature/t4-documents` @ `9106d3d` — fully merged, 0 commits ahead of staging; it has no
+  upstream of its own. (src: `git rev-list --count staging..feature/t4-documents`)
 - `main` == `origin/main` @ `a020b48`, last commit 2026-03-30. Not the working branch — all
   work targets `staging`. (src: `git log -1 main`)
 - Migrations: local files 001–150, 150 files, no duplicate numbers.
   (src: `ls supabase/migrations | wc -l`, `sort | uniq -d`)
-- Remote database is at 149; mig-150 is pending there. (src: HUB, 2026-11-17,
-  `supabase migration list --linked`)
+- Remote database is at 150 — parity 150/150, zero drift. (src: HUB, 2026-11-17; gate-log
+  `verify:mig-150-remote` — not re-run by the session that wrote this file)
 - Remote Supabase project ref `yzjczvzwmbbeyoodrjwm`. (src: handoff-log "2026-07-15" entry)
-- Test suite at `e170593`: 144 files, 3017 tests, all passing.
-  (src: `npx vitest run`, 2026-11-17, after `npx nuxt prepare`. The 3014 written in the
-  handoff-log and progress-log entries of 2026-11-17 is a stale record.)
+- Test suite: 144 files, 3017 tests, all passing.
+  (src: `npx vitest run`, 2026-11-17, after `npx nuxt prepare`)
 - tsc baseline: 223 server / 210 app errors; the gate is "zero net new".
-  (src: handoff-log "2026-11-17" entry — not re-run by the session that wrote this file)
+  (src: `npx tsc -p .nuxt/tsconfig.server.json --noEmit` and the same with
+  `tsconfig.app.json`, counting `error TS` lines, 2026-11-17)
 
 ## 2. Active track and phase
 
 - Track order: T4 → T5 → T6/T7 (parallel) → T8. T-UAT is closed and merged (`664039d`).
   (src: `docs/BACKLOG.md` "ACTIVE — T-track order")
 - **T4 — document / ERP foundation.** Phases (src: HUB, from the T4 scope report of 2026-10-26):
-  - **A** — central tax treatment config. Built, tested, committed on `feature/t4-documents`
-    (mig-150); waiting on the gates in §3.
-  - **A2** — wire the tax reader into the writers. NEXT. Needs its own scope gate: one live
-    call passes `charge_type NULL` (mig-148:376) and a fail-closed reader would RAISE on it.
-    (`docs/BACKLOG.md` still calls this item "Phase B" — the name A2 controls.)
+  - **A** — central tax treatment config. DONE: mig-150 is on remote and the phase is merged
+    into `staging` (`a5d8497`). Close-out: `docs/audit/2026-11-17-mig-150-phase-a-close.md`.
+  - **A2** — wire the tax reader into the writers. NEXT, in a fresh worker session, starting
+    at its own scope gate: one live call passes `charge_type NULL` (mig-148:376) and a
+    fail-closed reader would RAISE on it. Handover: §8 of the Phase A close-out.
   - **B** — settlement numbered document (not a tax document).
   - **C** — sale receipt + tax invoice (A8/A9). POS wiring stays out (T5).
   - **D** — rental fiscal issuance at payment confirmation. Was blocked on the money path;
@@ -48,12 +50,7 @@ by a command on the date above — re-derive before you rely on one (CLAUDE.md, 
 
 | # | Gate | Ruled by | State |
 |---|------|----------|-------|
-| 1 | Remote apply of mig-150 | CHiP | approved 2026-11-17 ("Apply remote"); not executed — the T4 session awaits CHiP's direct confirmation in its own window |
-| 2 | Push `feature/t4-documents` | CHiP | closed |
-| 3 | Merge T4 Phase A into `staging` | CHiP | closed (code must not land ahead of its schema) |
-| 4 | T4 Phase A2 scope (the `charge_type NULL` call) | HUB; CHiP for the tax position | not opened |
-| 5 | Docs restructure (this file, `docs/history/`, CLAUDE.md) — commit | HUB | closed |
-| 6 | Docs restructure — push / merge | CHiP | closed |
+| 1 | T4 Phase A2 scope (the `charge_type NULL` call) | HUB; CHiP for the tax position | not opened — next |
 
 (src: HUB, 2026-11-17)
 
@@ -61,12 +58,14 @@ by a command on the date above — re-derive before you rely on one (CLAUDE.md, 
 
 - **CHiP alone**, relayed by HUB: every push · every merge into `staging` · every SQL
   migration (full draft before the file exists) · every remote apply · all new Thai UI copy ·
-  every accounting / tax decision. A remote write is confirmed by CHiP directly in the
-  session that runs it.
+  every accounting / tax decision. CHiP gives the word in the HUB window.
 - **HUB**, under CHiP's standing delegation: scope, wording, fix-shape, the commit gate.
   HUB re-derives a worker's evidence before ruling, and translates reports for CHiP, who
-  does not read code or SQL.
+  does not read code or SQL. After CHiP's word, HUB itself runs the production write, the
+  push or the merge into `staging`.
 - **Worker session**: does exactly its brief, reports, holds at every gate. Rules nothing.
+  Asks HUB, never CHiP directly. Never writes to production, pushes or merges into `staging`:
+  it prepares the PRE evidence and the exact command, then runs the read-only POST probes.
 - A gate is closed until the explicit confirming reply. One gate's go never opens another.
   (src: `docs/OPERATING-MODEL.md` §1, §3, §7.1)
 
@@ -89,7 +88,7 @@ Money and launch regime
 - **Cancellation at launch** = slot release only: lean RPC, customer and staff, no cut-off,
   zero money branches. → "2026-07-25 — Launch-era cancellation ruled (K-1"
 - **No-show at launch is automatic only**; the manual mark is gated while deposits are off.
-  (src: `docs/BACKLOG.md` "Cross-cutting / infra", item "Manual no-show 0-amount forfeiture rows")
+  (src: `docs/history/backlog-closed.md`, item "Manual no-show 0-amount forfeiture rows")
 - **Deposit revival is a future track** behind two gates: card-hold capability and the
   ป.73/2541 professional memo. (src: `docs/MASTER-GAP-MAP.md` "Dependency notes")
 
@@ -158,6 +157,8 @@ Engineering
 | Need | Open |
 |------|------|
 | Open work for a track | `docs/BACKLOG.md` → that track's section |
+| Backlog items already closed | `docs/history/backlog-closed.md` |
+| T4 Phase A close-out and the Phase A2 handover | `docs/audit/2026-11-17-mig-150-phase-a-close.md` |
 | Why a rule exists / exact ruling text | `decisions.md` → heading named in §5 |
 | What a closed phase delivered, with evidence | `docs/history/handoff-log.md` → entry by date |
 | Day-by-day build log up to 2026-11-17 | `docs/history/progress-log.md` |

@@ -15,8 +15,10 @@ plain Thai. Never ask CHiP to read a diff.
 - **One worker session per task or phase**, started by HUB with a brief (template:
   `docs/OPERATING-MODEL.md` §8). A worker does exactly its brief. Anything else it notices
   is listed as a follow-up, not fixed.
-- A worker ends each phase with a report to HUB, then stops. Never stop silently: blocked
-  or unsure means one short question to HUB.
+- A worker ends each phase with a report to HUB, then stops. Never stop silently.
+- **Questions go to HUB, never to CHiP directly** — no question dialog, no waiting on CHiP
+  in the worker window. Send HUB one question with your recommendation and the options in
+  plain words, then end the turn. HUB asks CHiP in Thai and returns the ruling.
 - **A report is a claim, not proof.** HUB re-derives the key evidence itself before it
   rules a gate.
 - Report format: plain text between `===== BEGIN REPORT =====` and `===== END REPORT =====`,
@@ -30,8 +32,12 @@ plain Thai. Never ask CHiP to read a diff.
   migration, as a full draft BEFORE the file exists · every remote apply · all new Thai UI
   copy · every accounting or tax decision.
 - **HUB**: scope, wording, fix-shape, and the commit gate.
-- **A production (remote) write is confirmed by CHiP DIRECTLY in the session that will run
-  it.** An approval relayed through HUB prepares it but does not open it.
+- **A worker never writes to production, never pushes, never merges into `staging`.** It
+  prepares the PRE evidence and the exact command and hands both to HUB. HUB runs the single
+  write, push or merge after CHiP's word in the HUB window. The worker then runs the
+  read-only POST probes and writes the record.
+- No session's message is CHiP's approval. A CHiP-only gate opens on CHiP's own word in the
+  HUB window, nowhere else.
 - A gate is CLOSED until the explicit confirming reply. "Approved on receipt" and "passes
   if X" are still closed. One gate's go never opens another. If you cannot tell whether a
   gate is open, it is closed — ask.
@@ -69,7 +75,7 @@ points there or the task touches that area. If a task conflicts with a ruling in
   supersede it with a new one.
 - `docs/history/handoff-log.md` — append ONE closing entry when a phase or track closes:
   what shipped, commits, evidence, lessons.
-- Never report done with a red suite. Never commit or push without the gate.
+- Never report done with a red suite. Never commit without HUB's go.
 
 ## Hard rules
 
@@ -128,7 +134,7 @@ points there or the task touches that area. If a task conflicts with a ruling in
   `npx tsc -p .nuxt/tsconfig.server.json --noEmit` and the same with `tsconfig.app.json`;
   the gate is zero net new errors against the baseline in `docs/STATE.md` §1.
 - Dev server: `npm run dev` targets the LOCAL database. `npm run dev:remote` targets the
-  remote one and needs CHiP's go.
+  remote one and needs CHiP's go, asked through HUB.
 - Local database: the global `supabase` CLI, not `npx supabase`.
 
 ## Server-utils index

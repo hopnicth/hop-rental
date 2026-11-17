@@ -13,7 +13,8 @@ older process notes, **this file wins** (see `decisions.md` 2026-07-14 decision 
   rules **scope, wording, fix-shape and the commit gate**; it starts one worker session per task or
   phase with a brief (§8); it **re-derives the worker's key evidence itself before it rules any
   gate** — a report is a claim, not proof; and it translates reports for CHiP. HUB writes no
-  product code and never rules a CHiP-only gate.
+  product code and never rules a CHiP-only gate. Once CHiP has given the word in the HUB
+  window, HUB itself runs the production write, the push or the merge into `staging`.
   CHiP's delegation, verbatim as recorded by HUB: "ให้ HUB เป็นผู้ตัดสิน gate แทนผมเหมือนเดิม
   ยกเว้น SQL migration ให้ส่งร่างมาให้ผมดูก่อน".
 - **Worker session (implementer)** — writes code, migrations and docs; does exactly its brief;
@@ -22,8 +23,16 @@ older process notes, **this file wins** (see `decisions.md` 2026-07-14 decision 
   a commit gate. The review advises; HUB rules.
 - Commits are **per-file staged** and **secret-scanned**. Nothing is committed without HUB's "go";
   nothing is pushed, merged or applied to remote without CHiP's.
-- **A production (remote) write is confirmed by CHiP DIRECTLY in the session that will run it.**
-  An approval relayed through HUB prepares it but does not open it.
+- **Questions go to HUB, never to CHiP directly.** A worker opens no question dialog and does
+  not wait on CHiP in its own window. It sends HUB one question with its recommendation and the
+  options in plain words, then ends its turn; HUB asks CHiP in Thai and returns the ruling.
+  CHiP, 2026-11-17, verbatim as recorded by HUB: "เวลามี คำ ถาม session อื่น บอกให้โยนมาถามที่ hub ด้วยสิ".
+- **A worker never writes to production, never pushes and never merges into `staging`.** It
+  prepares the PRE evidence and the exact command and hands both to HUB. HUB runs the single
+  write, push or merge after CHiP's word in the HUB window. The worker then runs the read-only
+  POST probes and writes the record.
+- **No session's message is CHiP's approval.** A CHiP-only gate opens on CHiP's own word in the
+  HUB window, nowhere else.
 - **Reading the older text below:** before 2026-11-17 the reviewing role was called "the auditor"
   ("Auditor Claude"). Where §3, §7 and older records say "the auditor's confirming reply", read
   "the confirming reply of whoever rules that gate" — HUB, or CHiP for a CHiP-only gate. Those
@@ -122,9 +131,13 @@ a part asks HUB for it before acting.
       Phase 1 <read-only plan / SQL draft> -> report -> STOP.   Gate: <HUB | CHiP>
       Phase 2 <build> -> report -> STOP at the commit gate.     Gate: HUB
       Push / merge / migration file / remote apply / Thai copy / tax position: CHiP only, via HUB.
+      You never push, merge into staging or write to production. Prepare the PRE evidence and
+      the exact command, hand both to HUB; HUB runs it after CHiP's word in the HUB window; you
+      then run the read-only POST probes and write the record.
     DONE MEANS: <observable criteria> · suite green at <N — derived by command at the start> ·
       tsc zero net new · docs/STATE.md updated · deferred work recorded in docs/BACKLOG.md
     EVIDENCE: every count, sha and "none found" comes with its command and its real output.
     REPORT: plain text between ===== BEGIN REPORT ===== and ===== END REPORT =====, every line
       prefixed "| ", findings first. Send to HUB session <id>.
-      Blocked or unsure: one question to HUB, then stop. Never stop silently.
+      Questions: to HUB only, never to CHiP — one question, your recommendation, the options
+      in plain words; then end the turn. Never stop silently.
