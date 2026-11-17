@@ -631,3 +631,36 @@ Read-only audits only. No files changed. No migrations. No commits.
 
 ### Blocked 🚫
 - (none)
+
+---
+
+## Session 2026-11-17 — T4 phase A: central tax treatment map (mig-150)
+
+### Done ✅
+- **Scope + design pass, then the migration.** CHiP ruled the three open questions: key = `(charge_type × customer_kind)` with **no branch** (a VAT rate is national); effective-dated rules **and** per-document snapshots kept as **complementary**, not alternatives; and seeding restricted to the charge types the web actually produces. HUB added four fix-shape rulings (R1–R4) and five required corrections (X1–X5) on the first draft.
+- **mig-150 `tax_treatment_rules`** — new table, two trigger functions, three triggers, one fail-closed reader `f_tax_treatment_for`, two seeded rows. Purely additive: no existing function, constraint or row touched, so phase A reverts by DROP with zero blast radius.
+- **The operative decision: the seed is deliberately incomplete.** Only `rental_charge` and `settlement_discount` are seeded; the reader RAISEs `TAX_RULE_NOT_FOUND` for forfeiture, damages and everything else. The accountant confirmation package has carried forfeiture VAT as "pending professional confirmation" since 2026-07-22, and the 2026-07-24 taxonomy entry calls the map "locked" — seeding a 0% forfeiture rule would have promoted an unconfirmed position to a confirmed one and made it executable the moment deposits revive. The database now holds that gate instead of a human remembering it.
+- **Append-only with exactly one exception.** `effective_to` may be stamped once, NULL → non-NULL, forward only. Everything else is frozen, DELETE refused, and TRUNCATE refused by a separate statement-level trigger (the row trigger does not fire on TRUNCATE — mig-109/125 pattern). The exception exists because a rule WITHDRAWN WITH NO SUCCESSOR is exactly how a rule pending re-confirmation must behave, and a derive-the-end-from-the-next-row design cannot express it.
+- **Overlap prevention by trigger, not `EXCLUDE`** — `btree_gist` is not installed and no migration in this repo uses an exclusion constraint. A per-key `pg_advisory_xact_lock` is taken BEFORE the check, because two concurrent transactions inserting overlapping periods would otherwise each see a clean check and both commit.
+- **One source of truth preserved in SQL.** The seed reads THROUGH `f_tax_vat_config()` rather than re-selecting `system_configs`, so in SQL the rate `7` appears once, at mig-134:55. **Not once in the repo:** `server/api/admin/pos/accounting-export.get.ts` hardcodes it at :23 (`"VAT 7%"` label) and :49 (`(total * 7) / 107`). HUB found that after I had reported the codebase clean — my sweep regex matched only `vat… = 7` and `0.07` and could not see the arithmetic form. Allow-listed and queued for phase B, not fixed here.
+- **Verification 1–11 all passed on local**, including a verbatim re-run of the file (exit 0, no new rows) proving idempotency, and a live probe confirming the trigger functions cannot be invoked directly regardless of their grants.
+- **40 tests** (`tests/server/t4-tax-treatment-rules.spec.ts`) following the mig-148 source-inspection precedent, plus a cross-cutting VAT-rate sweep over `server/` and `app/`. Suite **3017/3017** (2977 + 40). tsc **223 server / 210 app** — zero net new. (e170593 committed these as "37 new tests" and "3014/3014"; those figures predated the R5–R10 amendments and were stale on arrival — corrected here, re-derived by command.)
+- **`app/types/database.types.ts` regenerated** after the remote apply (`--linked`, CLI v2.75.0), per the regenerate-never-hand-edit convention. Additive in schema content: `tax_treatment_rules`, `f_tax_treatment_for`, and `f_write_settlement_discount_line` — the last overdue from mig-148. The feared format downgrade did not occur (`__InternalSupabase`/`PostgrestVersion "14.1"` survives); the only other diff is explicit parentheses on 5 generic defaults. tsc unmoved.
+
+### In progress 🔄
+- Committed `e170593`. **mig-150 is now APPLIED ON REMOTE** (2026-11-17, CHiP's authorization): parity 150/150 zero drift, and all eight post-apply probes passed read-only — no mutating probe was run against production, not even inside a rolled-back transaction. Highlight: `f_tax_treatment_for('contractual_penalty')` returns `P0001 TAX_RULE_NOT_FOUND` through PostgREST on production, so the accountant confirmation gate is enforced by the live database. P7 compared `md5` of all three function definitions and the table DDL between remote and local — all byte-identical, which proves the guards tested locally are the same objects now on production, without having to mutate anything to find out. P8: `payment_allocations` and `rental_booking_settlements` both 0 rows before and after.
+- Branch `feature/t4-documents` is NOT pushed and NOT merged — both remain CHiP's gates.
+
+### Next 📋
+- **Phase B — wire the reader into the writers**, which requires first ruling on the ONE live call that passes `charge_type NULL`: `f_write_settlement_charge_line(..., 'penalty', v_penalty_net, ..., NULL)` at mig-148:376. That NULL most likely becomes `contractual_penalty` — the very charge type the accountant package has not confirmed — so the two are coupled and phase B needs its own scope gate.
+- `f_tax_vat_config()` deprecation, only once every caller reads the new map. Retiring it while the new table is seeded FROM it would be a circular dependency.
+- First TS/UI reader of the new table must special-case `'-infinity'` (PostgREST renders it as a string `new Date()` cannot parse).
+
+### Blocked 🚫
+- (none)
+
+### Fixed on HUB ruling after the first gate pass 🔁
+- **R8** — `f_ttr_append_only` now judges WHAT CHANGED before the `effective_to` branches. Previously a rate UPDATE was correctly refused but told "effective_to may only be set, never cleared", naming a column the caller never touched. A test pins the block order so it cannot drift back.
+- **R9** — `REVOKE ALL` on `f_ttr_append_only()` and `f_ttr_no_overlap()`, matching mig-134. Closes no live hole (Postgres refuses direct calls to trigger functions) but removes a default PUBLIC EXECUTE.
+- **R5/R6/R7** — the VAT-rate sweep rewritten to catch arithmetic and label forms, the one real offender allow-listed with its line numbers and queued for phase B, and every doc claim of "zero hardcoded / written once" corrected.
+- These three (with R4) are the only differences between the applied file and the revision CHiP approved; all are HUB fix-shape, and CHiP sees the final text at the remote-apply gate.
