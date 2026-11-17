@@ -9,11 +9,10 @@ by a command on the date above — re-derive before you rely on one (CLAUDE.md, 
 
 ## 1. Where the code is
 
-- `staging` == `origin/staging` @ `a5d8497` — the merge of T4 Phase A (`e170593`) and its
-  remote-apply record (`9106d3d`). (src: `git rev-parse --short staging origin/staging`;
-  `git log -1 --format=%p staging`)
-- `feature/t4-documents` @ `9106d3d` — fully merged, 0 commits ahead of staging; it has no
-  upstream of its own. (src: `git rev-list --count staging..feature/t4-documents`)
+- `staging` == `origin/staging`. Last two merges: `9270716` (docs working-model restructure)
+  on top of `a5d8497` (T4 Phase A: `e170593` and its remote-apply record `9106d3d`). The tip
+  is the docs record commit that follows `9270716`. No feature branch is open.
+  (src: `git log --oneline -4 staging`; `git branch --no-merged staging`)
 - `main` == `origin/main` @ `a020b48`, last commit 2026-03-30. Not the working branch — all
   work targets `staging`. (src: `git log -1 main`)
 - Migrations: local files 001–150, 150 files, no duplicate numbers.
