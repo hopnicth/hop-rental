@@ -1840,3 +1840,26 @@ Local dev residue (append-only/FK-pinned, intentional):
   - d4dbc706 + b4aefb41 returned with settlements 81a5d86c (REFUND) / 77f2c6d7 (COLLECT); 1abb5868 no_show (manual pair walk).
   - Pre-T2 legacy bookings with non-zero held residue (aaaa/bbbb/dddd-…119, 6666/7777-…500, e44b1fc4, 681f7610) — §b addendum item 6 no-backfill; NOTE: 681f7610 is status confirmed with a FUTURE start (Sep 4) and WILL be auto-marked by the local cron after that date passes.
   - Local cron job 'rental-no-show-auto-mark' is LIVE locally (fires 17:00 UTC daily).
+
+## Claude Code → (next session) / 2026-11-17
+Task: T4 phase A — central tax treatment map. mig-150 `tax_treatment_rules` + fail-closed reader `f_tax_treatment_for`, on branch `feature/t4-documents` cut from staging @ 5c202f6.
+Files touched: 7 — NEW `supabase/migrations/150_tax_treatment_rules.sql`, NEW `tests/server/t4-tax-treatment-rules.spec.ts` (37 tests), `decisions.md`, `docs/audit/gate-log.md`, `docs/BACKLOG.md`, `progress.md`, `handoff.md`.
+Status: done, NOT committed — holding at the commit gate. Suite 3014/3014, tsc 223/210 zero net new, verification 1–11 all passed.
+LOCAL ONLY: mig-150 is applied to the local DB (full `supabase db reset`, 001→150 + seed). **Remote is still at 149 and NO remote apply was requested or performed** — that is CHiP's own gate.
+Next: commit gate → then phase B scope gate. Phase B cannot be wired blind: `f_write_settlement_charge_line(..., 'penalty', v_penalty_net, ..., NULL)` at mig-148:376 is the ONE live call passing a NULL charge type, and a fail-closed reader wired in RAISEs on it. That NULL most likely resolves to `contractual_penalty`, which is item (1) of the unanswered accountant package — so the wiring and the accountant memo are coupled.
+
+LOCAL DB STATE: reset this session, so every earlier booking fixture is GONE and replaced by the seed's 3 users / 3 assets / 4 bookings / 1 payment-state. The local pg_cron no-show job is live as always (17:00 UTC = 00:00 Bangkok), so confirmed bookings whose start date passes will auto-flip to `no_show`.
+
+CLI NOTE (cost me a detour): `npx supabase` now resolves to v3.2.0, which REFUSES this repo's `config.toml` ("inbucket … no longer supported. Use local_smtp instead"). Use the pinned global `supabase` (v2.75.0, Homebrew) for every local DB command. This is the same version-drift class as the `[INFRA]` generated-types line in docs/BACKLOG.md.
+
+AMENDED AFTER THE FIRST GATE PASS (HUB rulings R4-R10; the applied file now differs from the revision CHiP approved in exactly four places, all HUB fix-shape, and CHiP sees the final text at the remote-apply gate):
+  R4 · dropped the redundant `ttr_lookup_idx` — the unique index already serves the reader's ordering and btree scans backwards.
+  R8 · `f_ttr_append_only` now judges WHAT CHANGED before the `effective_to` branches. Before, a refused rate UPDATE reported "effective_to may only be set, never cleared" — naming a column the caller never touched. Re-verified: V8a/V8b now say "only effective_to may change". A test pins the block order. ONE case still reaches the old message, and it is correct there: a genuine no-op UPDATE (`SET x = x`), which is refused because the only legal UPDATE is setting `effective_to`. Reported to HUB as an observation, not changed.
+  R9 · `REVOKE ALL` on `f_ttr_append_only()` and `f_ttr_no_overlap()`. Verified it broke nothing: all three guards still fire and the reader still works under `SET LOCAL ROLE service_role` — trigger functions do not need EXECUTE to be invoked by the system, confirmed empirically rather than assumed.
+  R5/R6/R7 · the VAT-rate sweep and the docs claims — see below. No SQL change.
+  (plus the overlap guard's all-zeros UUID sentinel → `IS DISTINCT FROM`, self-caught in the first pass.)
+
+**THE HARDCODED VAT RATE I MISSED — READ THIS BEFORE TRUSTING ANY SWEEP IN THIS REPO.**
+I reported "zero hardcoded VAT rates in server/ or app/" and "7 written once in the repo". Both were false. HUB found `server/api/admin/pos/accounting-export.get.ts:23` (`"VAT 7%"` label) and `:49` (`Math.round(((total * 7) / 107) * 100) / 100`). My sweep regex matched only `vat… = 7` and `0.07`, so it could not see the arithmetic form — an inclusive-VAT extraction never writes the rate as a rate. I then read the empty output as proof of absence. An empty grep proves the PATTERN did not match, nothing more.
+The sweep now carries eight patterns (107 divisor, 1.07, 0.07, named-field, 7/100, `* 7`, `7%` label, `\bvat\b` near 7), each derived by trial-running it over the codebase and discarding the ones that only produced noise: `/ 7` matched street addresses ("56/7") and an unanchored `vat` matched the word "deri**vat**ion" — the same substring trap as "tax" matching "taxonomy". I also proved the sweep detects the real site by emptying the allow-list and watching it fail with both line numbers, then restoring it.
+That endpoint is LIVE (CSV export reached from `app/pages/admin/pos.vue`) and is allow-listed by ruling R6, NOT fixed — phase A wires nothing and an accounting export's arithmetic is not a drive-by edit. Queued in docs/BACKLOG.md as `[T4][QUEUED]`; a test pins that both lines still exist so the allow-list cannot outlive the problem. Phase B must also handle `vat_exclusive` — the `/ 107` form silently assumes inclusive.

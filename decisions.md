@@ -1215,3 +1215,87 @@ Impact: migration 147 (RPC stops charging the late term; `late_days` + memo enfo
    `late_day_charge` leaves the return contract), the settlement preview and panel, the tests
    that assert the extension, and a NEW PRINTABLE REPORT for Admin whose layout CHiP ratifies
    before it is built. No schema is dropped; `charge_type` keeps its vocabulary.
+
+## 2026-11-17 — T4 PHASE A: the central tax treatment map (CHiP-ratified; "อนุมัติ 150")
+
+Decision: VAT/WHT treatment moves out of a single global config and into a central,
+   effective-dated, append-only table `tax_treatment_rules`, read through one
+   fail-closed function `f_tax_treatment_for`. Phase A lays the table and the reader
+   and WIRES NOTHING.
+
+   **Q1 — the key is `(charge_type × customer_kind)`. Branch does NOT participate.**
+   A VAT rate is national; a branch cannot have its own. Documents stay branch-aware
+   through their own series (mig-136), which is a numbering concern, not a tax one.
+
+   **Q2 — effective-dated rules AND per-document snapshots, not one or the other.**
+   They answer different questions and are complementary. This table says what was in
+   force on a date; an issued document still snapshots the rate it actually used, so
+   amending a rule can never silently re-derive history that has already been printed.
+
+   **Q3 — only the reachable charge types are seeded: `rental_charge` and
+   `settlement_discount`. Everything else is deliberately absent and the reader
+   RAISEs.** This is the operative decision of the phase. The 2026-07-24 taxonomy
+   entry calls the forfeiture map "locked", but docs/BACKLOG.md carries forfeiture VAT
+   as item (1) of the accountant confirmation package, "pending professional
+   confirmation", required before ruling-2 forfeitures run against real customers.
+   Seeding a 0% forfeiture rule would promote an unconfirmed position to a confirmed
+   one, and would make it executable the moment deposits revive — bypassing the gate
+   entirely. A reader that refuses an unmapped charge type is the enforceable form of
+   that backlog line: the database now holds the gate instead of a human remembering it.
+
+   **R1 — the reader is NOT wired to any writer in phase A.** One live call passes
+   `charge_type NULL` — `f_write_settlement_charge_line(..., 'penalty', v_penalty_net,
+   ..., NULL)` at mig-148:376, inside `f_settle_rental_booking_return`. A fail-closed
+   reader wired in now would RAISE on it and break the deposit-era penalty path.
+   Wiring, and the decision about what that NULL should become, is phase B under its
+   own scope gate.
+
+   **R2 — `effective_to` is kept, with a one-shot stamping exception to append-only.**
+   The alternative (store only `effective_from`, derive the end from the next row) is
+   strictly append-only but cannot express a rule WITHDRAWN WITH NO SUCCESSOR — which
+   is precisely how a rule pending re-confirmation must behave under Q3. So the
+   append-only trigger permits exactly one mutation: `effective_to` NULL → non-NULL,
+   strictly after `effective_from`, once. Every other column is frozen, DELETE is
+   refused, and TRUNCATE is refused by a separate statement-level trigger.
+
+   **R3 — overlap prevention uses a trigger, not an `EXCLUDE` constraint.**
+   `btree_gist` is not installed and no migration in this repo uses an exclusion
+   constraint; a trigger avoids adding an extension dependency. It takes a per-key
+   advisory lock before its check, because two concurrent transactions inserting
+   overlapping periods would otherwise each see a clean check and both commit.
+
+   **R4 — no redundant lookup index.** The unique index on
+   `(charge_type, customer_kind, effective_from)` already serves the reader's ordering;
+   btree scans backwards, so a DESC duplicate earns nothing.
+
+Reason: the launch money model reads the VAT rate from one global `system_configs` key,
+   which can answer only "what is the rate" — never "what is the rate FOR THIS KIND OF
+   CHARGE", which is the question every tax document has to answer. T4 needs the second
+   question answered before it can issue anything. Making the answer central also moves
+   an accounting position that currently lives in prose into something the database
+   refuses to guess at.
+
+Impact: NEW migration 150 — one table, two trigger functions, three triggers, one
+   reader, two seeded rows. Purely additive: no existing function, constraint or row is
+   changed, and nothing reads the new reader yet, so phase A is revertible by DROP with
+   zero blast radius. `f_tax_vat_config()` is untouched and retained — the seed reads
+   THROUGH it rather than restating the rate, which keeps one source of truth; its
+   deprecation is a later phase. In SQL the rate `7` is written exactly once, at
+   mig-134:55, and 143:75 / 148:80 / the 150 seed all read it through that
+   function. **It is NOT written once in the repo as a whole, and phase A did not
+   make it so:** `server/api/admin/pos/accounting-export.get.ts` hardcodes it
+   twice — the label `"VAT 7%"` at :23 and the inclusive-VAT extraction
+   `Math.round(((total * 7) / 107) * 100) / 100` at :49. That endpoint is live
+   (reached from app/pages/admin/pos.vue) and is a real inconsistency with the
+   central map, deliberately left untouched in phase A — phase A wires nothing,
+   and an accounting export's arithmetic is not a drive-by edit. It is queued for
+   the phase B scope gate. No TypeScript caller of the new reader exists, so
+   generated types are not regenerated in this phase. Phase B owns wiring, the `charge_type NULL` decision, and
+   the `'-infinity'` note below.
+
+   NOTE FOR PHASE B / UI: the seeded rules start at `'-infinity'` so that settlements
+   issued BEFORE this table existed stay explainable — the global config was already
+   applying those values. PostgREST renders that bound as the string `"-infinity"`,
+   which `new Date()` cannot parse. Any future TypeScript or UI reader must special-case
+   the infinite bound rather than Date-parse it. Nothing is exposed today: the reader
+   returns no timestamps.
