@@ -114,7 +114,7 @@ npm run build
 - Rental bookings must have either `user_id` or `walk_in_phone`.
 - Rental booking status now includes `picked_up` and `returned` for fulfillment tracking.
 - Booking cancellation is soft-delete via `status = 'cancelled'`.
-- Excessive customer cancellation restriction is design-locked in `HOPNIC_POS_V2_Master_Implementation_Plan.md` but not implemented yet; do not infer qualifying cancellations from `status = 'cancelled'` alone.
+- Excessive customer cancellation restriction is design-locked but not implemented yet; do not infer qualifying cancellations from `status = 'cancelled'` alone.
 - Booker name + phone are captured on rental submission.
 - Rental booking form blocks invalid date ranges, shows lead-time/min/max hints, and scrolls back to missing booker contact fields after submit attempts.
 - Admin POS rental mode reuses the same booking calendar/pricing summary as storefront booking, but intentionally does not enforce asset buffer days.
@@ -125,18 +125,14 @@ npm run build
 
 ## Documentation
 
-Start with `map.md`.
-
-Then use:
-
-- `PROJECT_SUMMARY.md` — current state snapshot
-- `API_INDEX.md` — routes, endpoints, composables, debug rules
-- `ADMIN_MVP_ACTION_PLAN.md` — admin backlog and status
-- `ASSET_ACTION_PLAN.md` — asset/rental decisions and backlog
+- `CLAUDE.md` — working rules for Claude Code sessions: who rules what, gates, hard rules
+- `docs/STATE.md` — current state: branches, migrations, active phase, open gates, rulings in force
+- `docs/BACKLOG.md` — open work, by track
+- `decisions.md` — the record of every ruling
+- `docs/history/` — closed phases and the old progress log
 - `DATABASE_ADMIN_MANUAL.md` — setup rules for admin data
 - `admin-manual/README.md` — index of task-oriented admin manuals
 - `ROLE_MATRIX.md` — permission model
-- `CART_BOOKING_TEST_CHECKLIST.md` — manual smoke checklist
 
 ## UI notes
 

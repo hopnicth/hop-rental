@@ -1867,3 +1867,22 @@ AMENDED AFTER THE FIRST GATE PASS (HUB rulings R4-R10; the applied file now diff
 I reported "zero hardcoded VAT rates in server/ or app/" and "7 written once in the repo". Both were false. HUB found `server/api/admin/pos/accounting-export.get.ts:23` (`"VAT 7%"` label) and `:49` (`Math.round(((total * 7) / 107) * 100) / 100`). My sweep regex matched only `vat… = 7` and `0.07`, so it could not see the arithmetic form — an inclusive-VAT extraction never writes the rate as a rate. I then read the empty output as proof of absence. An empty grep proves the PATTERN did not match, nothing more.
 The sweep now carries eight patterns (107 divisor, 1.07, 0.07, named-field, 7/100, `* 7`, `7%` label, `\bvat\b` near 7), each derived by trial-running it over the codebase and discarding the ones that only produced noise: `/ 7` matched street addresses ("56/7") and an unanchored `vat` matched the word "deri**vat**ion" — the same substring trap as "tax" matching "taxonomy". I also proved the sweep detects the real site by emptying the allow-list and watching it fail with both line numbers, then restoring it.
 That endpoint is LIVE (CSV export reached from `app/pages/admin/pos.vue`) and is allow-listed by ruling R6, NOT fixed — phase A wires nothing and an accounting export's arithmetic is not a drive-by edit. Queued in docs/BACKLOG.md as `[T4][QUEUED]`; a test pins that both lines still exist so the allow-list cannot outlive the problem. Phase B must also handle `vat_exclusive` — the `/ 107` form silently assumes inclusive.
+
+## Claude Code → (next session) / 2026-11-17 — docs restructure CLOSED (working-model change)
+
+Scope: docs and repo hygiene only; no product code. Branch `claude/docs-state-archive-1e5ffe`, rebased onto `staging` @ `a5d8497`. NOT pushed, NOT merged — both are CHiP's gates.
+
+WHAT CHANGED
+- Session start no longer reads history. A session reads `CLAUDE.md` (root, 164 lines, was `claude.md`, 342) and `docs/STATE.md` (current state only, overwritten in place), then its own track section of `docs/BACKLOG.md`.
+- This file is the former root `handoff.md` and `docs/history/progress-log.md` is the former root `progress.md`. Both moved whole (`git mv`, sha256 identical before and after); nothing in them was rewritten. `decisions.md` stays at the root because code and tests cite it.
+- 30 BACKLOG lines that carried an explicit closure marker moved verbatim to `docs/history/backlog-closed.md`. Seven T2/T3 `[QUEUED]` lines that look closed were left in place — closing an item is a ruling, not a mechanical step.
+- Working model written into `CLAUDE.md` and `docs/OPERATING-MODEL.md` §1 and §8: HUB control session, one worker per task or phase, questions to HUB, and production writes, pushes and merges into `staging` run by HUB after CHiP's word in the HUB window.
+- Removed (recoverable from git history): `.claudeignore`, `supabase/snippets/`, `scripts/daily-check.mjs`, `scripts/schedule.json`, `.vscode/tasks.json`, `docs/task-runs/.gitkeep`. Archived to `docs/history/`: `PAYMENT_DECISIONS.md`, `PAYMENT_VAULT_CHECKLIST.md`, `hopnic-legal-documents-agreement-blueprint.md`.
+
+EVIDENCE: suite 144 files / 3017 tests; tsc 223 server / 210 app (zero net new); every moved line counted by `grep -c -F -x` (1 in the archive, 0 in BACKLOG) and by a sorted-lines hash of before vs after.
+
+LESSONS
+- On this case-insensitive disk a case-only rename needs two `git mv` steps through a temporary name, and belongs in its own commit.
+- A fresh worktree has no `.nuxt/`: run `npx nuxt prepare` before `npx vitest run`, or every file fails before a test starts.
+- Whole-file moves survive a rebase: the lines T4 added to `handoff.md` and `progress.md` in `9106d3d` landed in the moved files by rename detection, with no conflict.
+- Count tracked spec files with `git ls-files | grep -cE '\.(spec|test)\.ts$'`; the pathspec `tests/**/*.spec.ts` undercounts.

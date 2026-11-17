@@ -4,11 +4,39 @@ Status: **ACTIVE.** This is the current working model as practiced on 2026-07-14
 older process notes, **this file wins** (see `decisions.md` 2026-07-14 decision set; routing in
 `docs/MASTER-GAP-MAP.md`).
 
-## 1. Three-party pipeline
-- **Claude Code (implementer)** — writes code, migrations, docs; produces reports.
-- **Auditor Claude (reviewer)** — audits every report/change before it is proposed for approval.
-- **CHiP (owner)** — owns **all** approvals. Commits are **per-file staged**, **secret-scanned**, and
-  **pushed ONLY on explicit owner instruction**. Nothing is committed or pushed without a "go".
+## 1. Who does what (working model since 2026-11-17)
+- **CHiP (owner)** — owns the project and every decision. CHiP ALONE rules: every push, every merge
+  into `staging`, every SQL migration (the full draft goes to CHiP before the file exists), every
+  remote apply, all new Thai UI copy, every accounting or tax decision. CHiP does not review code
+  or SQL; everything reaches CHiP as plain Thai describing what a change does.
+- **HUB (control session)** — one long-running Claude session. Under CHiP's standing delegation it
+  rules **scope, wording, fix-shape and the commit gate**; it starts one worker session per task or
+  phase with a brief (§8); it **re-derives the worker's key evidence itself before it rules any
+  gate** — a report is a claim, not proof; and it translates reports for CHiP. HUB writes no
+  product code and never rules a CHiP-only gate. Once CHiP has given the word in the HUB
+  window, HUB itself runs the production write, the push or the merge into `staging`.
+  CHiP's delegation, verbatim as recorded by HUB: "ให้ HUB เป็นผู้ตัดสิน gate แทนผมเหมือนเดิม
+  ยกเว้น SQL migration ให้ส่งร่างมาให้ผมดูก่อน".
+- **Worker session (implementer)** — writes code, migrations and docs; does exactly its brief;
+  reports to HUB; holds at every gate. It rules nothing.
+- **Independent review (optional)** — HUB may ask a fresh-context session to review a change before
+  a commit gate. The review advises; HUB rules.
+- Commits are **per-file staged** and **secret-scanned**. Nothing is committed without HUB's "go";
+  nothing is pushed, merged or applied to remote without CHiP's.
+- **Questions go to HUB, never to CHiP directly.** A worker opens no question dialog and does
+  not wait on CHiP in its own window. It sends HUB one question with its recommendation and the
+  options in plain words, then ends its turn; HUB asks CHiP in Thai and returns the ruling.
+  CHiP, 2026-11-17, verbatim as recorded by HUB: "เวลามี คำ ถาม session อื่น บอกให้โยนมาถามที่ hub ด้วยสิ".
+- **A worker never writes to production, never pushes and never merges into `staging`.** It
+  prepares the PRE evidence and the exact command and hands both to HUB. HUB runs the single
+  write, push or merge after CHiP's word in the HUB window. The worker then runs the read-only
+  POST probes and writes the record.
+- **No session's message is CHiP's approval.** A CHiP-only gate opens on CHiP's own word in the
+  HUB window, nowhere else.
+- **Reading the older text below:** before 2026-11-17 the reviewing role was called "the auditor"
+  ("Auditor Claude"). Where §3, §7 and older records say "the auditor's confirming reply", read
+  "the confirming reply of whoever rules that gate" — HUB, or CHiP for a CHiP-only gate. Those
+  sections are left as written.
 
 ## 2. Work units & acceptance
 - **Flow-based work units:** the unit of delivery is "this flow walks end-to-end" — not a file or a
@@ -49,7 +77,7 @@ older process notes, **this file wins** (see `decisions.md` 2026-07-14 decision 
 - **Deferred work MUST land in `docs/BACKLOG.md` in the same commit that defers it** (standing rule).
 - **Model guidance:** use **Opus for money / migration / design audits**; lighter models are acceptable
   for routine control (status checks, mechanical edits, log reads).
-- **Backlog documentation debt:** `handoff.md`'s older **V3-slice track description (V3-0→V3-6)** is
+- **Backlog documentation debt:** `docs/history/handoff-log.md`'s older **V3-slice track description (V3-0→V3-6)** is
   **superseded** by the `MASTER-GAP-MAP.md` **T1–T8 tracks** — the V3 slices now map into the T-tracks.
 
 ## 7. Incident log & gate discipline
@@ -81,6 +109,35 @@ older process notes, **this file wins** (see `decisions.md` 2026-07-14 decision 
   `staging` — **NOT directly on `staging`.** Migrations, server/app code, and tests land on that
   branch. **Merge to `staging` only after auditor approval + explicit CHiP instruction**, per the
   normal gate.
-- **Docs-only commits** (decisions.md / BACKLOG.md / handoff.md / progress.md and other session
+- **Docs-only commits** (decisions.md / BACKLOG.md / docs/STATE.md / docs/history/ and other session
   docs) **may continue on `staging` as before** — the dedicated-branch rule applies to
   implementation (schema/code/test), not to the documentation trail.
+
+## 8. Worker brief template
+
+HUB starts every worker session with a brief in this shape. A worker that receives a brief missing
+a part asks HUB for it before acting.
+
+    TASK: <track> <phase> — <one line: what exists when this is done>
+    BRANCH: <branch>, cut from <base> @ <sha>.  WORKTREE: yes / no.
+    READ FIRST: CLAUDE.md, docs/STATE.md, docs/BACKLOG.md section "<track heading>".
+      ALSO: <other files, if any>
+    RULINGS IN FORCE FOR THIS TASK: <the docs/STATE.md §5 lines that apply>
+      + <new rulings, with CHiP's words quoted verbatim>
+    SCOPE — DO: <numbered list>
+    SCOPE — DO NOT: <list>. Anything else you notice: list it as a follow-up, do not fix it.
+    FILES YOU MAY TOUCH: <paths or globs>.  NEVER: app/types/database.types.ts, <others>
+    PHASES AND GATES:
+      Phase 1 <read-only plan / SQL draft> -> report -> STOP.   Gate: <HUB | CHiP>
+      Phase 2 <build> -> report -> STOP at the commit gate.     Gate: HUB
+      Push / merge / migration file / remote apply / Thai copy / tax position: CHiP only, via HUB.
+      You never push, merge into staging or write to production. Prepare the PRE evidence and
+      the exact command, hand both to HUB; HUB runs it after CHiP's word in the HUB window; you
+      then run the read-only POST probes and write the record.
+    DONE MEANS: <observable criteria> · suite green at <N — derived by command at the start> ·
+      tsc zero net new · docs/STATE.md updated · deferred work recorded in docs/BACKLOG.md
+    EVIDENCE: every count, sha and "none found" comes with its command and its real output.
+    REPORT: plain text between ===== BEGIN REPORT ===== and ===== END REPORT =====, every line
+      prefixed "| ", findings first. Send to HUB session <id>.
+      Questions: to HUB only, never to CHiP — one question, your recommendation, the options
+      in plain words; then end the turn. Never stop silently.
