@@ -1,342 +1,158 @@
-# HOPNIC — Claude Code Instructions
+# HOPNIC / hop-rental — Claude Code instructions
 
-## Project Overview
+Nuxt 4 + Supabase platform: sale commerce, asset-first rental, partner directory, CMS,
+admin back-office with POS, customer self-service. Stack and scripts are in `package.json`
+and `nuxt.config.ts`. The working branch is `staging` — never `main`.
 
-**HOP-RENTAL** is the main platform of **HOPNIC** — a Nuxt 4 + Supabase application that combines:
+Owner: **CHiP** — Thai-speaking, does not review code or SQL. Say what a change DOES, in
+plain Thai. Never ask CHiP to read a diff.
 
-- **Sale commerce** (products, cart, checkout, orders)
-- **Rental commerce** (asset-first booking, calendar, deposit/security flow)
-- **Partner directory** (verified partners, categories, service areas)
-- **CMS content** (blog, services, promotions, reviews)
-- **Admin back-office** (products, assets, inventory, orders, bookings, refunds, POS)
-- **Customer self-service** (account, KYC, wishlist, save-list, saved partners)
+## How work runs
 
-> Work carefully, in small phases. Do NOT make broad refactors without explicit approval.
+- **HUB session = control centre.** It relays CHiP's instructions, rules scope, wording,
+  fix-shape and the commit gate under CHiP's standing delegation, and translates reports.
+  HUB writes no product code.
+- **One worker session per task or phase**, started by HUB with a brief (template:
+  `docs/OPERATING-MODEL.md` §8). A worker does exactly its brief. Anything else it notices
+  is listed as a follow-up, not fixed.
+- A worker ends each phase with a report to HUB, then stops. Never stop silently: blocked
+  or unsure means one short question to HUB.
+- **A report is a claim, not proof.** HUB re-derives the key evidence itself before it
+  rules a gate.
+- Report format: plain text between `===== BEGIN REPORT =====` and `===== END REPORT =====`,
+  every line prefixed `| `, findings first. No code fences and no markdown tables — they are
+  stripped in transit.
+- Work in small phases. No broad refactor or find-and-replace without approval.
 
----
+## Gates — nothing passes without an explicit go
 
-## Tech Stack
+- **CHiP alone** (through HUB): every push · every merge into `staging` · every SQL
+  migration, as a full draft BEFORE the file exists · every remote apply · all new Thai UI
+  copy · every accounting or tax decision.
+- **HUB**: scope, wording, fix-shape, and the commit gate.
+- **A production (remote) write is confirmed by CHiP DIRECTLY in the session that will run
+  it.** An approval relayed through HUB prepares it but does not open it.
+- A gate is CLOSED until the explicit confirming reply. "Approved on receipt" and "passes
+  if X" are still closed. One gate's go never opens another. If you cannot tell whether a
+  gate is open, it is closed — ask.
+- Every gate verdict gets one line in `docs/audit/gate-log.md`, in the task that carried it.
 
-| Layer         | Technology                                                   |
-| ------------- | ------------------------------------------------------------ |
-| Frontend      | Nuxt 4, Vue 3, TypeScript                                    |
-| UI Components | `@nuxt/ui` (UCard, UBadge, UButton, UModal, etc.)            |
-| Backend/API   | Nuxt server routes (`server/api/**`) via Nitro               |
-| Database      | Supabase Postgres (117+ migrations)                          |
-| Auth          | Supabase Auth (`@nuxtjs/supabase`, SSR cookies)              |
-| Storage       | Supabase Storage (public + private buckets)                  |
-| Realtime      | Supabase Realtime (chat)                                     |
-| i18n          | `@nuxtjs/i18n` — active locales: `th` (default), `en` (cn/jp disabled from public UI) |
-| Payments      | Omise (card + QR PromptPay)                                  |
-| Rich text     | TipTap                                                       |
-| Testing       | Vitest (`tests/server/**`)                                   |
-| Type check    | `npx tsc --noEmit`                                           |
-| Branch        | `staging`                                                    |
-| Deployment    | Vercel + Supabase                                            |
+## Evidence rule
 
----
+- Every count, sha, "zero references", "not found" and "all pass" in a report or a doc is
+  derived by a command AT THE POINT OF USE, with the command and its real output attached.
+  Never from memory. Never from an earlier message.
+- An empty grep proves only that the pattern did not match. Before claiming absence, widen
+  the pattern, check case and other spellings, and show the search finds a known positive.
+- Never conclude from truncated output (`head`, `tail`, `cut`).
+- Verify by counting rows or reading state after the action, not by trusting an HTTP status.
 
-## Project Structure
+## Session start
 
-```
-app/
-  pages/          # Nuxt routes (public, /user/*, /admin/*)
-  components/     # Vue components (admin/, products/, partners/, home/, etc.)
-  composables/    # Client-side business logic (useCart, useBooking, usePartners…)
-  types/          # Shared TypeScript types (database.types.ts is auto-generated)
-  utils/          # Utility and domain logic
-  layouts/        # default + admin layouts
-  plugins/        # e.g. i18n-cookie locale persistence
-  mappers/        # data shape transformers
+1. Read `docs/STATE.md` — branch and migration state, active phase, open gates, rulings in force.
+2. Read the section of `docs/BACKLOG.md` for the track named in your brief, plus
+   "Cross-cutting / infra" if you touch shared code.
+3. Tell HUB in three to five lines what you understood, then act on the brief.
 
-server/api/       # Nitro server routes
-  admin/          # Admin-only endpoints
-  user/           # Authenticated user endpoints
-  rental-bookings/ partners/ cart/ chat/ payments/ webhooks/ …
+Do NOT read history by default. `decisions.md`, `docs/history/`, `docs/MASTER-GAP-MAP.md`,
+`docs/audit/`, `docs/design/` and `docs/research/` are on-demand: open one when `STATE.md`
+points there or the task touches that area. If a task conflicts with a ruling in
+`STATE.md` §5 or `decisions.md`, stop and ask HUB.
 
-supabase/
-  migrations/     # 117 SQL migration files (source of truth for schema)
+## Session end — before the final report
 
-tests/server/     # Vitest test suite (80+ spec files)
-i18n/locales/     # th.json  en.json (active) · cn.json  jp.json (disabled, retained on disk)
-```
+- `docs/STATE.md` — overwrite the lines that changed. Current state only, no history.
+- `docs/BACKLOG.md` — deferred work lands here in the same commit that defers it. A closed
+  item moves to `docs/history/backlog-closed.md`.
+- `decisions.md` — append an entry only when CHiP or HUB ruled something new
+  (`## YYYY-MM-DD — title`, then Decision / Reason / Impact). Never edit an old entry;
+  supersede it with a new one.
+- `docs/history/handoff-log.md` — append ONE closing entry when a phase or track closes:
+  what shipped, commits, evidence, lessons.
+- Never report done with a red suite. Never commit or push without the gate.
 
----
+## Hard rules
 
-## Key Routes
+- Implementation (schema, code, tests) goes on a dedicated feature branch. Docs-only work
+  may go on `staging`.
+- Never edit `app/types/database.types.ts` by hand — it is generated.
+- No new dependency without asking.
+- No `console.log` in production code paths.
+- Prefer editing an existing file to creating a new one.
+- Secrets never go in chat or in the repo.
+- Money tables are append-only by default. A multi-write state change is one atomic RPC.
+  A money writer locks the booking first. Fail closed: deny on uncertainty, guard before
+  the side effect.
+- Suite green is enforced: a red test is stop-and-report. An expected-fail test flips to
+  passing in the same commit that fixes the behaviour.
+- Never edit an applied migration; add a new one.
+- Browser walkthroughs: localhost only, through the browser MCP. If the MCP is down, hold —
+  do not substitute self-built automation.
+- Removing things: move to `docs/history/` or archive first. Delete only tracked items
+  proven unreferenced. Branches, stashes, untracked files and anything outside git go to CHiP.
 
-### Public / Storefront
+## Business invariants the code alone will mislead you on
 
-- `/` — homepage (DB-backed banners, categories, content)
-- `/product-[group]/` — sale products listing + detail
-- `/product-rental` — rental assets listing
-- `/asset/[slug]` — asset detail + booking form
-- `/partners`, `/partners/[slug]` — partner directory
-- `/services`, `/blog`, `/promotions`, `/reviews`
-- `/search` — universal multi-type search
+- **Launch regime: deposits are OFF** (`f_deposits_enabled()`, mig-135). The web collects
+  ONE money item, `rental_charge`, at return. Deposit columns, RPCs and UI still exist in
+  the code — they are parked, not live. Deposit information must not appear on a customer
+  money surface or a tax document. Details: `docs/STATE.md` §5.
+- Rental is asset-first: a booking starts from an `assets` row, never a product. Status:
+  `draft` → `confirmed` → `picked_up` → `returned`; cancellation is a status (`cancelled`,
+  `no_show`), never a delete. A booking has `user_id` OR `walk_in_phone`.
+- A POS sale may be anonymous. A POS rental must know the customer.
+- Admin access is `public.users.platform_role` = `staff` | `super_admin`. Every admin route
+  starts with `requirePlatformAdmin(event)` or `requireSuperAdmin(event)` from
+  `server/utils/admin.ts` and uses the client it returns — never `serverSupabaseClient`
+  directly.
+- Schema truth is `supabase/migrations/`. `rental_assets` is an orphaned legacy table; the
+  live one is `assets`.
 
-### User (auth required)
+## i18n — strict
 
-- `/user/login`, `/user/confirm`, `/user/forgot-password`, `/user/reset-password`
-- `/user/cart` — unified cart (sale + rental drafts)
-- `/user/orders`, `/user/rentals/`
-- `/user/account` — profile, KYC, tax profile, company, documents
-- `/user/wishlist`, `/user/save-list`
+- Active locales: `th` (default) and `en` only. `cn.json` and `jp.json` stay on disk on
+  purpose (re-enable = revert `d9e15ea`) — never add keys to them, never delete them.
+- No hardcoded user-visible text in any language. Check that a key exists before using it.
+- New text: use the key in code, add the English string to `en.json`, add
+  `"[NEEDS_TRANSLATION]: <English>"` to `th.json`, then stop and list the keys in your
+  report. Never invent Thai copy — Thai wording is CHiP's ruling.
+- Key pattern: `section.subsection.key`. Find pending ones with
+  `grep -r "NEEDS_TRANSLATION" i18n/locales/`.
+- Glossary: never bare "มัดจำ" in money copy — เงินมัดจำจอง or เงินมัดจำประกัน.
 
-### Admin (`platform_role = 'staff' | 'super_admin'` required)
+## Commands
 
-- `/admin/products`, `/admin/assets`, `/admin/branches-inventory`
-- `/admin/orders`, `/admin/rental-bookings/[id]`
-- `/admin/pos` (v1), `/admin/pos-v2`, `/admin/pos-v3`
-- `/admin/refunds`, `/admin/content`, `/admin/messages`
-- `/admin/home-content`, `/admin/home-categories`, `/admin/partners`
+- Tests: `npx vitest run` · one file: `npx vitest run tests/server/<name>.spec.ts`.
+  In a fresh worktree run `npx nuxt prepare` first.
+- Type check: `npx tsc --noEmit` at the root checks NOTHING. Use
+  `npx tsc -p .nuxt/tsconfig.server.json --noEmit` and the same with `tsconfig.app.json`;
+  the gate is zero net new errors against the baseline in `docs/STATE.md` §1.
+- Dev server: `npm run dev` targets the LOCAL database. `npm run dev:remote` targets the
+  remote one and needs CHiP's go.
+- Local database: the global `supabase` CLI, not `npx supabase`.
 
----
+## Server-utils index
 
-## Core Business Rules
-
-### Auth & Permissions
-
-- Admin access: `platform_role` values: `'staff' | 'super_admin'`
-  - `requirePlatformAdmin(event)` → staff + super_admin
-  - `requireSuperAdmin(event)` → super_admin only
-- All admin API routes must verify role server-side via Supabase session
-- RLS is enabled on all sensitive tables
-
-### Rental Flow (asset-first)
-
-- Booking always starts from an **asset**, not a product
-- Status flow: `draft` → `confirmed` → `picked_up` → `returned`
-- Cancellation is soft-delete via status: `cancelled` / `no_show`
-- Rental booking must have either `user_id` **or** `walk_in_phone`
-- POS can create confirmed rentals directly (walk-in or registered user)
-- Deposit: `booking_deposit` is collected at confirmation; security deposit at pickup
-
-### Sale Flow
-
-- Standard cart → checkout → Omise payment → order
-- POS sale does NOT require customer data (anonymous allowed)
-- POS rental MUST know customer identity (user or walk-in)
-- Mixed checkout: combines sale + rental deposit in one payment session
-
-### i18n
-
-- Default locale: `th` (Thai)
-- Active locales are `th` and `en` ONLY. cn/jp are disabled from the public UI (locale JSON files retained on disk; re-enable = revert commit `d9e15ea`). Do NOT add new keys to cn.json/jp.json.
-- All new UI strings MUST be added to both active locale files: `th.json`, `en.json`
-- Locale key pattern: `section.subsection.key` (e.g. `partners.card.verified`)
-
----
-
-## Common Patterns
-
-### Server route (admin example)
-
-```ts
-// server/api/admin/something/index.get.ts
-export default defineEventHandler(async (event) => {
-  // Never use serverSupabaseClient
-  // directly in admin routes
-  const { adminClient } = await requirePlatformAdmin(event);
-  // from server/utils/admin.ts
-  // query, validate, return
-});
-```
-
-### Component with i18n
-
-```vue
-<script setup lang="ts">
-const { t } = useI18n();
-</script>
-<template>
-  <UBadge color="success">{{ t("partners.card.verified") }}</UBadge>
-</template>
-```
-
-### Composable pattern
-
-```ts
-// app/composables/useSomething.ts
-export function useSomething() {
-  const client = useSupabaseClient()
-  const data = ref([])
-  async function fetch() { ... }
-  return { data, fetch }
-}
-```
-
----
-
-## Database Notes
-
-- Schema source of truth: `supabase/migrations/` (001–117 and growing)
-- Generated types: `app/types/database.types.ts` — do NOT edit manually
-- Key tables: `public.users`, `catalog_products`, `assets`, `rental_bookings`, `orders`, `cart_items`, `partners`, `content_pages`, `chat_conversations`, `payment_attempts`
-  - NOTE: `rental_assets` is NOT a key table — it is an orphaned legacy table (superseded by `assets` via migration 025; zero code references)
-- `platform_role` column on `public.users` controls admin access
-- Storage buckets: `catalog-media` (public), `kyc-documents` (private), `avatars` (public), `rental-booking-docs` (private)
-
----
-
-## Testing
-
-Run all tests:
-
-```bash
-npx vitest run
-```
-
-Run a single spec:
-
-```bash
-npx vitest run tests/server/admin-partners-api.spec.ts
-```
-
-Type check:
-
-```bash
-npx tsc --noEmit
-```
-
-Tests live in `tests/server/` — they cover API routes, business rules, UI contracts, POS flows, rental lifecycle, and refund workflows.
-
----
-
-## Server-Utils Index — Maintenance Rule
-
-`docs/index/server-utils-index.md` is a living risk/responsibility index for every file under `server/utils/`. Keep it in sync with the code.
-
-**Rule:** When you change the behavior, auth, risk, responsibility, money/ledger effects, KYC/hash behavior, inventory/availability behavior, or branch/access behavior of any file under `server/utils/`, update the matching row in `docs/index/server-utils-index.md` in the same commit.
-
-- If a server utility is added, removed, renamed, or materially changed, the index must be updated in the same change.
-- Do NOT update the index for typo-only / comment-only changes unless the current index row becomes inaccurate.
-- If unsure whether a change affects risk or responsibility, report the uncertainty instead of guessing.
-
-**Index rules** (see `docs/index/README.md` for the authoritative definitions):
-
-- Current state only — no dates, changelog notes, "previously was…", before/after notes, or historical explanations.
-- Use the locked 6-column format: `File | Responsibility | Domain | Risk | Edit rules | Tests`.
-- Use only the closed Domain/Risk vocabulary from `docs/index/README.md`.
-- Rate risk by blast radius, not code complexity.
-- Use `TODO-risk` instead of guessing.
-- For `med` / `high` / `critical` rows, include a concrete edit rule and related real tests.
-- Do NOT include source-inspection tests that do not exercise the util.
-
-## What NOT to Do
-
-- Do NOT run broad find-and-replace refactors across many files without approval
-- Do NOT edit `app/types/database.types.ts` manually (auto-generated from Supabase)
-- Do NOT add new dependencies without checking with the user first
-- Do NOT commit or push without explicit instruction
-- Do NOT skip i18n — every user-visible string needs th + en keys (cn/jp disabled; re-enable = revert d9e15ea)
-- Do NOT add console.log in production code paths
-- Do NOT create new files unless strictly necessary — prefer editing existing ones
+Any change to the behaviour, auth, risk, money/ledger effect, KYC/hash behaviour,
+inventory/availability or branch access of a file under `server/utils/` — and any util
+added, removed or renamed — updates its row in `docs/index/server-utils-index.md` in the
+same commit. Format, vocabulary and risk definitions: `docs/index/README.md`. Rows describe
+current state only. Unsure whether a change affects risk? Report it, do not guess.
 
 ## Sub-guides
 
-- app/components/claude.md
-- server/api/claude.md
-- supabase/claude.md
-- docs/claude.md
-- app/composables/claude.md
-- server/utils/claude.md
-- app/pages/claude.md
-- tests/server/claude.md
-- app/mappers/claude.md
+These load by themselves when you work in the folder. Read the one for the area you touch:
+`app/components/` · `app/composables/` · `app/mappers/` · `app/pages/` · `server/api/` ·
+`server/utils/` · `supabase/` · `tests/` · `tests/server/` · `docs/` (each holds a `claude.md`).
 
-## i18n Rules — STRICT
+## Where things are
 
-> Active locales: th + en only. cn/jp are disabled from the public UI (files retained on disk; re-enable = revert commit `d9e15ea`) — do NOT add new keys to cn.json/jp.json.
-
-### Never do
-
-- Never hardcode text in any language inside component code
-- Never invent or guess translations for th
-- Never assume a key exists without checking the locale files first
-- Never add new keys to the disabled cn.json / jp.json
-
-### When new UI text is needed
-
-1. Use only the English key in code: t('partner.verified')
-2. Add the key to i18n/locales/en.json only
-3. Add a placeholder in th:
-   "[NEEDS_TRANSLATION]: Verified"
-4. Stop — report to user which keys need translation
-
-### Correct output example
-
-en.json: "verified": "Verified"
-th.json: "verified": "[NEEDS_TRANSLATION]: Verified"
-(cn.json / jp.json: no new keys — locales disabled)
-
-### After adding keys, always report
-
-"Added N new i18n keys pending translation:
-
-- partner.verified
-- partner.unverified
-- partner.chipLabel"
-
-### Finding untranslated keys
-
-grep -r "NEEDS_TRANSLATION" i18n/locales/
-
-## Session Routine — ALWAYS FOLLOW
-
-### Start of every session
-
-1. Read PROGRESS.md
-2. Read DECISIONS.md
-3. Read HANDOFF.md
-4. Confirm current state to user
-5. Wait for instruction
-
-Deferred work MUST be recorded in docs/BACKLOG.md in the same commit; read BACKLOG.md at session start.
-
-Read docs/OPERATING-MODEL.md and docs/MASTER-GAP-MAP.md at session start; on any conflict between older notes and the 2026-07-14 decision set, the 2026-07-14 set wins.
-
-### During work
-
-- Break tasks into subtasks yourself
-- If a subtask conflicts with DECISIONS.md
-  → stop and ask before proceeding
-- If unsure about scope → ask once,
-  then proceed
-
-### End of every session (before stopping)
-
-Automatically update these files:
-
-PROGRESS.md:
-
-- Move completed items to Done ✅
-- Update In Progress 🔄
-- Add new discovered tasks to Next 📋
-- Add any blockers found to Blocked 🚫
-
-DECISIONS.md:
-
-- Add any design decision made today
-  Format:
-  ## YYYY-MM-DD
-  Decision: [what]
-  Reason: [why]
-  Impact: [what it affects]
-
-HANDOFF.md:
-
-- Add entry if switching tools
-  or leaving work mid-task
-  Format:
-  ## [Tool] → [Tool] / Date
-  Task: [what]
-  Files touched: [list]
-  Status: [done/in-progress/blocked]
-  Next: [what to do next]
-
-### Never do at session end
-
-- Never commit or push without asking
-- Never mark Done if tests not passed
-- Never delete previous PROGRESS entries
+| Need | File |
+|------|------|
+| Current state, open gates, rulings in force | `docs/STATE.md` |
+| Open work, by track | `docs/BACKLOG.md` |
+| The record of every ruling | `decisions.md` |
+| Gate rules, walkthrough rules, incidents, brief template | `docs/OPERATING-MODEL.md` |
+| Track routing T1–T8 | `docs/MASTER-GAP-MAP.md` |
+| Gate verdicts | `docs/audit/gate-log.md` |
+| History: closed phases, old progress log, closed backlog | `docs/history/` |

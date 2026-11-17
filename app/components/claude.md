@@ -143,7 +143,7 @@ const { t, locale } = useI18n();
 
 - ห้าม hardcode ข้อความในภาษาใดใน template — ใช้ `t('key')` เสมอ
 - ยกเว้น: สัญลักษณ์สกุลเงิน `฿`, ตัวเลข, icon ที่ไม่ใช่ภาษา
-- เมื่อเพิ่ม key ใหม่ ต้องเพิ่มใน **ทั้ง 4 ไฟล์**: `th.json`, `en.json`, `cn.json`, `jp.json`
+- เมื่อเพิ่ม key ใหม่ ให้เพิ่มเฉพาะ **2 ไฟล์ที่เปิดใช้**: `th.json`, `en.json` — ห้ามเพิ่ม key ใน `cn.json` / `jp.json` (ปิดใช้งาน; ดูขั้นตอนใน `CLAUDE.md` หัวข้อ i18n)
 - Key pattern: `componentName.subSection.key` เช่น `partners.card.verified`
 
 ### ชื่อที่มีหลายภาษา (nameTh / nameEn)
@@ -217,4 +217,4 @@ Base class    → h-full overflow-hidden transition-all hover:-translate-y-0.5
 - ❌ ห้าม UCard โดยไม่มี `h-full` — จะทำให้ grid row สูงไม่เท่ากัน
 - ❌ ห้ามใช้ fixed height (`h-48`) ใน content zone — ใช้ `min-h-*` แทน
 - ❌ ห้าม re-implement card shell ใหม่ — ใช้ `CatalogCardShell` สำหรับ product/asset
-- ❌ ห้ามเพิ่ม i18n key แค่ไฟล์เดียว — ต้องครบ 4 ภาษาเสมอ
+- ❌ ห้ามเพิ่ม i18n key แค่ไฟล์เดียว — ต้องครบ 2 ภาษาที่เปิดใช้ (th, en) เสมอ และห้ามเพิ่มใน cn.json / jp.json

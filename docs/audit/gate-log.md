@@ -14,7 +14,11 @@ Columns (pipe-delimited, one line per gate — no markdown table, per §7.2 tran
 - **GATE** — the gate's register id (e.g. `§8.7 R-A`, `mig-145`, `wording:decisions-2026-07-25`).
 - **SCOPE** — what was gated, in a few words.
 - **VERDICT** — `OPEN` · `CLOSED-PASS` · `CLOSED-FAIL` · `RATIFIED-RETRO`.
-- **CONFIRMED-BY** — `auditor` · `CHiP` · `auditor+CHiP`. Never `implementer`.
+- **CONFIRMED-BY** — `HUB` · `CHiP` · `auditor` · `auditor+CHiP`. Never `implementer`.
+  `HUB` (from 2026-11-17) = the HUB control session ruling under CHiP's standing delegation
+  (OPERATING-MODEL §1). A CHiP-only gate — push, merge into staging, SQL migration, remote
+  apply, Thai UI copy, accounting/tax — must say `CHiP` and carry CHiP's verbatim words.
+  `auditor` and `auditor+CHiP` are the pre-2026-11-17 values; existing lines are never rewritten.
 - **REF** — commit sha(s), migration number, or doc §.
 
 ---
